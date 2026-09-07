@@ -400,7 +400,7 @@ const shortcuts = [
                                 <div class="kv"><span>Календарь и контакты</span><b class="mono">https://mail.{{ user.split('@')[1] }}/dav/</b></div>
                                 <div class="kv"><span>Логин</span><b class="mono">{{ user }}</b></div>
                             </div>
-                            <p class="hint" style="margin: 0">iPhone, Android и Outlook находят настройки сами по адресу. Пароль — от почты или пароль приложения.</p>
+                            <p class="hint" style="margin: 0">Outlook, Thunderbird и Android находят настройки почты сами по адресу. iPhone/iPad/Mac: <a :href="`/mail/apple.mobileconfig?email=${encodeURIComponent(user)}`">установить профиль</a> — почта, контакты и календарь одним файлом. Outlook для контактов и календаря нужен бесплатный <a href="https://caldavsynchronizer.org/" target="_blank" rel="noopener">CalDAV Synchronizer</a> с адресом выше; Android — DAVx5. Пароль — от почты или пароль приложения.</p>
                         </div>
                     </template>
 

@@ -28,6 +28,12 @@ Route::middleware('area:mail')->group(function () {
 
     // CalDAV/CardDAV для телефонов и почтовых программ (Basic-авторизация паролем от почты).
     Route::match(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'PROPFIND', 'PROPPATCH', 'REPORT', 'MKCOL', 'MKCALENDAR', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'ACL'], '/dav/{path?}', DavController::class)->where('path', '.*');
+    // Автонастройка почтовых программ (Outlook, Thunderbird, Android, iPhone) — без пароля, только адреса серверов.
+    Route::match(['GET', 'POST'], '/autodiscover/autodiscover.xml', [\App\Http\Controllers\Mail\AutoconfigController::class, 'autodiscover']);
+    Route::match(['GET', 'POST'], '/Autodiscover/Autodiscover.xml', [\App\Http\Controllers\Mail\AutoconfigController::class, 'autodiscover']);
+    Route::get('/mail/config-v1.1.xml', [\App\Http\Controllers\Mail\AutoconfigController::class, 'autoconfig']);
+    Route::get('/.well-known/autoconfig/mail/config-v1.1.xml', [\App\Http\Controllers\Mail\AutoconfigController::class, 'autoconfig']);
+    Route::get('/mail/apple.mobileconfig', [\App\Http\Controllers\Mail\AutoconfigController::class, 'mobileconfig']);
     Route::get('/.well-known/caldav', [DavController::class, 'wellKnown']);
     Route::get('/.well-known/carddav', [DavController::class, 'wellKnown']);
 

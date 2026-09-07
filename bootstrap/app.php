@@ -26,7 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
         ]);
         // DAV-клиенты (телефон, Outlook) токенов CSRF не знают — авторизация там своя, Basic.
-        $middleware->validateCsrfTokens(except: ['dav', 'dav/*']);
+        $middleware->validateCsrfTokens(except: ['dav', 'dav/*', 'autodiscover/*', 'Autodiscover/*']);
         $middleware->alias([
             'area' => EnsureArea::class,
             '2fa' => EnsureTwoFactorVerified::class,
