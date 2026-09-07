@@ -28,6 +28,7 @@ case "$cmd" in
   log-since)      re='^[0-9T:+.-]{10,40}$'; [[ "$1" =~ $re ]] || die "bad time"; awk -v t="$1" '$1 >= t' /var/log/mail.log ;;
   # ── fail2ban ───────────────────────────────────────────────────
   f2b-status)     exec fail2ban-client status ;;
+  f2b-config)     num "$1"; num "$2"; num "$3"; exec /usr/local/sbin/mailadmin-f2b "$1" "$2" "$3" ;;
   f2b-jail)       word "$1"; exec fail2ban-client status "$1" ;;
   f2b-banned)     exec fail2ban-client banned ;;
   f2b-unban)      ipv "$1"; exec fail2ban-client unban "$1" ;;

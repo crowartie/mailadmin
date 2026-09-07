@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Cache;
 /** fail2ban: кто заблокирован, разблокировать, заблокировать вручную, белый список. */
 class Fail2ban
 {
-    private const JAIL_TITLES = ['sshd' => 'SSH', 'postfix' => 'SMTP · перебор паролей', 'dovecot' => 'IMAP/POP3 · перебор паролей', 'nginx-http-auth' => 'веб-почта · перебор паролей', 'pregreet' => 'SMTP · бот-спамер', 'sogo' => 'SOGo', 'postfix-sasl' => 'SMTP · перебор паролей'];
+    private const JAIL_TITLES = ['sshd' => 'SSH', 'postfix' => 'SMTP · перебор паролей', 'dovecot' => 'IMAP/POP3 · перебор паролей', 'nginx-http-auth' => 'веб-почта · перебор паролей', 'pregreet' => 'SMTP · бот-спамер', 'sogo' => 'SOGo', 'postfix-sasl' => 'SMTP · перебор паролей', 'mailadmin' => 'админка и веб-почта · перебор паролей'];
 
     /** @return array<int,array{ip:string,jail:string,why:string}>|null */
     public function banned(): ?array

@@ -17,6 +17,9 @@ class MailLogin extends Model
     public static function record(Request $request, string $user, string $result): void
     {
         self::create(['user' => strtolower($user), 'ip' => $request->ip(), 'agent' => mb_substr((string) $request->userAgent(), 0, 300), 'result' => $result, 'created_at' => now()]);
+        if (! in_array($result, ['ok', 'new_device'], true)) {
+            \Illuminate\Support\Facades\Log::channel('auth')->warning('FAILED LOGIN mail ip=' . $request->ip() . ' user=' . strtolower($user) . ' result=' . $result);
+        }
     }
 
     public static function recentFailures(string $ip, int $minutes = 15): int

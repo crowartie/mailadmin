@@ -21,6 +21,9 @@ class AdminLogin extends Model
             'user_agent' => mb_strimwidth((string) $request->userAgent(), 0, 500),
             'result' => $result,
         ]);
+        if ($result !== 'ok') {
+            \Illuminate\Support\Facades\Log::channel('auth')->warning('FAILED LOGIN admin ip=' . $request->ip() . ' user=' . strtolower($email) . ' result=' . $result);
+        }
     }
 
     /**

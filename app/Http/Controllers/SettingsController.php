@@ -269,6 +269,12 @@ class SettingsController extends Controller
         }
         AppSetting::put('limits', ['default_quota_mb' => $data['default_quota_mb'], 'blocked_ext' => $data['blocked_ext'] ?? '', 'max_recipients' => $data['max_recipients']]);
         AppSetting::put('fail2ban', ['maxretry' => $data['maxretry'], 'findtime' => $data['findtime'], 'bantime_hours' => $data['bantime_hours']]);
+        // Jail «mailadmin» (админка и веб-почта) перечитывает пороги сразу; штатные jail'ы iRedMail не трогаем.
+        try {
+            Ctl::out('f2b-config', [(string) $data['maxretry'], (string) $data['findtime'], (string) $data['bantime_hours']], 60);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', 'Лимиты сохранены, но fail2ban не перечитал правила: ' . mb_substr($e->getMessage(), 0, 200));
+        }
         AdminAction::log('settings.update', 'лимиты', 'письмо до ' . $data['sizeLimitMb'] . ' МБ');
 
         return back()->with('success', 'Лимиты сохранены');
