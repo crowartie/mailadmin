@@ -109,7 +109,9 @@ class EmployeeBook
         $parts = preg_split('/\s+/', $name, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         // Русский порядок «Фамилия Имя Отчество»; латинский «First Last» — наоборот.
         $cyr = $name !== '' && preg_match('/\p{Cyrillic}/u', $name);
+        $profileMiddle = (string) (\App\Models\EmployeeProfile::query()->where('username', $mailbox->username)->value('middle_name') ?? '');
         [$last, $first, $middle] = match (true) {
+            trim((string) $mailbox->last_name) !== '' || trim((string) $mailbox->first_name) !== '' => [trim((string) $mailbox->last_name), trim((string) $mailbox->first_name), $profileMiddle],
             count($parts) >= 3 && $cyr => [$parts[0], $parts[1], implode(' ', array_slice($parts, 2))],
             count($parts) === 2 && $cyr => [$parts[0], $parts[1], ''],
             count($parts) >= 2 => [end($parts), implode(' ', array_slice($parts, 0, -1)), ''],

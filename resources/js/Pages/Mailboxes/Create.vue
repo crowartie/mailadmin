@@ -20,6 +20,7 @@ const form = useForm({
     active: true,
     last_name: '',
     first_name: '',
+    middle_name: '',
     rank: '',
     unit_id: null,
     is_service: false,
@@ -35,9 +36,9 @@ const showPassword = ref(false);
 const extraAddress = ref('');
 const nameTouched = ref(false);
 
-// Пока отображаемое имя не трогали руками, собираем его из фамилии и имени.
-watch([() => form.last_name, () => form.first_name], ([last, first]) => {
-    if (!nameTouched.value) form.name = [last, first].filter(Boolean).join(' ');
+// Пока отображаемое имя не трогали руками, собираем его по шаблону «Фамилия Имя Отчество».
+watch([() => form.last_name, () => form.first_name, () => form.middle_name], ([last, first, middle]) => {
+    if (!nameTouched.value) form.name = [last, first, middle].map((s) => (s || '').trim()).filter(Boolean).join(' ');
 });
 
 function generatePassword() {
@@ -98,6 +99,7 @@ function submit() {
                 <div class="grid-2">
                     <div class="field"><label>Фамилия</label><input v-model="form.last_name" class="input"></div>
                     <div class="field"><label>Имя</label><input v-model="form.first_name" class="input"></div>
+                    <div class="field"><label>Отчество</label><input v-model="form.middle_name" class="input"></div>
                     <div class="field"><label>Должность</label><input v-model="form.rank" class="input"></div>
                     <div class="field"><label>Подразделение</label><select v-model="form.unit_id" class="input"><option :value="null">— без подразделения —</option><option v-for="u in units || []" :key="u.id" :value="u.id">{{ ' '.repeat(u.depth * 3) }}{{ u.name }}</option></select></div>
                     <div class="field"><label>Телефон</label><input v-model="form.telephone" class="input"></div>
@@ -106,7 +108,7 @@ function submit() {
 
                 <div class="field">
                     <label>Отображаемое имя</label>
-                    <input v-model="form.name" class="input" placeholder="заполняется само из фамилии и имени" @input="nameTouched = true">
+                    <input v-model="form.name" class="input" placeholder="заполняется само: Фамилия Имя Отчество" @input="nameTouched = true">
                 </div>
             </div>
 

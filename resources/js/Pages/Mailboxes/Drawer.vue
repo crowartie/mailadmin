@@ -32,6 +32,7 @@ const form = useForm({
     quota: props.mailbox.quota ?? 1024,
     active: props.mailbox.active ?? true,
     first_name: props.mailbox.first_name ?? '',
+    middle_name: props.mailbox.profile?.middle_name ?? '',
     last_name: props.mailbox.last_name ?? '',
     telephone: props.mailbox.telephone ?? '',
     mobile: props.mailbox.mobile ?? '',
@@ -177,14 +178,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <div class="grid-2">
                         <div class="field"><label>Фамилия</label><input v-model="form.last_name" class="input"></div>
                         <div class="field"><label>Имя</label><input v-model="form.first_name" class="input"></div>
+                        <div class="field"><label>Отчество</label><input v-model="form.middle_name" class="input"></div>
                         <div class="field"><label>Должность</label><input v-model="form.rank" class="input"></div>
-                        <div class="field"><label>Подразделение</label><input v-model="form.department" class="input"></div>
                         <div class="field"><label>Телефон</label><input v-model="form.telephone" class="input"></div>
                         <div class="field"><label>Мобильный</label><input v-model="form.mobile" class="input"></div>
                         <div class="field"><label>Табельный номер</label><input v-model="form.employeeid" class="input"></div>
                         <div class="field"><label>Контактный адрес вне почты</label><input v-model="form.recovery_email" class="input"></div>
                     </div>
                     <p v-if="form.errors.recovery_email" class="error">{{ form.errors.recovery_email }}</p>
+                    <div class="field"><label>Полное имя (как видят в письмах)</label><div class="field__row"><input v-model="form.name" class="input" style="flex: 1"><button class="btn" type="button" title="Фамилия Имя Отчество" @click="form.name = [form.last_name, form.first_name, form.middle_name].map((s) => (s || '').trim()).filter(Boolean).join(' ')">Собрать из ФИО</button></div></div>
+                    <p class="hint">Подразделение назначается на вкладке «Доступ».</p>
                 </template>
 
                 <!-- Переадресация -->

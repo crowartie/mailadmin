@@ -32,6 +32,7 @@ class MailboxRequest extends FormRequest
             'password' => [$isCreate ? 'required' : 'nullable', 'string', 'min:8', 'max:255'],
 
             'name' => ['nullable', 'string', 'max:255'],
+            'middle_name' => ['nullable', 'string', 'max:120'],
             'unit_id' => ['nullable', 'integer', 'exists:units,id'],
             'is_service' => ['boolean'],
             'quota' => ['required', 'integer', 'min:0', 'max:1048576'],

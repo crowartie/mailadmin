@@ -29,6 +29,7 @@ class ImportController extends Controller
         'name' => ['фио', 'имя', 'сотрудник', 'полное имя', 'name', 'full name', 'displayname'],
         'last_name' => ['фамилия', 'last name', 'surname', 'sn'],
         'first_name' => ['имя', 'first name', 'givenname'],
+        'middle_name' => ['отчество', 'middle name', 'patronymic'],
         'login' => ['логин', 'login', 'адрес', 'email', 'e-mail', 'почта', 'mail', 'samaccountname', 'username'],
         'unit' => ['подразделение', 'отдел', 'department', 'unit', 'служба'],
         'title' => ['должность', 'title', 'position', 'rank'],
@@ -87,7 +88,7 @@ class ImportController extends Controller
         return response()->json([
             'encoding' => $encoding, 'delimiter' => $delimiter === "\t" ? 'tab' : $delimiter,
             'headers' => $rows[0], 'mapping' => $mapping, 'rows' => array_slice($body, 0, 500), 'total' => count($body),
-            'fields' => ['name' => 'ФИО', 'last_name' => 'Фамилия', 'first_name' => 'Имя', 'login' => 'Логин / адрес', 'unit' => 'Подразделение', 'title' => 'Должность', 'phone' => 'Телефон', 'mobile' => 'Мобильный', 'personal_email' => 'Личная почта', 'password' => 'Пароль'],
+            'fields' => ['name' => 'ФИО', 'last_name' => 'Фамилия', 'first_name' => 'Имя', 'middle_name' => 'Отчество', 'login' => 'Логин / адрес', 'unit' => 'Подразделение', 'title' => 'Должность', 'phone' => 'Телефон', 'mobile' => 'Мобильный', 'personal_email' => 'Личная почта', 'password' => 'Пароль'],
         ]);
     }
 
@@ -170,7 +171,7 @@ class ImportController extends Controller
                     }
                 }
                 $profile = EmployeeProfile::for($rec['username']);
-                $profile->fill(['title' => $rec['title'] ?: $profile->title, 'phone' => $rec['phone'] ?: $profile->phone, 'mobile' => $rec['mobile'] ?: $profile->mobile, 'personal_email' => $rec['personal_email'] ?: $profile->personal_email]);
+                $profile->fill(['middle_name' => $rec['middle_name'] ?: $profile->middle_name, 'title' => $rec['title'] ?: $profile->title, 'phone' => $rec['phone'] ?: $profile->phone, 'mobile' => $rec['mobile'] ?: $profile->mobile, 'personal_email' => $rec['personal_email'] ?: $profile->personal_email]);
                 $profile->save();
                 if ($unitId && $profile->unit_id !== $unitId) {
                     $this->units->move($rec['username'], $unitId);
@@ -190,11 +191,13 @@ class ImportController extends Controller
         $get = fn (string $f) => isset($mapping[$f]) && $mapping[$f] !== '' && $mapping[$f] !== null ? trim((string) ($row[(int) $mapping[$f]] ?? '')) : '';
         $first = $get('first_name');
         $last = $get('last_name');
-        $name = $get('name') ?: trim($last . ' ' . $first);
+        $middle = $get('middle_name');
+        $name = $get('name') ?: trim(implode(' ', array_filter([$last, $first, $middle])));
         if ($first === '' && $last === '' && $name !== '') {
             $parts = preg_split('/\s+/', $name);
             $last = $parts[0] ?? '';
             $first = $parts[1] ?? '';
+            $middle = $middle !== '' ? $middle : implode(' ', array_slice($parts, 2));
         }
         $login = mb_strtolower($get('login'));
         if (str_contains($login, '@')) {
@@ -210,7 +213,7 @@ class ImportController extends Controller
         $personal = mb_strtolower($get('personal_email'));
 
         return [
-            'name' => $name, 'first_name' => $first, 'last_name' => $last, 'login' => $login, 'username' => $login !== '' ? $login . '@' . $domain : '',
+            'name' => $name, 'first_name' => $first, 'last_name' => $last, 'middle_name' => $middle, 'login' => $login, 'username' => $login !== '' ? $login . '@' . $domain : '',
             'unit' => $get('unit'), 'title' => $get('title'), 'phone' => $get('phone'), 'mobile' => $get('mobile'),
             'personal_email' => filter_var($personal, FILTER_VALIDATE_EMAIL) ? $personal : '', 'password' => $get('password'),
         ];

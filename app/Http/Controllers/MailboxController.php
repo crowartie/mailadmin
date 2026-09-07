@@ -168,10 +168,17 @@ class MailboxController extends Controller
     /** Подразделение и флаг «служебный» из формы создания/правки — в наш профиль. */
     private function applyProfile(Mailbox $mailbox, array $data): void
     {
-        if (! array_key_exists('unit_id', $data) && ! array_key_exists('is_service', $data)) {
+        if (! array_key_exists('unit_id', $data) && ! array_key_exists('is_service', $data) && ! array_key_exists('middle_name', $data)) {
             return;
         }
         $profile = \App\Models\EmployeeProfile::for($mailbox->username);
+        if (array_key_exists('middle_name', $data) && (string) $data['middle_name'] !== (string) $profile->middle_name) {
+            $profile->middle_name = trim((string) $data['middle_name']) ?: null;
+            $profile->save();
+            if (! $profile->is_service) {
+                app(\App\Services\Dav\EmployeeBook::class)->put($mailbox);
+            }
+        }
         if (array_key_exists('is_service', $data)) {
             $profile->is_service = (bool) $data['is_service'];
             $profile->save();
@@ -199,7 +206,7 @@ class MailboxController extends Controller
 
         return [
             'profile' => [
-                'unit_id' => $profile->unit_id, 'is_service' => (bool) $profile->is_service, 'title' => $profile->title ?: $model->rank, 'personal_email' => $profile->personal_email ?: $model->recovery_email,
+                'unit_id' => $profile->unit_id, 'is_service' => (bool) $profile->is_service, 'middle_name' => $profile->middle_name, 'title' => $profile->title ?: $model->rank, 'personal_email' => $profile->personal_email ?: $model->recovery_email,
                 'require_2fa' => (bool) $profile->require_2fa, 'login_blocked' => (bool) $profile->login_blocked, 'totp' => (bool) ($settings['totp_enabled'] ?? false),
             ],
             'units' => app(\App\Services\Units\UnitService::class)->flat(),

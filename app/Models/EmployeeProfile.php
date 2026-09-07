@@ -13,7 +13,7 @@ class EmployeeProfile extends Model
 
     protected $keyType = 'string';
 
-    protected $fillable = ['username', 'unit_id', 'title', 'phone', 'mobile', 'personal_email', 'require_2fa', 'login_blocked', 'is_service'];
+    protected $fillable = ['username', 'middle_name', 'unit_id', 'title', 'phone', 'mobile', 'personal_email', 'require_2fa', 'login_blocked', 'is_service'];
 
     protected $casts = ['require_2fa' => 'boolean', 'login_blocked' => 'boolean', 'is_service' => 'boolean'];
 
