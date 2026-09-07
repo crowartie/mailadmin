@@ -64,7 +64,7 @@ class DashboardController extends Controller
         }
         $no2fa = Mailbox::query()->people()->count() - Setting::query()->whereRaw("JSON_EXTRACT(data, '$.totp_enabled') = true")->count();
         if ($no2fa > 0) {
-            $out[] = ['kind' => 'warn', 'text' => $no2fa . ' ' . $this->plural($no2fa, 'сотрудник', 'сотрудника', 'сотрудников') . ' без двухфакторной защиты', 'href' => '/security/2fa-employees'];
+            $out[] = ['kind' => 'warn', 'text' => $no2fa . ' ' . $this->plural($no2fa, 'сотрудник', 'сотрудника', 'сотрудников') . ' без двухфакторной защиты', 'href' => '/security/twofa'];
         }
         if (! $backup) {
             $out[] = ['kind' => 'warn', 'text' => 'Резервных копий ещё не было — настройте расписание', 'href' => '/settings/backup'];
