@@ -24,7 +24,7 @@ class AdminAction extends Model
                 'ip' => $request?->ip() ?? '',
                 'action' => $action,
                 'target' => $target,
-                'details' => mb_substr($details, 0, 1000),
+                'details' => mb_substr((string) $details, 0, 1000),
                 'created_at' => now(),
             ]);
         } catch (\Throwable) {
