@@ -571,6 +571,32 @@ class DavStore
         return $this->shares($user, $calUri);
     }
 
+    /** Удалить всё DAV-хозяйство пользователя: principal, личные книги с карточками, календари с событиями, его доли в чужих. */
+    public function removeUser(string $user): void
+    {
+        $user = strtolower($user);
+        $principal = Server::principal($user);
+        foreach (DB::table('dav_addressbooks')->where('principaluri', $principal)->pluck('id') as $id) {
+            DB::table('dav_cards')->where('addressbookid', $id)->delete();
+            DB::table('dav_addressbookchanges')->where('addressbookid', $id)->delete();
+            DB::table('dav_addressbooks')->where('id', $id)->delete();
+        }
+        foreach (DB::table('dav_calendarinstances')->where('principaluri', $principal)->get(['id', 'calendarid', 'access']) as $inst) {
+            if ((int) $inst->access === 1) {
+                // владелец — календарь целиком, вместе с чужими долями
+                DB::table('dav_calendarobjects')->where('calendarid', $inst->calendarid)->delete();
+                DB::table('dav_calendarchanges')->where('calendarid', $inst->calendarid)->delete();
+                DB::table('dav_calendarinstances')->where('calendarid', $inst->calendarid)->delete();
+                DB::table('dav_calendars')->where('id', $inst->calendarid)->delete();
+            } else {
+                DB::table('dav_calendarinstances')->where('id', $inst->id)->delete();
+            }
+        }
+        DB::table('dav_schedulingobjects')->where('principaluri', $principal)->delete();
+        DB::table('dav_calendarsubscriptions')->where('principaluri', $principal)->delete();
+        DB::table('dav_principals')->where('uri', $principal)->orWhere('uri', 'like', $principal . '/%')->delete();
+    }
+
     // ── Подразделения: календарь и книга отдела ─────────────────────────
 
     public static function unitPrincipal(int $unitId): string

@@ -156,6 +156,11 @@ class MailboxService
         });
 
         $this->addressBook->remove($mailbox);
+        try {
+            app(\App\Services\Dav\DavStore::class)->removeUser($mailbox->username);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('DAV-данные ящика не удалены', ['user' => $mailbox->username, 'error' => $e->getMessage()]);
+        }
         // Наши таблицы: профиль, пароли приложений, веб-сеансы, привязка к подразделению.
         \App\Models\EmployeeProfile::query()->where('username', $mailbox->username)->delete();
         \App\Models\AppPassword::query()->where('username', $mailbox->username)->delete();
