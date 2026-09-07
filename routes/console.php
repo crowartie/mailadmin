@@ -1,8 +1,7 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+// Веб-почта: вернуть отложенные письма, разослать напоминания, отправить письма по расписанию.
+Schedule::command('mail:wake')->everyMinute()->withoutOverlapping();
+Schedule::command('mail:outbox')->everyMinute()->withoutOverlapping();

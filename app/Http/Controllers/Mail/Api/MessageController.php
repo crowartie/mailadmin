@@ -1,0 +1,59 @@
+<?php
+
+namespace App\Http\Controllers\Mail\Api;
+
+use App\Http\Controllers\Controller;
+use App\Services\Mail\ImapSession;
+use App\Services\Mail\MailStore;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+
+class MessageController extends Controller
+{
+    public function list(Request $request, ImapSession $imap, string $folder): JsonResponse
+    {
+        $store = new MailStore($imap->client());
+        $list = $store->list(
+            $folder,
+            (int) $request->query('page', 1),
+            (string) $request->query('filter', 'all'),
+            $request->query('q'),
+        );
+        $list['folders'] = $store->folders();
+
+        return response()->json($list);
+    }
+
+    public function show(Request $request, ImapSession $imap, string $folder, int $uid): JsonResponse
+    {
+        $store = new MailStore($imap->client());
+
+        return response()->json($store->message($folder, $uid, ! $request->boolean('peek')));
+    }
+
+    public function attachment(Request $request, ImapSession $imap, string $folder, int $uid, int $index): Response
+    {
+        $a = (new MailStore($imap->client()))->attachment($folder, $uid, $index);
+        $name = \App\Services\Mail\Charset::fix($a->getName()) ?: 'attachment';
+        $type = $a->getMimeType() ?: 'application/octet-stream';
+        $inline = $request->boolean('inline') && (str_starts_with($type, 'image/') || $type === 'application/pdf');
+
+        return response($a->getContent(), 200, [
+            'Content-Type' => $type,
+            'Content-Disposition' => ($inline ? 'inline' : 'attachment') . "; filename*=UTF-8''" . rawurlencode($name),
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /** Исходник письма (.eml) — «Сохранить» и «Показать оригинал». */
+    public function raw(ImapSession $imap, string $folder, int $uid): Response
+    {
+        $raw = (new MailStore($imap->client()))->raw($folder, $uid);
+
+        return response($raw, 200, [
+            'Content-Type' => 'message/rfc822',
+            'Content-Disposition' => "attachment; filename=\"message-{$uid}.eml\"",
+        ]);
+    }
+}

@@ -1,27 +1,75 @@
 // Токены направления «как Яндекс». Те же значения, что на дизайн-канвасе.
+// Цвета живут в CSS-переменных, чтобы тёмная тема переключалась атрибутом data-theme.
 $font-ui:   "Golos Text", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 $font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-$c-bg:          #F3F5F8;
-$c-surface:     #FFFFFF;
-$c-surface-2:   #F8FAFC;
-$c-border:      #E3E8EF;
-$c-border-2:    #CBD3DE;
-$c-text:        #1B2430;
-$c-muted:       #6B7787;
-$c-faint:       #98A3B3;
+:root {
+    --bg: #F3F5F8;
+    --surface: #FFFFFF;
+    --surface-2: #F8FAFC;
+    --border: #E3E8EF;
+    --border-2: #CBD3DE;
+    --text: #1B2430;
+    --muted: #6B7787;
+    --faint: #98A3B3;
+    --accent: #2F6FEB;
+    --accent-soft: #E8F0FE;
+    --accent-ink: #1B4FC4;
+    --mark: #FFD84D;
+    --mark-ink: #5A4300;
+    --ok: #16A05C;   --ok-soft: #E3F6EB;
+    --warn: #D9791F; --warn-soft: #FDF0E1;
+    --no: #C0392B;   --no-soft: #FBE7E4;
+    --chip-off: #EDF0F4;
+    --shadow-pop: 0 12px 36px -12px rgba(27, 36, 48, .35);
+    --overlay: rgba(27, 36, 48, .45);
+    color-scheme: light;
+}
 
-$c-accent:      #2F6FEB;
-$c-accent-soft: #E8F0FE;
-$c-accent-ink:  #1B4FC4;
-$c-mark:        #FFD84D;
-$c-mark-ink:    #5A4300;
+[data-theme="dark"] {
+    --bg: #0F1419;
+    --surface: #171D25;
+    --surface-2: #1D242E;
+    --border: #27303C;
+    --border-2: #34404F;
+    --text: #E6EBF2;
+    --muted: #98A3B3;
+    --faint: #6B7787;
+    --accent: #6D9BFF;
+    --accent-soft: #1B2A45;
+    --accent-ink: #A9C3FF;
+    --mark: #E0B62A;
+    --mark-ink: #2A2000;
+    --ok: #3DC47A;   --ok-soft: #14301F;
+    --warn: #F0A250; --warn-soft: #3A2A14;
+    --no: #F0705F;   --no-soft: #3C1C18;
+    --chip-off: #232B36;
+    --shadow-pop: 0 12px 36px -12px rgba(0, 0, 0, .7);
+    --overlay: rgba(0, 0, 0, .6);
+    color-scheme: dark;
+}
 
-$c-ok:          #16A05C;  $c-ok-soft:   #E3F6EB;
-$c-warn:        #D9791F;  $c-warn-soft: #FDF0E1;
-$c-no:          #C0392B;  $c-no-soft:   #FBE7E4;
+$c-bg:          var(--bg);
+$c-surface:     var(--surface);
+$c-surface-2:   var(--surface-2);
+$c-border:      var(--border);
+$c-border-2:    var(--border-2);
+$c-text:        var(--text);
+$c-muted:       var(--muted);
+$c-faint:       var(--faint);
+
+$c-accent:      var(--accent);
+$c-accent-soft: var(--accent-soft);
+$c-accent-ink:  var(--accent-ink);
+$c-mark:        var(--mark);
+$c-mark-ink:    var(--mark-ink);
+
+$c-ok:          var(--ok);    $c-ok-soft:   var(--ok-soft);
+$c-warn:        var(--warn);  $c-warn-soft: var(--warn-soft);
+$c-no:          var(--no);    $c-no-soft:   var(--no-soft);
+$c-chip-off:    var(--chip-off);
 
 $r-control: 8px;
 $r-card:    12px;
 $shadow-drawer: -24px 0 60px -30px rgba(27, 36, 48, .35);
-$shadow-pop: 0 8px 24px -12px rgba(27, 36, 48, .25);
+$shadow-pop: var(--shadow-pop);

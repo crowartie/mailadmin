@@ -1,10 +1,11 @@
 <script setup>
 import { Link, usePage, router } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import Icon from '../Components/Icon.vue';
 
 const props = defineProps({
     user: String,
+    theme: { type: String, default: 'light' },
 });
 
 const page = usePage();
@@ -22,6 +23,29 @@ const initials = computed(() => {
     return local.slice(0, 2).toUpperCase() || '·';
 });
 
+// Тема: из настроек пользователя; локальная копия — чтобы не мигало до загрузки.
+const isDark = ref(false);
+function applyTheme(t) {
+    let real = t;
+    if (t === 'system') real = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = real;
+    isDark.value = real === 'dark';
+    try { localStorage.setItem('mail.theme', real); } catch {}
+}
+onMounted(() => applyTheme(props.theme));
+watch(() => props.theme, applyTheme);
+
+function toggleTheme() {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    fetch('/mail/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-XSRF-TOKEN': decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '') },
+        body: JSON.stringify({ theme: next }),
+        credentials: 'same-origin',
+    }).catch(() => {});
+}
+
 function logout() {
     router.post('/mail/logout');
 }
@@ -35,15 +59,21 @@ function logout() {
                 v-for="s in services"
                 :key="s.href"
                 class="rail__item"
-                :class="{ 'rail__item--on': current.startsWith(s.href) }"
+                :class="{ 'rail__item--on': current.startsWith(s.href) && !current.startsWith('/mail/settings') }"
                 :href="s.href"
                 :title="s.label"
             >
                 <Icon :name="s.icon" />
             </Link>
             <div class="rail__spacer" />
+            <Link class="rail__item" :class="{ 'rail__item--on': current.startsWith('/mail/settings') }" href="/mail/settings" title="Настройки">
+                <Icon name="sliders" />
+            </Link>
+            <button class="rail__item" type="button" title="Тёмная / светлая тема" style="border: none; background: none; cursor: pointer" @click="toggleTheme">
+                <Icon :name="isDark ? 'sun' : 'moon'" />
+            </button>
             <button class="rail__item" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" @click="logout">
-                <Icon name="x" />
+                <Icon name="logout" />
             </button>
             <div class="rail__avatar" :title="user">{{ initials }}</div>
         </aside>
