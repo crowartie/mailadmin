@@ -1,0 +1,27 @@
+// Токены направления «как Яндекс». Те же значения, что на дизайн-канвасе.
+$font-ui:   "Golos Text", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+$font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+$c-bg:          #F3F5F8;
+$c-surface:     #FFFFFF;
+$c-surface-2:   #F8FAFC;
+$c-border:      #E3E8EF;
+$c-border-2:    #CBD3DE;
+$c-text:        #1B2430;
+$c-muted:       #6B7787;
+$c-faint:       #98A3B3;
+
+$c-accent:      #2F6FEB;
+$c-accent-soft: #E8F0FE;
+$c-accent-ink:  #1B4FC4;
+$c-mark:        #FFD84D;
+$c-mark-ink:    #5A4300;
+
+$c-ok:          #16A05C;  $c-ok-soft:   #E3F6EB;
+$c-warn:        #D9791F;  $c-warn-soft: #FDF0E1;
+$c-no:          #C0392B;  $c-no-soft:   #FBE7E4;
+
+$r-control: 8px;
+$r-card:    12px;
+$shadow-drawer: -24px 0 60px -30px rgba(27, 36, 48, .35);
+$shadow-pop: 0 8px 24px -12px rgba(27, 36, 48, .25);

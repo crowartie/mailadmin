@@ -1,0 +1,108 @@
+@use 'variables' as v;
+
+// ── Веб-почта: папки · список · чтение ────────────────────────
+.mail-list {
+    width: 420px;
+    flex: 0 0 420px;
+    border-right: 1px solid v.$c-border;
+    background: v.$c-surface;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+
+    &__head { padding: 12px 14px 8px; }
+    &__meta { padding: 0 16px 8px; }
+    &__rows { flex: 1; overflow-y: auto; }
+    &__foot { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid v.$c-border; }
+}
+
+.mail-row {
+    display: grid;
+    grid-template-columns: 10px 150px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 11px 16px;
+    border: none;
+    border-bottom: 1px solid v.$c-border;
+    background: v.$c-surface;
+    font: inherit;
+    color: v.$c-text;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover { background: v.$c-surface-2; }
+    &--on { background: v.$c-accent-soft; }
+
+    &__dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; }
+    &--unread &__dot { background: v.$c-accent; }
+    &--unread &__from, &--unread &__subject { font-weight: 600; }
+
+    &__from, &__subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    &__from { font-size: 13.5px; }
+    &__subject { font-size: 13.5px; color: v.$c-text; }
+    &__meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: v.$c-faint; white-space: nowrap; }
+}
+
+.mail-read {
+    flex: 1;
+    min-width: 0;
+    background: v.$c-bg;
+
+    &__body {
+        max-width: 860px;
+        margin: 24px 28px;
+        background: v.$c-surface;
+        border: 1px solid v.$c-border;
+        border-radius: v.$r-card;
+        padding: 24px 28px;
+    }
+
+    &__subject { margin: 0 0 16px; font-size: 20px; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
+    &__from { display: flex; align-items: flex-start; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid v.$c-border; }
+
+    &__html {
+        margin-top: 18px;
+        font-size: 14px;
+        line-height: 1.55;
+        overflow-x: auto;
+
+        img { max-width: 100%; height: auto; }
+        table { max-width: 100%; }
+        a { color: v.$c-accent-ink; }
+    }
+
+    &__text {
+        margin: 18px 0 0;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        font: inherit;
+        line-height: 1.55;
+    }
+}
+
+// ── Вход (общий для админки и почты) ─────────────────────────
+.auth {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: v.$c-bg;
+    padding: 24px;
+
+    &__card {
+        width: 420px;
+        max-width: 100%;
+        padding: 36px 40px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        box-shadow: 0 12px 40px -18px rgba(27, 36, 48, .25);
+    }
+
+    &__brand { display: flex; align-items: center; gap: 12px; }
+    &__title { font-size: 18px; font-weight: 700; }
+    &__code { font-family: v.$font-mono; font-size: 22px; letter-spacing: .3em; text-align: center; }
+}

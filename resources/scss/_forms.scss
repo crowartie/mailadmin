@@ -1,0 +1,209 @@
+@use 'variables' as v;
+
+.toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 15px;
+    border: 1px solid v.$c-border;
+    border-radius: 8px;
+    background: #fff;
+    color: v.$c-text;
+    font: inherit;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+
+    &:hover { background: #f7f9fb; }
+
+    &--primary {
+        background: v.$c-accent;
+        border-color: v.$c-accent;
+        color: #fff;
+
+        &:hover { background: #2a63d4; }
+    }
+
+    &--danger {
+        color: #c0392b;
+        border-color: rgba(192, 57, 43, .3);
+
+        &:hover { background: rgba(192, 57, 43, .07); }
+    }
+
+    &:disabled { opacity: .55; cursor: default; }
+}
+
+.card--form {
+    padding: 0;
+    max-width: 780px;
+}
+
+.tabs {
+    display: flex;
+    gap: 2px;
+    padding: 0 14px;
+    border-bottom: 1px solid v.$c-border;
+    background: v.$c-bg;
+    border-radius: 10px 10px 0 0;
+    overflow-x: auto;
+
+    &__item {
+        border: none;
+        background: none;
+        padding: 12px 14px;
+        font: inherit;
+        color: v.$c-muted;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+
+        &:hover { color: v.$c-text; }
+
+        &--active {
+            color: v.$c-accent;
+            border-bottom-color: v.$c-accent;
+            font-weight: 500;
+        }
+
+        &--error::after {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            margin-left: 6px;
+            border-radius: 50%;
+            background: #c0392b;
+            vertical-align: middle;
+        }
+    }
+}
+
+.pane {
+    padding: 20px 22px;
+}
+
+.field {
+    margin-bottom: 16px;
+
+    label {
+        display: block;
+        margin-bottom: 5px;
+        color: v.$c-muted;
+        font-size: 12px;
+    }
+
+    &__row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        &--gap { margin-bottom: 8px; }
+    }
+}
+
+.input--wide { width: 100%; min-width: 0; }
+
+select.input { padding: 8px 10px; }
+
+.at { color: v.$c-muted; }
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0 18px;
+}
+
+.check {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 0;
+    cursor: pointer;
+
+    input { width: 15px; height: 15px; accent-color: v.$c-accent; }
+}
+
+.error {
+    color: #c0392b;
+    font-size: 12px;
+    margin: 5px 0 0;
+}
+
+.meta {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid v.$c-border;
+    font-size: 12px;
+
+    div {
+        display: flex;
+        gap: 10px;
+        padding: 3px 0;
+    }
+
+    span { color: v.$c-muted; min-width: 90px; }
+}
+
+.form-actions {
+    display: flex;
+    gap: 8px;
+    padding: 16px 22px;
+    border-top: 1px solid v.$c-border;
+    background: v.$c-bg;
+    border-radius: 0 0 10px 10px;
+}
+
+.flash {
+    background: rgba(22, 160, 92, .12);
+    border: 1px solid rgba(22, 160, 92, .3);
+    color: #128a4f;
+    padding: 10px 16px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+}
+
+.flash-enter-active, .flash-leave-active { transition: opacity .25s; }
+.flash-enter-from, .flash-leave-to { opacity: 0; }
+
+.table--clickable tbody tr {
+    cursor: pointer;
+}
+
+.pane__title {
+    margin: 4px 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: v.$c-muted;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+
+    &:not(:first-child) {
+        margin-top: 22px;
+        padding-top: 16px;
+        border-top: 1px solid v.$c-border;
+    }
+}
+
+.plain-list {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+
+    li {
+        padding: 7px 0;
+        border-bottom: 1px solid v.$c-border;
+
+        &:last-child { border-bottom: none; }
+    }
+}
+
+.empty-inline {
+    color: v.$c-muted;
+    padding: 14px 0;
+}
