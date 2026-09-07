@@ -3,6 +3,7 @@
 @use 'shell';
 @use 'components';
 @use 'mail';
+@use 'groupware';
 
 *, *::before, *::after { box-sizing: border-box; }
 

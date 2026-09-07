@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AliasController;
+use App\Http\Controllers\CompanyContactsController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\DashboardController;
@@ -47,6 +48,13 @@ Route::middleware('area:admin')->group(function () {
         Route::get('/aliases/{alias}/edit', [AliasController::class, 'edit'])->where('alias', '.*');
         Route::put('/aliases/{alias}', [AliasController::class, 'update'])->where('alias', '.*');
         Route::delete('/aliases/{alias}', [AliasController::class, 'destroy'])->where('alias', '.*');
+
+        Route::get('/company-contacts', [CompanyContactsController::class, 'index']);
+        Route::post('/company-contacts', [CompanyContactsController::class, 'store']);
+        Route::put('/company-contacts/{uri}', [CompanyContactsController::class, 'update']);
+        Route::delete('/company-contacts/{uri}', [CompanyContactsController::class, 'destroy']);
+        Route::post('/company-contacts/suggestions/{suggestion}/approve', [CompanyContactsController::class, 'approve']);
+        Route::post('/company-contacts/suggestions/{suggestion}/reject', [CompanyContactsController::class, 'reject']);
 
         Route::get('/security', [SecurityController::class, 'index']);
         Route::get('/security/2fa', [TwoFactorController::class, 'setup']);

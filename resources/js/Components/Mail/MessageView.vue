@@ -13,7 +13,7 @@ const props = defineProps({
     settings: { type: Object, default: () => ({}) },
     user: String,
 });
-const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe']);
+const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting']);
 
 const expanded = ref({});
 const quick = ref('');
@@ -78,6 +78,7 @@ const isDraft = computed(() => props.folderRole === 'drafts');
             <button class="ib" type="button" title="Ответить (r)" @click="$emit('reply', 'reply', message)"><Icon name="reply" :size="16" />Ответить</button>
             <button class="ib" type="button" title="Ответить всем (a)" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
             <button class="ib" type="button" title="Переслать (f)" @click="$emit('reply', 'forward', message)"><Icon name="fwd" :size="16" />Переслать</button>
+            <button class="ib" type="button" title="Назначить встречу по этому письму" @click="$emit('meeting', message)"><Icon name="cal" :size="16" />Встреча</button>
         </template>
         <span class="sep" />
         <button class="ib" type="button" title="Архив (e)" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" /></button>

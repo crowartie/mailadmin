@@ -37,6 +37,7 @@ class InboxController extends Controller
             'list' => $store->list($folder, (int) $request->query('page', 1), $filter, $q),
             'outbox' => Outbox::where('user', $imap->user())->where('status', 'scheduled')->count(),
             'openUid' => $request->query('uid') ? (int) $request->query('uid') : null,
+            'composeTo' => $request->query('compose') ? (string) $request->query('to', '') : null,
         ]);
     }
 

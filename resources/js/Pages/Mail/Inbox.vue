@@ -2,7 +2,7 @@
 // Веб-почта: папки · список · чтение. Страница отрисовывается с данными первой страницы,
 // дальше всё живёт на /mail/api/* без перезагрузок.
 import { computed, onBeforeUnmount, onMounted, ref, nextTick } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import FolderNav from '../../Components/Mail/FolderNav.vue';
@@ -28,6 +28,7 @@ const props = defineProps({
     list: Object,
     outbox: { type: Number, default: 0 },
     openUid: { type: Number, default: null },
+    composeTo: { type: String, default: null },
 });
 
 // ── Состояние ─────────────────────────────────────────────────
@@ -379,6 +380,13 @@ async function quickReply({ text, message: m }) {
     } catch (e) { fail(e); throw e; }
 }
 
+/** «Встреча» из письма: событие с темой письма и всеми участниками переписки. */
+function meetingFrom(m) {
+    const people = [m.from, ...(m.to || []), ...(m.cc || [])].map((a) => a.mail).filter((x) => x && !me({ mail: x }));
+    const p = new URLSearchParams({ new: '1', title: m.subject === '(без темы)' ? '' : m.subject, attendees: [...new Set(people)].join(','), description: (m.text || '').slice(0, 800) });
+    router.visit('/calendar?' + p);
+}
+
 function unsubscribe(m) {
     const h = m.listUnsubscribe || '';
     const mailto = h.match(/<mailto:([^>]+)>/i);
@@ -454,6 +462,11 @@ onMounted(() => {
     window.addEventListener('beforeunload', flushPending);
     refreshTimer = setInterval(() => { if (!compose.value && !menu.value && document.visibilityState === 'visible') load(list.value.page, true); }, 90000);
     if (props.openUid) openMessage(props.openUid);
+    if (props.composeTo !== null) {
+        startCompose('new');
+        compose.value.to = parseList(props.composeTo);
+        window.history.replaceState({}, '', '/mail');
+    }
 });
 onBeforeUnmount(() => {
     document.removeEventListener('keydown', onKey);
@@ -535,6 +548,7 @@ onBeforeUnmount(() => {
                     @context="openMenu"
                     @back="mobileRead = false"
                     @unsubscribe="unsubscribe"
+                    @meeting="meetingFrom"
                 />
                 <div v-else-if="selected.length" class="mread__empty">
                     <b>Выбрано {{ selected.length }}</b>

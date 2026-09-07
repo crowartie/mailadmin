@@ -1,6 +1,10 @@
 <?php
 
 use App\Http\Controllers\Mail\Api\ActionController;
+use App\Http\Controllers\Mail\Api\CalendarController;
+use App\Http\Controllers\Mail\Api\ContactsController;
+use App\Http\Controllers\Mail\DavController;
+use App\Http\Controllers\Mail\GroupwareController;
 use App\Http\Controllers\Mail\Api\ComposeController;
 use App\Http\Controllers\Mail\Api\FolderController;
 use App\Http\Controllers\Mail\Api\MessageController;
@@ -18,6 +22,11 @@ Route::middleware('area:mail')->group(function () {
     Route::get('/mail/login', [LoginController::class, 'create'])->name('mail.login');
     Route::post('/mail/login', [LoginController::class, 'store']);
     Route::post('/mail/logout', [LoginController::class, 'destroy']);
+
+    // CalDAV/CardDAV для телефонов и почтовых программ (Basic-авторизация паролем от почты).
+    Route::match(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'PROPFIND', 'PROPPATCH', 'REPORT', 'MKCOL', 'MKCALENDAR', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'ACL'], '/dav/{path?}', DavController::class)->where('path', '.*');
+    Route::get('/.well-known/caldav', [DavController::class, 'wellKnown']);
+    Route::get('/.well-known/carddav', [DavController::class, 'wellKnown']);
 
     // Корень «/» здесь не объявляем: он есть у админки, а на почтовом порту его перенаправляет nginx.
     Route::middleware('mail.auth')->group(function () {
@@ -58,10 +67,39 @@ Route::middleware('area:mail')->group(function () {
 
             Route::get('rules', [RulesController::class, 'show']);
             Route::put('rules', [RulesController::class, 'update']);
+
+            // Контакты.
+            Route::get('contacts/books', [ContactsController::class, 'books']);
+            Route::get('contacts/groups', [ContactsController::class, 'groups']);
+            Route::get('contacts/export', [ContactsController::class, 'export']);
+            Route::post('contacts/import', [ContactsController::class, 'import']);
+            Route::get('contacts', [ContactsController::class, 'index']);
+            Route::post('contacts', [ContactsController::class, 'store']);
+            Route::get('contacts/{book}/{uri}', [ContactsController::class, 'show']);
+            Route::put('contacts/{book}/{uri}', [ContactsController::class, 'update']);
+            Route::delete('contacts/{book}/{uri}', [ContactsController::class, 'destroy']);
+            Route::post('contacts/{book}/{uri}/copy', [ContactsController::class, 'copy']);
+            Route::post('contacts/{book}/{uri}/suggest', [ContactsController::class, 'suggest']);
+
+            // Календарь.
+            Route::get('calendars', [CalendarController::class, 'calendars']);
+            Route::post('calendars', [CalendarController::class, 'storeCalendar']);
+            Route::patch('calendars/{calendar}', [CalendarController::class, 'updateCalendar']);
+            Route::delete('calendars/{calendar}', [CalendarController::class, 'destroyCalendar']);
+            Route::get('calendars/{calendar}/shares', [CalendarController::class, 'shares']);
+            Route::post('calendars/{calendar}/shares', [CalendarController::class, 'share']);
+            Route::delete('calendars/{calendar}/shares', [CalendarController::class, 'unshare']);
+            Route::get('events', [CalendarController::class, 'events']);
+            Route::post('events', [CalendarController::class, 'store']);
+            Route::get('freebusy', [CalendarController::class, 'freebusy']);
+            Route::get('events/{calendar}/{uri}', [CalendarController::class, 'show']);
+            Route::put('events/{calendar}/{uri}', [CalendarController::class, 'update']);
+            Route::delete('events/{calendar}/{uri}', [CalendarController::class, 'destroy']);
+            Route::post('events/{calendar}/{uri}/respond', [CalendarController::class, 'respond']);
         });
 
-        // Календарь и контакты — один интерфейс с почтой; движок (sabre/dav) — следующий шаг.
-        Route::get('/calendar', fn () => Inertia::render('Mail/Soon', ['section' => 'calendar']));
-        Route::get('/contacts', fn () => Inertia::render('Mail/Soon', ['section' => 'contacts']));
+        // Календарь и контакты — тот же интерфейс, данные в встроенном sabre/dav.
+        Route::get('/calendar', [GroupwareController::class, 'calendar']);
+        Route::get('/contacts', [GroupwareController::class, 'contacts']);
     });
 });

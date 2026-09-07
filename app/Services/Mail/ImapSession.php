@@ -37,6 +37,14 @@ class ImapSession
         $request->session()->put('mail.secret', Crypt::encryptString($password));
     }
 
+    /** Проверить пароль входом в IMAP; бросает исключение, если пара неверна. */
+    public static function verify(string $username, string $password): void
+    {
+        $client = self::make($username, $password);
+        $client->connect();
+        $client->disconnect();
+    }
+
     public function user(): string
     {
         return (string) $this->request->session()->get('mail.user');

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Mail\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Vmail\Mailbox;
 use App\Models\Webmail\Recent;
+use App\Services\Dav\DavStore;
 use App\Services\Mail\ImapSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +13,7 @@ use Illuminate\Http\Request;
 /** Автодополнение адресов: сотрудники домена (общая книга) + те, кому пользователь уже писал. */
 class SuggestController extends Controller
 {
-    public function __invoke(Request $request, ImapSession $imap): JsonResponse
+    public function __invoke(Request $request, ImapSession $imap, DavStore $store): JsonResponse
     {
         $q = mb_strtolower(trim((string) $request->query('q', '')));
         $out = [];
@@ -23,6 +24,14 @@ class SuggestController extends Controller
                 ->orderBy('name')->limit(8)->get(['username', 'name']);
             foreach ($employees as $e) {
                 $out[$e->username] = ['mail' => $e->username, 'name' => $e->name ?: $e->username, 'kind' => 'employee'];
+            }
+
+            try {
+                foreach ($store->suggest($imap->user(), $q) as $c) {
+                    $out[$c['mail']] ??= $c;
+                }
+            } catch (\Throwable) {
+                // книги недоступны — обойдёмся сотрудниками и недавними
             }
 
             $recents = Recent::query()->where('user', $imap->user())

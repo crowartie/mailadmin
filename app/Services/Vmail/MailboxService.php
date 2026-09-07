@@ -5,7 +5,7 @@ namespace App\Services\Vmail;
 use App\Models\Vmail\Forwarding;
 use App\Models\Vmail\Mailbox;
 use App\Models\Vmail\UsedQuota;
-use App\Services\AddressBookService;
+use App\Services\Dav\EmployeeBook;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
  */
 class MailboxService
 {
-    public function __construct(private readonly AddressBookService $addressBook)
+    public function __construct(private readonly EmployeeBook $addressBook)
     {
     }
 
@@ -88,8 +88,8 @@ class MailboxService
 
             return $mailbox;
         })->tap(function (Mailbox $mailbox) {
-            // Карточка в общей адресной книге — вместе с ящиком, но вне транзакции:
-            // недоступный SOGo не должен откатывать создание сотрудника.
+            // Карточка в общей книге «Сотрудники» — вместе с ящиком, но вне транзакции:
+            // сбой книги не должен откатывать создание сотрудника.
             $this->addressBook->put($mailbox);
         });
     }
@@ -151,7 +151,7 @@ class MailboxService
             $mailbox->delete();
         });
 
-        $this->addressBook->delete($mailbox);
+        $this->addressBook->remove($mailbox);
     }
 
     /**

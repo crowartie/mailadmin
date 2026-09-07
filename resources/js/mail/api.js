@@ -72,6 +72,44 @@ export const api = {
 
     rules: () => request('GET', '/mail/api/rules'),
     saveRules: (rules, autoreply) => request('PUT', '/mail/api/rules', { rules, autoreply }),
+
+    // Контакты.
+    books: () => request('GET', '/mail/api/contacts/books'),
+    contacts: ({ book = '', q = '' } = {}) => {
+        const p = new URLSearchParams();
+        if (book) p.set('book', book);
+        if (q) p.set('q', q);
+        return request('GET', `/mail/api/contacts${p.toString() ? '?' + p : ''}`);
+    },
+    contact: (book, uri) => request('GET', `/mail/api/contacts/${enc(book)}/${enc(uri)}`),
+    createContact: (data) => request('POST', '/mail/api/contacts', data),
+    updateContact: (book, uri, data) => request('PUT', `/mail/api/contacts/${enc(book)}/${enc(uri)}`, data),
+    deleteContact: (book, uri) => request('DELETE', `/mail/api/contacts/${enc(book)}/${enc(uri)}`),
+    copyContact: (book, uri, to = 'personal') => request('POST', `/mail/api/contacts/${enc(book)}/${enc(uri)}/copy`, { to }),
+    suggestContact: (book, uri, note = '') => request('POST', `/mail/api/contacts/${enc(book)}/${enc(uri)}/suggest`, { note }),
+    contactGroups: () => request('GET', '/mail/api/contacts/groups'),
+    importContacts: (file, book = 'personal') => { const fd = new FormData(); fd.append('file', file, file.name); fd.append('book', book); return request('POST', '/mail/api/contacts/import', fd); },
+    exportUrl: (book = '') => `/mail/api/contacts/export${book ? '?book=' + enc(book) : ''}`,
+
+    // Календарь.
+    calendars: () => request('GET', '/mail/api/calendars'),
+    createCalendar: (name, color) => request('POST', '/mail/api/calendars', { name, color }),
+    updateCalendar: (uri, patch) => request('PATCH', `/mail/api/calendars/${enc(uri)}`, patch),
+    deleteCalendar: (uri) => request('DELETE', `/mail/api/calendars/${enc(uri)}`),
+    shares: (uri) => request('GET', `/mail/api/calendars/${enc(uri)}/shares`),
+    share: (uri, withMail, level) => request('POST', `/mail/api/calendars/${enc(uri)}/shares`, { with: withMail, level }),
+    unshare: (uri, withMail) => request('DELETE', `/mail/api/calendars/${enc(uri)}/shares`, { with: withMail }),
+    events: (from, to, calendars = []) => {
+        const p = new URLSearchParams({ from, to });
+        if (calendars.length) p.set('calendars', calendars.join(','));
+        return request('GET', `/mail/api/events?${p}`);
+    },
+    event: (cal, uri) => request('GET', `/mail/api/events/${enc(cal)}/${enc(uri)}`),
+    createEvent: (data) => request('POST', '/mail/api/events', data),
+    updateEvent: (cal, uri, data) => request('PUT', `/mail/api/events/${enc(cal)}/${enc(uri)}`, data),
+    deleteEvent: (cal, uri, occurrence = null) => request('DELETE', `/mail/api/events/${enc(cal)}/${enc(uri)}`, occurrence ? { occurrence } : undefined),
+    respond: (cal, uri, status) => request('POST', `/mail/api/events/${enc(cal)}/${enc(uri)}/respond`, { status }),
+    freebusy: (users, from, to) => request('GET', `/mail/api/freebusy?${new URLSearchParams({ users: users.join(','), from, to })}`),
 };
 
 /** Форма «Написать» → FormData (файлы прикладываются как files[]). */

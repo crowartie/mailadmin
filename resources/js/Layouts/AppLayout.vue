@@ -30,6 +30,7 @@ const groups = [
         { href: '/aliases', icon: 'at', label: 'Псевдонимы', count: 'aliases' },
         { href: '/maillists', icon: 'mail', label: 'Рассылки', count: 'maillists' },
         { href: '/rules', icon: 'filter', label: 'Правила', count: 'rules' },
+        { href: '/company-contacts', icon: 'book', label: 'Контакты компании' },
     ] },
     { title: 'Сервер', items: [
         { href: '/domains', icon: 'globe', label: 'Домены', count: 'domains' },
