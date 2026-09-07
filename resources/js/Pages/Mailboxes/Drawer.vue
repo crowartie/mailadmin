@@ -83,7 +83,7 @@ const tabFields = {
 
 // ── Доступ и устройства ────────────────────────────────────────────────
 const p = props.mailbox.profile || {};
-const access = useForm({ unit_id: p.unit_id ?? null, title: p.title ?? '', personal_email: p.personal_email ?? '', require_2fa: !!p.require_2fa, login_blocked: !!p.login_blocked });
+const access = useForm({ unit_id: p.unit_id ?? null, title: p.title ?? '', personal_email: p.personal_email ?? '', require_2fa: !!p.require_2fa, login_blocked: !!p.login_blocked, is_service: !!p.is_service });
 const base = `/mailboxes/${props.mailbox.username}`;
 function saveAccess() { access.post(`${base}/access`, { preserveScroll: true }); }
 function act(url, data = {}, message = null) { if (message && !confirm(message)) return; router.post(url, data, { preserveScroll: true }); }
@@ -110,6 +110,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <h2>{{ mailbox.name || mailbox.username }}</h2>
                     <div class="row__sub mono">{{ mailbox.username }}</div>
                 </div>
+                <span v-if="mailbox.profile?.is_service" class="tag">служебный</span>
                 <span class="chip" :class="mailbox.active ? 'chip--ok' : 'chip--off'">{{ mailbox.active ? 'активен' : 'заблокирован' }}</span>
                 <button class="btn btn--sm btn--icon" type="button" title="Закрыть" @click="emit('close')"><Icon name="x" :size="18" /></button>
             </header>
@@ -221,6 +222,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
                 <!-- Доступ -->
                 <template v-if="activeTab === 'access'">
+                    <div class="group-title">Тип ящика</div>
+                    <Toggle v-model="access.is_service" label="Служебный ящик, а не сотрудник (info@, сканер, принтер)" />
+                    <p class="hint">Не попадает в общую книгу «Сотрудники», не считается в статистике защиты, не предлагается руководителем отдела.</p>
                     <div class="group-title">Подразделение и должность</div>
                     <div class="field"><label>Подразделение</label><select v-model="access.unit_id" class="input"><option :value="null">— без подразделения —</option><option v-for="u in mailbox.units || []" :key="u.id" :value="u.id">{{ ' '.repeat(u.depth * 3) }}{{ u.name }}</option></select></div>
                     <div class="field"><label>Должность</label><input v-model="access.title" class="input"></div>

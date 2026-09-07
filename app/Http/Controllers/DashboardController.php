@@ -62,7 +62,7 @@ class DashboardController extends Controller
         if ($adminsNo2fa > 0) {
             $out[] = ['kind' => 'warn', 'text' => $adminsNo2fa . ' ' . $this->plural($adminsNo2fa, 'администратор', 'администратора', 'администраторов') . ' без двухфакторной защиты', 'href' => '/settings/admins'];
         }
-        $no2fa = Mailbox::query()->where('active', 1)->count() - Setting::query()->whereRaw("JSON_EXTRACT(data, '$.totp_enabled') = true")->count();
+        $no2fa = Mailbox::query()->people()->count() - Setting::query()->whereRaw("JSON_EXTRACT(data, '$.totp_enabled') = true")->count();
         if ($no2fa > 0) {
             $out[] = ['kind' => 'warn', 'text' => $no2fa . ' ' . $this->plural($no2fa, 'сотрудник', 'сотрудника', 'сотрудников') . ' без двухфакторной защиты', 'href' => '/security/2fa-employees'];
         }

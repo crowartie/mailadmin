@@ -105,7 +105,7 @@ function close() {
             >
                 <div class="avatar" :class="{ 'avatar--off': !row.active }">{{ initials(row) }}</div>
                 <div style="min-width: 0">
-                    <div class="row__name">{{ row.name || row.username }}</div>
+                    <div class="row__name">{{ row.name || row.username }}<span v-if="row.service" class="tag" style="margin-left: 6px">служебный</span></div>
                     <div class="row__sub mono">{{ row.username }}</div>
                 </div>
                 <div class="hint" style="font-size: 13.5px">{{ row.department || '—' }}</div>

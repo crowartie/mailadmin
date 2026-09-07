@@ -8,6 +8,7 @@ import Toggle from '../../Components/Toggle.vue';
 const props = defineProps({
     domains: Array,
     defaults: Object,
+    units: Array,
 });
 
 const form = useForm({
@@ -20,7 +21,8 @@ const form = useForm({
     last_name: '',
     first_name: '',
     rank: '',
-    department: '',
+    unit_id: null,
+    is_service: false,
     telephone: '',
     mobile: '',
     recovery_email: '',
@@ -83,6 +85,10 @@ function submit() {
                     <div class="field" style="width: 200px"><label>Размер ящика, МБ</label><input v-model.number="form.quota" class="input" type="number" min="0" step="256"></div>
                     <Toggle v-model="form.active" label="Учётная запись включена" style="padding-top: 22px" />
                 </div>
+                <div class="field">
+                    <Toggle v-model="form.is_service" label="Служебный ящик, а не сотрудник (info@, сканер, принтер)" />
+                    <p class="hint" style="margin: 4px 0 0">Служебный ящик не попадает в общую книгу «Сотрудники», не считается в статистике защиты и не предлагается руководителем отдела.</p>
+                </div>
 
                 <div class="divider" />
 
@@ -93,7 +99,7 @@ function submit() {
                     <div class="field"><label>Фамилия</label><input v-model="form.last_name" class="input"></div>
                     <div class="field"><label>Имя</label><input v-model="form.first_name" class="input"></div>
                     <div class="field"><label>Должность</label><input v-model="form.rank" class="input"></div>
-                    <div class="field"><label>Подразделение</label><input v-model="form.department" class="input"></div>
+                    <div class="field"><label>Подразделение</label><select v-model="form.unit_id" class="input"><option :value="null">— без подразделения —</option><option v-for="u in units || []" :key="u.id" :value="u.id">{{ ' '.repeat(u.depth * 3) }}{{ u.name }}</option></select></div>
                     <div class="field"><label>Телефон</label><input v-model="form.telephone" class="input"></div>
                     <div class="field"><label>Мобильный</label><input v-model="form.mobile" class="input"></div>
                 </div>

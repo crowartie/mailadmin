@@ -68,6 +68,15 @@ class Mailbox extends Model
         return $this->quota > 0 ? (int) $this->quota : null;
     }
 
+    /** Только сотрудники: активные ящики без служебных (info@, сканеры, принтеры). */
+    public function scopePeople($query)
+    {
+        $query->where('active', 1);
+        $service = \App\Models\EmployeeProfile::serviceUsernames();
+
+        return $service ? $query->whereNotIn('username', $service) : $query;
+    }
+
     public function scopeSearch($query, ?string $term)
     {
         if (blank($term)) {

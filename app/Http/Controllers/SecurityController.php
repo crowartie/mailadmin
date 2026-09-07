@@ -30,7 +30,7 @@ class SecurityController extends Controller
     {
         abort_unless(in_array($tab, ['overview', 'bans', 'logins', 'twofa', 'apppasswords', 'sessions'], true), 404);
         $bans = $this->f2b->banned();
-        $employees = Mailbox::query()->where('active', 1)->orderBy('username')->get(['username', 'name']);
+        $employees = Mailbox::query()->people()->orderBy('username')->get(['username', 'name']);
         $settings = Setting::query()->whereIn('user', $employees->pluck('username'))->get()->keyBy('user');
         $profiles = EmployeeProfile::query()->whereIn('username', $employees->pluck('username'))->get()->keyBy('username');
         $with2fa = $employees->filter(fn ($m) => (bool) (($settings[$m->username]->data ?? [])['totp_enabled'] ?? false))->count();

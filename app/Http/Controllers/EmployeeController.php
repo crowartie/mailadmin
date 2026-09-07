@@ -36,11 +36,17 @@ class EmployeeController extends Controller
             'personal_email' => ['nullable', 'email', 'max:255'],
             'require_2fa' => ['boolean'],
             'login_blocked' => ['boolean'],
+            'is_service' => ['boolean'],
         ]);
         $profile = EmployeeProfile::for($model->username);
         $oldUnit = $profile->unit_id;
-        $profile->fill(['title' => $data['title'] ?? null, 'personal_email' => $data['personal_email'] ?? null, 'require_2fa' => (bool) ($data['require_2fa'] ?? false), 'login_blocked' => (bool) ($data['login_blocked'] ?? false)]);
+        $wasService = (bool) $profile->is_service;
+        $profile->fill(['title' => $data['title'] ?? null, 'personal_email' => $data['personal_email'] ?? null, 'require_2fa' => (bool) ($data['require_2fa'] ?? false), 'login_blocked' => (bool) ($data['login_blocked'] ?? false), 'is_service' => (bool) ($data['is_service'] ?? false)]);
         $profile->save();
+        if ($wasService !== $profile->is_service) {
+            $book = app(\App\Services\Dav\EmployeeBook::class);
+            $profile->is_service ? $book->remove($model) : $book->put($model);
+        }
         if (($data['unit_id'] ?? null) !== $oldUnit) {
             $this->units->move($model->username, $data['unit_id'] ?? null);
         }

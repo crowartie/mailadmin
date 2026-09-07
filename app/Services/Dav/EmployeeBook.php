@@ -28,6 +28,11 @@ class EmployeeBook
     /** Карточка сотрудника создана/обновлена. Ошибки — в журнал, ящик от них не зависит. */
     public function put(Mailbox $mailbox): void
     {
+        if (in_array($mailbox->username, \App\Models\EmployeeProfile::serviceUsernames(), true)) {
+            $this->remove($mailbox);
+
+            return;
+        }
         try {
             $this->write($mailbox);
             $this->store->ensureUser($mailbox->username);
@@ -57,7 +62,7 @@ class EmployeeBook
         $stats = ['added' => 0, 'updated' => 0, 'removed' => 0];
         $seen = [];
 
-        foreach (Mailbox::query()->where('active', 1)->orderBy('username')->get() as $mailbox) {
+        foreach (Mailbox::query()->people()->orderBy('username')->get() as $mailbox) {
             $uri = self::uri($mailbox->username);
             $seen[$uri] = true;
             $vcf = $this->vcard($mailbox);
