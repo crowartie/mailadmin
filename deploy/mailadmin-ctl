@@ -74,11 +74,21 @@ case "$cmd" in
   disk)           exec df -B1 --output=size,used,avail,target /var/vmail / ;;
   # ── рассылки mlmmj ─────────────────────────────────────────────
   mlmmj-mod-list) mailaddr "$1"; d="/var/vmail/mlmmj/${1#*@}/${1%@*}/moderation"; [ -d "$d" ] || { echo; exit 0; }
-                  for f in "$d"/*; do [ -f "$f" ] || continue; [[ "$f" == *.sending ]] && continue; echo "=== $(basename "$f") $(stat -c %Y "$f")"; grep -i -m1 -E '^(From|Subject):' "$f" | head -2; grep -i -m1 '^Subject:' "$f"; done ;;
+                  for f in "$d"/*; do [ -f "$f" ] || continue; [[ "$f" == *.sending ]] && continue
+                    fr=$(grep -i -m1 '^From:' "$f" | cut -d: -f2- | sed 's/^ *//'); su=$(grep -i -m1 '^Subject:' "$f" | cut -d: -f2- | sed 's/^ *//')
+                    printf '%s\t%s\t%s\t%s\n' "$(basename "$f")" "$fr" "$su" "$(stat -c %Y "$f")"; done ;;
   mlmmj-mod-approve) mailaddr "$1"; word "$2"; d="/var/vmail/mlmmj/${1#*@}/${1%@*}"; f="$d/moderation/$2"; [ -f "$f" ] || die "no message"
                   /usr/bin/mlmmj-send -L "$d" -m "$f" && rm -f "$f"; echo ok ;;
   mlmmj-mod-reject)  mailaddr "$1"; word "$2"; d="/var/vmail/mlmmj/${1#*@}/${1%@*}"; rm -f "$d/moderation/$2"; echo ok ;;
-  mlmmj-archive)  mailaddr "$1"; d="/var/vmail/mlmmj-archive/${1#*@}/${1%@*}"; [ -d "$d" ] || { echo; exit 0; }; ls -1t "$d" | head -50 ;;
+  mlmmj-archive)  mailaddr "$1"; d="/var/vmail/mlmmj-archive/${1#*@}/${1%@*}"; [ -d "$d" ] || { echo; exit 0; }
+                  for n in $(ls -1t "$d" | head -50); do f="$d/$n"; [ -f "$f" ] || continue
+                    fr=$(grep -i -m1 '^From:' "$f" | cut -d: -f2- | sed 's/^ *//'); su=$(grep -i -m1 '^Subject:' "$f" | cut -d: -f2- | sed 's/^ *//')
+                    printf '%s\t%s\t%s\t%s\n' "$n" "$fr" "$su" "$(stat -c %Y "$f")"; done ;;
+  # Штатный инструмент iRedMail: создаёт рассылку в mlmmj и в таблице vmail.maillists.
+  mlmmj-admin)    act="$1"; shift; case "$act" in create|info|update|delete|subscribers|add_subscribers|remove_subscribers|has_subscriber) ;; *) die "bad action";; esac
+                  mailaddr "$1"; addr="$1"; shift; re='^([a-z_]+=[^;&|`$]{0,300}|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)$'
+                  for a in "$@"; do [[ "$a" =~ $re ]] || die "bad arg: $a"; done
+                  cd /opt/mlmmjadmin/tools && exec python3 maillist_admin.py "$act" "$addr" "$@" ;;
   # ── ящики ──────────────────────────────────────────────────────
   maildir-size)   re='^/var/vmail/[A-Za-z0-9/_.@-]+$'; [[ "$1" =~ $re ]] || die "bad path"; du -sb "$1" 2>/dev/null | cut -f1 ;;
   *) die "unknown command: $cmd" ;;

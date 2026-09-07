@@ -16,10 +16,12 @@ const tabs = [
     { key: 'general', label: 'Общие' },
     { key: 'addresses', label: 'Адреса' },
     { key: 'contact', label: 'Контакт' },
-    { key: 'forwarding', label: 'Переадресация' },
+    { key: 'forwarding', label: 'Пересылка' },
     { key: 'groups', label: 'Группы' },
     { key: 'rights', label: 'Права' },
     { key: 'quota', label: 'Квота' },
+    { key: 'access', label: 'Доступ' },
+    { key: 'devices', label: 'Устройства' },
 ];
 const activeTab = ref('general');
 const showPassword = ref(false);
@@ -75,7 +77,19 @@ const tabFields = {
     groups: [],
     rights: ['services', 'isadmin', 'isglobaladmin'],
     quota: ['quota'],
+    access: [],
+    devices: [],
 };
+
+// ── Доступ и устройства ────────────────────────────────────────────────
+const p = props.mailbox.profile || {};
+const access = useForm({ unit_id: p.unit_id ?? null, title: p.title ?? '', personal_email: p.personal_email ?? '', require_2fa: !!p.require_2fa, login_blocked: !!p.login_blocked });
+const base = `/mailboxes/${props.mailbox.username}`;
+function saveAccess() { access.post(`${base}/access`, { preserveScroll: true }); }
+function act(url, data = {}, message = null) { if (message && !confirm(message)) return; router.post(url, data, { preserveScroll: true }); }
+function impersonate() { if (confirm(`Открыть веб-почту ${props.mailbox.username} от его имени? Действие попадёт в журнал.`)) router.post(`${base}/impersonate`); }
+function when(iso) { if (!iso) return '—'; const d = new Date(iso); const diff = (Date.now() - d) / 60000; if (diff < 1) return 'сейчас'; if (diff < 60) return Math.round(diff) + ' мин назад'; if (diff < 1440) return Math.round(diff / 60) + ' ч назад'; return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
+const LOGIN = { ok: 'вход', new_device: 'новое устройство', bad_password: 'неверный пароль', blocked: 'заблокирован', bad_code: 'неверный код' };
 const tabHasError = (key) =>
     tabFields[key].some((f) => Object.keys(form.errors).some((e) => e === f || e.startsWith(`${f}.`)));
 
@@ -89,7 +103,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 <template>
     <div>
         <div class="drawer-backdrop" @click="emit('close')" />
-        <aside class="drawer" role="dialog" aria-modal="true" :aria-label="mailbox.username">
+        <aside class="drawer" role="dialog" aria-modal="true" :aria-label="mailbox.username" style="width: 680px">
             <header class="drawer__head">
                 <div class="avatar avatar--lg">{{ initials }}</div>
                 <div class="grow">
@@ -205,6 +219,50 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <Toggle v-model="form.isglobaladmin" label="Администратор всего сервера" />
                 </template>
 
+                <!-- Доступ -->
+                <template v-if="activeTab === 'access'">
+                    <div class="group-title">Подразделение и должность</div>
+                    <div class="field"><label>Подразделение</label><select v-model="access.unit_id" class="input"><option :value="null">— без подразделения —</option><option v-for="u in mailbox.units || []" :key="u.id" :value="u.id">{{ ' '.repeat(u.depth * 3) }}{{ u.name }}</option></select></div>
+                    <div class="field"><label>Должность</label><input v-model="access.title" class="input"></div>
+                    <div class="field"><label>Личная почта</label><input v-model="access.personal_email" class="input" type="email" placeholder="для ссылки смены пароля"><p v-if="access.errors.personal_email" class="error">{{ access.errors.personal_email }}</p></div>
+                    <div class="group-title">Защита входа</div>
+                    <Toggle v-model="access.require_2fa" label="Требовать двухфакторную защиту при входе в веб-почту" />
+                    <Toggle v-model="access.login_blocked" label="Запретить вход (ящик получает почту, но войти нельзя)" />
+                    <p class="hint">2FA сейчас: <b>{{ mailbox.profile?.totp ? 'подключена' : 'не подключена' }}</b>.<template v-if="mailbox.profile?.totp"> Потерял телефон — <a href="#" @click.prevent="act(`${base}/reset-2fa`, {}, 'Сбросить 2FA? Сотрудник подключит её заново при входе.')">сбросить</a>.</template></p>
+                    <div class="form-actions" style="margin-top: 4px"><button class="btn btn--primary" type="button" :disabled="access.processing" @click="saveAccess">Сохранить доступ</button></div>
+                    <div class="divider" />
+                    <div class="group-title">Пароль</div>
+                    <p class="hint">Отправить ссылку для смены пароля на личную почту{{ access.personal_email ? ' ' + access.personal_email : '' }} — сотрудник задаст пароль сам, вы его не узнаете. Или задайте вручную на вкладке «Общие».</p>
+                    <button class="btn" type="button" :disabled="!access.personal_email" @click="act(`${base}/reset-link`)"><Icon name="send" :size="15" /> Отправить ссылку</button>
+                    <div class="divider" />
+                    <div class="group-title">Общие календари</div>
+                    <p v-if="mailbox.calendarShares?.length" class="hint">Свой календарь открыл: <span v-for="s in mailbox.calendarShares" :key="s.mail" class="tag" style="margin-right: 4px">{{ s.name }} · {{ s.level === 'write' ? 'правка' : 'просмотр' }}</span></p>
+                    <p v-if="mailbox.sharedCalendars?.length" class="hint">Видит календари: <span v-for="c in mailbox.sharedCalendars" :key="c.name" class="tag" style="margin-right: 4px">{{ c.name }}{{ c.owner ? ' (' + c.owner + ')' : '' }}</span></p>
+                    <p v-if="!mailbox.calendarShares?.length && !mailbox.sharedCalendars?.length" class="hint">Только свой календарь и календарь компании. Календарь отдела появится после назначения в подразделение.</p>
+                </template>
+
+                <!-- Устройства -->
+                <template v-if="activeTab === 'devices'">
+                    <div class="group-title">Сеансы и подключения</div>
+                    <div v-for="s in mailbox.sessions || []" :key="s.id" class="kv kv--start" style="align-items: center">
+                        <Icon :name="s.kind === 'web' ? 'laptop' : 'mobile'" :size="16" />
+                        <span style="flex: 1; min-width: 0"><span style="color: inherit; display: block" class="ellipsis">{{ s.device }}</span><span class="row__sub">{{ s.ip }}{{ s.seen ? ' · ' + when(s.seen) : '' }}</span></span>
+                        <button class="btn btn--sm" type="button" @click="act(`${base}/kick`, { id: s.id })">Отключить</button>
+                    </div>
+                    <p v-if="!(mailbox.sessions || []).length" class="hint">Сейчас никто не подключён.</p>
+                    <div class="group-title">Пароли приложений</div>
+                    <div v-for="a in mailbox.appPasswords || []" :key="a.id" class="kv kv--start" style="align-items: center">
+                        <Icon name="key" :size="16" />
+                        <span style="flex: 1"><span style="color: inherit">{{ a.name }}</span><span v-if="!a.active" class="tag" style="margin-left: 6px">отозван</span><span class="row__sub" style="display: block">создан {{ when(a.created) }}{{ a.lastUsed ? ' · использован ' + when(a.lastUsed) : '' }}</span></span>
+                        <button v-if="a.active" class="btn btn--sm" type="button" @click="router.delete(`${base}/app-passwords/${a.id}`, { preserveScroll: true })">Отозвать</button>
+                    </div>
+                    <p v-if="!(mailbox.appPasswords || []).length" class="hint">Паролей приложений нет — телефон и программы входят основным паролем.</p>
+                    <button class="btn btn--danger" type="button" style="margin-top: 8px" @click="act(`${base}/kick`, { all: true }, 'Отключить все устройства? Сеансы завершатся, пароли приложений перестанут работать.')">Отключить все устройства</button>
+                    <div class="group-title">Последние входы</div>
+                    <div v-for="(l, i) in mailbox.logins || []" :key="i" class="kv"><span style="color: inherit">{{ l.device }} <span class="mono faint">{{ l.ip }}</span></span><span><span class="chip" :class="l.result === 'ok' ? 'chip--ok' : l.result === 'new_device' ? 'chip--warn' : 'chip--no'">{{ LOGIN[l.result] || l.result }}</span> <span class="faint">{{ when(l.at) }}</span></span></div>
+                    <p v-if="!(mailbox.logins || []).length" class="hint">Входов в веб-почту ещё не было.</p>
+                </template>
+
                 <!-- Квота -->
                 <template v-if="activeTab === 'quota'">
                     <div class="field" style="width: 220px">
@@ -219,6 +277,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
             <footer class="drawer__foot">
                 <button class="btn btn--primary" type="submit" form="mailbox-form" :disabled="form.processing">Сохранить</button>
                 <button class="btn" type="button" @click="emit('close')">Отмена</button>
+                <button class="btn" type="button" title="Открыть веб-почту сотрудника без его пароля" @click="impersonate"><Icon name="eye" :size="15" /> Войти как сотрудник</button>
                 <span class="grow" />
                 <button class="btn btn--danger" type="button" @click="destroy">Удалить</button>
             </footer>

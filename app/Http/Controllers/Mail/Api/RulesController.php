@@ -51,7 +51,7 @@ class RulesController extends Controller
         $script = $builder->build($data['rules'], $data['autoreply'] ?? null, $labels);
 
         try {
-            $sieve = ManageSieveClient::forUser($imap->user(), $imap->password());
+            $sieve = ManageSieveClient::forUser($imap->loginName(), $imap->password());
             $sieve->putScript(SieveBuilder::SCRIPT, $script);
             $sieve->setActive(SieveBuilder::SCRIPT);
             $sieve->logout();

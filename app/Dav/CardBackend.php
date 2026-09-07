@@ -73,6 +73,34 @@ class CardBackend extends PDO
             ];
         }
 
+        // Книги отделов: видны сотрудникам своего подразделения и вложенных в него, на запись.
+        $mail = strtolower(substr($principalUri, strlen('principals/')));
+        $unitId = (int) \Illuminate\Support\Facades\DB::table('employee_profiles')->where('username', $mail)->value('unit_id');
+        if ($unitId) {
+            $chain = [$unitId];
+            $u = \App\Models\Unit::find($unitId);
+            if ($u) {
+                $chain = array_merge($chain, $u->parentChain());
+            }
+            $principals = array_map(fn ($id) => 'principals/units/' . $id, $chain);
+            $in = implode(',', array_fill(0, count($principals), '?'));
+            $stmt = $this->pdo->prepare("SELECT id, uri, displayname, description, synctoken FROM {$this->addressBooksTableName} WHERE principaluri IN ({$in}) ORDER BY id");
+            $stmt->execute($principals);
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $books[] = [
+                    'id' => $row['id'],
+                    'uri' => $row['uri'],
+                    'principaluri' => $principalUri,
+                    '{DAV:}displayname' => $row['displayname'],
+                    '{urn:ietf:params:xml:ns:carddav}addressbook-description' => $row['description'],
+                    '{http://calendarserver.org/ns/}getctag' => $row['synctoken'],
+                    '{http://sabredav.org/ns}sync-token' => $row['synctoken'] ?: '0',
+                    'shared' => true,
+                    'unit' => true,
+                ];
+            }
+        }
+
         return $books;
     }
 

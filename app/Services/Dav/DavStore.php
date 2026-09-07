@@ -109,18 +109,19 @@ class DavStore
         $out = [];
         foreach ($this->cards->getAddressBooksForUser(Server::principal($user)) as $b) {
             $count = (int) DB::table('dav_cards')->where('addressbookid', $b['id'])->count();
-            $kind = ! empty($b['shared']) ? $b['uri'] : ($b['uri'] === self::PERSONAL ? 'personal' : 'own');
+            $kind = ! empty($b['unit']) ? 'unit' : (! empty($b['shared']) ? $b['uri'] : ($b['uri'] === self::PERSONAL ? 'personal' : 'own'));
             $out[] = [
                 'id' => (int) $b['id'],
                 'uri' => $b['uri'],
                 'name' => $b['{DAV:}displayname'] ?: $b['uri'],
                 'description' => $b['{urn:ietf:params:xml:ns:carddav}addressbook-description'] ?? '',
                 'kind' => $kind,
-                'readonly' => ! empty($b['shared']) && ! $this->isAdmin($user),
+                'readonly' => ! empty($b['shared']) && empty($b['unit']) && ! $this->isAdmin($user),
                 'count' => $count,
             ];
         }
-        usort($out, fn ($a, $b) => ['personal' => 0, 'own' => 1, 'employees' => 2, 'company' => 3][$a['kind']] <=> ['personal' => 0, 'own' => 1, 'employees' => 2, 'company' => 3][$b['kind']]);
+        $rank = ['personal' => 0, 'own' => 1, 'unit' => 2, 'employees' => 3, 'company' => 4];
+        usort($out, fn ($a, $b) => ($rank[$a['kind']] ?? 9) <=> ($rank[$b['kind']] ?? 9));
 
         return $out;
     }
@@ -287,7 +288,11 @@ class DavStore
             if (! $system && $access !== Sharing::ACCESS_SHAREDOWNER) {
                 $ownerUri = DB::table('dav_calendarinstances')->where('calendarid', $calId)->where('access', 1)->value('principaluri');
                 $ownerMail = $ownerUri ? substr($ownerUri, strlen('principals/')) : null;
-                $owner = $ownerMail ? ['mail' => $ownerMail, 'name' => $this->displayName($ownerMail)] : null;
+                if ($ownerUri && str_starts_with($ownerUri, 'principals/units/')) {
+                    $owner = ['mail' => null, 'name' => (string) DB::table('dav_principals')->where('uri', $ownerUri)->value('displayname'), 'unit' => true];
+                } else {
+                    $owner = $ownerMail ? ['mail' => $ownerMail, 'name' => $this->displayName($ownerMail)] : null;
+                }
             }
             $out[] = [
                 'id' => $calId,
@@ -564,6 +569,98 @@ class DavStore
         ])]);
 
         return $this->shares($user, $calUri);
+    }
+
+    // ── Подразделения: календарь и книга отдела ─────────────────────────
+
+    public static function unitPrincipal(int $unitId): string
+    {
+        return 'principals/units/' . $unitId;
+    }
+
+    /** Principal отдела, его календарь и книга — создаются при первом обращении. */
+    public function ensureUnitResources(\App\Models\Unit $unit): void
+    {
+        $principal = self::unitPrincipal($unit->id);
+        $title = 'Отдел «' . $unit->name . '»';
+        if (! DB::table('dav_principals')->where('uri', $principal)->exists()) {
+            DB::table('dav_principals')->insert(['uri' => $principal, 'email' => $unit->address, 'displayname' => $title]);
+        }
+        if (! $unit->calendar_id || ! DB::table('dav_calendars')->where('id', $unit->calendar_id)->exists()) {
+            $id = $this->cals->createCalendar($principal, 'unit-' . $unit->id, [
+                '{DAV:}displayname' => $title,
+                '{http://apple.com/ns/ical/}calendar-color' => '#0F9D58',
+                '{urn:ietf:params:xml:ns:caldav}supported-calendar-component-set' => new SupportedCalendarComponentSet(['VEVENT', 'VTODO']),
+            ]);
+            $unit->calendar_id = is_array($id) ? (int) $id[0] : (int) $id;
+        }
+        if (! $unit->addressbook_id || ! DB::table('dav_addressbooks')->where('id', $unit->addressbook_id)->exists()) {
+            $unit->addressbook_id = (int) $this->cards->createAddressBook($principal, 'unit-' . $unit->id, ['{DAV:}displayname' => $title]);
+        }
+        if ($unit->isDirty(['calendar_id', 'addressbook_id'])) {
+            $unit->save();
+        }
+    }
+
+    public function renameUnitResources(\App\Models\Unit $unit): void
+    {
+        $title = 'Отдел «' . $unit->name . '»';
+        DB::table('dav_principals')->where('uri', self::unitPrincipal($unit->id))->update(['displayname' => $title, 'email' => $unit->address]);
+        if ($unit->calendar_id) {
+            DB::table('dav_calendarinstances')->where('calendarid', $unit->calendar_id)->update(['displayname' => $title]);
+        }
+        if ($unit->addressbook_id) {
+            DB::table('dav_addressbooks')->where('id', $unit->addressbook_id)->update(['displayname' => $title]);
+        }
+    }
+
+    /** Доступ к календарю отдела на запись — ровно текущим членам. @param string[] $members */
+    public function setUnitMembers(\App\Models\Unit $unit, array $members): void
+    {
+        if (! $unit->calendar_id) {
+            return;
+        }
+        $ownerInstance = (int) DB::table('dav_calendarinstances')->where('calendarid', $unit->calendar_id)->where('access', 1)->value('id');
+        if (! $ownerInstance) {
+            return;
+        }
+        $id = [(int) $unit->calendar_id, $ownerInstance];
+        $current = [];
+        foreach ($this->cals->getInvites($id) as $sharee) {
+            if ($sharee->access !== Sharing::ACCESS_SHAREDOWNER) {
+                $current[] = strtolower(preg_replace('/^mailto:/i', '', $sharee->href));
+            }
+        }
+        $members = array_values(array_unique(array_map('strtolower', $members)));
+        $sharees = [];
+        foreach (array_diff($members, $current) as $m) {
+            if (! Mailbox::query()->where('username', $m)->exists()) {
+                continue;
+            }
+            $this->ensureUser($m);
+            $sharees[] = new Sharee(['href' => 'mailto:' . $m, 'principal' => Server::principal($m), 'access' => Sharing::ACCESS_READWRITE, 'inviteStatus' => Sharing::INVITE_ACCEPTED, 'properties' => ['{DAV:}displayname' => $this->displayName($m)]]);
+        }
+        foreach (array_diff($current, $members) as $m) {
+            $sharees[] = new Sharee(['href' => 'mailto:' . $m, 'principal' => Server::principal($m), 'access' => Sharing::ACCESS_NOACCESS]);
+        }
+        if ($sharees) {
+            $this->cals->updateInvites($id, $sharees);
+        }
+    }
+
+    public function deleteUnitResources(\App\Models\Unit $unit): void
+    {
+        if ($unit->calendar_id) {
+            $ownerInstance = (int) DB::table('dav_calendarinstances')->where('calendarid', $unit->calendar_id)->where('access', 1)->value('id');
+            if ($ownerInstance) {
+                $this->cals->deleteCalendar([(int) $unit->calendar_id, $ownerInstance]);
+            }
+        }
+        if ($unit->addressbook_id) {
+            $this->cards->systemWrites = true;
+            $this->cards->deleteAddressBook($unit->addressbook_id);
+        }
+        DB::table('dav_principals')->where('uri', self::unitPrincipal($unit->id))->delete();
     }
 
     // ── Общие книги (для админки и синхронизации сотрудников) ──────────

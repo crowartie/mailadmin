@@ -63,7 +63,7 @@ class MailboxService
     {
         $username = strtolower($data['local_part'] . '@' . $data['domain']);
 
-        return DB::connection('vmail')->transaction(function () use ($data, $username) {
+        $mailbox = DB::connection('vmail')->transaction(function () use ($data, $username) {
             $mailbox = new Mailbox();
             $mailbox->username = $username;
             $mailbox->password = $this->hashPassword($data['password']);
@@ -87,11 +87,12 @@ class MailboxService
             $this->syncAdminRights($mailbox, $data);
 
             return $mailbox;
-        })->tap(function (Mailbox $mailbox) {
-            // Карточка в общей книге «Сотрудники» — вместе с ящиком, но вне транзакции:
-            // сбой книги не должен откатывать создание сотрудника.
-            $this->addressBook->put($mailbox);
         });
+        // Карточка в общей книге «Сотрудники» — вместе с ящиком, но вне транзакции:
+        // сбой книги не должен откатывать создание сотрудника.
+        $this->addressBook->put($mailbox);
+
+        return $mailbox;
     }
 
     /**
@@ -99,7 +100,7 @@ class MailboxService
      */
     public function update(Mailbox $mailbox, array $data): Mailbox
     {
-        return DB::connection('vmail')->transaction(function () use ($mailbox, $data) {
+        $mailbox = DB::connection('vmail')->transaction(function () use ($mailbox, $data) {
             if (filled($data['password'] ?? null)) {
                 $mailbox->password = $this->hashPassword($data['password']);
                 $mailbox->passwordlastchange = now();
@@ -114,7 +115,10 @@ class MailboxService
             $this->syncAdminRights($mailbox, $data);
 
             return $mailbox;
-        })->tap(fn (Mailbox $mailbox) => $this->addressBook->put($mailbox));
+        });
+        $this->addressBook->put($mailbox);
+
+        return $mailbox;
     }
 
     /**

@@ -4,6 +4,7 @@ import { ref, watch } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import Drawer from './Drawer.vue';
+import ImportModal from './ImportModal.vue';
 
 const props = defineProps({
     mailboxes: Object,
@@ -13,6 +14,7 @@ const props = defineProps({
     serviceFlags: Array,
 });
 
+const importing = ref(false);
 const search = ref(props.filters.search ?? '');
 const filter = ref(props.filters.filter ?? 'all');
 let timer = null;
@@ -84,6 +86,7 @@ function close() {
                 </button>
             </div>
             <input v-model="search" class="input input--w" style="width: 260px" type="search" placeholder="Имя или адрес">
+            <button class="btn" type="button" @click="importing = true"><Icon name="upload" :size="16" />Импорт CSV</button>
             <Link class="btn btn--primary" href="/mailboxes/create"><Icon name="plus" :size="16" />Добавить</Link>
         </template>
 
@@ -135,6 +138,7 @@ function close() {
         <p class="faint">Показаны {{ mailboxes.data.length }} из {{ mailboxes.total }} · сортировка по адресу</p>
 
         <template #overlay>
+            <ImportModal v-if="importing" :domains="domains" @close="importing = false" />
             <transition name="drawer">
                 <Drawer
                     v-if="editing"

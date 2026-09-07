@@ -155,6 +155,34 @@ class MailboxController extends Controller
             'isadmin' => (bool) $model->isadmin,
             'isglobaladmin' => (bool) $model->isglobaladmin,
             'services' => $this->currentServices($model),
+        ] + $this->extras($model);
+    }
+
+    /** Вкладки «Доступ» и «Устройства»: то, чего нет в схеме iRedMail. @return array<string,mixed> */
+    private function extras(Mailbox $model): array
+    {
+        $profile = \App\Models\EmployeeProfile::for($model->username);
+        $settings = \App\Models\Webmail\Setting::for($model->username);
+        $shares = [];
+        $calendars = [];
+        try {
+            $store = app(\App\Services\Dav\DavStore::class);
+            $shares = $store->shares($model->username, \App\Services\Dav\DavStore::PERSONAL);
+            $calendars = array_values(array_filter($store->calendars($model->username), fn ($c) => $c['kind'] === 'shared'));
+        } catch (\Throwable) {
+        }
+
+        return [
+            'profile' => [
+                'unit_id' => $profile->unit_id, 'title' => $profile->title ?: $model->rank, 'personal_email' => $profile->personal_email ?: $model->recovery_email,
+                'require_2fa' => (bool) $profile->require_2fa, 'login_blocked' => (bool) $profile->login_blocked, 'totp' => (bool) ($settings['totp_enabled'] ?? false),
+            ],
+            'units' => app(\App\Services\Units\UnitService::class)->flat(),
+            'appPasswords' => \App\Models\AppPassword::query()->where('username', $model->username)->orderByDesc('id')->get()->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'active' => (bool) $p->active, 'created' => $p->created_at?->toIso8601String(), 'lastUsed' => $p->last_used_at?->toIso8601String()])->values(),
+            'sessions' => app(\App\Services\Server\Sessions::class)->all($model->username),
+            'logins' => \App\Models\MailLogin::query()->where('user', $model->username)->orderByDesc('id')->limit(10)->get()->map(fn ($l) => ['ip' => $l->ip, 'device' => \App\Models\MailSession::device($l->agent), 'result' => $l->result, 'at' => $l->created_at?->toIso8601String()])->values(),
+            'calendarShares' => $shares,
+            'sharedCalendars' => array_map(fn ($c) => ['name' => $c['name'], 'owner' => $c['owner']['name'] ?? '', 'readonly' => $c['readonly']], $calendars),
         ];
     }
 

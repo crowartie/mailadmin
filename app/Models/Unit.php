@@ -24,6 +24,19 @@ class Unit extends Model
         return $this->hasMany(EmployeeProfile::class, 'unit_id');
     }
 
+    /** Родители вверх по дереву (без себя). @return int[] */
+    public function parentChain(): array
+    {
+        $ids = [];
+        $p = $this->parent;
+        while ($p && ! in_array($p->id, $ids, true)) {
+            $ids[] = $p->id;
+            $p = $p->parent;
+        }
+
+        return $ids;
+    }
+
     /** Все подразделения-потомки (включая себя). @return int[] */
     public function subtreeIds(): array
     {

@@ -1,7 +1,10 @@
 <script setup>
-import { useForm } from '@inertiajs/vue3';
+import { useForm, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
 const props = defineProps({ domain: String });
+const page = usePage();
+const flash = computed(() => page.props.flash || {});
 
 const form = useForm({ login: '', password: '' });
 function submit() {
@@ -20,6 +23,8 @@ function submit() {
                 </div>
             </div>
 
+            <p v-if="flash.error" class="error" style="margin: 0">{{ flash.error }}</p>
+            <p v-if="flash.success" class="hint" style="margin: 0; color: var(--ok)">{{ flash.success }}</p>
             <div class="field">
                 <label>Адрес или логин</label>
                 <input v-model="form.login" class="input" :placeholder="`ivanov или ivanov@${domain}`" autocomplete="username" autofocus>

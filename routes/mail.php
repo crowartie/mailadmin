@@ -25,6 +25,8 @@ Route::middleware('area:mail')->group(function () {
     Route::get('/mail/login/code', [LoginController::class, 'code']);
     Route::post('/mail/login/code', [LoginController::class, 'verifyCode']);
     Route::post('/mail/logout', [LoginController::class, 'destroy']);
+    Route::get('/mail/reset/{token}', [\App\Http\Controllers\Mail\ResetController::class, 'show'])->where('token', '[A-Za-z0-9]{48}');
+    Route::post('/mail/reset/{token}', [\App\Http\Controllers\Mail\ResetController::class, 'store'])->where('token', '[A-Za-z0-9]{48}');
 
     // CalDAV/CardDAV для телефонов и почтовых программ (Basic-авторизация паролем от почты).
     Route::match(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'PROPFIND', 'PROPPATCH', 'REPORT', 'MKCOL', 'MKCALENDAR', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'ACL'], '/dav/{path?}', DavController::class)->where('path', '.*');

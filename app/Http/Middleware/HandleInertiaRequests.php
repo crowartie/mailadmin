@@ -54,6 +54,7 @@ class HandleInertiaRequests extends Middleware
                     'domains' => Domain::count(),
                     'rules' => SieveRule::count(),
                     'units' => \Illuminate\Support\Facades\Schema::hasTable('units') ? \Illuminate\Support\Facades\DB::table('units')->count() : null,
+                    'maillists' => \App\Models\Vmail\Maillist::count(),
                 ]) + ['queue' => app(PostfixQueue::class)->count()],
                 'health' => app(ServerHealth::class)->summary(),
             ] : null,

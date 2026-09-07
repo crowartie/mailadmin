@@ -37,6 +37,34 @@ class ImapSession
         $request->session()->put('mail.secret', Crypt::encryptString($password));
     }
 
+    /** Администратор входит в ящик сотрудника без его пароля — через master-пользователя Dovecot. */
+    public static function loginAs(Request $request, string $username): void
+    {
+        $imap = config('areas.imap');
+        if (empty($imap['master_user']) || empty($imap['master_password'])) {
+            throw new \RuntimeException('MAIL_IMAP_MASTER_USER / MAIL_IMAP_MASTER_PASSWORD не заданы');
+        }
+        $client = self::make(strtolower($username) . '*' . $imap['master_user'], $imap['master_password']);
+        $client->connect();
+        $client->disconnect();
+
+        $request->session()->put('mail.user', strtolower($username));
+        $request->session()->put('mail.secret', Crypt::encryptString($imap['master_password']));
+        $request->session()->put('mail.master', true);
+        $request->session()->forget(['mail.force2fa', 'mail.pending']);
+    }
+
+    public function isMaster(): bool
+    {
+        return (bool) $this->request->session()->get('mail.master');
+    }
+
+    /** Логин для IMAP/Sieve: в режиме администратора — «user*master». */
+    public function loginName(): string
+    {
+        return $this->isMaster() ? $this->user() . '*' . config('areas.imap.master_user') : $this->user();
+    }
+
     /** Проверить пароль входом в IMAP; бросает исключение, если пара неверна. */
     public static function verify(string $username, string $password): void
     {
@@ -69,7 +97,7 @@ class ImapSession
     public function client(): Client
     {
         if ($this->client === null) {
-            $this->client = self::make($this->user(), $this->password());
+            $this->client = self::make($this->loginName(), $this->password());
             $this->client->connect();
         }
 
@@ -80,6 +108,10 @@ class ImapSession
     public function smtp(): EsmtpTransport
     {
         $smtp = config('areas.smtp');
+        if ($this->isMaster()) {
+            // У администратора нет пароля сотрудника: отправляем через локальный relay (mynetworks).
+            return self::smtpLocal();
+        }
         $transport = new EsmtpTransport($smtp['host'], (int) $smtp['port'], false);
         $transport->setUsername($this->user())->setPassword($this->password());
         self::relaxTls($transport);

@@ -6,6 +6,10 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DomainController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\ImportController;
+use App\Http\Controllers\MaillistsController;
+use App\Http\Controllers\UnitsController;
 use App\Http\Controllers\LogsController;
 use App\Http\Controllers\QueueController;
 use App\Http\Controllers\MailboxController;
@@ -39,6 +43,15 @@ Route::middleware('area:admin')->group(function () {
         Route::get('/mailboxes/create', [MailboxController::class, 'create']);
         Route::post('/mailboxes', [MailboxController::class, 'store']);
         // Адрес содержит @ и точки, поэтому параметр берём как есть, без ограничений маршрута.
+        Route::post('/mailboxes/import/preview', [ImportController::class, 'preview']);
+        Route::post('/mailboxes/import/check', [ImportController::class, 'check']);
+        Route::post('/mailboxes/import/run', [ImportController::class, 'run']);
+        Route::post('/mailboxes/{mailbox}/access', [EmployeeController::class, 'access'])->where('mailbox', '.*');
+        Route::post('/mailboxes/{mailbox}/impersonate', [EmployeeController::class, 'impersonate'])->where('mailbox', '.*');
+        Route::post('/mailboxes/{mailbox}/reset-link', [EmployeeController::class, 'resetLink'])->where('mailbox', '.*');
+        Route::post('/mailboxes/{mailbox}/kick', [EmployeeController::class, 'kick'])->where('mailbox', '.*');
+        Route::post('/mailboxes/{mailbox}/reset-2fa', [EmployeeController::class, 'reset2fa'])->where('mailbox', '.*');
+        Route::delete('/mailboxes/{mailbox}/app-passwords/{password}', [EmployeeController::class, 'revokeAppPassword'])->where('mailbox', '.*');
         Route::get('/mailboxes/{mailbox}/edit', [MailboxController::class, 'edit'])->where('mailbox', '.*');
         Route::put('/mailboxes/{mailbox}', [MailboxController::class, 'update'])->where('mailbox', '.*');
         Route::delete('/mailboxes/{mailbox}', [MailboxController::class, 'destroy'])->where('mailbox', '.*');
@@ -84,6 +97,22 @@ Route::middleware('area:admin')->group(function () {
         Route::delete('/security/2fa', [TwoFactorController::class, 'disable']);
         Route::get('/security/{tab}', [SecurityController::class, 'index'])->where('tab', 'overview|bans|logins|twofa|apppasswords|sessions');
 
+        Route::get('/units', [UnitsController::class, 'index']);
+        Route::post('/units', [UnitsController::class, 'store']);
+        Route::post('/units/move', [UnitsController::class, 'move']);
+        Route::get('/units/{unit}', [UnitsController::class, 'index'])->whereNumber('unit');
+        Route::put('/units/{unit}', [UnitsController::class, 'update']);
+        Route::delete('/units/{unit}', [UnitsController::class, 'destroy']);
+
+        Route::get('/maillists', [MaillistsController::class, 'index']);
+        Route::post('/maillists', [MaillistsController::class, 'store']);
+        Route::get('/maillists/{list}', [MaillistsController::class, 'index'])->where('list', '.*@.*');
+        Route::put('/maillists/{list}', [MaillistsController::class, 'update'])->where('list', '.*@.*');
+        Route::delete('/maillists/{list}', [MaillistsController::class, 'destroy'])->where('list', '.*@.*');
+        Route::post('/maillists/{list}/subscribe', [MaillistsController::class, 'subscribe'])->where('list', '.*@.*');
+        Route::post('/maillists/{list}/unsubscribe', [MaillistsController::class, 'unsubscribe'])->where('list', '.*@.*');
+        Route::post('/maillists/{list}/moderate', [MaillistsController::class, 'moderate'])->where('list', '.*@.*');
+
         Route::get('/settings', [SettingsController::class, 'index']);
         Route::get('/settings/{tab}', [SettingsController::class, 'index'])->where('tab', 'domains|spam|limits|cert|backup|admins|alerts');
         Route::post('/settings/dns/recheck', [SettingsController::class, 'recheckDns']);
@@ -106,13 +135,5 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/settings/alerts', [SettingsController::class, 'saveAlerts']);
         Route::post('/settings/alerts/test', [SettingsController::class, 'testAlerts']);
 
-        // Разделы из плана, до которых ещё не дошли: честная заглушка вместо 404.
-        $planned = [
-            'units' => ['Подразделения', 'Дерево отделов и группы для прав и рассылок. Появится вместе с импортом сотрудников из CSV.'],
-            'maillists' => ['Рассылки', 'Списки рассылки mlmmj: подписчики, модераторы, архив.'],
-        ];
-        foreach ($planned as $path => [$title, $note]) {
-            Route::get("/{$path}", fn () => Inertia::render('Placeholder', ['title' => $title, 'note' => $note]));
-        }
     });
 });
