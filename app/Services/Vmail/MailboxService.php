@@ -156,6 +156,11 @@ class MailboxService
         });
 
         $this->addressBook->remove($mailbox);
+        // Наши таблицы: профиль, пароли приложений, веб-сеансы, привязка к подразделению.
+        \App\Models\EmployeeProfile::query()->where('username', $mailbox->username)->delete();
+        \App\Models\AppPassword::query()->where('username', $mailbox->username)->delete();
+        \App\Models\MailSession::query()->where('user', $mailbox->username)->delete();
+        \Illuminate\Support\Facades\Cache::forget('nav.counts');
     }
 
     /**
