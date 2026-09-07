@@ -15,7 +15,7 @@ class AdminAction extends Model
     protected $casts = ['created_at' => 'datetime'];
 
     /** Записать действие текущего администратора (или системы). */
-    public static function log(string $action, ?string $target = null, string $details = ''): void
+    public static function log(string $action, ?string $target = null, ?string $details = null): void
     {
         try {
             $request = request();
