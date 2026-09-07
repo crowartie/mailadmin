@@ -133,5 +133,6 @@ export function composeForm(c, files = []) {
         if (c[f]) fd.append(f, '1');
     }
     files.forEach((file) => fd.append('files[]', file, file.name));
+    (c.cloud || []).forEach((i) => fd.append('cloud[]', String(i)));
     return fd;
 }

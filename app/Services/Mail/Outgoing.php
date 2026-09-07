@@ -25,8 +25,9 @@ class Outgoing
      * @param array $form  to, cc, bcc (строки «Имя <адрес>, адрес»), subject, html, inReplyTo, references,
      *                     forwardOf {folder, uid} — переслать с вложениями исходного письма
      * @param UploadedFile[] $files
+     * @param int[] $cloud  индексы файлов, которые уходят ссылкой через Nextcloud
      */
-    public function build(array $form, array $files = []): Email
+    public function build(array $form, array $files = [], array $cloud = []): Email
     {
         $settings = Setting::for($this->session->user());
         $fromName = trim((string) ($settings['display_name'] ?? '')) ?: $this->session->user();
@@ -42,6 +43,10 @@ class Outgoing
         }
 
         $html = (string) ($form['html'] ?? '');
+        $links = $this->publishToCloud($files, $cloud);
+        if ($links) {
+            $html .= $this->cloudBlockHtml($links);
+        }
         $text = trim(html_entity_decode(strip_tags(preg_replace('/<br\s*\/?>|<\/p>|<\/div>/i', "\n", $html))));
         $email->html($html !== '' ? $html : '<p></p>')->text($text !== '' ? $text : ' ');
 
@@ -59,7 +64,10 @@ class Outgoing
             $email->getHeaders()->addMailboxHeader('Disposition-Notification-To', new Address($fromMail, $fromName));
         }
 
-        foreach ($files as $file) {
+        foreach ($files as $i => $file) {
+            if (in_array((int) $i, $cloud, true) && $links) {
+                continue; // ушёл ссылкой
+            }
             if ($file instanceof UploadedFile && $file->isValid()) {
                 $email->attachFromPath($file->getRealPath(), $file->getClientOriginalName(), $file->getMimeType());
             }
@@ -80,6 +88,42 @@ class Outgoing
         $email->getHeaders()->addIdHeader('Message-ID', $email->generateMessageId());
 
         return $email;
+    }
+
+    /** Загрузить отмеченные файлы в Nextcloud. @return array<int,array{name:string,size:int,url:string,expires:?string}> */
+    private function publishToCloud(array $files, array $cloud): array
+    {
+        if (! $cloud || ! \App\Services\Cloud\Nextcloud::enabled()) {
+            return [];
+        }
+        $nc = new \App\Services\Cloud\Nextcloud();
+        $out = [];
+        foreach ($files as $i => $file) {
+            if (! in_array((int) $i, $cloud, true) || ! $file instanceof UploadedFile || ! $file->isValid()) {
+                continue;
+            }
+            $r = $nc->publish($file->getRealPath(), $file->getClientOriginalName(), $this->session->user());
+            $out[] = ['name' => $file->getClientOriginalName(), 'size' => (int) $file->getSize(), 'url' => $r['url'], 'expires' => $r['expires']];
+        }
+
+        return $out;
+    }
+
+    private function cloudBlockHtml(array $links): string
+    {
+        $fmt = function (int $b): string {
+            return $b >= 1073741824 ? round($b / 1073741824, 1) . ' ГБ' : ($b >= 1048576 ? round($b / 1048576, 1) . ' МБ' : max(1, (int) round($b / 1024)) . ' КБ');
+        };
+        $rows = '';
+        foreach ($links as $l) {
+            $rows .= '<div style="margin:4px 0"><a href="' . htmlspecialchars($l['url']) . '" style="color:#1a56db">' . htmlspecialchars($l['name']) . '</a> <span style="color:#777">(' . $fmt($l['size']) . ')</span></div>';
+        }
+        $until = array_filter(array_map(fn ($l) => $l['expires'], $links));
+        $note = $until ? 'Ссылки действуют до ' . date('d.m.Y', strtotime(min($until))) . '.' : '';
+
+        return '<div style="margin-top:16px;padding:12px 14px;border:1px solid #dde3ea;border-radius:8px;background:#f6f8fa;font-family:sans-serif;font-size:14px">'
+            . '<div style="font-weight:600;margin-bottom:6px">Файлы к письму (через облако)</div>' . $rows
+            . ($note ? '<div style="color:#777;font-size:12px;margin-top:6px">' . $note . '</div>' : '') . '</div>';
     }
 
     public static function messageId(Email $email): string

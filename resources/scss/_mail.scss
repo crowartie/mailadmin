@@ -395,6 +395,7 @@
     }
 }
 
+.att--cloud { border-color: color-mix(in srgb, var(--ok) 50%, var(--border)); background: v.$c-ok-soft; }
 .att {
     display: inline-flex;
     align-items: center;

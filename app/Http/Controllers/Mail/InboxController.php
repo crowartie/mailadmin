@@ -36,6 +36,7 @@ class InboxController extends Controller
             'query' => $q,
             'list' => $store->list($folder, (int) $request->query('page', 1), $filter, $q),
             'outbox' => Outbox::where('user', $imap->user())->where('status', 'scheduled')->count(),
+            'cloud' => ['enabled' => \App\Services\Cloud\Nextcloud::enabled(), 'thresholdMb' => (int) (\App\Services\Cloud\Nextcloud::settings()['threshold_mb'] ?? 10), 'maxMb' => \App\Services\Cloud\Nextcloud::enabled() ? 256 : 50],
             'openUid' => $request->query('uid') ? (int) $request->query('uid') : null,
             'composeTo' => $request->query('compose') ? (string) $request->query('to', '') : null,
         ]);

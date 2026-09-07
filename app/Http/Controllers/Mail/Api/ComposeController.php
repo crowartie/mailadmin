@@ -35,7 +35,9 @@ class ComposeController extends Controller
         'sendAt' => ['nullable', 'date'],
         'remindDays' => ['nullable', 'integer', 'min:1', 'max:60'],
         'files' => ['nullable', 'array', 'max:20'],
-        'files.*' => ['file', 'max:51200'],
+        'files.*' => ['file', 'max:262144'],
+        'cloud' => ['nullable', 'array'],
+        'cloud.*' => ['integer', 'min:0', 'max:19'],
     ];
 
     /** Отправить сейчас или (с sendAt) положить в очередь на отправку по расписанию. */
@@ -46,7 +48,7 @@ class ComposeController extends Controller
 
         $store = new MailStore($imap->client());
         $out = new Outgoing($imap, $store);
-        $email = $out->build($form, $request->file('files', []));
+        $email = $out->build($form, $request->file('files', []), array_map('intval', $form['cloud'] ?? []));
 
         if (! empty($form['sendAt'])) {
             $at = Carbon::parse($form['sendAt']);

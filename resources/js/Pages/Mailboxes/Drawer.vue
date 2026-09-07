@@ -104,7 +104,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 <template>
     <div>
         <div class="drawer-backdrop" @click="emit('close')" />
-        <aside class="drawer" role="dialog" aria-modal="true" :aria-label="mailbox.username" style="width: 680px">
+        <aside class="drawer" role="dialog" aria-modal="true" :aria-label="mailbox.username" style="width: 760px">
             <header class="drawer__head">
                 <div class="avatar avatar--lg">{{ initials }}</div>
                 <div class="grow">

@@ -113,7 +113,7 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/maillists/{list}/moderate', [MaillistsController::class, 'moderate'])->where('list', '.*@.*');
 
         Route::get('/settings', [SettingsController::class, 'index']);
-        Route::get('/settings/{tab}', [SettingsController::class, 'index'])->where('tab', 'domains|spam|limits|cert|backup|admins|alerts');
+        Route::get('/settings/{tab}', [SettingsController::class, 'index'])->where('tab', 'domains|spam|limits|cert|backup|admins|alerts|cloud');
         Route::post('/settings/dns/recheck', [SettingsController::class, 'recheckDns']);
         Route::post('/settings/domains/{domain}', [SettingsController::class, 'saveDomain']);
         Route::post('/settings/dkim/rotate', [SettingsController::class, 'rotateDkim']);
@@ -133,6 +133,12 @@ Route::middleware('area:admin')->group(function () {
         Route::delete('/settings/admins/{user}', [SettingsController::class, 'destroyAdmin']);
         Route::post('/settings/alerts', [SettingsController::class, 'saveAlerts']);
         Route::post('/settings/alerts/test', [SettingsController::class, 'testAlerts']);
+        Route::post('/settings/cloud/start', [SettingsController::class, 'cloudStart']);
+        Route::get('/settings/cloud/poll', [SettingsController::class, 'cloudPoll']);
+        Route::post('/settings/cloud/manual', [SettingsController::class, 'cloudManual']);
+        Route::post('/settings/cloud', [SettingsController::class, 'cloudSave']);
+        Route::post('/settings/cloud/disconnect', [SettingsController::class, 'cloudDisconnect']);
+        Route::post('/settings/cloud/test', [SettingsController::class, 'cloudTest']);
 
     });
 });

@@ -27,6 +27,7 @@ const props = defineProps({
     query: { type: String, default: '' },
     list: Object,
     outbox: { type: Number, default: 0 },
+    cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50 }) },
     openUid: { type: Number, default: null },
     composeTo: { type: String, default: null },
 });
@@ -530,6 +531,7 @@ onBeforeUnmount(() => {
                     :compose="compose"
                     :identities="identities"
                     :settings="settings"
+                    :cloud="cloud"
                     @close="onComposeClose"
                     @send="send"
                     @toast="showToast"

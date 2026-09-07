@@ -38,9 +38,12 @@ const props = defineProps({
     // уведомления
     alerts: Object,
     channels: Object,
+    // облако
+    cloud: Object,
+    cloudStatus: Object,
 });
 
-const TABS = [['domains', 'Домены и DNS'], ['spam', 'Антиспам и карантин'], ['limits', 'Вложения и лимиты'], ['cert', 'Сертификат'], ['backup', 'Резервные копии'], ['admins', 'Администраторы'], ['alerts', 'Уведомления']];
+const TABS = [['domains', 'Домены и DNS'], ['spam', 'Антиспам и карантин'], ['limits', 'Вложения и лимиты'], ['cert', 'Сертификат'], ['backup', 'Резервные копии'], ['admins', 'Администраторы'], ['alerts', 'Уведомления'], ['cloud', 'Файлы и облако']];
 
 function post(url, data = {}, opts = {}) { router.post(url, data, { preserveScroll: true, ...opts }); }
 function del(url) { router.delete(url, { preserveScroll: true }); }
@@ -95,6 +98,37 @@ function pickEmployee(e) {
 function openAdmin(a) { editingAdmin.value = editingAdmin.value === a.id ? null : a.id; Object.assign(adminEdit, { name: a.name, role: a.role, password: '' }); }
 function saveAdmin(a) { router.put(`/settings/admins/${a.id}`, { ...adminEdit }, { preserveScroll: true, onSuccess: () => (editingAdmin.value = null) }); }
 const ROLE_HINT = { owner: 'всё, включая администраторов и резервные копии', admin: 'всё, кроме назначения администраторов', viewer: 'смотрит обзор и журналы, ничего не меняет', operator: 'заводит ящики и псевдонимы, правит контакты компании' };
+
+// ── Облако ─────────────────────────────────────────────────────────────
+const cloudUrl = ref(props.cloud?.url || '');
+const cloudLogin = ref('');          // ссылка Login Flow, пока ждём подтверждения
+const cloudWaiting = ref(false);
+const cloudError = ref('');
+const manual = ref(false);
+const cloudForm = useForm({ enabled: !!props.cloud?.enabled, folder: props.cloud?.folder || 'Почта', threshold_mb: props.cloud?.threshold_mb ?? 10, expire_days: props.cloud?.expire_days ?? 30, link_password: props.cloud?.link_password || '' });
+const manualForm = useForm({ url: props.cloud?.url || '', login: '', app_password: '' });
+let cloudTimer = null;
+const csrf = () => decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '');
+async function cloudConnect() {
+    cloudError.value = ''; cloudWaiting.value = true;
+    try {
+        const r = await fetch('/settings/cloud/start', { method: 'POST', credentials: 'same-origin', headers: { 'X-XSRF-TOKEN': csrf(), Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ url: cloudUrl.value }) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.message || 'Ошибка ' + r.status);
+        cloudLogin.value = d.login;
+        window.open(d.login, '_blank', 'noopener');
+        cloudTimer = setInterval(cloudPoll, 3000);
+    } catch (e) { cloudError.value = e.message; cloudWaiting.value = false; }
+}
+async function cloudPoll() {
+    try {
+        const r = await fetch('/settings/cloud/poll', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.message || 'Ошибка ' + r.status);
+        if (d.done) { clearInterval(cloudTimer); cloudWaiting.value = false; cloudLogin.value = ''; router.reload({ onSuccess: () => { if (d.folderError) cloudError.value = 'Подключено, но папка не создана: ' + d.folderError; } }); }
+    } catch (e) { clearInterval(cloudTimer); cloudWaiting.value = false; cloudError.value = e.message; }
+}
+function cloudCancel() { clearInterval(cloudTimer); cloudWaiting.value = false; cloudLogin.value = ''; }
 
 // ── Уведомления ────────────────────────────────────────────────────────
 const alertsForm = useForm({ ...(props.alerts || {}), ...(props.channels || {}) });
@@ -382,6 +416,54 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                     <p class="hint">Двухфакторную защиту администратор подключает сам при первом входе (раздел «Безопасность»). Роли «Только просмотр» и «Оператор» не могут менять настройки сервера.</p>
                     <div class="form-actions"><button class="btn btn--primary" type="submit" :disabled="adminForm.processing">Назначить</button></div>
                 </form>
+            </div>
+        </template>
+
+        <!-- ── Файлы и облако ───────────────────────────────────────── -->
+        <template v-if="tab === 'cloud'">
+            <div class="grid-set">
+                <div class="card card--pad">
+                    <div class="card__title">Nextcloud для больших вложений</div>
+                    <template v-if="!cloud.connected">
+                        <p class="hint" style="margin-top: 0">Файлы крупнее порога не вкладываются в письмо, а загружаются в облако, получатель получает ссылку. Нужен любой Nextcloud (свой или у провайдера) и учётная запись в нём — она станет служебной, в её облаке появится папка «{{ cloudForm.folder }}».</p>
+                        <label class="field"><span>Адрес Nextcloud</span><input v-model="cloudUrl" class="input" placeholder="https://cloud.deltaservices.ru" :disabled="cloudWaiting"></label>
+                        <div v-if="!cloudWaiting" class="form-actions"><button class="btn btn--primary" type="button" :disabled="!cloudUrl" @click="cloudConnect">Подключить</button><button class="btn" type="button" @click="manual = !manual">Ввести пароль приложения вручную</button></div>
+                        <div v-else class="attn"><Icon name="clock" /><span>Откройте окно Nextcloud, войдите под служебной учёткой и нажмите «Разрешить доступ». Ждём подтверждения… <a :href="cloudLogin" target="_blank" rel="noopener">открыть ещё раз</a> · <a href="#" @click.prevent="cloudCancel">отменить</a></span></div>
+                        <p v-if="cloudError" class="error">{{ cloudError }}</p>
+                        <form v-if="manual" style="margin-top: 14px" @submit.prevent="manualForm.post('/settings/cloud/manual', { preserveScroll: true })">
+                            <label class="field"><span>Адрес</span><input v-model="manualForm.url" class="input" required></label>
+                            <label class="field"><span>Логин</span><input v-model="manualForm.login" class="input" required></label>
+                            <label class="field"><span>Пароль приложения</span><input v-model="manualForm.app_password" class="input" type="password" required><span class="hint">Nextcloud → Настройки → Безопасность → «Создать новый пароль приложения».</span></label>
+                            <button class="btn btn--primary" type="submit" :disabled="manualForm.processing">Подключить</button>
+                        </form>
+                    </template>
+                    <template v-else>
+                        <div class="attn" :class="cloudStatus && cloudStatus.ok ? 'attn--ok' : 'attn--no'" style="margin-bottom: 14px">
+                            <Icon :name="cloudStatus && cloudStatus.ok ? 'cloud' : 'warn'" />
+                            <span><b>{{ cloudStatus && cloudStatus.ok ? 'Подключено' : 'Нет связи' }}</b> — {{ cloud.login }} @ {{ cloud.url }}{{ cloudStatus && cloudStatus.version ? ' · Nextcloud ' + cloudStatus.version : '' }}<br><span class="row__sub">{{ cloudStatus ? cloudStatus.message : '' }}{{ cloudStatus && cloudStatus.free != null ? ' · свободно ' + mb(cloudStatus.free) : '' }}</span></span>
+                        </div>
+                        <form @submit.prevent="cloudForm.post('/settings/cloud', { preserveScroll: true })">
+                            <Toggle v-model="cloudForm.enabled" label="Отправлять большие вложения через облако" />
+                            <div class="toggles--3" style="margin-top: 12px">
+                                <label class="field"><span>Порог, МБ</span><input v-model.number="cloudForm.threshold_mb" class="input" type="number" min="1" max="1024"><span class="hint">Файлы крупнее уходят ссылкой. Лимит письма сейчас {{ sizeLimitMb }} МБ.</span></label>
+                                <label class="field"><span>Ссылка действует, дней</span><input v-model.number="cloudForm.expire_days" class="input" type="number" min="0" max="3650"><span class="hint">0 — бессрочно</span></label>
+                                <label class="field"><span>Пароль на ссылки</span><input v-model="cloudForm.link_password" class="input" placeholder="не нужен"><span class="hint">Один на все ссылки; получателю его сообщает отправитель</span></label>
+                            </div>
+                            <label class="field" style="margin-top: 8px"><span>Папка в облаке</span><input v-model="cloudForm.folder" class="input"><span class="hint">Внутри — подпапки по сотрудникам и месяцам: {{ cloudForm.folder }}/ivanov@…/2026-09/файл</span></label>
+                            <div class="form-actions" style="margin-top: 14px">
+                                <button class="btn btn--primary" type="submit" :disabled="cloudForm.processing">Сохранить</button>
+                                <button class="btn" type="button" @click="post('/settings/cloud/test')"><Icon name="upload" /> Проверить загрузку</button>
+                                <button class="btn btn--danger" type="button" @click="confirm('Отключить облако? Уже отправленные ссылки продолжат работать, новые вложения пойдут внутри писем.') && post('/settings/cloud/disconnect')">Отключить</button>
+                            </div>
+                        </form>
+                    </template>
+                </div>
+                <div class="card card--pad">
+                    <div class="card__title">Как это работает</div>
+                    <p class="hint" style="margin-top: 0">Сотрудник пишет письмо и прикладывает файлы как обычно. Всё, что крупнее порога, веб-почта помечает облачком; такие файлы при отправке загружаются в Nextcloud, а в письмо вставляется список ссылок. Любой файл можно переключить вручную: маленький отправить ссылкой или большой вложить, если он влезает в лимит письма.</p>
+                    <p class="hint">Файлы лежат в облаке служебной учётной записи, а не в личных облаках сотрудников — их видит и чистит администратор. Срок ссылки ограничивает доступ, сам файл остаётся в папке.</p>
+                    <p class="hint">Пароль приложения хранится в базе в зашифрованном виде и не показывается. Чтобы сменить учётку, отключите облако и подключите заново.</p>
+                </div>
             </div>
         </template>
 

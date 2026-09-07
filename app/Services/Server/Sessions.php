@@ -15,6 +15,8 @@ class Sessions
     {
         $out = [];
         $alive = DB::table('sessions')->pluck('id')->flip();
+        $live = \App\Models\Vmail\Mailbox::query()->pluck('username')->map('strtolower')->flip();
+        MailSession::query()->whereNotIn('user', $live->keys())->delete();
         $web = MailSession::query()->when($onlyUser, fn ($q) => $q->where('user', $onlyUser))->orderByDesc('last_seen_at')->get();
         foreach ($web as $s) {
             if (! isset($alive[$s->id])) {

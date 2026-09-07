@@ -12,6 +12,7 @@ const props = defineProps({
     compose: { type: Object, required: true },
     identities: { type: Array, default: () => [] },
     settings: { type: Object, default: () => ({}) },
+    cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50 }) },
 });
 const emit = defineEmits(['close', 'send', 'toast', 'draft']);
 
@@ -42,7 +43,11 @@ const toInput = ref(null);
 const fileInput = ref(null);
 let autosave = null;
 
-const MAX_FILE = 50 * 1024 * 1024;
+const MAX_FILE = (props.cloud?.maxMb || 50) * 1024 * 1024;
+const CLOUD_FROM = (props.cloud?.thresholdMb || 10) * 1024 * 1024;
+const viaCloud = ref(new Set());   // индексы файлов, которые уйдут ссылкой
+const cloudCount = computed(() => viaCloud.value.size);
+function toggleCloud(i) { const s = new Set(viaCloud.value); s.has(i) ? s.delete(i) : s.add(i); viaCloud.value = s; dirty.value = true; }
 const totalSize = computed(() => files.value.reduce((s, f) => s + f.size, 0));
 const canSend = computed(() => (to.value.length + cc.value.length + bcc.value.length) > 0 && !to.value.some((a) => a.bad));
 
@@ -54,6 +59,7 @@ function payload(extra = {}) {
         bcc: addrString(bcc.value),
         subject: subject.value,
         html: html.value,
+        cloud: props.cloud?.enabled ? [...viaCloud.value] : [],
         inReplyTo: c.inReplyTo,
         references: c.references,
         answeredFolder: c.answeredFolder,
@@ -105,14 +111,17 @@ function close() {
 
 function addFiles(list) {
     for (const f of list) {
-        if (f.size > MAX_FILE) { emit('toast', { text: `«${f.name}» больше 50 МБ — такие файлы лучше отправлять ссылкой`, error: true }); continue; }
-        if (!files.value.some((x) => x.name === f.name && x.size === f.size)) files.value.push(f);
+        if (f.size > MAX_FILE) { emit('toast', { text: `«${f.name}» больше ${Math.round(MAX_FILE / 1048576)} МБ — не влезет ни в письмо, ни в облако`, error: true }); continue; }
+        if (!files.value.some((x) => x.name === f.name && x.size === f.size)) {
+            files.value.push(f);
+            if (props.cloud?.enabled && f.size >= CLOUD_FROM) { const s = new Set(viaCloud.value); s.add(files.value.length - 1); viaCloud.value = s; }
+        }
     }
     dirty.value = true;
 }
 function onFiles(e) { addFiles(e.target.files); e.target.value = ''; }
 function onDrop(e) { drop.value = false; if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files); }
-function removeFile(i) { files.value.splice(i, 1); dirty.value = true; }
+function removeFile(i) { files.value.splice(i, 1); const s = new Set(); viaCloud.value.forEach((k) => { if (k < i) s.add(k); else if (k > i) s.add(k - 1); }); viaCloud.value = s; dirty.value = true; }
 
 function openMenu(kind, e) {
     const r = e.currentTarget.getBoundingClientRect();
@@ -202,11 +211,13 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                     <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                 </span>
             </template>
-            <span v-for="(f, i) in files" :key="f.name + i" class="att" :title="f.name">
-                <Icon name="clip" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span>
+            <span v-for="(f, i) in files" :key="f.name + i" class="att" :class="{ 'att--cloud': viaCloud.has(i) }" :title="viaCloud.has(i) ? 'Уйдёт ссылкой через облако' : f.name">
+                <Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span>
+                <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'" @click="toggleCloud(i)"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
                 <button type="button" title="Убрать" @click="removeFile(i)"><Icon name="x" :size="13" /></button>
             </span>
-            <span v-if="totalSize > 20 * 1048576" class="chip chip--warn" style="height: 28px">{{ size(totalSize) }} — большое письмо может не пройти у получателя</span>
+            <span v-if="cloud.enabled && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель откроет их в облаке</span>
+            <span v-else-if="totalSize > 20 * 1048576" class="chip chip--warn" style="height: 28px">{{ size(totalSize) }} — большое письмо может не пройти у получателя</span>
         </div>
 
         <div class="compose__foot">
