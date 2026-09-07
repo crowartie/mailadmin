@@ -75,6 +75,8 @@ class Server
         $locks = new DAV\Locks\Backend\PDO($pdo);
         $locks->tableName = 'dav_locks';
         $server->addPlugin(new DAV\Locks\Plugin($locks));
+        // Служебная страница для браузера: после входа паролем ящика видно дерево календарей и книг (только просмотр).
+        $server->addPlugin(new DAV\Browser\Plugin(false));
 
         return $server;
     }
