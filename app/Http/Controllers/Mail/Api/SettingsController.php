@@ -41,11 +41,15 @@ class SettingsController extends Controller
     /** Смена пароля ящика: проверяем текущий по сессии, пишем SSHA512 в vmail, обновляем секрет сессии. */
     public function password(Request $request, ImapSession $imap, MailboxService $mailboxes): JsonResponse
     {
+        $min = (int) (\App\Models\AppSetting::group('security')['min_password'] ?? 10);
         $data = $request->validate([
             'current' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:10', 'max:128', 'confirmed'],
+            'password' => ['required', 'string', 'min:' . $min, 'max:128', 'confirmed'],
         ]);
         abort_unless(hash_equals($imap->password(), $data['current']), 422, 'Текущий пароль указан неверно');
+        if ($this->leaked($data['password'])) {
+            return response()->json(['message' => 'Этот пароль встречается в известных утечках — придумайте другой.'], 422);
+        }
 
         $mailbox = Mailbox::findOrFail($imap->user());
         $mailbox->password = $mailboxes->hashPassword($data['password']);
@@ -54,6 +58,27 @@ class SettingsController extends Controller
         $imap->rotate($data['password']);
 
         return response()->json(['ok' => true]);
+    }
+
+    /** Проверка по базе утечек HIBP (k-anonymity: наружу уходят 5 символов хеша). Недоступность сети — не препятствие. */
+    private function leaked(string $password): bool
+    {
+        try {
+            $sha = strtoupper(sha1($password));
+            $r = \Illuminate\Support\Facades\Http::timeout(3)->withHeaders(['Add-Padding' => 'true'])->get('https://api.pwnedpasswords.com/range/' . substr($sha, 0, 5));
+            if (! $r->ok()) {
+                return false;
+            }
+            foreach (preg_split('/\r?\n/', $r->body()) as $line) {
+                [$suffix, $count] = array_pad(explode(':', trim($line)), 2, '0');
+                if ($suffix === substr($sha, 5) && (int) $count > 0) {
+                    return true;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return false;
     }
 
     // ── Метки ──────────────────────────────────────────────────────────

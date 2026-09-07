@@ -14,7 +14,7 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
-    protected $fillable = ['name', 'email', 'password', 'is_active'];
+    protected $fillable = ['name', 'email', 'password', 'is_active', 'role'];
 
     protected $hidden = ['password', 'remember_token', 'totp_secret'];
 
@@ -27,6 +27,13 @@ class User extends Authenticatable
             'totp_secret' => 'encrypted',
             'is_active' => 'boolean',
         ];
+    }
+
+    public const ROLES = ['owner' => 'Главный администратор', 'admin' => 'Администратор', 'viewer' => 'Только просмотр', 'operator' => 'Оператор приёмной'];
+
+    public function roleTitle(): string
+    {
+        return self::ROLES[$this->role ?? 'admin'] ?? $this->role;
     }
 
     public function hasTwoFactor(): bool

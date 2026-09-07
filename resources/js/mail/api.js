@@ -73,6 +73,16 @@ export const api = {
     rules: () => request('GET', '/mail/api/rules'),
     saveRules: (rules, autoreply) => request('PUT', '/mail/api/rules', { rules, autoreply }),
 
+    // Безопасность.
+    security: () => request('GET', '/mail/api/security'),
+    twofaSetup: () => request('POST', '/mail/api/security/2fa/setup'),
+    twofaEnable: (code) => request('POST', '/mail/api/security/2fa/enable', { code }),
+    twofaDisable: (password) => request('POST', '/mail/api/security/2fa/disable', { password }),
+    createAppPassword: (name, password) => request('POST', '/mail/api/security/app-passwords', { name, password }),
+    deleteAppPassword: (id) => request('DELETE', `/mail/api/security/app-passwords/${id}`),
+    kickSession: (id) => request('POST', '/mail/api/security/sessions/kick', { id }),
+    kickOthers: () => request('POST', '/mail/api/security/sessions/kick-others'),
+
     // Контакты.
     books: () => request('GET', '/mail/api/contacts/books'),
     contacts: ({ book = '', q = '' } = {}) => {

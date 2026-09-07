@@ -53,6 +53,7 @@ class InboxController extends Controller
             'folders' => $store->folders(),
             'labels' => Label::where('user', $imap->user())->orderBy('sort')->orderBy('id')->get(['id', 'name', 'color']),
             'rules' => \App\Models\Webmail\RuleSet::find($imap->user())?->only(['rules', 'autoreply']) ?? ['rules' => [], 'autoreply' => null],
+            'force2fa' => (bool) $request->session()->get('mail.force2fa'),
         ]);
     }
 }

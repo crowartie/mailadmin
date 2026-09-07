@@ -7,6 +7,8 @@ use App\Models\Vmail\Alias;
 use App\Models\Vmail\Domain;
 use App\Models\Vmail\Mailbox;
 use App\Services\ServerHealth;
+use App\Services\Server\PostfixQueue;
+use App\Support\Area;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
@@ -42,6 +44,8 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
             ],
             'mailUser' => fn () => $request->session()->get('mail.user'),
+            // Веб-почта живёт на своём порту того же имени: ссылки рельса ведут туда.
+            'mailUrl' => fn () => Area::mailUrl($request),
             // Меню и состояние служб нужны только админке; веб-почте лишние запросы ни к чему.
             'nav' => $isAdminArea && $request->user() ? fn () => [
                 'counts' => Cache::remember('nav.counts', 60, fn () => [
@@ -49,7 +53,8 @@ class HandleInertiaRequests extends Middleware
                     'aliases' => Alias::count(),
                     'domains' => Domain::count(),
                     'rules' => SieveRule::count(),
-                ]),
+                    'units' => \Illuminate\Support\Facades\Schema::hasTable('units') ? \Illuminate\Support\Facades\DB::table('units')->count() : null,
+                ]) + ['queue' => app(PostfixQueue::class)->count()],
                 'health' => app(ServerHealth::class)->summary(),
             ] : null,
         ]);

@@ -17,8 +17,8 @@ class ServerHealth
         'dovecot' => 'Dovecot — IMAP и POP3',
         'amavis' => 'Amavis — антиспам и антивирус',
         'clamav-daemon' => 'ClamAV — базы вирусов',
-        'sogo' => 'SOGo — календари и контакты',
         'nginx' => 'nginx — веб',
+        'iredapd' => 'iRedAPD — фильтр на входе',
     ];
 
     /**
@@ -34,6 +34,7 @@ class ServerHealth
                     'name' => $name,
                     'status' => match ($state) {
                         'active' => 'работает',
+                        'disabled' => 'выключен',
                         'inactive', 'failed' => 'остановлен',
                         default => 'нет данных',
                     },
@@ -88,9 +89,17 @@ class ServerHealth
             $process->setTimeout(3)->run();
 
             $state = trim($process->getOutput());
+            if ($state === 'inactive') {
+                // Выключенная намеренно служба (ClamAV без баз) — не авария.
+                $en = new Process(['systemctl', 'is-enabled', $unit]);
+                $en->setTimeout(3)->run();
+                if (trim($en->getOutput()) === 'disabled') {
+                    return 'disabled';
+                }
+            }
 
             // «unknown»/пустой ответ — юнита нет на этой машине.
-            return in_array($state, ['active', 'inactive', 'failed', 'activating'], true) ? $state : 'unknown';
+            return in_array($state, ['active', 'inactive', 'failed', 'activating', 'disabled'], true) ? $state : 'unknown';
         } catch (\Throwable) {
             return 'unknown';
         }

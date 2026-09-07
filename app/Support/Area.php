@@ -13,6 +13,17 @@ use Illuminate\Http\Request;
  */
 final class Area
 {
+    /** Базовый адрес веб-почты для ссылок из админки: https://host[:port]. */
+    public static function mailUrl(Request $request): string
+    {
+        $port = (int) config('areas.mail_port');
+        $scheme = $request->getScheme();
+        $host = $request->getHost();
+        $default = $scheme === 'https' ? 443 : 80;
+
+        return $scheme . '://' . $host . ($port === $default ? '' : ':' . $port);
+    }
+
     public const ADMIN = 'admin';
     public const MAIL = 'mail';
 

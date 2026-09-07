@@ -9,6 +9,7 @@ use App\Http\Controllers\Mail\Api\ComposeController;
 use App\Http\Controllers\Mail\Api\FolderController;
 use App\Http\Controllers\Mail\Api\MessageController;
 use App\Http\Controllers\Mail\Api\RulesController;
+use App\Http\Controllers\Mail\Api\SecurityController as MailSecurityController;
 use App\Http\Controllers\Mail\Api\SettingsController;
 use App\Http\Controllers\Mail\Api\SuggestController;
 use App\Http\Controllers\Mail\InboxController;
@@ -21,6 +22,8 @@ Route::middleware('area:mail')->group(function () {
 
     Route::get('/mail/login', [LoginController::class, 'create'])->name('mail.login');
     Route::post('/mail/login', [LoginController::class, 'store']);
+    Route::get('/mail/login/code', [LoginController::class, 'code']);
+    Route::post('/mail/login/code', [LoginController::class, 'verifyCode']);
     Route::post('/mail/logout', [LoginController::class, 'destroy']);
 
     // CalDAV/CardDAV для телефонов и почтовых программ (Basic-авторизация паролем от почты).
@@ -64,6 +67,15 @@ Route::middleware('area:mail')->group(function () {
             Route::post('labels', [SettingsController::class, 'storeLabel']);
             Route::patch('labels/{id}', [SettingsController::class, 'updateLabel'])->whereNumber('id');
             Route::delete('labels/{id}', [SettingsController::class, 'destroyLabel'])->whereNumber('id');
+
+            Route::get('security', [MailSecurityController::class, 'show']);
+            Route::post('security/2fa/setup', [MailSecurityController::class, 'twofaSetup']);
+            Route::post('security/2fa/enable', [MailSecurityController::class, 'twofaEnable']);
+            Route::post('security/2fa/disable', [MailSecurityController::class, 'twofaDisable']);
+            Route::post('security/app-passwords', [MailSecurityController::class, 'storeAppPassword']);
+            Route::delete('security/app-passwords/{id}', [MailSecurityController::class, 'destroyAppPassword'])->whereNumber('id');
+            Route::post('security/sessions/kick', [MailSecurityController::class, 'kick']);
+            Route::post('security/sessions/kick-others', [MailSecurityController::class, 'kickOthers']);
 
             Route::get('rules', [RulesController::class, 'show']);
             Route::put('rules', [RulesController::class, 'update']);

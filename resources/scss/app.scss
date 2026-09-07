@@ -4,6 +4,7 @@
 @use 'components';
 @use 'mail';
 @use 'groupware';
+@use 'admin2';
 
 *, *::before, *::after { box-sizing: border-box; }
 

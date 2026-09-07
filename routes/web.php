@@ -6,6 +6,8 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DomainController;
+use App\Http\Controllers\LogsController;
+use App\Http\Controllers\QueueController;
 use App\Http\Controllers\MailboxController;
 use App\Http\Controllers\RulesController;
 use App\Http\Controllers\SecurityController;
@@ -42,6 +44,17 @@ Route::middleware('area:admin')->group(function () {
 
         Route::get('/rules', [RulesController::class, 'index']);
 
+        Route::get('/queue', [QueueController::class, 'index']);
+        Route::get('/queue/list', [QueueController::class, 'list']);
+        Route::post('/queue/action', [QueueController::class, 'action']);
+        Route::get('/queue/{id}/raw', [QueueController::class, 'raw'])->where('id', '[A-Za-z0-9]+');
+        Route::get('/queue/{id}', [QueueController::class, 'show'])->where('id', '[A-Za-z0-9]+');
+
+        Route::get('/logs', [LogsController::class, 'index']);
+        Route::get('/logs/tail', [LogsController::class, 'tail']);
+        Route::get('/logs/path', [LogsController::class, 'path']);
+        Route::get('/logs/export', [LogsController::class, 'export']);
+
         Route::get('/aliases', [AliasController::class, 'index']);
         Route::get('/aliases/create', [AliasController::class, 'create']);
         Route::post('/aliases', [AliasController::class, 'store']);
@@ -57,16 +70,23 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/company-contacts/suggestions/{suggestion}/reject', [CompanyContactsController::class, 'reject']);
 
         Route::get('/security', [SecurityController::class, 'index']);
+        Route::post('/security/unban', [SecurityController::class, 'unban']);
+        Route::post('/security/ban', [SecurityController::class, 'ban']);
+        Route::post('/security/ignore', [SecurityController::class, 'ignore']);
+        Route::post('/security/kick', [SecurityController::class, 'kick']);
+        Route::post('/security/require-2fa', [SecurityController::class, 'require2fa']);
+        Route::post('/security/reset-2fa', [SecurityController::class, 'reset2fa']);
+        Route::post('/security/policies', [SecurityController::class, 'policies']);
+        Route::delete('/security/app-passwords/{password}', [SecurityController::class, 'revokeAppPassword']);
         Route::get('/security/2fa', [TwoFactorController::class, 'setup']);
         Route::post('/security/2fa', [TwoFactorController::class, 'enable']);
         Route::delete('/security/2fa', [TwoFactorController::class, 'disable']);
+        Route::get('/security/{tab}', [SecurityController::class, 'index'])->where('tab', 'overview|bans|logins|twofa|apppasswords|sessions');
 
         // Разделы из плана, до которых ещё не дошли: честная заглушка вместо 404.
         $planned = [
             'units' => ['Подразделения', 'Дерево отделов и группы для прав и рассылок. Появится вместе с импортом сотрудников из CSV.'],
             'maillists' => ['Рассылки', 'Списки рассылки mlmmj: подписчики, модераторы, архив.'],
-            'queue' => ['Очередь', 'Письма, ожидающие отправки: повторить, удалить, посмотреть заголовки. Требует агента на почтовом сервере.'],
-            'logs' => ['Журналы', 'Почта, спам, безопасность, ошибки, действия администраторов — с поиском по адресу и message-id.'],
             'settings' => ['Настройки', 'Домены и DKIM, антиспам, вложения, архив и бэкап, сертификаты, администраторы.'],
         ];
         foreach ($planned as $path => [$title, $note]) {

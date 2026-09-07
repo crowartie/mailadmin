@@ -30,23 +30,45 @@ class Setting extends Model
         'shortcuts' => true,
         'preview' => true,
         'show_images' => 'ask',
+        'totp_enabled' => false,
     ];
 
+    /** Ключи, которые никогда не уходят в интерфейс. */
+    private const SECRETS = ['totp_secret'];
+
     /** @return array<string,mixed> */
-    public static function for(string $user): array
+    public static function for(string $user, bool $withSecrets = false): array
     {
         $row = static::find($user);
+        $data = array_merge(self::DEFAULTS, $row?->data ?? []);
+        if (! $withSecrets) {
+            foreach (self::SECRETS as $k) {
+                unset($data[$k]);
+            }
+        }
 
-        return array_merge(self::DEFAULTS, $row?->data ?? []);
+        return $data;
     }
 
+    /** Настройки из формы: только известные ключи. */
     public static function save_(string $user, array $patch): array
     {
+        return self::patch($user, array_intersect_key($patch, self::DEFAULTS));
+    }
+
+    /** Любые ключи (служебные: секрет 2FA и т.п.). */
+    public static function patch(string $user, array $patch): array
+    {
         $row = static::firstOrNew(['user' => $user]);
-        $data = array_merge($row->data ?? [], array_intersect_key($patch, self::DEFAULTS));
+        $data = array_merge($row->data ?? [], $patch);
+        foreach ($patch as $k => $v) {
+            if ($v === null) {
+                unset($data[$k]);
+            }
+        }
         $row->data = $data;
         $row->save();
 
-        return array_merge(self::DEFAULTS, $data);
+        return array_diff_key(array_merge(self::DEFAULTS, $data), array_flip(self::SECRETS));
     }
 }

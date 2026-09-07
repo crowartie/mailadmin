@@ -86,6 +86,13 @@ const paths = {
     copy: 'M8 8h12v12H8zM16 8V4H4v12h4',
     globe2: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18',
     today: 'M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M8 3v4M16 3v4M9 15h2v2H9z',
+    play: 'M7 5v14l11-7z',
+    file: 'M5 3h9l5 5v13H5zM14 3v5h5',
+    laptop: 'M3 5h18v12H3zM2 20h20',
+    move: 'M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20',
+    tg: 'M21 4L3 11l6 2 2 6 3-4 5 3z',
+    warn: 'M12 3l10 18H2zM12 10v4M12 17h.01',
+    lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
 };
 </script>
 

@@ -17,6 +17,7 @@ const props = defineProps({
     folders: Array,
     labels: Array,
     rules: Object,
+    force2fa: Boolean,
 });
 
 const SECTIONS = [
@@ -34,6 +35,22 @@ const toast = ref(null);
 const dialog = ref(null);
 const editing = ref(null); // редактируемое правило
 const pw = ref({ current: '', password: '', password_confirmation: '' });
+const sec = ref(null);
+const twofa = ref(null);
+const twofaCode = ref('');
+const twofaPassword = ref('');
+const newAppPassword = ref(null);
+const createdPassword = ref(null);
+async function loadSecurity() { try { sec.value = await api.security(); } catch (e) { say(e.message, true); } }
+async function startTwofa() { busy.value = true; try { twofa.value = await api.twofaSetup(); twofaCode.value = ''; } catch (e) { say(e.message, true); } finally { busy.value = false; } }
+async function enableTwofa() { busy.value = true; try { await api.twofaEnable(twofaCode.value); twofa.value = null; await loadSecurity(); say('Двухфакторная защита включена'); if (props.force2fa) window.location.href = '/mail'; } catch (e) { say(e.message, true); } finally { busy.value = false; } }
+async function disableTwofa() { busy.value = true; try { await api.twofaDisable(twofaPassword.value); twofaPassword.value = ''; await loadSecurity(); say('Защита выключена'); } catch (e) { say(e.message, true); } finally { busy.value = false; } }
+async function createAppPassword() { busy.value = true; try { createdPassword.value = await api.createAppPassword(newAppPassword.value.name, newAppPassword.value.password); newAppPassword.value = null; await loadSecurity(); } catch (e) { say(e.message, true); } finally { busy.value = false; } }
+async function revokeAppPassword(p) { if (!confirm(`Отозвать пароль «${p.name}»? Устройство перестанет получать почту.`)) return; try { await api.deleteAppPassword(p.id); await loadSecurity(); } catch (e) { say(e.message, true); } }
+async function kickSession(s) { try { const r = await api.kickSession(s.id); sec.value.sessions = r.sessions; } catch (e) { say(e.message, true); } }
+async function kickOthers() { try { const r = await api.kickOthers(); sec.value.sessions = r.sessions; say('Остальные сеансы завершены'); } catch (e) { say(e.message, true); } }
+function when(iso, long = false) { if (!iso) return ''; const d = new Date(iso); const diff = (Date.now() - d) / 60000; if (!long) { if (diff < 1) return 'сейчас'; if (diff < 60) return Math.round(diff) + ' мин назад'; if (diff < 1440) return Math.round(diff / 60) + ' ч назад'; } return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
+if (props.section === 'security') loadSecurity();
 const busy = ref(false);
 let toastTimer = null;
 
@@ -319,23 +336,86 @@ const shortcuts = [
 
                     <!-- Безопасность -->
                     <template v-if="section === 'security'">
+                        <div v-if="force2fa" class="card mset__section" style="border-color: var(--warn)">
+                            <h2>Администратор требует двухфакторную защиту</h2>
+                            <p class="hint" style="margin: 0">Подключите приложение-аутентификатор ниже — после этого почта откроется как обычно.</p>
+                        </div>
+
+                        <div class="card mset__section">
+                            <h2>Двухфакторная защита <span class="grow" /><span v-if="sec" class="chip" :class="sec.totp ? 'chip--ok' : 'chip--warn'">{{ sec.totp ? 'включена' : 'выключена' }}</span></h2>
+                            <template v-if="sec && !sec.totp && !twofa">
+                                <p class="hint" style="margin: 0">При входе в веб-почту кроме пароля понадобится код из приложения на телефоне (Яндекс Ключ, Google Authenticator, любое TOTP). Почтовые программы и телефон подключаются паролем приложения.</p>
+                                <div><button class="btn btn--primary" type="button" :disabled="busy" @click="startTwofa">Подключить приложение</button></div>
+                            </template>
+                            <template v-if="twofa">
+                                <div style="display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap">
+                                    <img :src="twofa.qr" alt="QR" style="width: 180px; height: 180px; border-radius: 10px; background: #fff; border: 1px solid var(--border)">
+                                    <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 10px">
+                                        <div>1. Отсканируйте код приложением или введите ключ вручную:</div>
+                                        <div class="mono" style="font-size: 13px; letter-spacing: .08em; word-break: break-all">{{ twofa.secret.match(/.{1,4}/g).join(' ') }}</div>
+                                        <div>2. Введите шесть цифр из приложения:</div>
+                                        <form class="field__row" @submit.prevent="enableTwofa"><input v-model="twofaCode" class="input" inputmode="numeric" maxlength="6" placeholder="000000" style="width: 140px" required><button class="btn btn--primary" type="submit" :disabled="busy">Включить</button><button class="btn" type="button" @click="twofa = null">Отмена</button></form>
+                                    </div>
+                                </div>
+                            </template>
+                            <template v-if="sec && sec.totp">
+                                <p class="hint" style="margin: 0">Чтобы выключить, введите пароль от почты.</p>
+                                <form class="field__row" @submit.prevent="disableTwofa"><input v-model="twofaPassword" class="input" type="password" placeholder="Пароль от почты" style="max-width: 260px" required><button class="btn" type="submit" :disabled="busy || sec.required">Выключить</button><span v-if="sec.required" class="hint">выключить нельзя — требование администратора</span></form>
+                            </template>
+                        </div>
+
+                        <div class="card mset__section">
+                            <h2>Пароли приложений <span class="grow" /><button v-if="sec && sec.appPasswordsAllowed" class="btn btn--sm btn--primary" type="button" @click="newAppPassword = { name: '', password: '' }"><Icon name="plus" :size="14" />Создать</button></h2>
+                            <p class="hint" style="margin: 0">Отдельный пароль для телефона или Outlook: если устройство потеряется, отзовите его пароль, основной менять не придётся.</p>
+                            <form v-if="newAppPassword" class="mset__cols" style="align-items: end" @submit.prevent="createAppPassword">
+                                <div class="field"><label>Для чего</label><input v-model="newAppPassword.name" class="input" placeholder="iPhone, Outlook на работе…" required></div>
+                                <div class="field"><label>Ваш пароль от почты</label><div class="field__row"><input v-model="newAppPassword.password" class="input" type="password" required><button class="btn btn--primary" type="submit" :disabled="busy">Создать</button></div></div>
+                            </form>
+                            <div v-if="createdPassword" class="card" style="padding: 14px 16px; background: var(--ok-soft); border-color: var(--ok)">
+                                <div>Пароль для <b>{{ createdPassword.name }}</b> — скопируйте сейчас, второй раз он не покажется:</div>
+                                <div class="mono" style="font-size: 20px; letter-spacing: .1em; margin: 8px 0">{{ createdPassword.plain }}</div>
+                                <div class="hint">В программе укажите логин {{ user }} и этот пароль вместо основного.</div>
+                            </div>
+                            <div class="mset__list">
+                                <div v-for="p in (sec ? sec.appPasswords : [])" :key="p.id" class="mset__li">
+                                    <Icon name="key" :size="16" style="color: var(--faint)" />
+                                    <div class="grow"><div>{{ p.name }}</div><div class="sub">создан {{ when(p.created, true) }}<template v-if="p.lastUsed"> · использован {{ when(p.lastUsed, true) }}</template></div></div>
+                                    <button class="btn btn--sm" type="button" @click="revokeAppPassword(p)">Отозвать</button>
+                                </div>
+                                <div v-if="sec && !sec.appPasswords.length" class="empty">Паролей приложений нет</div>
+                            </div>
+                        </div>
+
+                        <div class="card mset__section">
+                            <h2>Где вы вошли <span class="grow" /><button v-if="sec && sec.sessions.some((s) => !s.me)" class="btn btn--sm" type="button" @click="kickOthers">Завершить все, кроме этого</button></h2>
+                            <div class="mset__list">
+                                <div v-for="s in (sec ? sec.sessions : [])" :key="s.id" class="mset__li">
+                                    <Icon :name="s.kind === 'web' ? 'laptop' : 'phone'" :size="16" style="color: var(--faint)" />
+                                    <div class="grow"><div>{{ s.device }}<span v-if="s.me" class="chip chip--acc" style="margin-left: 8px">это вы</span></div><div class="sub mono">{{ s.ip }}<template v-if="s.seen"> · {{ when(s.seen) }}</template></div></div>
+                                    <button v-if="!s.me" class="btn btn--sm" type="button" @click="kickSession(s)">Завершить</button>
+                                </div>
+                            </div>
+                            <div v-if="sec && sec.logins.length" class="grp" style="margin-top: 6px">Последние входы</div>
+                            <div v-for="(l, i) in (sec ? sec.logins : [])" :key="i" class="kv"><span>{{ when(l.at, true) }} · {{ l.device }}</span><b style="font-weight: 500" :style="{ color: l.result === 'ok' || l.result === 'new_device' ? 'var(--ok)' : 'var(--no)' }">{{ { ok: 'вход', new_device: 'вход с нового устройства', bad_password: 'неверный пароль', bad_code: 'неверный код', blocked: 'заблокировано' }[l.result] || l.result }} · <span class="mono">{{ l.ip }}</span></b></div>
+                        </div>
+
                         <form class="card mset__section" style="max-width: 560px" @submit.prevent="changePassword">
                             <h2>Смена пароля</h2>
                             <div class="field"><label>Текущий пароль</label><input v-model="pw.current" class="input" type="password" autocomplete="current-password" required></div>
-                            <div class="field"><label>Новый пароль (не короче 10 символов)</label><input v-model="pw.password" class="input" type="password" autocomplete="new-password" minlength="10" required></div>
+                            <div class="field"><label>Новый пароль (не короче {{ sec ? sec.minPassword : 10 }} символов)</label><input v-model="pw.password" class="input" type="password" autocomplete="new-password" :minlength="sec ? sec.minPassword : 10" required></div>
                             <div class="field"><label>Ещё раз</label><input v-model="pw.password_confirmation" class="input" type="password" autocomplete="new-password" required></div>
                             <div><button class="btn btn--primary" type="submit" :disabled="busy">Изменить пароль</button></div>
-                            <p class="hint" style="margin: 0">Тот же пароль используется в телефоне и почтовой программе — после смены обновите его там.</p>
+                            <p class="hint" style="margin: 0">Тот же пароль используется в телефоне и почтовой программе — после смены обновите его там. Пароль проверяется по базе известных утечек.</p>
                         </form>
                         <div class="card mset__section">
                             <h2>Подключение почтовых программ</h2>
                             <div class="mset__cols">
                                 <div class="kv"><span>Входящие (IMAP)</span><b class="mono">imap.{{ user.split('@')[1] }} : 993, SSL</b></div>
                                 <div class="kv"><span>Исходящие (SMTP)</span><b class="mono">smtp.{{ user.split('@')[1] }} : 587, STARTTLS</b></div>
+                                <div class="kv"><span>Календарь и контакты</span><b class="mono">https://mail.{{ user.split('@')[1] }}/dav/</b></div>
                                 <div class="kv"><span>Логин</span><b class="mono">{{ user }}</b></div>
-                                <div class="kv"><span>Пароль</span><b>ваш пароль от почты</b></div>
                             </div>
-                            <p class="hint" style="margin: 0">iPhone, Android и Outlook находят настройки сами по адресу — достаточно ввести почту и пароль.</p>
+                            <p class="hint" style="margin: 0">iPhone, Android и Outlook находят настройки сами по адресу. Пароль — от почты или пароль приложения.</p>
                         </div>
                     </template>
 
