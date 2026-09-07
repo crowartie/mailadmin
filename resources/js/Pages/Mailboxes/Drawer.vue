@@ -224,7 +224,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <div class="group-title">Подразделение и должность</div>
                     <div class="field"><label>Подразделение</label><select v-model="access.unit_id" class="input"><option :value="null">— без подразделения —</option><option v-for="u in mailbox.units || []" :key="u.id" :value="u.id">{{ ' '.repeat(u.depth * 3) }}{{ u.name }}</option></select></div>
                     <div class="field"><label>Должность</label><input v-model="access.title" class="input"></div>
-                    <div class="field"><label>Личная почта</label><input v-model="access.personal_email" class="input" type="email" placeholder="для ссылки смены пароля"><p v-if="access.errors.personal_email" class="error">{{ access.errors.personal_email }}</p></div>
+                    <div class="field"><label>Личная почта</label><input v-model="access.personal_email" class="input" type="email" placeholder="куда отправить выданный пароль"><p v-if="access.errors.personal_email" class="error">{{ access.errors.personal_email }}</p></div>
                     <div class="group-title">Защита входа</div>
                     <Toggle v-model="access.require_2fa" label="Требовать двухфакторную защиту при входе в веб-почту" />
                     <Toggle v-model="access.login_blocked" label="Запретить вход (ящик получает почту, но войти нельзя)" />
@@ -232,8 +232,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <div class="form-actions" style="margin-top: 4px"><button class="btn btn--primary" type="button" :disabled="access.processing" @click="saveAccess">Сохранить доступ</button></div>
                     <div class="divider" />
                     <div class="group-title">Пароль</div>
-                    <p class="hint">Отправить ссылку для смены пароля на личную почту{{ access.personal_email ? ' ' + access.personal_email : '' }} — сотрудник задаст пароль сам, вы его не узнаете. Или задайте вручную на вкладке «Общие».</p>
-                    <button class="btn" type="button" :disabled="!access.personal_email" @click="act(`${base}/reset-link`)"><Icon name="send" :size="15" /> Отправить ссылку</button>
+                    <p class="hint">Пароль сотруднику задаёт только администратор — на вкладке «Общие» (кнопка «Сгенерировать»). Сам сотрудник сменить его не может.</p>
                     <div class="divider" />
                     <div class="group-title">Общие календари</div>
                     <p v-if="mailbox.calendarShares?.length" class="hint">Свой календарь открыл: <span v-for="s in mailbox.calendarShares" :key="s.mail" class="tag" style="margin-right: 4px">{{ s.name }} · {{ s.level === 'write' ? 'правка' : 'просмотр' }}</span></p>

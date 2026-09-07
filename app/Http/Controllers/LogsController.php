@@ -108,7 +108,7 @@ class LogsController extends Controller
             'unit.create' => 'создал подразделение', 'unit.update' => 'изменил подразделение', 'unit.delete' => 'удалил подразделение', 'unit.move' => 'перенёс сотрудника',
             'list.create' => 'создал рассылку', 'list.update' => 'изменил рассылку', 'list.delete' => 'удалил рассылку', 'list.approve' => 'пропустил письмо в рассылку', 'list.reject' => 'отклонил письмо в рассылку',
             'admin.create' => 'назначил администратора', 'admin.update' => 'изменил администратора', 'admin.delete' => 'снял администратора',
-            'employee.impersonate' => 'вошёл как сотрудник', 'employee.reset' => 'отправил ссылку сброса пароля', 'employee.import' => 'импортировал сотрудников', 'employee.devices' => 'отключил устройства',
+            'employee.impersonate' => 'вошёл как сотрудник', 'employee.import' => 'импортировал сотрудников', 'employee.devices' => 'отключил устройства',
             'contact.approve' => 'одобрил контакт',
         ];
 

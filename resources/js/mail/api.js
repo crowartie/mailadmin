@@ -64,7 +64,6 @@ export const api = {
 
     settings: () => request('GET', '/mail/api/settings'),
     saveSettings: (patch) => request('PUT', '/mail/api/settings', patch),
-    password: (form) => request('PUT', '/mail/api/password', form),
     labels: () => request('GET', '/mail/api/labels'),
     createLabel: (name, color) => request('POST', '/mail/api/labels', { name, color }),
     updateLabel: (id, name, color) => request('PATCH', `/mail/api/labels/${id}`, { name, color }),

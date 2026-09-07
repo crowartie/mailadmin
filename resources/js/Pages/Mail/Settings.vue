@@ -34,7 +34,6 @@ const autoreply = ref({ enabled: false, from: '', to: '', subject: 'Автоот
 const toast = ref(null);
 const dialog = ref(null);
 const editing = ref(null); // редактируемое правило
-const pw = ref({ current: '', password: '', password_confirmation: '' });
 const sec = ref(null);
 const twofa = ref(null);
 const twofaCode = ref('');
@@ -147,16 +146,6 @@ async function confirmDialog(value) {
 }
 async function recolor(l, color) {
     try { labels.value = await api.updateLabel(l.id, l.name, color); } catch (e) { say(e.message, true); }
-}
-
-// ── Пароль ───────────────────────────────────────────────────
-async function changePassword() {
-    busy.value = true;
-    try {
-        await api.password(pw.value);
-        pw.value = { current: '', password: '', password_confirmation: '' };
-        say('Пароль изменён. Обновите его в телефоне и почтовой программе.');
-    } catch (e) { say(e.message, true); } finally { busy.value = false; }
 }
 
 const shortcuts = [
@@ -399,14 +388,10 @@ const shortcuts = [
                             <div v-for="(l, i) in (sec ? sec.logins : [])" :key="i" class="kv"><span>{{ when(l.at, true) }} · {{ l.device }}</span><b style="font-weight: 500" :style="{ color: l.result === 'ok' || l.result === 'new_device' ? 'var(--ok)' : 'var(--no)' }">{{ { ok: 'вход', new_device: 'вход с нового устройства', bad_password: 'неверный пароль', bad_code: 'неверный код', blocked: 'заблокировано' }[l.result] || l.result }} · <span class="mono">{{ l.ip }}</span></b></div>
                         </div>
 
-                        <form class="card mset__section" style="max-width: 560px" @submit.prevent="changePassword">
-                            <h2>Смена пароля</h2>
-                            <div class="field"><label>Текущий пароль</label><input v-model="pw.current" class="input" type="password" autocomplete="current-password" required></div>
-                            <div class="field"><label>Новый пароль (не короче {{ sec ? sec.minPassword : 10 }} символов)</label><input v-model="pw.password" class="input" type="password" autocomplete="new-password" :minlength="sec ? sec.minPassword : 10" required></div>
-                            <div class="field"><label>Ещё раз</label><input v-model="pw.password_confirmation" class="input" type="password" autocomplete="new-password" required></div>
-                            <div><button class="btn btn--primary" type="submit" :disabled="busy">Изменить пароль</button></div>
-                            <p class="hint" style="margin: 0">Тот же пароль используется в телефоне и почтовой программе — после смены обновите его там. Пароль проверяется по базе известных утечек.</p>
-                        </form>
+                        <div class="card mset__section" style="max-width: 560px">
+                            <h2>Пароль</h2>
+                            <p class="hint" style="margin: 0">Пароль от почты выдаёт и меняет администратор. Если пароль стал известен кому-то ещё — сообщите администратору и завершите чужие сеансы выше.</p>
+                        </div>
                         <div class="card mset__section">
                             <h2>Подключение почтовых программ</h2>
                             <div class="mset__cols">

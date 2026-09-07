@@ -136,7 +136,7 @@ class LoginController extends Controller
                 ->from(new Address('noreply@' . config('areas.default_domain'), 'Почта ' . config('areas.default_domain')))
                 ->to(new Address($user))
                 ->subject('Вход в почту с нового устройства')
-                ->text("В вашу почту {$user} только что вошли с нового устройства: {$device}, адрес {$ip}, " . now()->format('d.m.Y H:i') . ".\n\nЕсли это были не вы — смените пароль в веб-почте (Настройки → Безопасность) и завершите чужие сеансы там же.");
+                ->text("В вашу почту {$user} только что вошли с нового устройства: {$device}, адрес {$ip}, " . now()->format('d.m.Y H:i') . ".\n\nЕсли это были не вы — завершите чужие сеансы в веб-почте (Настройки → Безопасность) и сообщите администратору: пароль меняет он.");
             (new Mailer(ImapSession::smtpLocal()))->send($email);
         } catch (\Throwable $e) {
             Log::warning('Уведомление о новом устройстве не отправлено', ['user' => $user, 'error' => $e->getMessage()]);

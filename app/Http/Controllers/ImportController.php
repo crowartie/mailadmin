@@ -245,7 +245,7 @@ class ImportController extends Controller
                 ->from(new Address('noreply@' . $domain, 'Почта ' . $domain))
                 ->to(new Address($rec['personal_email'], $rec['name']))
                 ->subject('Ваша рабочая почта ' . $rec['username'])
-                ->text("Здравствуйте, {$rec['name']}!\n\nДля вас создан рабочий почтовый ящик.\n\nАдрес: {$rec['username']}\nПароль: {$password}\n\nВеб-почта: https://mail.{$domain}\nНастройки для телефона и почтовой программы: сервер mail.{$domain}, IMAP 993 (SSL), SMTP 587 (STARTTLS), логин — полный адрес.\n\nПосле первого входа смените пароль в веб-почте (Настройки → Безопасность)."));
+                ->text("Здравствуйте, {$rec['name']}!\n\nДля вас создан рабочий почтовый ящик.\n\nАдрес: {$rec['username']}\nПароль: {$password}\n\nВеб-почта: https://mail.{$domain}\nНастройки для телефона и почтовой программы: сервер mail.{$domain}, IMAP 993 (SSL), SMTP 587 (STARTTLS), логин — полный адрес.\n\nПароль выдаёт и меняет администратор — при необходимости обращайтесь к нему."));
 
             return true;
         } catch (\Throwable) {

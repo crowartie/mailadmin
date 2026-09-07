@@ -16,15 +16,11 @@ use App\Support\Area;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Mailer\Mailer;
-use Symfony\Component\Mime\Address;
-use Symfony\Component\Mime\Email;
 
-/** Карточка сотрудника, вкладки «Доступ» и «Устройства»: подразделение, 2FA, сброс пароля, сеансы, вход от имени. */
+/** Карточка сотрудника, вкладки «Доступ» и «Устройства»: подразделение, 2FA, сеансы, вход от имени. Пароль задаёт только админ (вкладка «Общие»). */
 class EmployeeController extends Controller
 {
     public function __construct(private readonly UnitService $units, private readonly Sessions $sessions)
@@ -70,31 +66,6 @@ class EmployeeController extends Controller
         AdminAction::log('employee.impersonate', $model->username);
 
         return Inertia::location(Area::mailUrl($request) . '/mail');
-    }
-
-    /** Ссылка для смены пароля — на личную почту сотрудника. */
-    public function resetLink(Request $request, string $mailbox): RedirectResponse
-    {
-        $model = Mailbox::query()->findOrFail($mailbox);
-        $profile = EmployeeProfile::for($model->username);
-        $to = $profile->personal_email ?: $model->recovery_email;
-        if (! $to) {
-            return back()->with('error', 'У сотрудника не указана личная почта — заполните её на вкладке «Доступ» или задайте пароль вручную');
-        }
-        $token = Str::random(48);
-        Cache::put('pwreset.' . $token, $model->username, now()->addHours(24));
-        $link = Area::mailUrl($request) . '/mail/reset/' . $token;
-        try {
-            (new Mailer(ImapSession::smtpLocal()))->send((new Email())
-                ->from(new Address('noreply@' . config('areas.default_domain'), 'Почта ' . config('areas.default_domain')))
-                ->to(new Address($to))->subject('Смена пароля от рабочей почты ' . $model->username)
-                ->text("Здравствуйте!\n\nАдминистратор запросил для вас смену пароля от рабочей почты {$model->username}.\nОткройте ссылку и задайте новый пароль (ссылка действует 24 часа):\n\n{$link}\n\nЕсли вы ничего не просили — просто не открывайте ссылку."));
-        } catch (\Throwable $e) {
-            return back()->with('error', 'Письмо не отправлено: ' . mb_substr($e->getMessage(), 0, 200));
-        }
-        AdminAction::log('employee.reset', $model->username, 'ссылка на ' . $to);
-
-        return back()->with('success', 'Ссылка отправлена на ' . $to);
     }
 
     /** Завершить сеанс (веб или IMAP) или все сразу. */

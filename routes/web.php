@@ -48,7 +48,6 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/mailboxes/import/run', [ImportController::class, 'run']);
         Route::post('/mailboxes/{mailbox}/access', [EmployeeController::class, 'access'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/impersonate', [EmployeeController::class, 'impersonate'])->where('mailbox', '.*');
-        Route::post('/mailboxes/{mailbox}/reset-link', [EmployeeController::class, 'resetLink'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/kick', [EmployeeController::class, 'kick'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/reset-2fa', [EmployeeController::class, 'reset2fa'])->where('mailbox', '.*');
         Route::delete('/mailboxes/{mailbox}/app-passwords/{password}', [EmployeeController::class, 'revokeAppPassword'])->where('mailbox', '.*');
