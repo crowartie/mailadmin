@@ -22,7 +22,8 @@ class Certificate
             if (preg_match('/^issuer=(.*)$/m', $out, $i)) {
                 $issuer = preg_match('/O\s*=\s*([^,]+)/', $i[1], $o) ? trim($o[1]) : (preg_match('/CN\s*=\s*([^,]+)/', $i[1], $o) ? trim($o[1]) : trim($i[1]));
             }
-            $subject = preg_match('/^subject=.*?CN\s*=\s*([^,]+)/m', $out, $c) ? trim($c[1]) : '';
+            $subject = preg_match('/^subject=.*?CN\s*=\s*([^,
+]+)/m', $out, $c) ? trim($c[1]) : '';
             $names = preg_match_all('/DNS:([^,\s]+)/', $out, $n) ? $n[1] : [];
 
             return [

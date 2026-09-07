@@ -1,0 +1,470 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\AdminAction;
+use App\Models\AppSetting;
+use App\Models\Backup;
+use App\Models\User;
+use App\Models\Vmail\Domain;
+use App\Models\Vmail\Mailbox;
+use App\Services\Server\Alerts;
+use App\Services\Server\AmavisConfig;
+use App\Services\Server\BackupService;
+use App\Services\Server\Certificate;
+use App\Services\Server\Ctl;
+use App\Services\Server\DnsCheck;
+use App\Services\Server\Quarantine;
+use App\Services\Server\WbList;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+
+/** Настройки сервера: домены и DNS, антиспам и карантин, лимиты, сертификат, копии, администраторы, уведомления. */
+class SettingsController extends Controller
+{
+    public const TABS = ['domains', 'spam', 'limits', 'cert', 'backup', 'admins', 'alerts'];
+
+    public function __construct(
+        private readonly AmavisConfig $amavis,
+        private readonly WbList $wblist,
+        private readonly Quarantine $quarantine,
+        private readonly BackupService $backups,
+        private readonly Certificate $cert,
+        private readonly Alerts $alerts,
+    ) {
+    }
+
+    public function index(string $tab = 'domains'): Response
+    {
+        abort_unless(in_array($tab, self::TABS, true), 404);
+        $data = ['tab' => $tab, 'ctl' => Ctl::available()];
+
+        $data += match ($tab) {
+            'domains' => $this->domainsData(),
+            'spam' => $this->spamData(),
+            'limits' => [
+                'limits' => AppSetting::group('limits'),
+                'sizeLimitMb' => $this->safe(fn () => $this->amavis->current()['sizeLimitMb'], 15),
+                'fail2ban' => AppSetting::group('fail2ban'),
+            ],
+            'cert' => [
+                'cert' => $this->safe(fn () => $this->cert->info()),
+                'lastAttempt' => $this->safe(fn () => $this->cert->lastAttempt()),
+                'names' => $this->expectedNames(),
+            ],
+            'backup' => $this->backupData(),
+            'admins' => [
+                'admins' => User::query()->orderBy('name')->get()->map(fn (User $u) => [
+                    'id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'role' => $u->role ?? 'admin', 'roleTitle' => $u->roleTitle(),
+                    'active' => (bool) $u->is_active, 'twofa' => $u->hasTwoFactor(), 'imap' => (bool) $u->imap_auth, 'me' => $u->id === auth()->id(),
+                ]),
+                'roles' => User::ROLES,
+                'employees' => Mailbox::query()->where('active', 1)->orderBy('username')->get(['username', 'name'])->map(fn ($m) => ['username' => $m->username, 'name' => $m->name ?: $m->username]),
+            ],
+            'alerts' => ['alerts' => AppSetting::group('alerts'), 'channels' => AppSetting::group('channels')],
+        };
+
+        return Inertia::render('Settings/Index', $data);
+    }
+
+    // ── Домены и DNS ─────────────────────────────────────────────────────
+    private function domainsData(): array
+    {
+        $mailHost = $this->mailHost();
+        $domains = Domain::query()->withCount(['mailboxes', 'aliases'])->orderBy('domain')->get();
+
+        return [
+            'mailHost' => $mailHost,
+            'domains' => $domains->map(fn (Domain $d) => [
+                'domain' => $d->domain, 'description' => $d->description, 'active' => $d->active,
+                'mailboxes' => $d->mailboxes_count, 'aliases' => $d->aliases_count,
+                'mailboxLimit' => $d->mailboxes, 'aliasLimit' => $d->aliases, 'maxQuotaMb' => $d->maxquota, 'quotaMb' => $d->quota,
+                'dns' => Cache::remember('dns.check.' . $d->domain, 600, fn () => $this->safe(fn () => (new DnsCheck())->check($d->domain, $mailHost, $this->dkimTxt($d->domain)), [])),
+                'dkim' => $this->dkim($d->domain),
+            ]),
+        ];
+    }
+
+    public function recheckDns(Request $request): RedirectResponse
+    {
+        foreach (Domain::query()->pluck('domain') as $d) {
+            Cache::forget('dns.check.' . $d);
+            Cache::forget('dns.ptr.' . $d);
+        }
+
+        return back()->with('success', 'DNS перепроверен');
+    }
+
+    public function saveDomain(Request $request, string $domain): RedirectResponse
+    {
+        $d = Domain::query()->findOrFail($domain);
+        $data = $request->validate([
+            'description' => ['nullable', 'string', 'max:255'],
+            'mailboxLimit' => ['required', 'integer', 'min:-1', 'max:100000'],
+            'aliasLimit' => ['required', 'integer', 'min:-1', 'max:100000'],
+            'maxQuotaMb' => ['required', 'integer', 'min:0', 'max:10000000'],
+            'active' => ['boolean'],
+        ]);
+        $d->description = $data['description'] ?? '';
+        $d->mailboxes = $data['mailboxLimit'];
+        $d->aliases = $data['aliasLimit'];
+        $d->maxquota = $data['maxQuotaMb'];
+        $d->active = $data['active'] ?? true;
+        $d->modified = now();
+        $d->save();
+        AdminAction::log('settings.update', 'домен ' . $domain);
+
+        return back()->with('success', 'Домен ' . $domain . ' сохранён');
+    }
+
+    public function rotateDkim(Request $request): RedirectResponse
+    {
+        $domain = $request->validate(['domain' => ['required', 'string', 'regex:/^[a-z0-9.-]+$/']])['domain'];
+        try {
+            Ctl::out('dkim-rotate', [$domain], 60);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', 'Ключ не сменён: ' . $e->getMessage());
+        }
+        Cache::forget('dkim.' . $domain);
+        Cache::forget('dns.check.' . $domain);
+        AdminAction::log('dkim.rotate', $domain);
+
+        return back()->with('success', 'Новый ключ DKIM создан — обновите TXT-запись в DNS, старая подпись перестала действовать');
+    }
+
+    private function dkimTxt(string $domain): ?string
+    {
+        [$code, $out] = Ctl::run('dkim-txt', [$domain], 10);
+
+        return $code === 0 ? trim($out) : null;
+    }
+
+    private function dkim(string $domain): ?array
+    {
+        return Cache::remember('dkim.' . $domain, 600, function () use ($domain) {
+            $txt = $this->dkimTxt($domain);
+            if (! $txt) {
+                return null;
+            }
+            [$code, $info] = Ctl::run('dkim-info', [$domain], 10);
+            $bits = preg_match('/bits=(\d+)/', $info, $m) ? (int) $m[1] : null;
+            $mtime = preg_match('/mtime=(\d+)/', $info, $m) ? (int) $m[1] : null;
+
+            return ['selector' => 'dkim', 'host' => 'dkim._domainkey.' . $domain, 'txt' => $txt, 'bits' => $bits, 'since' => $mtime ? date('Y-m-d', $mtime) : null];
+        });
+    }
+
+    // ── Антиспам и карантин ──────────────────────────────────────────────
+    private function spamData(): array
+    {
+        return [
+            'spam' => $this->safe(fn () => $this->amavis->current(), ['tag' => 2, 'tag2' => 6.2, 'kill' => 6.9, 'cutoff' => 10, 'virus' => false, 'greylist' => false, 'sizeLimitMb' => 15]),
+            'wblist' => $this->safe(fn () => $this->wblist->all(), []),
+            'quarantine' => $this->safe(fn () => $this->quarantine->list(100), []),
+            'quarantinePolicy' => AppSetting::group('quarantine'),
+        ];
+    }
+
+    public function saveSpam(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'tag2' => ['required', 'numeric', 'min:1', 'max:20'], 'kill' => ['required', 'numeric', 'min:1', 'max:30'], 'cutoff' => ['required', 'numeric', 'min:1', 'max:50'],
+            'virus' => ['boolean'], 'greylist' => ['boolean'],
+        ]);
+        if ($data['kill'] < $data['tag2']) {
+            return back()->with('error', 'Порог «блокировать» не может быть ниже порога «помечать»');
+        }
+        try {
+            $cur = $this->amavis->current();
+            $this->amavis->setLevels(['tag2' => $data['tag2'], 'kill' => $data['kill'], 'cutoff' => $data['cutoff']]);
+            if (($data['virus'] ?? false) !== $cur['virus']) {
+                $this->amavis->setVirus((bool) ($data['virus'] ?? false));
+            }
+            if (($data['greylist'] ?? false) !== $cur['greylist']) {
+                $this->amavis->setGreylist((bool) ($data['greylist'] ?? false));
+            }
+            $this->amavis->apply();
+        } catch (\RuntimeException $e) {
+            return back()->with('error', 'Не применилось: ' . $e->getMessage());
+        }
+        AdminAction::log('settings.update', 'антиспам', 'помечать от ' . $data['tag2'] . ', блокировать от ' . $data['kill']);
+
+        return back()->with('success', 'Настройки антиспама применены');
+    }
+
+    public function addWblist(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['pattern' => ['required', 'string', 'max:120'], 'wb' => ['required', Rule::in(['W', 'B'])], 'note' => ['nullable', 'string', 'max:120']]);
+        try {
+            $this->wblist->add($data['pattern'], $data['wb'], $data['note'] ?? '');
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+        AdminAction::log('wblist.add', $data['pattern'], $data['wb'] === 'W' ? 'белый' : 'чёрный');
+
+        return back()->with('success', ($data['wb'] === 'W' ? 'В белый список: ' : 'В чёрный список: ') . $data['pattern']);
+    }
+
+    public function removeWblist(int $id): RedirectResponse
+    {
+        $this->wblist->remove($id);
+        AdminAction::log('wblist.delete', '#' . $id);
+
+        return back()->with('success', 'Убрано из списка');
+    }
+
+    public function saveQuarantine(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['digest' => ['boolean'], 'digest_time' => ['required', 'date_format:H:i'], 'keep_days' => ['required', 'integer', 'min:1', 'max:365']]);
+        AppSetting::put('quarantine', $data + ['digest' => false]);
+        AdminAction::log('settings.update', 'карантин');
+
+        return back()->with('success', 'Правила карантина сохранены');
+    }
+
+    public function releaseQuarantine(Request $request, string $id): RedirectResponse
+    {
+        $secret = $request->validate(['secret' => ['required', 'string', 'max:32']])['secret'];
+        try {
+            $this->quarantine->release($id, $secret);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', 'Не выпущено: ' . $e->getMessage());
+        }
+        AdminAction::log('quarantine.release', $id);
+
+        return back()->with('success', 'Письмо доставлено получателю');
+    }
+
+    public function deleteQuarantine(string $id): RedirectResponse
+    {
+        $this->quarantine->delete($id);
+        AdminAction::log('quarantine.delete', $id);
+
+        return back()->with('success', 'Удалено из карантина');
+    }
+
+    // ── Вложения и лимиты ────────────────────────────────────────────────
+    public function saveLimits(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'sizeLimitMb' => ['required', 'integer', 'min:1', 'max:1024'],
+            'default_quota_mb' => ['required', 'integer', 'min:0', 'max:1000000'],
+            'blocked_ext' => ['nullable', 'string', 'max:300'],
+            'max_recipients' => ['required', 'integer', 'min:1', 'max:5000'],
+            'maxretry' => ['required', 'integer', 'min:2', 'max:100'], 'findtime' => ['required', 'integer', 'min:1', 'max:1440'], 'bantime_hours' => ['required', 'integer', 'min:1', 'max:8760'],
+        ]);
+        try {
+            if ($data['sizeLimitMb'] !== $this->amavis->current()['sizeLimitMb']) {
+                $this->amavis->setSizeLimit($data['sizeLimitMb']);
+            }
+            Ctl::out('postconf-set', ['smtpd_recipient_limit', (string) $data['max_recipients']], 30);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', 'Postfix не принял значение: ' . $e->getMessage());
+        }
+        AppSetting::put('limits', ['default_quota_mb' => $data['default_quota_mb'], 'blocked_ext' => $data['blocked_ext'] ?? '', 'max_recipients' => $data['max_recipients']]);
+        AppSetting::put('fail2ban', ['maxretry' => $data['maxretry'], 'findtime' => $data['findtime'], 'bantime_hours' => $data['bantime_hours']]);
+        AdminAction::log('settings.update', 'лимиты', 'письмо до ' . $data['sizeLimitMb'] . ' МБ');
+
+        return back()->with('success', 'Лимиты сохранены');
+    }
+
+    // ── Сертификат ───────────────────────────────────────────────────────
+    public function renewCert(): RedirectResponse
+    {
+        $r = $this->cert->renew();
+        AdminAction::log('cert.renew', $this->mailHost(), $r['ok'] ? 'успешно' : 'ошибка');
+
+        return back()->with($r['ok'] ? 'success' : 'error', $r['ok'] ? 'Сертификат проверен и продлён, службы перечитали его' : 'Продление не удалось')->with('certOutput', $r['output']);
+    }
+
+    // ── Резервные копии ──────────────────────────────────────────────────
+    private function backupData(): array
+    {
+        return [
+            'backup' => AppSetting::group('backup'),
+            'dirCheck' => $this->backups->checkDir(),
+            'running' => (bool) Cache::get('backup.running'),
+            'history' => Backup::query()->orderByDesc('id')->limit(30)->get()->map(fn (Backup $b) => [
+                'id' => $b->id, 'file' => $b->file, 'size' => $b->size, 'seconds' => $b->seconds, 'parts' => $b->parts, 'status' => $b->status, 'error' => $b->error, 'at' => $b->created_at?->toIso8601String(),
+            ]),
+            'files' => $this->safe(fn () => $this->backups->files(), []),
+            'employees' => Mailbox::query()->where('active', 1)->orderBy('username')->pluck('username'),
+        ];
+    }
+
+    public function saveBackup(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'dir' => ['required', 'string', 'regex:#^/[A-Za-z0-9/_.-]+$#'], 'time' => ['required', 'date_format:H:i'],
+            'keep_daily' => ['required', 'integer', 'min:1', 'max:365'], 'keep_weekly' => ['required', 'integer', 'min:0', 'max:104'],
+            'mail' => ['boolean'], 'db' => ['boolean'], 'config' => ['boolean'], 'vm_snapshot' => ['boolean'],
+        ]);
+        AppSetting::put('backup', $data + ['mail' => false, 'db' => false, 'config' => false, 'vm_snapshot' => false]);
+        AdminAction::log('settings.update', 'резервные копии', $data['dir'] . ' в ' . $data['time']);
+
+        return back()->with('success', 'Расписание копий сохранено');
+    }
+
+    public function runBackup(): RedirectResponse
+    {
+        if (Cache::get('backup.running')) {
+            return back()->with('error', 'Копия уже выполняется');
+        }
+        $this->backups->runInBackground();
+        AdminAction::log('backup.run');
+
+        return back()->with('success', 'Копия запущена — итог появится в журнале ниже');
+    }
+
+    public function restoreBackup(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['file' => ['required', 'string', 'regex:#^/[A-Za-z0-9/_.-]+\.tar\.gz$#'], 'user' => ['required', 'email']]);
+        try {
+            $out = $this->backups->restoreMailbox($data['file'], strtolower($data['user']));
+        } catch (\RuntimeException $e) {
+            return back()->with('error', 'Не восстановлено: ' . mb_substr($e->getMessage(), 0, 300));
+        }
+        AdminAction::log('backup.restore', $data['user'], basename($data['file']));
+
+        return back()->with('success', 'Ящик ' . $data['user'] . ' восстановлен из ' . basename($data['file']) . ($out ? ' (' . mb_substr($out, 0, 120) . ')' : ''));
+    }
+
+    // ── Администраторы ───────────────────────────────────────────────────
+    public function storeAdmin(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'name' => ['required', 'string', 'max:120'],
+            'role' => ['required', Rule::in(array_keys(User::ROLES))],
+            'imap' => ['boolean'],
+            'password' => ['nullable', 'string', 'min:10', 'max:200'],
+        ]);
+        $imap = (bool) ($data['imap'] ?? false);
+        if ($imap && ! Mailbox::query()->where('username', strtolower($data['email']))->exists()) {
+            return back()->with('error', 'Для входа паролем ящика адрес должен быть почтовым ящиком на этом сервере');
+        }
+        if (! $imap && blank($data['password'] ?? null)) {
+            return back()->with('error', 'Задайте пароль или включите вход паролем почтового ящика');
+        }
+        $u = User::create([
+            'email' => strtolower($data['email']), 'name' => $data['name'], 'role' => $data['role'], 'is_active' => true,
+            'imap_auth' => $imap, 'password' => $imap ? null : $data['password'],
+        ]);
+        AdminAction::log('admin.create', $u->email, $u->roleTitle());
+
+        return back()->with('success', $u->name . ' — ' . $u->roleTitle());
+    }
+
+    public function updateAdmin(Request $request, User $user): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:120'], 'role' => ['sometimes', Rule::in(array_keys(User::ROLES))],
+            'active' => ['sometimes', 'boolean'], 'password' => ['nullable', 'string', 'min:10', 'max:200'], 'reset2fa' => ['sometimes', 'boolean'],
+        ]);
+        if ($user->id === auth()->id() && (($data['active'] ?? true) === false || (isset($data['role']) && $data['role'] !== $user->role))) {
+            return back()->with('error', 'Себе нельзя менять роль и отключать доступ — попросите другого администратора');
+        }
+        if (isset($data['role']) && $user->role === 'owner' && $data['role'] !== 'owner' && User::query()->where('role', 'owner')->where('id', '!=', $user->id)->doesntExist()) {
+            return back()->with('error', 'Должен остаться хотя бы один главный администратор');
+        }
+        $user->fill(array_intersect_key($data, array_flip(['name', 'role'])));
+        if (array_key_exists('active', $data)) {
+            $user->is_active = (bool) $data['active'];
+        }
+        if (filled($data['password'] ?? null)) {
+            $user->password = $data['password'];
+            $user->imap_auth = false;
+        }
+        if ($data['reset2fa'] ?? false) {
+            $user->totp_secret = null;
+            $user->totp_enabled_at = null;
+        }
+        $user->save();
+        AdminAction::log('admin.update', $user->email, $user->roleTitle() . ($user->is_active ? '' : ', отключён'));
+
+        return back()->with('success', 'Сохранено: ' . $user->name);
+    }
+
+    public function destroyAdmin(User $user): RedirectResponse
+    {
+        if ($user->id === auth()->id()) {
+            return back()->with('error', 'Себя снять нельзя');
+        }
+        if ($user->role === 'owner' && User::query()->where('role', 'owner')->where('id', '!=', $user->id)->doesntExist()) {
+            return back()->with('error', 'Должен остаться хотя бы один главный администратор');
+        }
+        $user->delete();
+        AdminAction::log('admin.delete', $user->email);
+
+        return back()->with('success', 'Доступ снят: ' . $user->email);
+    }
+
+    // ── Уведомления ──────────────────────────────────────────────────────
+    public function saveAlerts(Request $request): RedirectResponse
+    {
+        $a = $request->validate([
+            'queue' => ['boolean'], 'queue_size' => ['required', 'integer', 'min:1', 'max:100000'], 'queue_age_hours' => ['required', 'integer', 'min:1', 'max:240'],
+            'disk' => ['boolean'], 'disk_pct' => ['required', 'integer', 'min:50', 'max:99'], 'services' => ['boolean'], 'backup' => ['boolean'], 'admin_login' => ['boolean'],
+            'digest' => ['boolean'], 'digest_time' => ['required', 'date_format:H:i'],
+            'emails' => ['nullable', 'string', 'max:500'], 'telegram_token' => ['nullable', 'string', 'max:100'], 'telegram_chat' => ['nullable', 'string', 'max:40'], 'telegram_proxy' => ['nullable', 'string', 'max:200'],
+        ]);
+        $channels = array_intersect_key($a, array_flip(['emails', 'telegram_token', 'telegram_chat', 'telegram_proxy']));
+        AppSetting::put('alerts', array_diff_key($a, $channels) + ['queue' => false, 'disk' => false, 'services' => false, 'backup' => false, 'admin_login' => false, 'digest' => false]);
+        AppSetting::put('channels', array_map(fn ($v) => trim((string) $v), $channels));
+        AdminAction::log('settings.update', 'уведомления');
+
+        return back()->with('success', 'Уведомления сохранены');
+    }
+
+    public function testAlerts(): RedirectResponse
+    {
+        $ch = AppSetting::group('channels');
+        $text = '✅ Проверка уведомлений почтового сервера ' . config('areas.default_domain') . ' — ' . now()->format('d.m.Y H:i');
+        $tg = $this->alerts->telegram($text);
+        $this->alerts->send($text);
+        $parts = [];
+        if (filled($ch['emails'])) {
+            $parts[] = 'письмо на ' . $ch['emails'];
+        }
+        $parts[] = filled($ch['telegram_token']) ? ($tg ? 'Telegram доставлен' : 'Telegram не ответил — проверьте токен, chat_id и прокси') : 'Telegram не настроен';
+
+        return back()->with($tg || filled($ch['emails']) ? 'success' : 'error', 'Отправлено: ' . implode('; ', $parts));
+    }
+
+    // ── вспомогательное ──────────────────────────────────────────────────
+    private function mailHost(): string
+    {
+        $host = parse_url((string) config('app.url'), PHP_URL_HOST);
+
+        return $host && ! filter_var($host, FILTER_VALIDATE_IP) ? $host : 'mail.' . config('areas.default_domain');
+    }
+
+    /** @return string[] */
+    private function expectedNames(): array
+    {
+        $names = [];
+        foreach (Domain::query()->pluck('domain') as $d) {
+            foreach (['mail', 'imap', 'smtp', 'webmail', 'autoconfig', 'autodiscover'] as $sub) {
+                $names[] = $sub . '.' . $d;
+            }
+        }
+
+        return $names;
+    }
+
+    private function safe(callable $fn, mixed $default = null): mixed
+    {
+        try {
+            return $fn();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $default;
+        }
+    }
+}

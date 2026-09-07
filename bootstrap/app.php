@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureArea;
 use App\Http\Middleware\EnsureMailSession;
+use App\Http\Middleware\EnforceRole;
 use App\Http\Middleware\EnsureTwoFactorVerified;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Support\Area;
@@ -30,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'area' => EnsureArea::class,
             '2fa' => EnsureTwoFactorVerified::class,
             'mail.auth' => EnsureMailSession::class,
+            'role' => EnforceRole::class,
         ]);
         // Неавторизованных ведём на вход своей зоны.
         $middleware->redirectGuestsTo(fn (Request $request) => Area::isAdmin($request) ? '/login' : '/mail/login');

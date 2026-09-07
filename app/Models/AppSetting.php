@@ -25,6 +25,7 @@ class AppSetting extends Model
         'backup' => ['dir' => '/var/backups/mail', 'time' => '03:00', 'keep_daily' => 14, 'keep_weekly' => 6, 'mail' => true, 'db' => true, 'config' => true, 'vm_snapshot' => false],
         'quarantine' => ['digest' => true, 'digest_time' => '09:00', 'keep_days' => 14],
         'fail2ban' => ['maxretry' => 5, 'findtime' => 10, 'bantime_hours' => 24],
+        'limits' => ['default_quota_mb' => 2048, 'blocked_ext' => 'exe, scr, bat, cmd, js, vbs, pif', 'max_recipients' => 100],
     ];
 
     /** @return array<string,mixed> */

@@ -14,11 +14,15 @@ const current = computed(() => page.url.split('?')[0]);
 const counts = computed(() => page.props.nav?.counts ?? {});
 const health = computed(() => page.props.nav?.health ?? { kind: 'ok', text: 'Все службы работают' });
 
-const flash = computed(() => page.props.flash?.success ?? null);
+// Сообщение после действия: зелёное — успех, красное — ошибка (живёт дольше, чтобы успеть прочитать).
+const flash = computed(() => page.props.flash?.success ?? page.props.flash?.error ?? null);
+const flashError = computed(() => !page.props.flash?.success && Boolean(page.props.flash?.error));
 const flashVisible = ref(false);
+let flashTimer = null;
 watch(flash, (value) => {
     flashVisible.value = Boolean(value);
-    if (value) setTimeout(() => (flashVisible.value = false), 4000);
+    clearTimeout(flashTimer);
+    if (value) flashTimer = setTimeout(() => (flashVisible.value = false), flashError.value ? 9000 : 4000);
 }, { immediate: true });
 
 // Разделы — как на макете: люди отдельно от сервера.
@@ -104,7 +108,7 @@ function logout() {
             </header>
 
             <transition name="flash">
-                <div v-if="flashVisible" class="flash">{{ flash }}</div>
+                <div v-if="flashVisible" class="flash" :class="{ 'flash--error': flashError }">{{ flash }}</div>
             </transition>
 
             <main class="page">

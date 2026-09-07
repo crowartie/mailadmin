@@ -50,6 +50,32 @@ return [
         ],
 
 
+        // Базы Amavis (карантин, белые/чёрные списки) и iRedAPD (серый список, троттлинг).
+        'amavisd' => [
+            'driver' => 'mysql',
+            'host' => env('VMAIL_DB_HOST', '127.0.0.1'),
+            'port' => env('VMAIL_DB_PORT', '3306'),
+            'database' => 'amavisd',
+            'username' => 'amavisd',
+            'password' => env('AMAVIS_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_general_ci',
+            'prefix' => '',
+            'strict' => false,
+        ],
+        'iredapd' => [
+            'driver' => 'mysql',
+            'host' => env('VMAIL_DB_HOST', '127.0.0.1'),
+            'port' => env('VMAIL_DB_PORT', '3306'),
+            'database' => 'iredapd',
+            'username' => 'iredapd',
+            'password' => env('IREDAPD_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_general_ci',
+            'prefix' => '',
+            'strict' => false,
+        ],
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),

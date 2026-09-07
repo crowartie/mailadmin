@@ -11,6 +11,7 @@ use App\Http\Controllers\QueueController;
 use App\Http\Controllers\MailboxController;
 use App\Http\Controllers\RulesController;
 use App\Http\Controllers\SecurityController;
+use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -29,7 +30,7 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/login/code', [TwoFactorController::class, 'verify']);
     });
 
-    Route::middleware(['auth', '2fa'])->group(function () {
+    Route::middleware(['auth', '2fa', 'role'])->group(function () {
         Route::get('/', DashboardController::class);
 
         Route::get('/domains', [DomainController::class, 'index']);
@@ -83,11 +84,32 @@ Route::middleware('area:admin')->group(function () {
         Route::delete('/security/2fa', [TwoFactorController::class, 'disable']);
         Route::get('/security/{tab}', [SecurityController::class, 'index'])->where('tab', 'overview|bans|logins|twofa|apppasswords|sessions');
 
+        Route::get('/settings', [SettingsController::class, 'index']);
+        Route::get('/settings/{tab}', [SettingsController::class, 'index'])->where('tab', 'domains|spam|limits|cert|backup|admins|alerts');
+        Route::post('/settings/dns/recheck', [SettingsController::class, 'recheckDns']);
+        Route::post('/settings/domains/{domain}', [SettingsController::class, 'saveDomain']);
+        Route::post('/settings/dkim/rotate', [SettingsController::class, 'rotateDkim']);
+        Route::post('/settings/spam', [SettingsController::class, 'saveSpam']);
+        Route::post('/settings/wblist', [SettingsController::class, 'addWblist']);
+        Route::delete('/settings/wblist/{id}', [SettingsController::class, 'removeWblist']);
+        Route::post('/settings/quarantine/policy', [SettingsController::class, 'saveQuarantine']);
+        Route::post('/settings/quarantine/{id}/release', [SettingsController::class, 'releaseQuarantine']);
+        Route::delete('/settings/quarantine/{id}', [SettingsController::class, 'deleteQuarantine']);
+        Route::post('/settings/limits', [SettingsController::class, 'saveLimits']);
+        Route::post('/settings/cert/renew', [SettingsController::class, 'renewCert']);
+        Route::post('/settings/backup', [SettingsController::class, 'saveBackup']);
+        Route::post('/settings/backup/run', [SettingsController::class, 'runBackup']);
+        Route::post('/settings/backup/restore', [SettingsController::class, 'restoreBackup']);
+        Route::post('/settings/admins', [SettingsController::class, 'storeAdmin']);
+        Route::put('/settings/admins/{user}', [SettingsController::class, 'updateAdmin']);
+        Route::delete('/settings/admins/{user}', [SettingsController::class, 'destroyAdmin']);
+        Route::post('/settings/alerts', [SettingsController::class, 'saveAlerts']);
+        Route::post('/settings/alerts/test', [SettingsController::class, 'testAlerts']);
+
         // Разделы из плана, до которых ещё не дошли: честная заглушка вместо 404.
         $planned = [
             'units' => ['Подразделения', 'Дерево отделов и группы для прав и рассылок. Появится вместе с импортом сотрудников из CSV.'],
             'maillists' => ['Рассылки', 'Списки рассылки mlmmj: подписчики, модераторы, архив.'],
-            'settings' => ['Настройки', 'Домены и DKIM, антиспам, вложения, архив и бэкап, сертификаты, администраторы.'],
         ];
         foreach ($planned as $path => [$title, $note]) {
             Route::get("/{$path}", fn () => Inertia::render('Placeholder', ['title' => $title, 'note' => $note]));

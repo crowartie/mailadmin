@@ -10,3 +10,15 @@ Schedule::command('mail:outbox')->everyMinute()->withoutOverlapping();
 Schedule::command('dav:sync-employees')->hourly()->withoutOverlapping();
 // Отметка для обзора: планировщик жив.
 Schedule::call(fn () => Cache::put('scheduler.last_run', time(), 3600))->everyMinute();
+// Уведомления администраторам: проверки каждые 5 минут, сводка — по времени из настроек.
+Schedule::command('alerts:check')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('alerts:check --digest')->everyMinute()->when(function () {
+    try {
+        return now()->format('H:i') === (\App\Models\AppSetting::group('alerts')['digest_time'] ?? '09:00');
+    } catch (\Throwable) {
+        return false;
+    }
+});
+// Резервная копия по расписанию из настроек и чистка карантина по сроку хранения.
+Schedule::command('backup:run --if-due')->everyMinute()->withoutOverlapping()->runInBackground();
+Schedule::command('backup:run --purge-quarantine')->dailyAt('04:10');

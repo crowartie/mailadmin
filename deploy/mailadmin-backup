@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Резервная копия почтового сервера: письма, базы, конфигурация и ключи DKIM.
+#   mailadmin-backup run [DIR] [KEEP_DAILY] [KEEP_WEEKLY] [parts: mail,db,config]
+#   mailadmin-backup restore-mailbox ARCHIVE user@domain
+# Пишет журнал в DIR/backup.log; последний итог — в DIR/last.json (для админки).
+set -euo pipefail
+export LC_ALL=C.UTF-8
+
+DIR="${2:-/var/backups/mail}"
+KEEP_DAILY="${3:-14}"
+KEEP_WEEKLY="${4:-6}"
+PARTS="${5:-mail,db,config}"
+
+log() { echo "$(date '+%F %T') $*" | tee -a "$DIR/backup.log" >&2; }
+finish() { # status size seconds error
+  printf '{"status":"%s","at":"%s","file":"%s","size":%s,"seconds":%s,"error":"%s","parts":"%s"}\n' "$1" "$(date -Is)" "$2" "${3:-0}" "${4:-0}" "${5:-}" "$PARTS" > "$DIR/last.json"
+}
+
+case "${1:-}" in
+  run)
+    mkdir -p "$DIR"; started=$(date +%s); stamp=$(date +%Y%m%d-%H%M)
+    work=$(mktemp -d /var/tmp/mailbackup.XXXXXX); trap 'rm -rf "$work"' EXIT
+    log "старт копии: части=$PARTS → $DIR"
+    if ! df -P "$DIR" >/dev/null 2>&1; then finish failed "" 0 0 "каталог недоступен"; log "каталог $DIR недоступен"; exit 1; fi
+    if [[ ",$PARTS," == *,db,* ]]; then
+      mkdir -p "$work/db"
+      for db in vmail mailadmin iredapd amavisd; do mysqldump --single-transaction --routines "$db" | gzip -1 > "$work/db/$db.sql.gz"; done
+      log "базы выгружены"
+    fi
+    if [[ ",$PARTS," == *,config,* ]]; then
+      mkdir -p "$work/config"
+      tar czf "$work/config/etc.tgz" /etc/postfix /etc/dovecot /etc/amavis /etc/nginx /etc/letsencrypt /etc/fail2ban /etc/ssl/private/iRedMail.key* /etc/ssl/certs/iRedMail.crt* /var/lib/dkim /opt/iredapd/settings.py /opt/mlmmjadmin/settings.py /opt/mailadmin/.env 2>/dev/null
+      log "конфигурация собрана"
+    fi
+    out="$DIR/mail-$stamp.tar.gz"
+    if [[ ",$PARTS," == *,mail,* ]]; then
+      tar -C / -czf "$out" --warning=no-file-changed -C "$work" . -C / var/vmail 2>>"$DIR/backup.log" || { rc=$?; [ $rc -eq 1 ] || { finish failed "$out" 0 $(( $(date +%s) - started )) "tar rc=$rc"; log "ошибка tar rc=$rc"; exit 1; }; }
+    else
+      tar -C "$work" -czf "$out" . 2>>"$DIR/backup.log"
+    fi
+    size=$(stat -c %s "$out"); secs=$(( $(date +%s) - started ))
+    log "готово: $out, $size байт, $secs с"
+    # Ротация: ежедневные старше KEEP_DAILY дней удаляем, кроме воскресных (недельные) — их держим KEEP_WEEKLY недель.
+    find "$DIR" -maxdepth 1 -name 'mail-*.tar.gz' -mtime +"$KEEP_DAILY" | while read -r f; do
+      dow=$(date -r "$f" +%u); age=$(( ( $(date +%s) - $(stat -c %Y "$f") ) / 86400 ))
+      if [ "$dow" = 7 ] && [ "$age" -le $(( KEEP_WEEKLY * 7 )) ]; then continue; fi
+      rm -f "$f"; log "удалена старая копия $(basename "$f")"
+    done
+    finish ok "$out" "$size" "$secs" ""
+    ;;
+  restore-mailbox)
+    arc="$2"; user="$3"; dom="${user#*@}"; loc="${user%@*}"
+    [ -f "$arc" ] || { echo "нет архива" >&2; exit 1; }
+    path=$(tar tzf "$arc" 2>/dev/null | grep -m1 -E "^var/vmail/vmail1/$dom/./././$loc(-[0-9.]+)?/$" || true)
+    [ -n "$path" ] || { echo "в архиве нет ящика $user" >&2; exit 1; }
+    tmp=$(mktemp -d /var/tmp/restore.XXXXXX)
+    tar -C "$tmp" -xzf "$arc" "$path"
+    dest="/$path"; mkdir -p "$dest"
+    # Кладём рядом, не затирая текущее: письма из копии появятся в ящике как обычные, дубликаты Dovecot переиндексирует.
+    cp -an "$tmp/$path"Maildir/. "${dest}Maildir/" 2>/dev/null || true
+    chown -R vmail:vmail "$dest"; rm -rf "$tmp"
+    doveadm force-resync -u "$user" '*' >/dev/null 2>&1 || true
+    echo "ok: $dest"
+    ;;
+  *) echo "usage: mailadmin-backup run|restore-mailbox" >&2; exit 2 ;;
+esac

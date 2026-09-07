@@ -14,7 +14,7 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
-    protected $fillable = ['name', 'email', 'password', 'is_active', 'role'];
+    protected $fillable = ['name', 'email', 'password', 'is_active', 'role', 'imap_auth'];
 
     protected $hidden = ['password', 'remember_token', 'totp_secret'];
 
@@ -26,6 +26,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'totp_secret' => 'encrypted',
             'is_active' => 'boolean',
+            'imap_auth' => 'boolean',
         ];
     }
 

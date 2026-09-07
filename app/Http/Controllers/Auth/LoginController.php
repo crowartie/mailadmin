@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\AdminLogin;
 use App\Models\User;
+use App\Services\Mail\ImapSession;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -36,7 +37,7 @@ class LoginController extends Controller
 
         $user = User::where('email', strtolower($data['email']))->first();
 
-        if (! $user || ! $user->is_active || ! Hash::check($data['password'], $user->password)) {
+        if (! $user || ! $user->is_active || ! $this->passwordOk($user, $data['password'])) {
             AdminLogin::record($request, $data['email'], 'bad_password');
 
             return back()->withErrors(['email' => 'Неверный адрес или пароль.'])->onlyInput('email');
@@ -56,6 +57,22 @@ class LoginController extends Controller
         AdminLogin::record($request, $user->email, 'ok');
 
         return redirect()->intended('/');
+    }
+
+    /** Администратор из сотрудников входит паролем своего ящика (проверка через IMAP). */
+    private function passwordOk(User $user, string $password): bool
+    {
+        if ($user->imap_auth) {
+            try {
+                ImapSession::verify($user->email, $password);
+
+                return true;
+            } catch (\Throwable) {
+                return false;
+            }
+        }
+
+        return filled($user->password) && Hash::check($password, $user->password);
     }
 
     public function destroy(Request $request): RedirectResponse
