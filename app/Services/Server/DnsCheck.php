@@ -4,7 +4,9 @@ namespace App\Services\Server;
 
 /**
  * Проверка DNS почтового домена: что должно быть и что есть на самом деле.
- * Спрашиваем публичные резолверы системы (dns_get_record) — так же, как чужие серверы.
+ * Спрашиваем ПУБЛИЧНЫЕ резолверы (dig @8.8.8.8 / @1.1.1.1) — так же, как чужие серверы.
+ * Через локальный systemd-resolved нельзя: для собственного имени машины он отдаёт адрес из /etc/hosts
+ * (192.168.x.x), и проверка «ожидает» локальный IP вместо внешнего.
  */
 class DnsCheck
 {
@@ -68,34 +70,124 @@ class DnsCheck
         if (! $ip) {
             return null;
         }
-        $host = @gethostbyaddr($ip);
-        $actual = $host && $host !== $ip ? $host : '';
-        $ok = $actual && strcasecmp(rtrim($actual, '.'), $mailHost) === 0;
+        $names = $this->dig('-x ' . $ip, 'PTR');
+        $actual = $names ? rtrim($names[0], '.') : '';
+        $ok = $actual && strcasecmp($actual, $mailHost) === 0;
 
         return ['ip' => $ip, 'actual' => $actual ?: 'нет записи', 'kind' => $ok ? 'ok' : 'no', 'note' => $ok ? 'совпадает' : 'нужен ' . $mailHost . ' — заявка провайдеру интернета'];
     }
 
+    /** Внешний адрес сервера — то, что видят чужие серверы по имени mail-хоста. */
     public function externalIp(string $mailHost): ?string
     {
         $a = $this->records($mailHost, DNS_A);
+        foreach ($a as $r) {
+            if (filter_var($r['ip'], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return $r['ip'];
+            }
+        }
 
         return $a[0]['ip'] ?? null;
     }
 
-    /** @return array<int,array<string,mixed>> */
+    /** Публичные резолверы по очереди; если dig недоступен или все молчат — системный резолвер. */
+    private const RESOLVERS = ['8.8.8.8', '1.1.1.1', '77.88.8.8'];
+
+    /** @return string[] строки вывода `dig +short` (пусто — записи нет или резолвер молчит) */
+    private function dig(string $name, string $type): array
+    {
+        static $dead = [];
+        foreach (self::RESOLVERS as $ns) {
+            if (isset($dead[$ns])) {
+                continue;
+            }
+            $args = array_merge(['dig', '+short', '+time=2', '+tries=1', '@' . $ns], preg_split('/\s+/', trim($name)), [$type]);
+            $p = new \Symfony\Component\Process\Process($args);
+            $p->setTimeout(6);
+            try {
+                $p->run();
+            } catch (\Throwable) {
+                $dead[$ns] = true;
+                continue;
+            }
+            $out = trim($p->getOutput());
+            if ($p->getExitCode() !== 0 || str_contains($out, 'communications error') || str_contains($out, 'timed out')) {
+                $dead[$ns] = true;
+                continue;
+            }
+
+            return array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $out)), fn ($l) => $l !== '' && ! str_starts_with($l, ';')));
+        }
+
+        // Все публичные резолверы недоступны (например, закрыт исходящий 53-й) — спрашиваем системный.
+        return $this->digSystem($name, $type);
+    }
+
+    /** @return string[] */
+    private function digSystem(string $name, string $type): array
+    {
+        $map = ['A' => DNS_A, 'MX' => DNS_MX, 'TXT' => DNS_TXT, 'CNAME' => DNS_CNAME];
+        if (str_starts_with($name, '-x ')) {
+            $h = @gethostbyaddr(substr($name, 3));
+
+            return $h && $h !== substr($name, 3) ? [$h . '.'] : [];
+        }
+        $r = @dns_get_record($name, $map[$type] ?? DNS_A);
+        $out = [];
+        foreach (is_array($r) ? $r : [] as $rec) {
+            $out[] = match ($type) {
+                'A' => $rec['ip'] ?? '',
+                'MX' => ($rec['pri'] ?? 0) . ' ' . ($rec['target'] ?? '') . '.',
+                'CNAME' => ($rec['target'] ?? '') . '.',
+                'TXT' => '"' . implode('', (array) ($rec['entries'] ?? [$rec['txt'] ?? ''])) . '"',
+                default => '',
+            };
+        }
+
+        return array_values(array_filter($out));
+    }
+
+    /** Совместимый с dns_get_record формат — остальной код читает поля ip/target/pri. @return array<int,array<string,mixed>> */
     private function records(string $host, int $type): array
     {
-        $r = @dns_get_record($host, $type);
+        $out = [];
+        switch ($type) {
+            case DNS_A:
+                foreach ($this->dig($host, 'A') as $l) {
+                    if (filter_var($l, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                        $out[] = ['ip' => $l];
+                    }
+                }
+                break;
+            case DNS_MX:
+                foreach ($this->dig($host, 'MX') as $l) {
+                    if (preg_match('/^(\d+)\s+(\S+)$/', $l, $m)) {
+                        $out[] = ['pri' => (int) $m[1], 'target' => rtrim($m[2], '.')];
+                    }
+                }
+                usort($out, fn ($a, $b) => $a['pri'] <=> $b['pri']);
+                break;
+            case DNS_CNAME:
+                foreach ($this->dig($host, 'CNAME') as $l) {
+                    if (preg_match('/^[a-z0-9.-]+\.$/i', $l)) {
+                        $out[] = ['target' => rtrim($l, '.')];
+                    }
+                }
+                break;
+        }
 
-        return is_array($r) ? $r : [];
+        return $out;
     }
 
     /** @return string[] */
     private function txt(string $host): array
     {
         $out = [];
-        foreach ($this->records($host, DNS_TXT) as $r) {
-            $out[] = implode('', (array) ($r['entries'] ?? [$r['txt'] ?? '']));
+        foreach ($this->dig($host, 'TXT') as $l) {
+            // dig печатает строку кусками в кавычках: "v=DKIM1; k=rsa; " "p=MIIB…"
+            if (preg_match_all('/"((?:[^"\\\\]|\\\\.)*)"/', $l, $m)) {
+                $out[] = str_replace('\\"', '"', implode('', $m[1]));
+            }
         }
 
         return $out;
