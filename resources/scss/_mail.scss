@@ -171,10 +171,10 @@
 
 .mrow {
     display: grid;
-    grid-template-columns: 22px 10px 36px minmax(0, 1fr) auto;
+    grid-template-columns: 18px 36px minmax(0, 1fr) auto;
     gap: 10px;
     align-items: center;
-    padding: 10px 14px;
+    padding: 10px 14px 10px 12px;
     border-bottom: 1px solid v.$c-border;
     font-size: 13.5px;
     cursor: pointer;
@@ -190,8 +190,9 @@
     .cb { opacity: .55; }
     &:hover .cb, &--checked .cb { opacity: 1; }
 
-    &__dot { width: 8px; height: 8px; border-radius: 50%; }
-    &--unread &__dot { background: v.$c-accent; }
+    // Точка непрочитанного — на углу аватара, а не отдельной колонкой.
+    &__dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; left: 41px; top: 12px; border: 2px solid v.$c-surface; display: none; z-index: 1; }
+    &--unread &__dot { background: v.$c-accent; display: block; }
 
     &__av {
         width: 36px;
@@ -879,7 +880,8 @@ select.input { padding-right: 28px; }
         b { font-size: 20px; flex: 1; }
     }
     .mrow { grid-template-columns: 36px minmax(0, 1fr) auto; padding: 12px 14px; }
-    .mrow .cb, .mrow__dot { display: none; }
+    .mrow .cb { display: none; }
+    .mrow__dot { left: 8px; }
     .mrow__acts { display: none !important; }
     .mrow:hover .mrow__when { visibility: visible; }
     .compose { margin: 0; border-radius: 0; border: none; min-height: 100%; }

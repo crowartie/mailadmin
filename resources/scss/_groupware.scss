@@ -6,7 +6,7 @@
 .mnav__foot { display: flex; gap: 4px; padding: 8px 4px 0; border-top: 1px solid v.$c-border; }
 .mnav__foot .ib { font-size: 12.5px; }
 
-.crow { grid-template-columns: 36px minmax(0, 1fr) auto; }
+.crow { grid-template-columns: 36px minmax(0, 1fr) auto; padding-left: 14px; }
 .crow__letter {
     position: sticky; top: 0; z-index: 1;
     padding: 6px 16px 4px;
