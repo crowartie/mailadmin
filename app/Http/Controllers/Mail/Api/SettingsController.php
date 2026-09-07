@@ -49,6 +49,7 @@ class SettingsController extends Controller
     {
         $data = $request->validate(['name' => ['required', 'string', 'max:60'], 'color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/']]);
         abort_if(Label::where('user', $imap->user())->count() >= 30, 422, 'Слишком много меток');
+        abort_if(Label::where('user', $imap->user())->whereRaw('LOWER(name) = ?', [mb_strtolower(trim($data['name']))])->exists(), 422, 'Метка с таким именем уже есть');
         $label = Label::create(['user' => $imap->user(), 'name' => $data['name'], 'color' => $data['color'] ?? '#2F6FEB']);
 
         return $this->labels($imap);
@@ -57,6 +58,7 @@ class SettingsController extends Controller
     public function updateLabel(Request $request, ImapSession $imap, int $id): JsonResponse
     {
         $data = $request->validate(['name' => ['required', 'string', 'max:60'], 'color' => ['nullable', 'regex:/^#[0-9a-fA-F]{6}$/']]);
+        abort_if(Label::where('user', $imap->user())->where('id', '!=', $id)->whereRaw('LOWER(name) = ?', [mb_strtolower(trim($data['name']))])->exists(), 422, 'Метка с таким именем уже есть');
         Label::where('user', $imap->user())->findOrFail($id)->update(array_filter($data));
 
         return $this->labels($imap);

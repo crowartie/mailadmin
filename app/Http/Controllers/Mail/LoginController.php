@@ -109,7 +109,8 @@ class LoginController extends Controller
     private function complete(Request $request, string $login, string $password, EmployeeProfile $profile): RedirectResponse
     {
         $device = MailSession::device($request->userAgent());
-        $known = MailLogin::query()->where('user', $login)->where('result', 'ok')->where('created_at', '>=', now()->subDays(90))
+        // Устройство знакомо, если с него уже входили (в т.ч. как «новое») за последние 90 дней.
+        $known = MailLogin::query()->where('user', $login)->whereIn('result', ['ok', 'new_device'])->where('created_at', '>=', now()->subDays(90))
             ->where('agent', 'like', '%' . substr((string) $request->userAgent(), 0, 40) . '%')->exists();
         $everLogged = MailLogin::query()->where('user', $login)->whereIn('result', ['ok', 'new_device'])->exists();
 

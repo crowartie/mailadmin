@@ -348,7 +348,8 @@ class MailStore
             $attachments[] = [
                 'index' => $i,
                 'name' => Charset::header($a->getName()) ?: ('вложение-' . ($i + 1)),
-                'size' => $a->getSize(),
+                // getSize() — размер в base64 из структуры письма; получателю нужен размер самого файла.
+                'size' => strlen((string) $a->getContent()) ?: $a->getSize(),
                 'type' => $a->getMimeType(),
                 'inline' => $isInline,
             ];
