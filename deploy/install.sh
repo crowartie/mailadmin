@@ -25,12 +25,15 @@ SECRETS=/root/mailadmin-install.txt
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m!!  %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31mОШИБКА: %s\033[0m\n' "$*" >&2; exit 1; }
-rand() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-24}"; }
+# Без head в конце конвейера: под pipefail SIGPIPE от head роняет весь скрипт.
+rand() { openssl rand -base64 96 | tr -dc 'A-Za-z0-9' | cut -c1-"${1:-24}"; }
 secret() { # сохранить пару ключ=значение в /root/mailadmin-install.txt (один раз)
   touch "$SECRETS"; chmod 0600 "$SECRETS"
   grep -q "^$1=" "$SECRETS" || printf '%s=%s\n' "$1" "$2" >> "$SECRETS"
 }
-getsecret() { sed -n "s/^$1=//p" "$SECRETS" 2>/dev/null | head -1; }
+# Первое совпадение по sed-выражению; отсутствие файла — не ошибка (иначе set -e молча роняет скрипт на пустом значении).
+readval() { { sed -n "$2" "$1" 2>/dev/null || true; } | awk 'NR==1'; }
+getsecret() { readval "$SECRETS" "s/^$1=//p"; }
 
 # ── 0. Проверки и параметры ────────────────────────────────────────────────
 [ "$(id -u)" = 0 ] || die "запускать от root: sudo bash install.sh"
@@ -47,7 +50,9 @@ export DEBIAN_FRONTEND=noninteractive
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(getsecret MYSQL_ROOT_PASSWORD)}; MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(rand 20)}
 POSTMASTER_PASSWORD=${POSTMASTER_PASSWORD:-$(getsecret POSTMASTER_PASSWORD)}; POSTMASTER_PASSWORD=${POSTMASTER_PASSWORD:-$(rand 18)}
 ADMIN_PASSWORD=${ADMIN_PASSWORD:-$(getsecret ADMIN_PASSWORD)}; ADMIN_PASSWORD=${ADMIN_PASSWORD:-$(rand 16)}
-secret MYSQL_ROOT_PASSWORD "$MYSQL_ROOT_PASSWORD"; secret POSTMASTER_PASSWORD "$POSTMASTER_PASSWORD"; secret ADMIN_PASSWORD "$ADMIN_PASSWORD"
+secret ADMIN_PASSWORD "$ADMIN_PASSWORD"
+POSTMASTER_NOTE="postmaster@$DOMAIN / $POSTMASTER_PASSWORD"
+[ -f /etc/iredmail-release ] && POSTMASTER_NOTE="postmaster@$DOMAIN (iRedMail стоял раньше — пароль прежний)"
 
 log "Имя хоста и часовой пояс"
 hostnamectl set-hostname "$HOSTNAME"
@@ -78,6 +83,7 @@ export USE_FAIL2BAN=YES
 #EOF
 EOF
   chmod 0600 "iRedMail-${IREDMAIL_VER}/config"
+  secret MYSQL_ROOT_PASSWORD "$MYSQL_ROOT_PASSWORD"; secret POSTMASTER_PASSWORD "$POSTMASTER_PASSWORD"
   ( cd "iRedMail-${IREDMAIL_VER}" && AUTO_USE_EXISTING_CONFIG_FILE=y AUTO_INSTALL_WITHOUT_CONFIRM=y \
       AUTO_CLEANUP_REMOVE_SENDMAIL=y AUTO_CLEANUP_REPLACE_FIREWALL_RULES=y AUTO_CLEANUP_RESTART_FIREWALL=y \
       AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y bash iRedMail.sh ) || die "iRedMail не установился, смотрите вывод выше и /root/iRedMail-${IREDMAIL_VER}/runtime/install.log"
@@ -87,10 +93,12 @@ TIPS=/root/iRedMail-${IREDMAIL_VER}/iRedMail.tips
 [ -f "$TIPS" ] || die "нет $TIPS — установка iRedMail не завершилась"
 
 # Пароли служебных баз iRedMail — из его же файлов.
-VMAILADMIN_PASSWORD=$(sed -n 's/.*Username: vmailadmin, Password: \([^ ,]*\).*/\1/p' "$TIPS" | head -1)
-IREDAPD_DB_PASSWORD=$(sed -n "s/^sql_password *= *['\"]\([^'\"]*\)['\"].*/\1/p" /opt/iredapd/settings.py | head -1)
-AMAVIS_DB_PASSWORD=$(sed -n "s/^amavisd_db_password *= *['\"]\([^'\"]*\)['\"].*/\1/p" /opt/iredapd/settings.py | head -1)
-[ -n "$VMAILADMIN_PASSWORD" ] || die "не нашёл пароль vmailadmin в $TIPS"
+# iRedMail.tips пароли не печатает — берём из настроек iRedAdmin (vmailadmin) и iRedAPD (iredapd, amavisd).
+pyval() { readval "$1" "s/^$2 *= *['\"]\([^'\"]*\)['\"].*/\1/p"; }
+VMAILADMIN_PASSWORD=$(pyval /opt/www/iredadmin/settings.py vmail_db_password)
+IREDAPD_DB_PASSWORD=$(pyval /opt/iredapd/settings.py iredapd_db_password)
+AMAVIS_DB_PASSWORD=$(pyval /opt/iredapd/settings.py amavisd_db_password)
+[ -n "$VMAILADMIN_PASSWORD" ] || die "не нашёл пароль vmailadmin в /opt/www/iredadmin/settings.py"
 [ -n "$IREDAPD_DB_PASSWORD" ] && [ -n "$AMAVIS_DB_PASSWORD" ] || die "не нашёл пароли iredapd/amavisd в /opt/iredapd/settings.py"
 mysql() { command mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$@"; }
 mysql -e 'select 1' >/dev/null 2>&1 || mysql() { command mysql "$@"; }   # на свежем iRedMail root входит через сокет
@@ -121,7 +129,7 @@ fi
 # ── 3. База приложения и .env ──────────────────────────────────────────────
 log "База mailadmin и .env"
 # На уже установленном сервере пароли берём из .env — иначе сломаем работающую установку.
-DB_PASSWORD=$(sed -n 's/^DB_PASSWORD=//p' "$APP/.env" 2>/dev/null | head -1); DB_PASSWORD=${DB_PASSWORD:-$(getsecret DB_PASSWORD)}; DB_PASSWORD=${DB_PASSWORD:-$(rand 24)}; secret DB_PASSWORD "$DB_PASSWORD"
+DB_PASSWORD=$(readval "$APP/.env" 's/^DB_PASSWORD=//p'); DB_PASSWORD=${DB_PASSWORD:-$(getsecret DB_PASSWORD)}; DB_PASSWORD=${DB_PASSWORD:-$(rand 24)}; secret DB_PASSWORD "$DB_PASSWORD"
 mysql <<EOF
 CREATE DATABASE IF NOT EXISTS mailadmin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'mailadmin'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
@@ -129,13 +137,13 @@ ALTER USER 'mailadmin'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON mailadmin.* TO 'mailadmin'@'localhost';
 FLUSH PRIVILEGES;
 EOF
-MASTER_PASSWORD=$(sed -n 's/^MAIL_IMAP_MASTER_PASSWORD=//p' "$APP/.env" 2>/dev/null | head -1); MASTER_PASSWORD=${MASTER_PASSWORD:-$(getsecret MASTER_PASSWORD)}; MASTER_PASSWORD=${MASTER_PASSWORD:-$(rand 28)}; secret MASTER_PASSWORD "$MASTER_PASSWORD"
+MASTER_PASSWORD=$(readval "$APP/.env" 's/^MAIL_IMAP_MASTER_PASSWORD=//p'); MASTER_PASSWORD=${MASTER_PASSWORD:-$(getsecret MASTER_PASSWORD)}; MASTER_PASSWORD=${MASTER_PASSWORD:-$(rand 28)}; secret MASTER_PASSWORD "$MASTER_PASSWORD"
 # mlmmjadmin: у unattended-установки пустой токен — выставляем свой.
 if grep -q "^api_auth_tokens = \[''\]" /opt/mlmmjadmin/settings.py 2>/dev/null; then
   sed -i "s/^api_auth_tokens = \[''\]/api_auth_tokens = ['$(openssl rand -hex 24)']/" /opt/mlmmjadmin/settings.py
   systemctl restart mlmmjadmin || true
 fi
-MLMMJADMIN_TOKEN=$(sed -n "s/^api_auth_tokens = \['\([^']*\)'\].*/\1/p" /opt/mlmmjadmin/settings.py 2>/dev/null | head -1)
+MLMMJADMIN_TOKEN=$(readval /opt/mlmmjadmin/settings.py "s/^api_auth_tokens = \['\([^']*\)'\].*/\1/p")
 if [ ! -f "$APP/.env" ]; then
   sed -e "s|@@DOMAIN@@|$DOMAIN|g" -e "s|@@HOSTNAME@@|$HOSTNAME|g" -e "s|@@TIMEZONE@@|$TIMEZONE|g" \
       -e "s|@@DB_PASSWORD@@|$DB_PASSWORD|" -e "s|@@VMAIL_DB_PASSWORD@@|$VMAILADMIN_PASSWORD|" -e "s|@@MASTER_PASSWORD@@|$MASTER_PASSWORD|" \
@@ -220,7 +228,7 @@ usermod -aG adm www-data
 install -d -m 0750 -o root -g www-data /var/backups/mail
 /usr/local/sbin/mailadmin-f2b 5 10 24 >/dev/null || warn "fail2ban jail не поднялся"
 install -m 0644 "$HERE/logrotate-mailadmin" /etc/logrotate.d/mailadmin
-( crontab -l 2>/dev/null | grep -v 'artisan schedule:run'; echo "* * * * * cd $APP && php artisan schedule:run >> /dev/null 2>&1" ) | crontab -
+( { crontab -l 2>/dev/null || true; } | { grep -v 'artisan schedule:run' || true; }; echo "* * * * * cd $APP && php artisan schedule:run >> /dev/null 2>&1" ) | crontab -
 
 # ── 7. Dovecot: пароли приложений, полнотекстовый поиск, обучение спама, общий Sieve ──
 log "Dovecot: пароли приложений, fts_xapian, imapsieve, sieve_before2"
@@ -302,7 +310,7 @@ cat <<EOF
  Готово. Секреты сохранены в $SECRETS (только root).
 
  Админка:    https://$HOSTNAME:8443   — $ADMIN_NOTE
- Веб-почта:  https://$HOSTNAME/mail  — postmaster@$DOMAIN / $POSTMASTER_PASSWORD
+ Веб-почта:  https://$HOSTNAME/mail  — $POSTMASTER_NOTE
  iRedAdmin:  https://$HOSTNAME:8444/iredadmin (на всякий случай)
 
  DNS-записи для $DOMAIN (проверка — Админка → Настройки → Домены и DNS):
