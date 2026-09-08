@@ -59,8 +59,15 @@ case "$cmd" in
                   sed -i -E "s/^(\\\$$1\s*=\s*)[0-9.]+;/\1$2;/" /etc/amavis/conf.d/50-user; echo ok ;;
   # Перезапуск отдельно: несколько правок подряд — один рестарт (иначе systemd упирается в start-limit).
   amavis-apply)   systemctl reset-failed amavis 2>/dev/null; systemctl restart amavis; sleep 1; systemctl is-active amavis ;;
-  amavis-virus)   case "$1" in on) sed -i -E 's/^@bypass_virus_checks_maps = \(1\);/#@bypass_virus_checks_maps = (1);/' /etc/amavis/conf.d/50-user;;
-                                off) grep -q '^@bypass_virus_checks_maps = (1);' /etc/amavis/conf.d/50-user || sed -i '1a @bypass_virus_checks_maps = (1);' /etc/amavis/conf.d/50-user;; *) die "on|off";; esac
+  # Антивирус: пустой @bypass_virus_checks_maps для Amavis значит «проверки выключены» (так задумано в Debian),
+  # поэтому «on» пишет стандартную debian-форму с пустыми картами, а не просто комментирует строку (1).
+  amavis-virus)   F=/etc/amavis/conf.d/50-user
+                  case "$1" in on)  ON='@bypass_virus_checks_maps = (\%bypass_virus_checks, \@bypass_virus_checks_acl, \$bypass_virus_checks_re);';;
+                               off) ON='@bypass_virus_checks_maps = (1);';;
+                               *) die "on|off";; esac
+                  # perl вместо sed: в строке есть \% \@ \$, sed их съедает
+                  ON="$ON" perl -pi -e 's/^#?\@bypass_virus_checks_maps = .*$/$ENV{ON}/' "$F"
+                  grep -qF "$ON" "$F" || ON="$ON" perl -pi -e 'print "$ENV{ON}\n" if $. == 2' "$F"
                   echo ok ;;
   amavis-release) re='^[A-Za-z0-9_+-]{8,24}$'; [[ "$1" =~ $re && "$2" =~ $re ]] || die "bad ids"; exec amavisd-release "$1" "$2" ;;
   iredapd-plugins) exec grep -E '^plugins' /opt/iredapd/settings.py ;;
