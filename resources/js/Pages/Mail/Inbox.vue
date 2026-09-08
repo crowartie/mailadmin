@@ -782,7 +782,7 @@ onBeforeUnmount(() => {
                     <button class="btn btn--primary" type="button" :disabled="dialog.busy" @click="markSender('address')">{{ dialog.what === 'ham' ? 'Адрес' : 'Все письма с адреса' }} <b>{{ dialog.mails.length === 1 ? dialog.mails[0] : dialog.mails.length + ' адреса' }}</b></button>
                     <button class="btn" type="button" :disabled="dialog.busy" @click="markSender('domain')">{{ dialog.what === 'ham' ? 'Весь домен' : 'Все письма с домена' }} <b>{{ dialog.domains.length === 1 ? '@' + dialog.domains[0] : dialog.domains.length + ' домена' }}</b></button>
                 </div>
-                <label v-if="dialog.what !== 'ham'" class="toggle" style="margin-top: 12px; display: flex; gap: 8px; align-items: center"><input v-model="dialog.resort" type="checkbox"><span>Сразу разложить уже полученные письма по всем папкам</span></label>
+                <div v-if="dialog.what !== 'ham'" style="margin-top: 12px; display: flex; gap: 10px; align-items: center"><label class="toggle"><input v-model="dialog.resort" type="checkbox"><span class="toggle__track" /></label><span>Сразу разложить уже полученные письма по всем папкам</span></div>
                 <p class="hint" style="margin: 12px 0 0">{{ dialog.what === 'ham' ? 'Исключение действует для всей компании: сервер перестанет считать эти письма спамом.' : 'Правило появится в ваших «Правилах». Когда так же отметят несколько сотрудников, оно станет общим для всех ящиков.' }}</p>
                 <div class="dialog__actions"><button class="btn" type="button" @click="dialog = null">Только это письмо</button></div>
             </div>
