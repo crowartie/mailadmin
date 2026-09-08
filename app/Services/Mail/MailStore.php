@@ -141,6 +141,12 @@ class MailStore
         return $d !== false && $d !== '' ? $d : $name;
     }
 
+    /** Роль папки по её имени (без обращения к серверу). */
+    public static function roleOfPath(string $path): string
+    {
+        return self::ROLES[strtoupper($path)] ?? 'custom';
+    }
+
     public function folderTitle(string $path): string
     {
         foreach ($this->folders() as $f) {

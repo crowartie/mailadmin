@@ -100,6 +100,8 @@ export const api = {
     copyContact: (book, uri, to = 'personal') => request('POST', `/mail/api/contacts/${enc(book)}/${enc(uri)}/copy`, { to }),
     suggestContact: (book, uri, note = '') => request('POST', `/mail/api/contacts/${enc(book)}/${enc(uri)}/suggest`, { note }),
     contactGroups: () => request('GET', '/mail/api/contacts/groups'),
+    contactHistory: () => request('GET', '/mail/api/contacts/history'),
+    forgetHistory: (email) => request('DELETE', `/mail/api/contacts/history/${enc(email)}`),
     importContacts: (file, book = 'personal') => { const fd = new FormData(); fd.append('file', file, file.name); fd.append('book', book); return request('POST', '/mail/api/contacts/import', fd); },
     exportUrl: (book = '') => `/mail/api/contacts/export${book ? '?book=' + enc(book) : ''}`,
 

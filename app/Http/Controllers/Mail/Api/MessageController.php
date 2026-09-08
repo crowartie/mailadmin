@@ -28,8 +28,15 @@ class MessageController extends Controller
     public function show(Request $request, ImapSession $imap, string $folder, int $uid): JsonResponse
     {
         $store = new MailStore($imap->client());
+        $m = $store->message($folder, $uid, ! $request->boolean('peek'));
+        // История общения: отправитель прочитанного письма — тоже контакт (кроме своих, рассылок и роботов).
+        $from = strtolower((string) ($m['from']['mail'] ?? ''));
+        if ($from !== '' && $from !== strtolower($imap->user()) && ! in_array(MailStore::roleOfPath($folder), ['sent', 'drafts', 'spam', 'trash'], true)
+            && ! preg_match('/^(no-?reply|noreply|mailer-daemon|postmaster|bounce|notification|do-?not-?reply|cron|root)[@.+-]/i', $from) && ! str_starts_with($folder, MailStore::SHARED_PREFIX)) {
+            \App\Models\Webmail\Recent::remember($imap->user(), $from, (string) ($m['from']['name'] ?? ''));
+        }
 
-        return response()->json($store->message($folder, $uid, ! $request->boolean('peek')));
+        return response()->json($m);
     }
 
     public function attachment(Request $request, ImapSession $imap, string $folder, int $uid, int $index): Response

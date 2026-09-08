@@ -93,6 +93,8 @@ Route::middleware('area:mail')->group(function () {
             Route::get('contacts/books', [ContactsController::class, 'books']);
             Route::get('contacts/groups', [ContactsController::class, 'groups']);
             Route::get('contacts/export', [ContactsController::class, 'export']);
+            Route::get('contacts/history', [ContactsController::class, 'history']);
+            Route::delete('contacts/history/{email}', [ContactsController::class, 'forgetHistory']);
             Route::post('contacts/import', [ContactsController::class, 'import']);
             Route::get('contacts', [ContactsController::class, 'index']);
             Route::post('contacts', [ContactsController::class, 'store']);

@@ -8,7 +8,7 @@ import Popover from '../../Components/Mail/Popover.vue';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import { api } from '../../mail/api';
-import { initials, plural } from '../../mail/format';
+import { initials, plural, when } from '../../mail/format';
 
 const props = defineProps({
     user: String,
@@ -59,8 +59,28 @@ const visible = computed(() => {
         return words.every((w) => hay.includes(w));
     });
 });
+// История общения: с кем переписывались, но кого ещё нет в книгах.
+const history = ref([]);
+async function loadHistory() {
+    loading.value = true;
+    try { history.value = await api.contactHistory(); } catch (e) { fail(e); } finally { loading.value = false; }
+}
+const historyVisible = computed(() => {
+    const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return history.value.filter((h) => !words.length || words.every((w) => `${h.email} ${h.name}`.toLowerCase().includes(w)));
+});
+function addFromHistory(h) {
+    open.value = null;
+    const parts = (h.name || '').split(/\s+/).filter(Boolean);
+    editing.value = { ...blank('personal'), first: parts[1] || parts[0] || '', last: parts.length > 1 ? parts[0] : '', emails: [{ value: h.email, type: 'work' }], fromHistory: h.email };
+    mobileRead.value = true;
+}
+async function forgetHistory(h) {
+    try { history.value = await api.forgetHistory(h.email); } catch (e) { fail(e); }
+}
 // Буквенные заголовки в списке.
 const rows = computed(() => {
+    if (filter.value === 'history') return historyVisible.value.map((h) => ({ hist: h }));
     const out = []; let last = null;
     visible.value.forEach((c) => {
         const letter = (c.fn || '?')[0].toUpperCase();
@@ -72,6 +92,7 @@ const rows = computed(() => {
 const title = computed(() => {
     if (filter.value === 'all') return 'Все контакты';
     if (filter.value === 'favorites') return 'Избранные';
+    if (filter.value === 'history') return 'История общения';
     if (filter.value.startsWith('group:')) return filter.value.slice(6);
     return books.value.find((b) => b.uri === filter.value)?.name || 'Контакты';
 });
@@ -96,6 +117,7 @@ async function reload(keepOpen = true) {
 
 function go(f) {
     filter.value = f;
+    if (f === 'history') loadHistory();
     navOpen.value = false;
     mobileRead.value = false;
     const p = new URLSearchParams();
@@ -146,6 +168,7 @@ async function save() {
         const saved = f.sourceUri ? await api.updateContact(f.sourceBook, f.sourceUri, payload) : await api.createContact(payload);
         editing.value = null;
         await reload(false);
+        if (f.fromHistory) { history.value = history.value.filter((h) => h.email !== f.fromHistory); }
         open.value = await api.contact(saved.book, saved.uri);
         say('Сохранено');
     } catch (e) { fail(e); } finally { loading.value = false; }
@@ -251,6 +274,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 <button class="btn btn--primary" type="button" style="margin: 0 0 10px" @click="create"><Icon name="plus" :size="16" />Новый контакт</button>
                 <button class="mnav__item" :class="{ 'mnav__item--on': filter === 'all' }" type="button" @click="go('all')"><span>Все контакты</span><span class="mnav__count">{{ all.length }}</span></button>
                 <button class="mnav__item" :class="{ 'mnav__item--on': filter === 'favorites' }" type="button" @click="go('favorites')"><span>Избранные</span><span class="mnav__count">{{ favorites || '' }}</span></button>
+                <button class="mnav__item" :class="{ 'mnav__item--on': filter === 'history' }" type="button" title="Адреса из переписки, которых нет в книгах" @click="go('history')"><Icon name="clock" :size="16" style="color: var(--faint)" /><span>История общения</span><span class="mnav__count">{{ filter === 'history' && history.length ? history.length : '' }}</span></button>
                 <div class="mnav__group">Книги</div>
                 <button v-for="b in books" :key="b.uri" class="mnav__item" :class="{ 'mnav__item--on': filter === b.uri }" type="button" :title="b.description" @click="go(b.uri)">
                     <Icon :name="b.kind === 'employees' ? 'users' : b.kind === 'company' ? 'building' : 'book'" :size="16" style="color: var(--faint)" />
@@ -283,12 +307,24 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                     <span v-else class="kbd">/</span>
                 </form>
                 <div class="mlist__meta">
-                    <span>{{ visible.length }} {{ plural(visible.length, 'контакт', 'контакта', 'контактов') }}</span>
+                    <span v-if="filter === 'history'">{{ historyVisible.length }} {{ plural(historyVisible.length, 'адрес', 'адреса', 'адресов') }} · ещё не в книгах</span>
+                    <span v-else>{{ visible.length }} {{ plural(visible.length, 'контакт', 'контакта', 'контактов') }}</span>
                     <button class="ib ib--sm" type="button" title="Обновить" @click="reload()"><Icon name="refresh" :size="14" /></button>
                 </div>
                 <div class="mlist__rows" :style="loading ? 'opacity:.6' : ''">
-                    <template v-for="r in rows" :key="r.letter ? 'L' + r.letter : r.contact.book + r.contact.uri">
+                    <template v-for="r in rows" :key="r.letter ? 'L' + r.letter : r.hist ? 'H' + r.hist.email : r.contact.book + r.contact.uri">
                         <div v-if="r.letter" class="crow__letter">{{ r.letter }}</div>
+                        <div v-else-if="r.hist" class="mrow crow" style="cursor: default">
+                            <span class="mrow__av">{{ initials(r.hist.name, r.hist.email) }}</span>
+                            <span class="mrow__body">
+                                <span class="mrow__from"><b>{{ r.hist.name || r.hist.email }}</b></span>
+                                <span class="mrow__prev">{{ r.hist.name ? r.hist.email + ' · ' : '' }}{{ r.hist.uses }} {{ plural(r.hist.uses, 'письмо', 'письма', 'писем') }}{{ r.hist.last_at ? ', последнее ' + when(r.hist.last_at) : '' }}</span>
+                            </span>
+                            <span class="mrow__when" style="display: flex; gap: 4px">
+                                <button class="ib ib--sm" type="button" title="Добавить в мои контакты" @click.stop="addFromHistory(r.hist)"><Icon name="plus" :size="15" /></button>
+                                <button class="ib ib--sm" type="button" title="Убрать из истории" @click.stop="forgetHistory(r.hist)"><Icon name="x" :size="14" /></button>
+                            </span>
+                        </div>
                         <div
                             v-else
                             class="mrow crow"
@@ -304,7 +340,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             <span class="mrow__when"><span class="crow__book">{{ r.contact.book === 'personal' ? '' : r.contact.bookName }}</span></span>
                         </div>
                     </template>
-                    <div v-if="!rows.length && !loading" class="empty" style="padding-top: 60px">{{ q ? 'Ничего не найдено' : 'Здесь пока пусто' }}</div>
+                    <div v-if="!rows.length && !loading" class="empty" style="padding-top: 60px">{{ q ? 'Ничего не найдено' : filter === 'history' ? 'Все, с кем вы переписывались, уже есть в ваших книгах' : 'Здесь пока пусто' }}</div>
                 </div>
             </section>
 

@@ -105,6 +105,17 @@ class ContactsController extends Controller
     {
         return $this->guard(function () use ($request, $imap, $book, $uri) {
             $c = $this->store->card($imap->user(), $book, $uri);
+            // Один адрес — одна заявка: если уже подал другой сотрудник или адрес уже в общей книге, говорим об этом.
+            $mail = strtolower((string) ($c['email'] ?? ''));
+            if ($mail !== '') {
+                $other = ContactSuggestion::where('email', $mail)->where('status', 'pending')->where('user', '!=', $imap->user())->orderBy('id')->first();
+                if ($other) {
+                    $who = \App\Models\Vmail\Mailbox::query()->where('username', $other->user)->value('name') ?: $other->user;
+                    abort(409, 'Заявку на ' . $mail . ' уже подал(а) ' . $who . ' ' . $other->created_at->format('d.m.Y') . ' — она ждёт администратора');
+                }
+                $inCompany = collect($this->store->cards($imap->user(), 'company', $mail))->contains(fn ($x) => collect($x['emails'] ?? [])->contains(fn ($e) => strtolower((string) ($e['value'] ?? '')) === $mail));
+                abort_if($inCompany, 409, 'Адрес ' . $mail . ' уже есть в «Контактах компании»');
+            }
             if ($this->store->isAdmin($imap->user())) {
                 // Администратору посредник не нужен — сразу в общую.
                 $this->store->saveCard($imap->user(), 'company', null, array_merge($c, ['uid' => null]));
@@ -121,6 +132,43 @@ class ContactsController extends Controller
 
             return ['status' => 'pending'];
         });
+    }
+
+    /** История общения: адреса из переписки, которых ещё нет ни в одной книге пользователя. */
+    public function history(ImapSession $imap): JsonResponse
+    {
+        $known = [strtolower($imap->user())];
+        try {
+            foreach ($this->store->cards($imap->user()) as $c) {
+                foreach ($c['emails'] ?? [] as $e) {
+                    $known[] = strtolower((string) ($e['value'] ?? ''));
+                }
+                if (! empty($c['email'])) {
+                    $known[] = strtolower($c['email']);
+                }
+            }
+        } catch (\Throwable) {
+            // книги недоступны — покажем всё
+        }
+        $known = array_flip(array_filter($known));
+        $rows = \App\Models\Webmail\Recent::query()->where('user', $imap->user())->orderByDesc('last_at')->limit(500)->get();
+        $out = [];
+        foreach ($rows as $r) {
+            $mail = strtolower($r->email);
+            if (isset($known[$mail]) || isset($out[$mail])) {
+                continue;
+            }
+            $out[$mail] = ['email' => $mail, 'name' => (string) ($r->name ?: ''), 'uses' => (int) $r->uses, 'last_at' => $r->last_at?->toIso8601String()];
+        }
+
+        return response()->json(array_values($out));
+    }
+
+    public function forgetHistory(ImapSession $imap, string $email): JsonResponse
+    {
+        \App\Models\Webmail\Recent::query()->where('user', $imap->user())->where('email', strtolower($email))->delete();
+
+        return $this->history($imap);
     }
 
     /** Группы (категории) по всем контактам пользователя. */
