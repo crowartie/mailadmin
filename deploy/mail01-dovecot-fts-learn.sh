@@ -87,3 +87,11 @@ echo "*/5 * * * * root /usr/local/sbin/mailadmin-salearn >/dev/null 2>&1" > /etc
 # doveadm под root создаёт индексы root-ом — после индексации вернуть владельца vmail, иначе IMAP не откроет индекс
 nohup sh -c 'doveadm fts rescan -A; doveadm index -A -q "*"; find /var/vmail -type d -name xapian-indexes -exec chown -R vmail:vmail {} +' >/var/log/dovecot-fts-index.log 2>&1 &
 echo "fts: индексация запущена в фоне"
+
+# ── 5. Общий Sieve-скрипт решений сотрудников (спам/рассылки по отправителю), пишет веб-почта через mailadmin-ctl sieve-global
+if [ ! -f /var/vmail/sieve/mailadmin-global.sieve ]; then
+  printf 'require ["fileinto", "mailbox"];\n# Общие решения сотрудников о отправителях. Файл создаёт веб-почта.\n' > /var/vmail/sieve/mailadmin-global.sieve
+  chown vmail:vmail /var/vmail/sieve/mailadmin-global.sieve; chmod 0440 /var/vmail/sieve/mailadmin-global.sieve
+  sievec /var/vmail/sieve/mailadmin-global.sieve; chown vmail:vmail /var/vmail/sieve/mailadmin-global.svbin
+fi
+grep -q "^\s*sieve_before2" "$CONF" || sed -i -E 's|^(\s*)sieve_before = /var/vmail/sieve/dovecot.sieve|&\n\1sieve_before2 = /var/vmail/sieve/mailadmin-global.sieve|' "$CONF"

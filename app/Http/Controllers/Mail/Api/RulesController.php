@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Webmail\Label;
 use App\Models\Webmail\RuleSet;
 use App\Services\Mail\ImapSession;
+use App\Services\Mail\MailStore;
 use App\Services\Mail\ManageSieveClient;
+use App\Services\Mail\RuleRunner;
 use App\Services\Mail\SieveBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -64,5 +66,18 @@ class RulesController extends Controller
         ]);
 
         return response()->json(['ok' => true, 'script' => $script]);
+    }
+
+    /** Прогнать сохранённые правила по уже лежащим во «Входящих» письмам. */
+    public function apply(ImapSession $imap): JsonResponse
+    {
+        set_time_limit(600);
+        $set = RuleSet::find($imap->user());
+        $rules = $set?->rules ?? [];
+        abort_if(! $rules, 422, 'Правил пока нет');
+        $store = new MailStore($imap->client());
+        $results = (new RuleRunner($store, $imap->user()))->run($rules);
+
+        return response()->json(['ok' => true, 'results' => $results, 'folders' => $store->folders()]);
     }
 }

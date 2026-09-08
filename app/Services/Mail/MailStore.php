@@ -22,15 +22,15 @@ class MailStore
     /** Роли системных папок по именам, которые создаёт Dovecot в iRedMail. */
     private const ROLES = [
         'INBOX' => 'inbox', 'DRAFTS' => 'drafts', 'SENT' => 'sent', 'SENT ITEMS' => 'sent', 'SENT MESSAGES' => 'sent',
-        'JUNK' => 'spam', 'SPAM' => 'spam', 'TRASH' => 'trash', 'DELETED ITEMS' => 'trash', 'ARCHIVE' => 'archive', 'SNOOZED' => 'snoozed',
+        'JUNK' => 'spam', 'SPAM' => 'spam', 'TRASH' => 'trash', 'DELETED ITEMS' => 'trash', 'ARCHIVE' => 'archive', 'SNOOZED' => 'snoozed', 'NEWSLETTERS' => 'lists',
     ];
 
     private const TITLES = [
         'inbox' => 'Входящие', 'drafts' => 'Черновики', 'sent' => 'Отправленные', 'spam' => 'Спам',
-        'trash' => 'Корзина', 'archive' => 'Архив', 'snoozed' => 'Отложенные',
+        'trash' => 'Корзина', 'archive' => 'Архив', 'snoozed' => 'Отложенные', 'lists' => 'Рассылки',
     ];
 
-    private const ORDER = ['inbox' => 0, 'snoozed' => 1, 'drafts' => 2, 'sent' => 3, 'archive' => 4, 'spam' => 5, 'trash' => 6, 'shared' => 20];
+    private const ORDER = ['inbox' => 0, 'snoozed' => 1, 'drafts' => 2, 'sent' => 3, 'archive' => 4, 'lists' => 5, 'spam' => 6, 'trash' => 7, 'shared' => 20];
 
     /** Пространство общих папок Dovecot (namespace shared, prefix Shared/%%u/). */
     public const SHARED_PREFIX = 'Shared/';
@@ -168,7 +168,7 @@ class MailStore
         }
 
         $name = match ($role) {
-            'archive' => 'Archive', 'snoozed' => 'Snoozed', 'drafts' => 'Drafts', 'sent' => 'Sent', 'spam' => 'Junk', 'trash' => 'Trash',
+            'archive' => 'Archive', 'snoozed' => 'Snoozed', 'drafts' => 'Drafts', 'sent' => 'Sent', 'spam' => 'Junk', 'trash' => 'Trash', 'lists' => 'Newsletters',
             default => throw new \InvalidArgumentException("Нет папки с ролью {$role}"),
         };
         $this->client->createFolder($name, false);
@@ -657,5 +657,154 @@ class MailStore
     private function utf7(string $path): string
     {
         return mb_convert_encoding($path, 'UTF7-IMAP', 'UTF-8');
+    }
+
+    // ── Поиск по IMAP для правил и решений по отправителям ─────────────
+    /** Папка по IMAP-пути; если нет — создаётся (для действий правил «в папку»). */
+    public function ensureFolder(string $path): string
+    {
+        // Путь может прийти и в UTF-8 (из старых правил), и в UTF-7 (из списка папок) — приводим к IMAP-виду.
+        $path = preg_match('/[^ -]/', $path) ? $this->utf7($path) : $path;
+        foreach ($this->folders() as $f) {
+            if (strcasecmp($f['path'], $path) === 0) {
+                return $f['path'];
+            }
+        }
+        $this->client->createFolder($path, false, true);
+        $this->client->getConnection()->subscribeFolder($path);
+        $this->folderCache = null;
+
+        return $path;
+    }
+
+    public function copy(string $path, array $uids, string $target): void
+    {
+        $uids = array_values(array_unique(array_map('intval', $uids)));
+        if (! $uids || $target === $path) {
+            return;
+        }
+        $this->client->openFolder($path, true);
+        $this->client->getConnection()->copyManyMessages($uids, $target, IMAP::ST_UID);
+    }
+
+    /** @return int[] все UID папки */
+    public function searchAll(string $path): array
+    {
+        $this->client->openFolder($path, true);
+        $r = $this->client->getConnection()->search(['ALL'], IMAP::ST_UID)->validatedData();
+
+        return array_values(array_map('intval', is_array($r) ? $r : []));
+    }
+
+    /** UID писем отправителя: точный адрес или домен (без поддоменов). @return int[] */
+    public function searchSender(string $path, string $match, string $value): array
+    {
+        $value = strtolower($value);
+        $needle = $match === 'domain' ? '@' . $value : $value;
+        $out = [];
+        foreach ($this->headerIndex($path) as $uid => $h) {
+            foreach ($h['from'] as $a) {
+                if ($match === 'domain' ? str_ends_with($a, $needle) : $a === $needle) {
+                    $out[] = $uid;
+                    break;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Условие правила {field, op, value, header?} → UID. Заголовки читаются целиком и сравниваются здесь:
+     * IMAP SEARCH через полнотекстовый индекс режет длинные адреса и пропускает письма.
+     *
+     * @return int[]
+     */
+    public function searchCondition(string $path, array $c): array
+    {
+        $field = $c['field'] ?? 'subject';
+        $op = $c['op'] ?? 'contains';
+        $value = mb_strtolower(trim((string) ($c['value'] ?? '')));
+        if ($value === '') {
+            return [];
+        }
+        $header = strtolower((string) ($c['header'] ?? 'subject'));
+        $out = [];
+        foreach ($this->headerIndex($path) as $uid => $h) {
+            $cands = match ($field) {
+                'from' => $h['from'],
+                'to' => $h['to'],
+                'recipient' => array_merge($h['to'], $h['cc']),
+                'header' => $h['raw'][$header] ?? [],
+                default => [$h['subject']],
+            };
+            $hit = false;
+            foreach ($cands as $cand) {
+                $hit = match ($op) {
+                    'is' => $cand === $value,
+                    'starts' => str_starts_with($cand, $value),
+                    'ends' => str_ends_with($cand, $value),
+                    default => str_contains($cand, $value),
+                };
+                if ($hit) {
+                    break;
+                }
+            }
+            if ($op === 'not_contains' ? ! $hit : $hit) {
+                $out[] = $uid;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @var array<string,array<int,array{from:string[],to:string[],cc:string[],subject:string,raw:array<string,string[]>}>> */
+    private array $headerIndex = [];
+
+    /**
+     * Заголовки всех писем папки (адреса в нижнем регистре, тема раскодирована). Читается один раз за запрос,
+     * порциями по 500 писем — для папки в десятки тысяч писем это секунды.
+     */
+    private function headerIndex(string $path): array
+    {
+        if (isset($this->headerIndex[$path])) {
+            return $this->headerIndex[$path];
+        }
+        $uids = $this->searchAll($path);
+        $conn = $this->client->getConnection();
+        $index = [];
+        foreach (array_chunk($uids, 500) as $chunk) {
+            $raw = $conn->headers($chunk, 'RFC822', IMAP::ST_UID)->validatedData();
+            foreach ($chunk as $uid) {
+                $text = (string) ($raw[$uid] ?? '');
+                if ($text === '') {
+                    continue;
+                }
+                $unfolded = preg_replace('/\r?\n[ \t]+/', ' ', $text);
+                $fields = [];
+                if (preg_match_all('/^([A-Za-z0-9-]+):[ \t]*(.*)$/m', $unfolded, $mm, PREG_SET_ORDER)) {
+                    foreach ($mm as $m) {
+                        $fields[strtolower($m[1])][] = mb_strtolower((string) Charset::header(trim($m[2])));
+                    }
+                }
+                $addr = function (string $name) use ($fields): array {
+                    $out = [];
+                    foreach ($fields[$name] ?? [] as $line) {
+                        preg_match_all('/[A-Z0-9._%+\'-]+@[A-Z0-9.-]+/i', $line, $aa);
+                        foreach ($aa[0] as $a) {
+                            $out[] = strtolower($a);
+                        }
+                    }
+
+                    return $out;
+                };
+                $index[(int) $uid] = [
+                    'from' => $addr('from'), 'to' => $addr('to'), 'cc' => $addr('cc'),
+                    'subject' => $fields['subject'][0] ?? '', 'raw' => $fields,
+                ];
+            }
+        }
+
+        return $this->headerIndex[$path] = $index;
     }
 }

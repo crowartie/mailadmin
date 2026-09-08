@@ -62,6 +62,9 @@ class ActionController extends Controller
             case 'notspam':
                 $store->move($folder, $uids, $store->rolePath('inbox'));
                 break;
+            case 'lists':
+                $store->move($folder, $uids, $store->rolePath('lists'));
+                break;
             case 'label':
             case 'unlabel':
                 $label = Label::where('user', $imap->user())->findOrFail($data['label'] ?? 0);

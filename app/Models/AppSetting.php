@@ -27,6 +27,7 @@ class AppSetting extends Model
         'fail2ban' => ['maxretry' => 5, 'findtime' => 10, 'bantime_hours' => 24],
         'cloud' => ['enabled' => false, 'url' => '', 'login' => '', 'app_password' => '', 'folder' => 'Почта', 'threshold_mb' => 10, 'expire_days' => 30, 'link_password' => ''],
         'reports' => ['mailbox' => ''],
+        'senders' => ['ham_global' => true, 'spam_votes' => 2, 'lists_votes' => 2],
         'migration' => ['host' => '', 'port' => 993, 'ssl' => true, 'dav_url' => ''],
         'mtasts' => ['enabled' => false, 'mode' => 'testing', 'max_age' => 604800, 'id' => ''],
         'limits' => ['default_quota_mb' => 2048, 'blocked_ext' => 'exe, scr, bat, cmd, js, vbs, pif', 'max_recipients' => 100],

@@ -10,11 +10,25 @@ import { plural, size, when } from '../../mail/format';
 const props = defineProps({ user: String, settings: Object, items: Array });
 const items = ref(props.items || []);
 const busy = ref('');
+const ask = ref(null); // { from, domain, busy }
 const toast = ref(null);
 function say(text, error = false) { toast.value = { text, error }; setTimeout(() => (toast.value = null), error ? 6000 : 3000); }
 async function release(i) {
     busy.value = i.id;
-    try { const r = await api.quarantineRelease(i.id); items.value = r.items; say('Письмо доставлено во «Входящие»'); } catch (e) { say(e.message, true); } finally { busy.value = ''; }
+    try {
+        const r = await api.quarantineRelease(i.id); items.value = r.items; say('Письмо доставлено во «Входящие»');
+        const from = (i.from || '').toLowerCase().match(/[^\s<>"']+@[^\s<>"']+/)?.[0];
+        if (from) ask.value = { from, domain: from.split('@')[1], busy: false };
+    } catch (e) { say(e.message, true); } finally { busy.value = ''; }
+}
+async function notSpam(match) {
+    if (!ask.value || ask.value.busy) return;
+    ask.value.busy = true;
+    try {
+        const r = await api.markSender('ham', match, match === 'domain' ? ask.value.domain : ask.value.from, true);
+        say(`Добавлено в исключения: ${match === 'domain' ? '@' + ask.value.domain : ask.value.from}${r.moved ? `, из «Спама» возвращено писем: ${r.moved}` : ''}`);
+        ask.value = null;
+    } catch (e) { ask.value.busy = false; say(e.message, true); }
 }
 async function remove(i) {
     busy.value = i.id;
@@ -35,7 +49,13 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
                     <span>{{ items.length }} {{ plural(items.length, 'письмо', 'письма', 'писем') }}</span>
                     <button class="ib ib--sm" type="button" title="Обновить" @click="reload"><Icon name="refresh" :size="14" /></button>
                 </div>
-                <p class="hint" style="padding: 0 18px 10px; margin: 0">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а фильтр запомнит, что от этого отправителя письма нужны. Через 14 дней карантин чистится сам.</p>
+                <p class="hint" style="padding: 0 18px 10px; margin: 0">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а вы сможете добавить отправителя в исключения, чтобы фильтр больше его не трогал. Через 14 дней карантин чистится сам.</p>
+                <div v-if="ask" class="attn" style="margin: 0 18px 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+                    <Icon name="check" :size="16" /><span>Это не спам? Больше не задерживать письма</span>
+                    <button class="btn btn--sm btn--primary" type="button" :disabled="ask.busy" @click="notSpam('address')">с адреса {{ ask.from }}</button>
+                    <button class="btn btn--sm" type="button" :disabled="ask.busy" @click="notSpam('domain')">со всего домена @{{ ask.domain }}</button>
+                    <button class="btn btn--sm" type="button" @click="ask = null">Не нужно</button>
+                </div>
                 <div class="mlist__rows">
                     <div v-for="i in items" :key="i.id" class="mrow" style="cursor: default; align-items: center">
                         <span class="mrow__av" :style="{ background: i.kind === 'вирус' ? 'var(--no)' : 'var(--warn)', color: '#fff' }"><Icon :name="i.kind === 'вирус' ? 'warn' : 'spam'" :size="16" /></span>

@@ -106,6 +106,8 @@ Route::middleware('area:mail')->group(function () {
 
             Route::get('rules', [RulesController::class, 'show']);
             Route::put('rules', [RulesController::class, 'update']);
+            Route::post('rules/apply', [RulesController::class, 'apply']);
+            Route::post('sender/mark', [\App\Http\Controllers\Mail\Api\SenderController::class, 'mark']);
 
             // Контакты.
             Route::get('contacts/books', [ContactsController::class, 'books']);

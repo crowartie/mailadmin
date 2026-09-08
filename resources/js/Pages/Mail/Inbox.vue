@@ -216,7 +216,7 @@ async function act(op, uids, extra = {}) {
         case 'unflag': rows.forEach((m) => { m.flagged = false; }); if (open.value && uids.includes(open.value.uid)) open.value.flagged = false; break;
         case 'label': rows.forEach((m) => { if (!m.labels.includes(extra.label)) m.labels.push(extra.label); }); if (open.value && uids.includes(open.value.uid) && !open.value.labels.includes(extra.label)) open.value.labels.push(extra.label); break;
         case 'unlabel': rows.forEach((m) => { m.labels = m.labels.filter((l) => l !== extra.label); }); if (open.value && uids.includes(open.value.uid)) open.value.labels = open.value.labels.filter((l) => l !== extra.label); break;
-        case 'delete': case 'move': case 'archive': case 'spam': case 'notspam': case 'snooze': case 'unsnooze': removeRows(uids); break;
+        case 'delete': case 'move': case 'archive': case 'spam': case 'notspam': case 'lists': case 'snooze': case 'unsnooze': removeRows(uids); break;
         default: break;
     }
     try {
@@ -232,6 +232,37 @@ async function act(op, uids, extra = {}) {
 
 function onDrop(data, target) {
     if (data.folder === folder.value) act('move', data.uids, { target });
+}
+
+// ── Решение по отправителю: спам / рассылка / не спам ────────────
+// Сначала письмо уезжает в папку (act), затем спрашиваем: только это письмо или все от адреса/домена.
+function askSender(kind, uids) {
+    const rows = list.value.messages.filter((m) => uids.includes(m.uid));
+    const mails = [...new Set(rows.map((m) => m.from?.mail).concat(open.value && uids.includes(open.value.uid) ? [open.value.from?.mail] : []).filter(Boolean).map((s) => s.toLowerCase()))];
+    act(kind === 'ham' ? 'notspam' : kind, uids);
+    if (!mails.length) return;
+    const domains = [...new Set(mails.map((m) => m.split('@')[1]).filter(Boolean))];
+    dialog.value = { kind: 'sender', what: kind, mails, domains, resort: true, busy: false };
+}
+const SENDER_TITLE = { spam: 'Это спам', lists: 'Это рассылка', ham: 'Это не спам' };
+async function markSender(match) {
+    const d = dialog.value;
+    if (!d || d.busy) return;
+    d.busy = true;
+    const values = match === 'domain' ? d.domains : d.mails;
+    let moved = 0; let global = false; let votes = null;
+    try {
+        for (const v of values) {
+            const r = await api.markSender(d.what, match, v, d.resort);
+            moved += r.moved || 0; global = global || r.global; if (r.threshold > 1) votes = `${r.votes} из ${r.threshold}`;
+            if (r.folders) folders.value = r.folders;
+        }
+        dialog.value = null;
+        const who = values.length === 1 ? values[0] : `${values.length} ${match === 'domain' ? 'домена' : 'адреса'}`;
+        const tail = d.what === 'ham' ? (global ? ' Фильтр больше не тронет эти письма — у всех сотрудников.' : '') : (global ? ' Правило стало общим для всех сотрудников.' : (votes ? ` Станет общим для всех, когда так отметят ${votes.split(' из ')[1]} сотрудника (сейчас ${votes.split(' из ')[0]}).` : ''));
+        showToast({ text: `${who}: правило добавлено${moved ? `, перемещено писем: ${moved}` : ''}.${tail}` }, 8000);
+        await refresh();
+    } catch (e) { d.busy = false; fail(e); }
 }
 
 // ── Меню ──────────────────────────────────────────────────────
@@ -653,8 +684,9 @@ onBeforeUnmount(() => {
             <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'label' }"><Icon name="tag" :size="16" />Метка<span class="k">l</span></button>
             <button class="pop__item" type="button" @click="act('archive', menu.uids)"><Icon name="archive" :size="16" />Архив<span class="k">e</span></button>
             <div class="pop__sep" />
-            <button v-if="folderInfo.role !== 'spam'" class="pop__item" type="button" @click="act('spam', menu.uids)"><Icon name="spam" :size="16" />Спам<span class="k">!</span></button>
-            <button v-else class="pop__item" type="button" @click="act('notspam', menu.uids)"><Icon name="inbox" :size="16" />Не спам</button>
+            <button v-if="folderInfo.role !== 'spam'" class="pop__item" type="button" @click="askSender('spam', menu.uids)"><Icon name="spam" :size="16" />Спам<span class="k">!</span></button>
+            <button v-else class="pop__item" type="button" @click="askSender('ham', menu.uids)"><Icon name="inbox" :size="16" />Не спам</button>
+            <button v-if="folderInfo.role !== 'lists' && folderInfo.role !== 'spam'" class="pop__item" type="button" @click="askSender('lists', menu.uids)"><Icon name="ul" :size="16" />Рассылка</button>
             <button v-if="folderInfo.role === 'snoozed'" class="pop__item" type="button" @click="act('unsnooze', menu.uids)"><Icon name="inbox" :size="16" />Вернуть во Входящие</button>
             <button class="pop__item pop__item--danger" type="button" @click="act('delete', menu.uids)"><Icon name="trash" :size="16" />{{ folderInfo.role === 'trash' ? 'Удалить навсегда' : 'Удалить' }}<span class="k">#</span></button>
         </Popover>
@@ -739,6 +771,22 @@ onBeforeUnmount(() => {
         </Popover>
 
         <!-- Диалоги -->
+        <div v-if="dialog && dialog.kind === 'sender'" class="overlay" @mousedown.self="dialog = null">
+            <div class="dialog">
+                <h2>{{ SENDER_TITLE[dialog.what] }}</h2>
+                <p class="hint" style="margin: 0 0 12px">
+                    <template v-if="dialog.what === 'ham'">Письмо вернулось во «Входящие». Чтобы фильтр больше не задерживал такие письма, добавьте отправителя в исключения:</template>
+                    <template v-else>Письмо перемещено. Сделать так со всеми письмами от этого отправителя — и с теми, что придут потом?</template>
+                </p>
+                <div style="display: grid; gap: 8px">
+                    <button class="btn btn--primary" type="button" :disabled="dialog.busy" @click="markSender('address')">{{ dialog.what === 'ham' ? 'Адрес' : 'Все письма с адреса' }} <b>{{ dialog.mails.length === 1 ? dialog.mails[0] : dialog.mails.length + ' адреса' }}</b></button>
+                    <button class="btn" type="button" :disabled="dialog.busy" @click="markSender('domain')">{{ dialog.what === 'ham' ? 'Весь домен' : 'Все письма с домена' }} <b>{{ dialog.domains.length === 1 ? '@' + dialog.domains[0] : dialog.domains.length + ' домена' }}</b></button>
+                </div>
+                <label v-if="dialog.what !== 'ham'" class="toggle" style="margin-top: 12px; display: flex; gap: 8px; align-items: center"><input v-model="dialog.resort" type="checkbox"><span>Сразу разложить уже полученные письма по всем папкам</span></label>
+                <p class="hint" style="margin: 12px 0 0">{{ dialog.what === 'ham' ? 'Исключение действует для всей компании: сервер перестанет считать эти письма спамом.' : 'Правило появится в ваших «Правилах». Когда так же отметят несколько сотрудников, оно станет общим для всех ящиков.' }}</p>
+                <div class="dialog__actions"><button class="btn" type="button" @click="dialog = null">Только это письмо</button></div>
+            </div>
+        </div>
         <Dialog v-if="dialog && dialog.kind === 'newFolder'" :title="dialog.folder ? 'Папка внутри «' + dialog.folder.name + '»' : 'Новая папка'" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты' }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'renameFolder'" title="Переименовать папку" :prompt="{ label: 'Новое название', value: dialog.folder.name }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'deleteFolder'" :title="'Удалить папку «' + dialog.folder.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog">

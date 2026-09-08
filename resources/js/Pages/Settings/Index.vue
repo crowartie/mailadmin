@@ -20,6 +20,9 @@ const props = defineProps({
     wblist: Array,
     quarantine: Array,
     quarantinePolicy: Object,
+    senders: Object,
+    senderRules: Array,
+    senderPending: Array,
     // лимиты
     limits: Object,
     sizeLimitMb: Number,
@@ -73,6 +76,8 @@ function recheck() { rechecking.value = true; post('/settings/dns/recheck', {}, 
 const spamForm = useForm({ tag2: props.spam?.tag2 ?? 6.2, kill: props.spam?.kill ?? 6.9, cutoff: props.spam?.cutoff ?? 10, virus: props.spam?.virus ?? false, greylist: props.spam?.greylist ?? false });
 const wbForm = useForm({ pattern: '', wb: 'W', note: '' });
 const qPolicy = useForm({ ...(props.quarantinePolicy || {}) });
+const sendersForm = useForm({ ham_global: props.senders?.ham_global ?? true, spam_votes: props.senders?.spam_votes ?? 2, lists_votes: props.senders?.lists_votes ?? 2 });
+const KIND = { spam: 'спам', lists: 'рассылка', ham: 'не спам' };
 const qSearch = ref('');
 const quarantineRows = computed(() => (props.quarantine || []).filter((q) => !qSearch.value || `${q.from} ${q.to} ${q.subject}`.toLowerCase().includes(qSearch.value.toLowerCase())));
 const pct = (v) => Math.min(100, Math.max(0, (v / 20) * 100));
@@ -308,6 +313,38 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                     </span>
                 </div>
                 <div v-if="!quarantine.length" class="empty">Карантин пуст — за последние {{ quarantinePolicy.keep_days }} дней ничего не задержано</div>
+            </div>
+
+            <div class="grid-set" style="margin-top: 16px">
+                <div class="card card--pad">
+                    <div class="card__title">Решения сотрудников</div>
+                    <p class="hint" style="margin-top: 0">Сотрудник в веб-почте отмечает письмо как спам, рассылку или «не спам» — по адресу или по всему домену. Это сразу становится его личным правилом, а старые письма раскладываются по папкам. Когда одинаково отметят несколько человек, правило становится общим для всех ящиков.</p>
+                    <form @submit.prevent="sendersForm.post('/settings/senders', { preserveScroll: true })">
+                        <Toggle v-model="sendersForm.ham_global" label="«Не спам» сразу добавляет отправителя в общий белый список" />
+                        <div class="grid-2" style="margin-top: 10px">
+                            <label class="field"><span>«Спам» становится общим после</span><input v-model.number="sendersForm.spam_votes" class="input" type="number" min="1" max="50"><span class="hint">сотрудников; 1 — сразу</span></label>
+                            <label class="field"><span>«Рассылка» становится общей после</span><input v-model.number="sendersForm.lists_votes" class="input" type="number" min="1" max="50"><span class="hint">сотрудников; 1 — сразу</span></label>
+                        </div>
+                        <div class="form-actions"><button class="btn btn--primary" type="submit" :disabled="sendersForm.processing">Сохранить</button></div>
+                    </form>
+                    <div class="card__title" style="margin-top: 18px">Общие правила <span class="chip">{{ senderRules.length }}</span></div>
+                    <div v-for="r in senderRules" :key="r.id" class="row" style="grid-template-columns: minmax(0, 1fr) 90px auto; padding: 7px 0">
+                        <span><b>{{ r.match === 'domain' ? '@' + r.value : r.value }}</b><span class="row__sub" style="display: block">{{ r.source === 'admin' ? 'поставил ' + (r.by || 'администратор') : 'голосов ' + r.votes }} · {{ r.at }}</span></span>
+                        <span><span class="chip" :class="r.kind === 'spam' ? 'chip--no' : 'chip--warn'">{{ KIND[r.kind] }}</span></span>
+                        <button class="btn btn--sm" type="button" @click="del(`/settings/senders/${r.id}`)">Снять</button>
+                    </div>
+                    <div v-if="!senderRules.length" class="empty-inline">Общих правил пока нет</div>
+                </div>
+                <div class="card card--pad">
+                    <div class="card__title">Личные отметки, ещё не общие <span class="chip">{{ senderPending.length }}</span></div>
+                    <p class="hint" style="margin-top: 0">Что сотрудники отметили у себя. Любое можно сделать общим сразу, не дожидаясь голосов.</p>
+                    <div v-for="p in senderPending" :key="p.kind + p.value" class="row" style="grid-template-columns: minmax(0, 1fr) 90px auto; padding: 7px 0">
+                        <span><b>{{ p.match === 'domain' ? '@' + p.value : p.value }}</b><span class="row__sub" style="display: block" :title="p.users">{{ p.votes }} {{ p.votes === 1 ? 'сотрудник' : (p.votes < 5 ? 'сотрудника' : 'сотрудников') }}: {{ p.users }}</span></span>
+                        <span><span class="chip" :class="p.kind === 'spam' ? 'chip--no' : 'chip--warn'">{{ KIND[p.kind] }}</span></span>
+                        <button class="btn btn--sm" type="button" @click="post('/settings/senders/promote', { kind: p.kind, match: p.match, value: p.value })">Сделать общим</button>
+                    </div>
+                    <div v-if="!senderPending.length" class="empty-inline">Пока никто ничего не отмечал</div>
+                </div>
             </div>
         </template>
 

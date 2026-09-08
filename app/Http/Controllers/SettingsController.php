@@ -207,7 +207,48 @@ class SettingsController extends Controller
             'wblist' => $this->safe(fn () => $this->wblist->all(), []),
             'quarantine' => $this->safe(fn () => $this->quarantine->list(100), []),
             'quarantinePolicy' => AppSetting::group('quarantine'),
+            'senders' => AppSetting::group('senders'),
+            'senderRules' => \App\Models\SenderRule::query()->orderBy('kind')->orderBy('value')->get()->map(fn ($r) => [
+                'id' => $r->id, 'kind' => $r->kind, 'match' => $r->match, 'value' => $r->value, 'source' => $r->source, 'votes' => $r->votes, 'by' => $r->created_by, 'at' => $r->created_at?->format('d.m.Y'),
+            ]),
+            'senderPending' => $this->safe(fn () => \App\Services\Mail\SenderRules::pending(), []),
         ];
+    }
+
+    public function saveSenders(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['ham_global' => ['boolean'], 'spam_votes' => ['required', 'integer', 'min:1', 'max:50'], 'lists_votes' => ['required', 'integer', 'min:1', 'max:50']]);
+        $data['ham_global'] = (bool) ($data['ham_global'] ?? false);
+        AppSetting::put('senders', $data);
+        AdminAction::log('settings.update', 'решения сотрудников');
+
+        return back()->with('success', 'Сохранено');
+    }
+
+    /** Сделать личную отметку общим правилом — не дожидаясь голосов. */
+    public function promoteSender(Request $request, \App\Services\Mail\SenderRules $senders): RedirectResponse
+    {
+        $data = $request->validate(['kind' => ['required', 'in:spam,lists'], 'match' => ['required', 'in:address,domain'], 'value' => ['required', 'string', 'max:255']]);
+        try {
+            $senders->promote($data['kind'], $data['match'], $data['value'], 'admin', 0, auth()->user()?->email);
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+        AdminAction::log('settings.update', 'общее правило', $data['kind'] . ' ' . $data['value']);
+
+        return back()->with('success', 'Правило стало общим: ' . $data['value']);
+    }
+
+    public function demoteSender(\App\Models\SenderRule $rule, \App\Services\Mail\SenderRules $senders): RedirectResponse
+    {
+        try {
+            $senders->demote($rule);
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+        AdminAction::log('settings.update', 'общее правило снято', $rule->value);
+
+        return back()->with('success', 'Общее правило снято: ' . $rule->value);
     }
 
     public function saveSpam(Request $request): RedirectResponse

@@ -79,6 +79,19 @@ function saveGeneral() {
 }
 
 // ── Правила ─────────────────────────────────────────────────
+const applying = ref(false);
+async function applyRules() {
+    if (applying.value) return;
+    if (!confirm('Прогнать все правила по письмам, которые уже лежат во «Входящих»? Письма разложатся по папкам согласно правилам.')) return;
+    applying.value = true;
+    try {
+        const r = await api.applyRules();
+        const done = r.results.filter((x) => !x.skipped);
+        const total = done.reduce((s, x) => s + x.count, 0);
+        const skipped = r.results.filter((x) => x.skipped && x.skipped !== 'выключено');
+        say(`Обработано писем: ${total}` + (done.length ? ' (' + done.map((x) => `${x.name || 'правило'}: ${x.count}`).join(', ') + ')' : '') + (skipped.length ? `. Пропущено правил: ${skipped.length} — ${skipped[0].skipped}` : ''), false);
+    } catch (e) { say(e.message, true); } finally { applying.value = false; }
+}
 const FIELDS = { from: 'Отправитель', to: 'Получатель', recipient: 'Кому или копия', subject: 'Тема', body: 'Текст письма', header: 'Заголовок', size: 'Размер, КБ' };
 const OPS = { contains: 'содержит', not_contains: 'не содержит', is: 'равно', starts: 'начинается с', ends: 'заканчивается на', over: 'больше', under: 'меньше' };
 const ACTIONS = { move: 'Переместить в папку', copy: 'Копию в папку', label: 'Поставить метку', flag: 'Флажок', seen: 'Пометить прочитанным', forward: 'Переслать на адрес', forward_copy: 'Переслать копию на адрес', discard: 'Удалить', reply: 'Ответить текстом', stop: 'Остановить обработку' };
@@ -249,7 +262,7 @@ const shortcuts = [
                     <!-- Правила -->
                     <template v-if="section === 'rules'">
                         <div class="card mset__section">
-                            <h2>Правила <span class="chip chip--off">{{ rules.length }}</span><span class="grow" /><button class="btn btn--sm btn--primary" type="button" @click="newRule"><Icon name="plus" :size="14" />Новое правило</button></h2>
+                            <h2>Правила <span class="chip chip--off">{{ rules.length }}</span><span class="grow" /><button v-if="rules.length" class="btn btn--sm" type="button" :disabled="applying" title="Прогнать правила по письмам, которые уже во «Входящих»" @click="applyRules"><Icon :name="applying ? 'refresh' : 'move'" :size="14" />{{ applying ? 'Раскладываю…' : 'Разложить Входящие' }}</button><button class="btn btn--sm btn--primary" type="button" @click="newRule"><Icon name="plus" :size="14" />Новое правило</button></h2>
                             <div v-if="!rules.length" class="empty">Правил пока нет. Например: письма от бухгалтерии — в папку «Счета» и с меткой «Срочно».</div>
                             <div v-for="(r, i) in rules" :key="r.id" class="rule">
                                 <label class="toggle"><input v-model="r.enabled" type="checkbox" @change="pushRules"><span class="toggle__track" /></label>
@@ -262,7 +275,7 @@ const shortcuts = [
                                     <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="removeRule(r.id)"><Icon name="trash" :size="14" /></button>
                                 </div>
                             </div>
-                            <p class="hint" style="margin: 0">Правила выполняются на сервере по порядку — работают и для телефона, и для почтовой программы.</p>
+                            <p class="hint" style="margin: 0">Правила выполняются на сервере по порядку — работают и для телефона, и для почтовой программы. «Разложить Входящие» применяет их к уже полученным письмам (условия по отправителю, получателю и теме; действия — папка, метка, флажок, прочитано, удалить).</p>
                         </div>
 
                         <form v-if="editing" class="card mset__section" @submit.prevent="saveRule">

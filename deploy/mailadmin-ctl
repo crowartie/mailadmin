@@ -43,6 +43,9 @@ case "$cmd" in
                   exec doveadm acl set -u "$o" "$f" "user=$w" "$@" ;;
   acl-delete)     mailaddr "$1"; re='^[^[:cntrl:]]{1,200}$'; [[ "$2" =~ $re ]] || die "bad folder"; mailaddr "$3"; exec doveadm acl delete -u "$1" "$2" "user=$3" ;;
   kick)           mailaddr "$1"; exec doveadm kick "$1" ;;
+  sieve-global)   re='^/opt/mailadmin/storage/app/private/sieve/global\.sieve$'; [[ "$1" =~ $re && -f "$1" ]] || die "bad file"
+                  install -o vmail -g vmail -m 0440 "$1" /var/vmail/sieve/mailadmin-global.sieve
+                  sievec /var/vmail/sieve/mailadmin-global.sieve 2>&1 || die "sievec failed"; chown vmail:vmail /var/vmail/sieve/mailadmin-global.svbin 2>/dev/null; echo ok ;;
   # ── службы ─────────────────────────────────────────────────────
   service-restart) case "$1" in postfix|dovecot|amavis|nginx|fail2ban|iredapd|mlmmjadmin|clamav-daemon|clamav-freshclam) exec systemctl restart "$1";; *) die "bad service";; esac ;;
   service-reload)  case "$1" in postfix|dovecot|amavis|nginx|fail2ban) exec systemctl reload "$1";; *) die "bad service";; esac ;;
