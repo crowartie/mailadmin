@@ -232,8 +232,12 @@ class Outgoing
             $aliases = \App\Models\Vmail\Forwarding::query()
                 ->where('forwarding', $user)->where('is_alias', 1)->where('address', '!=', $user)
                 ->pluck('address');
+            $local = \App\Models\Vmail\Domain::query()->pluck('domain')->map('strtolower')->all();
             foreach ($aliases as $a) {
-                $out[] = ['mail' => $a, 'primary' => false];
+                // Писать можно только с адресов наших доменов: чужая почта (mail.ru и т.п.) отправителем быть не может.
+                if (in_array(strtolower(substr(strrchr($a, '@') ?: '@', 1)), $local, true)) {
+                    $out[] = ['mail' => $a, 'primary' => false];
+                }
             }
         } catch (\Throwable) {
             // схема vmail недоступна — только основной адрес

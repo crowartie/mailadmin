@@ -115,6 +115,7 @@ function submit() {
             <div class="side-stack">
                 <div class="card form-card" style="gap: 14px">
                     <div class="group-title">Адреса</div>
+                    <p class="hint" style="margin-top: -6px">Дополнительный адрес — псевдоним в нашем домене (например sales@), письма с него попадают сюда и с него можно писать. Личная почта сотрудника — в поле ниже, писать с неё нельзя.</p>
                     <div class="field">
                         <label>Дополнительный адрес</label>
                         <input v-model="extraAddress" class="input" placeholder="i.ivanov@innotec.su">

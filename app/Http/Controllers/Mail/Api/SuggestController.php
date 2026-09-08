@@ -21,9 +21,15 @@ class SuggestController extends Controller
         if (mb_strlen($q) >= 1) {
             $employees = Mailbox::query()->where('domain', $imap->domain())->where('active', 1)
                 ->where(fn ($w) => $w->where('username', 'like', "%{$q}%")->orWhere('name', 'like', "%{$q}%"))
-                ->orderBy('name')->limit(8)->get(['username', 'name']);
+                ->orderBy('name')->limit(8)->get(['username', 'name', 'recovery_email']);
+            $personal = \App\Models\EmployeeProfile::query()->whereIn('username', $employees->pluck('username'))->pluck('personal_email', 'username');
             foreach ($employees as $e) {
                 $out[$e->username] = ['mail' => $e->username, 'name' => $e->name ?: $e->username, 'kind' => 'employee'];
+                // Личная (резервная) почта — отдельным вариантом, чтобы выбор был явным.
+                $p = strtolower((string) ($personal[$e->username] ?: $e->recovery_email));
+                if ($p !== '' && filter_var($p, FILTER_VALIDATE_EMAIL)) {
+                    $out[$p] = ['mail' => $p, 'name' => $e->name ?: $e->username, 'kind' => 'personal'];
+                }
             }
 
             try {
@@ -43,6 +49,9 @@ class SuggestController extends Controller
                 }
             }
         }
+
+        // Себе не пишут: свой адрес и свои псевдонимы из подсказок убираем.
+        unset($out[strtolower($imap->user())]);
 
         return response()->json(array_values(array_slice($out, 0, 10)));
     }

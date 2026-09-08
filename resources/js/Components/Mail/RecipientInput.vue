@@ -129,7 +129,7 @@ defineExpose({ focus: () => input.value?.focus() });
                 <span class="sug__av">{{ initials(s.name, s.mail) }}</span>
                 <span style="min-width: 0">
                     <div>{{ s.name }}</div>
-                    <div class="sug__sub">{{ s.mail }} · {{ s.kind === 'employee' ? 'сотрудник' : 'из переписки' }}</div>
+                    <div class="sug__sub">{{ s.mail }} · {{ { employee: 'рабочая почта', personal: 'личная почта сотрудника', recent: 'из переписки' }[s.kind] || 'адресная книга' }}</div>
                 </span>
             </button>
         </div>

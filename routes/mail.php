@@ -47,6 +47,10 @@ Route::middleware('area:mail')->group(function () {
         Route::prefix('/mail/api')->group(function () {
             Route::get('folders', [FolderController::class, 'index']);
             Route::post('folders', [FolderController::class, 'store']);
+            // Общий доступ — раньше маршрутов с {folder}=.*, иначе «INBOX/shares» уходит в delete/update.
+            Route::get('folders/{folder}/shares', [FolderController::class, 'shares'])->where('folder', '.*');
+            Route::post('folders/{folder}/shares', [FolderController::class, 'share'])->where('folder', '.*');
+            Route::delete('folders/{folder}/shares', [FolderController::class, 'unshare'])->where('folder', '.*');
             Route::patch('folders/{folder}', [FolderController::class, 'update'])->where('folder', '.*');
             Route::delete('folders/{folder}', [FolderController::class, 'destroy'])->where('folder', '.*');
             Route::post('folders/{folder}/empty', [FolderController::class, 'empty'])->where('folder', '.*');

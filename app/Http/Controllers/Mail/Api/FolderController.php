@@ -54,6 +54,56 @@ class FolderController extends Controller
         return response()->json(['folders' => $store->folders()]);
     }
 
+    /** Кому открыта папка + кандидаты. */
+    public function shares(ImapSession $imap, string $folder): JsonResponse
+    {
+        $store = new MailStore($imap->client());
+        $this->guardOwn($store, $folder);
+        $svc = new \App\Services\Mail\FolderShares();
+
+        return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder)), 'candidates' => \App\Services\Mail\FolderShares::candidates($imap->user())]);
+    }
+
+    public function share(Request $request, ImapSession $imap, string $folder): JsonResponse
+    {
+        $data = $request->validate(['with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor']]);
+        $store = new MailStore($imap->client());
+        $this->guardOwn($store, $folder);
+        $svc = new \App\Services\Mail\FolderShares();
+        try {
+            $svc->set($imap->user(), \App\Services\Mail\FolderShares::utf8($folder), $data['with'], $data['level']);
+        } catch (\InvalidArgumentException $e) {
+            abort(422, $e->getMessage());
+        } catch (\RuntimeException $e) {
+            abort(500, 'Не удалось выдать доступ: ' . mb_substr($e->getMessage(), 0, 200));
+        }
+
+        return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder))]);
+    }
+
+    public function unshare(Request $request, ImapSession $imap, string $folder): JsonResponse
+    {
+        $data = $request->validate(['with' => ['required', 'email']]);
+        $store = new MailStore($imap->client());
+        $this->guardOwn($store, $folder);
+        $svc = new \App\Services\Mail\FolderShares();
+        try {
+            $svc->remove($imap->user(), \App\Services\Mail\FolderShares::utf8($folder), $data['with']);
+        } catch (\RuntimeException $e) {
+            abort(500, 'Не удалось снять доступ: ' . mb_substr($e->getMessage(), 0, 200));
+        }
+
+        return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder))]);
+    }
+
+    /** Делиться можно только своими папками (не чужими общими и не в режиме администратора без прав). */
+    private function guardOwn(MailStore $store, string $folder): void
+    {
+        $f = collect($store->folders())->firstWhere('path', $folder);
+        abort_if(! $f, 404, 'Папка не найдена');
+        abort_if(($f['role'] ?? '') === 'shared', 422, 'Чужой папкой поделиться нельзя');
+    }
+
     private function guardSystem(MailStore $store, string $folder): void
     {
         $role = collect($store->folders())->firstWhere('path', $folder)['role'] ?? 'custom';

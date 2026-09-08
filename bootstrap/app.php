@@ -37,6 +37,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn (Request $request) => Area::isAdmin($request) ? '/login' : '/mail/login');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Dovecot отказал по ACL (чужая папка только для чтения) — это не ошибка сервера.
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            if (str_contains($e->getMessage(), 'NOPERM') || str_contains($e->getMessage(), 'Permission denied')) {
+                $msg = 'Нет прав: владелец открыл эту папку только для просмотра';
+
+                return $request->expectsJson() || $request->is('mail/api/*') ? response()->json(['message' => $msg], 403) : back()->with('error', $msg);
+            }
+
+            return null;
+        });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

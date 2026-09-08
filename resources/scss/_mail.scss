@@ -395,6 +395,7 @@
     }
 }
 
+.mnav__owner { display: flex; align-items: center; gap: 8px; padding: 6px 12px 2px; font-size: 12.5px; color: v.$c-muted; font-weight: 600; }
 .att--cloud { border-color: color-mix(in srgb, var(--ok) 50%, var(--border)); background: v.$c-ok-soft; }
 .att {
     display: inline-flex;

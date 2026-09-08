@@ -50,6 +50,9 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/mailboxes/{mailbox}/impersonate', [EmployeeController::class, 'impersonate'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/kick', [EmployeeController::class, 'kick'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/reset-2fa', [EmployeeController::class, 'reset2fa'])->where('mailbox', '.*');
+        Route::get('/mailboxes/{mailbox}/shares', [EmployeeController::class, 'shares'])->where('mailbox', '.*');
+        Route::post('/mailboxes/{mailbox}/shares', [EmployeeController::class, 'share'])->where('mailbox', '.*');
+        Route::delete('/mailboxes/{mailbox}/shares', [EmployeeController::class, 'unshare'])->where('mailbox', '.*');
         Route::delete('/mailboxes/{mailbox}/app-passwords/{password}', [EmployeeController::class, 'revokeAppPassword'])->where('mailbox', '.*');
         Route::get('/mailboxes/{mailbox}/edit', [MailboxController::class, 'edit'])->where('mailbox', '.*');
         Route::put('/mailboxes/{mailbox}', [MailboxController::class, 'update'])->where('mailbox', '.*');

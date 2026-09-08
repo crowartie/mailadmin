@@ -30,7 +30,10 @@ class MailStore
         'trash' => 'Корзина', 'archive' => 'Архив', 'snoozed' => 'Отложенные',
     ];
 
-    private const ORDER = ['inbox' => 0, 'snoozed' => 1, 'drafts' => 2, 'sent' => 3, 'archive' => 4, 'spam' => 5, 'trash' => 6];
+    private const ORDER = ['inbox' => 0, 'snoozed' => 1, 'drafts' => 2, 'sent' => 3, 'archive' => 4, 'spam' => 5, 'trash' => 6, 'shared' => 20];
+
+    /** Пространство общих папок Dovecot (namespace shared, prefix Shared/%%u/). */
+    public const SHARED_PREFIX = 'Shared/';
 
     private ?array $folderCache = null;
 
@@ -53,9 +56,45 @@ class MailStore
         }
 
         $out = [];
-        $walk = function ($folders, int $depth, ?string $parent) use (&$walk, &$out) {
+        $owners = [];
+        $walk = function ($folders, int $depth, ?string $parent) use (&$walk, &$out, &$owners) {
             foreach ($folders as $f) {
                 /** @var Folder $f */
+                if (str_starts_with($f->path, self::SHARED_PREFIX) || $f->path === rtrim(self::SHARED_PREFIX, '/')) {
+                    // Чужая папка, открытая нам: Shared/<владелец>/<путь>. Корень и узел владельца не показываем.
+                    $parts = explode('/', $f->path);
+                    // mail_shared_explicit_inbox = no: узел владельца Shared/<owner> — это и есть его «Входящие».
+                    if (count($parts) === 2 && empty($f->no_select)) {
+                        $status = $this->safeStatus($f);
+                        if ($status !== []) {
+                            $owner = strtolower($parts[1]);
+                            $owners[$owner] = true;
+                            $out[] = ['path' => $f->path, 'name' => self::TITLES['inbox'], 'role' => 'shared', 'depth' => 0, 'parent' => null, 'owner' => $owner, 'inbox' => true, 'unread' => (int) ($status['unseen'] ?? 0), 'total' => (int) ($status['messages'] ?? 0)];
+                        }
+                    }
+                    if (count($parts) >= 3 && ! (count($parts) === 3 && strtoupper($parts[2]) === 'INBOX')) {
+                        $owner = strtolower($parts[1]);
+                        $rel = array_slice($parts, 2);
+                        $leaf = self::utf8Name(end($rel));
+                        $role = count($rel) === 1 ? (self::ROLES[strtoupper($leaf)] ?? null) : null;
+                        $status = $this->safeStatus($f);
+                        $owners[$owner] = true;
+                        $out[] = [
+                            'path' => $f->path,
+                            'name' => $role ? self::TITLES[$role] : $leaf,
+                            'role' => 'shared',
+                            'depth' => count($rel) - 1,
+                            'parent' => count($rel) > 1 ? $parent : null,
+                            'owner' => $owner,
+                            'unread' => (int) ($status['unseen'] ?? 0),
+                            'total' => (int) ($status['messages'] ?? 0),
+                        ];
+                    }
+                    if ($f->hasChildren()) {
+                        $walk($f->children, $depth + 1, $f->path);
+                    }
+                    continue;
+                }
                 $role = self::ROLES[strtoupper($f->full_name)] ?? 'custom';
                 $status = $this->safeStatus($f);
                 $out[] = [
@@ -73,6 +112,15 @@ class MailStore
             }
         };
         $walk($this->client->getFolders(true), 0, null);
+        if ($owners) {
+            $names = \App\Models\Vmail\Mailbox::query()->whereIn('username', array_keys($owners))->pluck('name', 'username');
+            foreach ($out as &$row) {
+                if (($row['role'] ?? '') === 'shared') {
+                    $row['ownerName'] = $names[$row['owner']] ?: $row['owner'];
+                }
+            }
+            unset($row);
+        }
 
         // Системные — в фиксированном порядке, свои — по алфавиту после них.
         usort($out, function ($a, $b) {
@@ -83,6 +131,14 @@ class MailStore
         });
 
         return $this->folderCache = $out;
+    }
+
+    /** Имя папки из IMAP (modified UTF-7) → UTF-8. */
+    public static function utf8Name(string $name): string
+    {
+        $d = @mb_convert_encoding($name, 'UTF-8', 'UTF7-IMAP');
+
+        return $d !== false && $d !== '' ? $d : $name;
     }
 
     public function folderTitle(string $path): string

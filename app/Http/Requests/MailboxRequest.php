@@ -52,7 +52,12 @@ class MailboxRequest extends FormRequest
             'keep_copy' => ['boolean'],
 
             'aliases' => ['array'],
-            'aliases.*' => ['email:rfc'],
+            'aliases.*' => ['email:rfc', function (string $attr, mixed $value, \Closure $fail) {
+                $domain = strtolower(substr(strrchr((string) $value, '@') ?: '@', 1));
+                if ($domain === '' || ! \App\Models\Vmail\Domain::query()->where('domain', $domain)->exists()) {
+                    $fail('Дополнительный адрес должен быть в домене этого сервера. Личную почту укажите в поле «Контактный адрес вне почты».');
+                }
+            }],
 
             'isadmin' => ['boolean'],
             'isglobaladmin' => ['boolean'],

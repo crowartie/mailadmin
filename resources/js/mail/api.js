@@ -41,6 +41,9 @@ export const api = {
     createFolder: (name, parent) => request('POST', '/mail/api/folders', { name, parent }),
     renameFolder: (path, name) => request('PATCH', `/mail/api/folders/${enc(path)}`, { name }),
     deleteFolder: (path) => request('DELETE', `/mail/api/folders/${enc(path)}`),
+    folderShares: (path) => request('GET', `/mail/api/folders/${enc(path)}/shares`),
+    shareFolder: (path, withMail, level) => request('POST', `/mail/api/folders/${enc(path)}/shares`, { with: withMail, level }),
+    unshareFolder: (path, withMail) => request('DELETE', `/mail/api/folders/${enc(path)}/shares`, { with: withMail }),
     emptyFolder: (path) => request('POST', `/mail/api/folders/${enc(path)}/empty`),
 
     list: (folder, { page = 1, filter = 'all', q = '' } = {}) => {

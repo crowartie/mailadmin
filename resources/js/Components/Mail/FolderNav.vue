@@ -13,8 +13,18 @@ const props = defineProps({
 });
 const emit = defineEmits(['go', 'compose', 'context', 'drop', 'new-folder', 'label', 'outbox']);
 
-const system = computed(() => props.folders.filter((f) => f.role !== 'custom'));
+const system = computed(() => props.folders.filter((f) => f.role !== 'custom' && f.role !== 'shared'));
 const custom = computed(() => props.folders.filter((f) => f.role === 'custom'));
+// Чужие папки, открытые нам: группируем по владельцу.
+const shared = computed(() => {
+    const groups = [];
+    for (const f of props.folders.filter((x) => x.role === 'shared')) {
+        let g = groups.find((x) => x.owner === f.owner);
+        if (!g) { g = { owner: f.owner, name: f.ownerName || f.owner, items: [] }; groups.push(g); }
+        g.items.push(f);
+    }
+    return groups;
+});
 const inbox = computed(() => props.folders.find((f) => f.role === 'inbox'));
 const dropTarget = ref(null);
 
@@ -90,6 +100,29 @@ function onDrop(e, f) {
             <span v-if="f.unread" class="mnav__count">{{ f.unread }}</span>
         </button>
         <div v-if="!custom.length" class="hint" style="padding: 4px 12px">Папки создаются здесь или из меню письма «В папку».</div>
+
+        <template v-if="shared.length">
+            <div class="mnav__group">Общие папки</div>
+            <template v-for="g in shared" :key="g.owner">
+                <div class="mnav__owner" :title="g.owner"><Icon name="users" :size="14" style="color: var(--faint); flex: 0 0 14px" /><span>{{ g.name }}</span></div>
+                <button
+                    v-for="f in g.items"
+                    :key="f.path"
+                    type="button"
+                    class="mnav__item"
+                    :class="['mnav__item--depth-' + Math.min(f.depth + 1, 3), { 'mnav__item--on': isOn(f), 'mnav__item--drop': dropTarget === f.path }]"
+                    @click="$emit('go', f.path, 'all')"
+                    @contextmenu.prevent="$emit('context', $event, f)"
+                    @dragover="onDragOver($event, f)"
+                    @dragleave="dropTarget = null"
+                    @drop="onDrop($event, f)"
+                >
+                    <Icon name="folder" :size="16" style="color: var(--faint); flex: 0 0 16px" />
+                    <span>{{ f.name }}</span>
+                    <span v-if="f.unread" class="mnav__count">{{ f.unread }}</span>
+                </button>
+            </template>
+        </template>
 
         <div class="mnav__group">
             Метки

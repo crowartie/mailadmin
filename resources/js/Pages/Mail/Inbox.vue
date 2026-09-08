@@ -232,6 +232,20 @@ async function confirmDialog(value) {
         if (d.kind === 'outbox' && value?.cancel) { await api.cancelOutbox(value.cancel); }
     } catch (e) { fail(e); }
 }
+// ── Общий доступ к папке ──────────────────────────────────────
+async function openShare(f) {
+    menu.value = null;
+    try {
+        const r = await api.folderShares(f.path);
+        dialog.value = { kind: 'share', folder: f, shares: r.shares, candidates: r.candidates, pick: '', level: 'reader' };
+    } catch (e) { fail(e); }
+}
+async function shareSet(mail, level) {
+    try { const r = await api.shareFolder(dialog.value.folder.path, mail, level); dialog.value.shares = r.shares; showToast({ text: 'Доступ выдан' }); } catch (e) { fail(e); }
+}
+async function shareRemove(mail) {
+    try { const r = await api.unshareFolder(dialog.value.folder.path, mail); dialog.value.shares = r.shares; } catch (e) { fail(e); }
+}
 async function recolor(l, color) {
     try { labels.value = await api.updateLabel(l.id, l.name, color); } catch (e) { fail(e); }
 }
@@ -658,6 +672,8 @@ onBeforeUnmount(() => {
                 <button class="pop__item pop__item--danger" type="button" @click="folderDialog('deleteFolder', menu.folder)"><Icon name="trash" :size="15" />Удалить папку…</button>
             </template>
             <button v-if="menu.folder.role === 'trash' || menu.folder.role === 'spam'" class="pop__item pop__item--danger" type="button" @click="folderDialog('emptyFolder', menu.folder)"><Icon name="trash" :size="15" />Очистить…</button>
+            <button v-if="menu.folder.role !== 'shared'" class="pop__item" type="button" @click="openShare(menu.folder)"><Icon name="share" :size="15" />Общий доступ…</button>
+            <div v-else class="pop__hint">Папка {{ menu.folder.ownerName }} — доступ настраивает владелец</div>
         </Popover>
 
         <Popover v-if="menu && menu.kind === 'labelctx'" :x="menu.x" :y="menu.y" @close="menu = null">
@@ -684,6 +700,22 @@ onBeforeUnmount(() => {
         <Dialog v-if="dialog && dialog.kind === 'renameLabel'" title="Переименовать метку" :prompt="{ label: 'Название', value: dialog.label.name }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'deleteLabel'" :title="'Удалить метку «' + dialog.label.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog">
             <p style="margin: 0" class="hint">Письма останутся, метка с них снимется при следующем разборе.</p>
+        </Dialog>
+        <Dialog v-if="dialog && dialog.kind === 'share'" :title="'Общий доступ: ' + dialog.folder.name" confirm-label="Готово" wide @close="dialog = null" @confirm="dialog = null">
+            <p class="hint" style="margin: 0 0 10px">Сотрудник увидит эту папку у себя в разделе «Общие папки». Читатель только смотрит и помечает прочитанным, редактор ещё перекладывает и удаляет письма.</p>
+            <div class="mset__list">
+                <div v-for="s in dialog.shares" :key="s.mail" class="mset__li">
+                    <div class="grow"><div>{{ s.name }}</div><div class="sub">{{ s.mail }}</div></div>
+                    <select class="input" style="width: 130px; height: 32px" :value="s.level" @change="shareSet(s.mail, $event.target.value)"><option value="reader">читатель</option><option value="editor">редактор</option></select>
+                    <button class="btn btn--sm" type="button" @click="shareRemove(s.mail)">Закрыть доступ</button>
+                </div>
+                <div v-if="!dialog.shares.length" class="empty" style="padding: 12px">Пока никому не открыта</div>
+            </div>
+            <div class="field__row" style="margin-top: 12px">
+                <select v-model="dialog.pick" class="input" style="flex: 1; height: 34px"><option value="" disabled>кому открыть…</option><option v-for="c in dialog.candidates.filter((c) => !dialog.shares.some((s) => s.mail === c.mail))" :key="c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
+                <select v-model="dialog.level" class="input" style="width: 130px; height: 34px"><option value="reader">читатель</option><option value="editor">редактор</option></select>
+                <button class="btn btn--primary" type="button" :disabled="!dialog.pick" @click="shareSet(dialog.pick, dialog.level); dialog.pick = ''">Открыть</button>
+            </div>
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'outbox'" title="Ждут отправки" confirm-label="Закрыть" @close="dialog = null" @confirm="dialog = null">
             <div class="mset__list">

@@ -103,6 +103,56 @@ class EmployeeController extends Controller
         return back()->with('success', 'Пароль приложения «' . $password->name . '» отозван');
     }
 
+    /** Папки ящика и кому они открыты (по IMAP от имени сотрудника через master-пользователя). */
+    public function shares(string $mailbox): \Illuminate\Http\JsonResponse
+    {
+        $model = Mailbox::query()->findOrFail($mailbox);
+        try {
+            $store = new \App\Services\Mail\MailStore(ImapSession::master($model->username));
+            $folders = array_values(array_filter($store->folders(), fn ($f) => $f['role'] !== 'shared'));
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'IMAP не отвечает: ' . mb_substr($e->getMessage(), 0, 160)], 500);
+        }
+        $svc = new \App\Services\Mail\FolderShares();
+        $out = [];
+        foreach ($folders as $f) {
+            $out[] = ['path' => $f['path'], 'name' => $f['name'], 'depth' => $f['depth'], 'shares' => $svc->list($model->username, \App\Services\Mail\FolderShares::utf8($f['path']))];
+        }
+
+        return response()->json(['folders' => $out, 'candidates' => \App\Services\Mail\FolderShares::candidates($model->username)]);
+    }
+
+    public function share(Request $request, string $mailbox): \Illuminate\Http\JsonResponse
+    {
+        $model = Mailbox::query()->findOrFail($mailbox);
+        $data = $request->validate(['folder' => ['required', 'string', 'max:200'], 'with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor']]);
+        $svc = new \App\Services\Mail\FolderShares();
+        try {
+            $svc->set($model->username, \App\Services\Mail\FolderShares::utf8($data['folder']), $data['with'], $data['level']);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => 'Не удалось выдать доступ: ' . mb_substr($e->getMessage(), 0, 200)], 500);
+        }
+        AdminAction::log('mailbox.update', $model->username, 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» открыта для ' . $data['with'] . ' (' . ($data['level'] === 'editor' ? 'редактор' : 'читатель') . ')');
+
+        return $this->shares($mailbox);
+    }
+
+    public function unshare(Request $request, string $mailbox): \Illuminate\Http\JsonResponse
+    {
+        $model = Mailbox::query()->findOrFail($mailbox);
+        $data = $request->validate(['folder' => ['required', 'string', 'max:200'], 'with' => ['required', 'email']]);
+        try {
+            (new \App\Services\Mail\FolderShares())->remove($model->username, \App\Services\Mail\FolderShares::utf8($data['folder']), $data['with']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => 'Не удалось снять доступ: ' . mb_substr($e->getMessage(), 0, 200)], 500);
+        }
+        AdminAction::log('mailbox.update', $model->username, 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» закрыта для ' . $data['with']);
+
+        return $this->shares($mailbox);
+    }
+
     /** Сбросить 2FA сотрудника (потерял телефон). */
     public function reset2fa(string $mailbox): RedirectResponse
     {

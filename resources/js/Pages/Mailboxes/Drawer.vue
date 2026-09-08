@@ -1,6 +1,6 @@
 <script setup>
 import { useForm, router } from '@inertiajs/vue3';
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { computed, reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
 
@@ -91,6 +91,23 @@ function act(url, data = {}, message = null) { if (message && !confirm(message))
 function impersonate() { if (confirm(`Открыть веб-почту ${props.mailbox.username} от его имени? Действие попадёт в журнал.`)) router.post(`${base}/impersonate`); }
 function when(iso) { if (!iso) return '—'; const d = new Date(iso); const diff = (Date.now() - d) / 60000; if (diff < 1) return 'сейчас'; if (diff < 60) return Math.round(diff) + ' мин назад'; if (diff < 1440) return Math.round(diff / 60) + ' ч назад'; return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
 const LOGIN = { ok: 'вход', new_device: 'новое устройство', bad_password: 'неверный пароль', blocked: 'заблокирован', bad_code: 'неверный код' };
+
+// ── Общие папки ящика (как в Kerio: владелец или админ открывает папку коллегам) ──
+const shares = ref(null);   // { folders: [{path,name,depth,shares:[{mail,name,level}]}], candidates }
+const shareBusy = ref(false);
+const shareErr = ref('');
+const shareNew = reactive({ folder: 'INBOX', with: '', level: 'reader' });
+const csrf = () => decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '');
+async function shareApi(method, body) {
+    const r = await fetch(`${base}/shares`, { method, credentials: 'same-origin', headers: { 'X-XSRF-TOKEN': csrf(), Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.message || 'Ошибка ' + r.status);
+    return d;
+}
+async function loadShares() { shareBusy.value = true; shareErr.value = ''; try { shares.value = await shareApi('GET'); } catch (e) { shareErr.value = e.message; } finally { shareBusy.value = false; } }
+async function shareSet(folder, withMail, level) { shareBusy.value = true; shareErr.value = ''; try { shares.value = await shareApi('POST', { folder, with: withMail, level }); shareNew.with = ''; } catch (e) { shareErr.value = e.message; } finally { shareBusy.value = false; } }
+async function shareRemove(folder, withMail) { shareBusy.value = true; shareErr.value = ''; try { shares.value = await shareApi('DELETE', { folder, with: withMail }); } catch (e) { shareErr.value = e.message; } finally { shareBusy.value = false; } }
+watch(activeTab, (t) => { if (t === 'access' && shares.value === null) loadShares(); });
 const tabHasError = (key) =>
     tabFields[key].some((f) => Object.keys(form.errors).some((e) => e === f || e.startsWith(`${f}.`)));
 
@@ -240,6 +257,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <div class="divider" />
                     <div class="group-title">Пароль</div>
                     <p class="hint">Пароль сотруднику задаёт только администратор — на вкладке «Общие» (кнопка «Сгенерировать»). Сам сотрудник сменить его не может.</p>
+                    <div class="divider" />
+                    <div class="group-title">Общие папки этого ящика</div>
+                    <p class="hint">Коллега увидит открытую папку у себя в разделе «Общие папки». Читатель только смотрит, редактор может перекладывать и удалять письма. Владелец делает то же самое сам в веб-почте (правой кнопкой по папке → «Общий доступ»).</p>
+                    <p v-if="shareErr" class="error">{{ shareErr }}</p>
+                    <template v-if="shares">
+                        <template v-for="f in shares.folders" :key="f.path">
+                            <div v-for="s in f.shares" :key="f.path + s.mail" class="kv kv--start" style="align-items: center">
+                                <Icon name="folder" :size="15" style="color: var(--faint)" />
+                                <span style="flex: 1; min-width: 0"><span style="color: inherit">{{ f.name }}</span> → {{ s.name }} <span class="row__sub">{{ s.level === 'editor' ? 'редактор' : 'читатель' }}</span></span>
+                                <button class="btn btn--sm" type="button" :disabled="shareBusy" @click="shareRemove(f.path, s.mail)">Закрыть</button>
+                            </div>
+                        </template>
+                        <p v-if="!shares.folders.some((f) => f.shares.length)" class="hint">Папки никому не открыты.</p>
+                        <div class="field__row" style="flex-wrap: wrap; margin-top: 6px">
+                            <select v-model="shareNew.folder" class="input" style="width: 170px; height: 34px"><option v-for="f in shares.folders" :key="f.path" :value="f.path">{{ '\u00a0'.repeat(f.depth * 2) }}{{ f.name }}</option></select>
+                            <select v-model="shareNew.with" class="input" style="flex: 1; min-width: 200px; height: 34px"><option value="" disabled>кому…</option><option v-for="c in shares.candidates" :key="c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
+                            <select v-model="shareNew.level" class="input" style="width: 120px; height: 34px"><option value="reader">читатель</option><option value="editor">редактор</option></select>
+                            <button class="btn btn--primary" type="button" :disabled="!shareNew.with || shareBusy" @click="shareSet(shareNew.folder, shareNew.with, shareNew.level)">Открыть</button>
+                        </div>
+                    </template>
+                    <p v-else-if="shareBusy" class="hint">Читаем папки…</p>
                     <div class="divider" />
                     <div class="group-title">Общие календари</div>
                     <p v-if="mailbox.calendarShares?.length" class="hint">Свой календарь открыл: <span v-for="s in mailbox.calendarShares" :key="s.mail" class="tag" style="margin-right: 4px">{{ s.name }} · {{ s.level === 'write' ? 'правка' : 'просмотр' }}</span></p>
