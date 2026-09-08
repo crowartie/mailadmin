@@ -12,6 +12,8 @@ const props = defineProps({
     // домены
     mailHost: String,
     domains: Array,
+    reports: Object,
+    mtasts: Object,
     // антиспам
     spam: Object,
     wblist: Array,
@@ -152,6 +154,45 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
             <div class="toolbar" style="justify-content: space-between">
                 <span class="hint" style="margin: 0">Проверяем публичный DNS так же, как это делают чужие серверы. Имя сервера: <b class="mono">{{ mailHost }}</b></span>
                 <button class="btn" type="button" :disabled="rechecking" @click="recheck"><Icon name="repeat" /> {{ rechecking ? 'Проверяем…' : 'Перепроверить DNS' }}</button>
+            </div>
+
+            <div class="grid-set" style="margin-bottom: 16px">
+                <div class="card card--pad">
+                    <div class="card__title" style="display: flex; align-items: center">Отчёты DMARC за 30 дней <span class="grow" /><button class="btn btn--sm" type="button" @click="post('/settings/reports/fetch')"><Icon name="repeat" :size="14" /> Забрать сейчас</button></div>
+                    <template v-if="reports && reports.total">
+                        <div class="tiles" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 12px">
+                            <div class="tile"><div class="tile__value">{{ reports.total }}</div><div class="tile__label">писем от нашего имени</div><div class="tile__sub">по данным {{ reports.reports }} отчётов</div></div>
+                            <div class="tile"><div class="tile__value" :class="{ 'tile__value--warn': reports.passPct < 95 }">{{ reports.passPct }}%</div><div class="tile__label">прошли DKIM или SPF</div><div class="tile__sub">это наши настоящие письма</div></div>
+                            <div class="tile"><div class="tile__value" :class="{ 'tile__value--no': reports.fail > 0 }">{{ reports.fail }}</div><div class="tile__label">не прошли</div><div class="tile__sub">подделки или забытые рассылки</div></div>
+                        </div>
+                        <template v-if="reports.failing.length">
+                            <div class="thead" style="grid-template-columns: 150px minmax(0, 1fr) 70px 90px"><span>IP</span><span>Кто сообщил / PTR</span><span>Писем</span><span>Решение</span></div>
+                            <div v-for="f in reports.failing" :key="f.ip" class="row" style="grid-template-columns: 150px minmax(0, 1fr) 70px 90px; padding: 6px 0"><span class="mono">{{ f.ip }}</span><span class="row__sub ellipsis">{{ f.org }}{{ f.ptr ? ' · ' + f.ptr : '' }}</span><span>{{ f.count }}</span><span class="row__sub">{{ f.disposition || '—' }}</span></div>
+                            <p class="hint">Не прошедшие — чужие серверы, которые шлют письма от нашего домена: обычно спамеры (пусть блокируются), реже забытый сервис (CRM, сайт), который надо внести в SPF.</p>
+                        </template>
+                        <p v-else class="hint">Все письма от нашего имени подтверждены — подделок не замечено.</p>
+                        <p class="hint" style="margin: 4px 0 0">Присылают: {{ reports.orgs.map((o) => o.org + ' (' + o.reports + ')').join(', ') }}. Последний отчёт {{ reports.lastReport ? date(reports.lastReport) : '—' }}.</p>
+                    </template>
+                    <p v-else class="hint" style="margin-top: 0">Отчётов ещё нет. Крупные почтовики (Mail.ru, Google, Яндекс) присылают их раз в сутки на адрес из DMARC-записи (rua=postmaster@…). Они забираются автоматически раз в час из ящика postmaster и складываются в папку «Reports».</p>
+                    <div class="card__title" style="margin-top: 14px">TLS-отчёты (TLS-RPT)</div>
+                    <p v-if="reports && reports.tls.reports" class="hint" style="margin: 0">За 30 дней: {{ reports.tls.ok }} соединений с TLS удачно, {{ reports.tls.fail }} сбоев.<span v-for="(f, i) in reports.tls.failures" :key="i" style="display: block">{{ f.type }} · {{ f.ip }} → {{ f.mx }} · {{ f.count }} ({{ f.org }})</span></p>
+                    <p v-else class="hint" style="margin: 0">Пока нет: добавьте TXT-запись <span class="mono">_smtp._tls</span> со значением <span class="mono">v=TLSRPTv1; rua=mailto:postmaster@{{ domains[0]?.domain }}</span> — чужие серверы начнут сообщать, если не смогли установить TLS с нами.</p>
+                </div>
+                <div class="card card--pad">
+                    <div class="card__title">MTA-STS — защита входящей почты от подмены</div>
+                    <p class="hint" style="margin-top: 0">Отправители (Google, Яндекс, Mail.ru) будут требовать настоящий сертификат нашего сервера и откажутся отдать письмо перехватчику. Три шага:</p>
+                    <ol class="hint" style="margin: 0 0 10px; padding-left: 18px">
+                        <li>A-запись <span class="mono">{{ mtasts.host }}</span> → внешний IP сервера (как у mail).</li>
+                        <li>Кнопка ниже: имя добавится в сертификат и в веб-сервер, политика появится по адресу <span class="mono">https://{{ mtasts.host }}/.well-known/mta-sts.txt</span>.</li>
+                        <li>TXT-запись <span class="mono">_mta-sts</span> = <span class="mono">v=STSv1; id={{ mtasts.id || 'ГГГГММДДччмм' }}</span>. При смене режима меняйте id.</li>
+                    </ol>
+                    <div class="attn" :class="mtasts.enabled ? 'attn--ok' : ''" style="margin-bottom: 10px"><Icon :name="mtasts.enabled ? 'shield' : 'clock'" /><span>{{ mtasts.enabled ? `Включён, режим ${mtasts.mode}${mtasts.inCert ? ', имя в сертификате есть' : ', имени в сертификате ещё нет'}` : 'Не включён' }}</span></div>
+                    <div class="form-actions">
+                        <button v-if="!mtasts.enabled || !mtasts.inCert" class="btn btn--primary" type="button" @click="post('/settings/mtasts/enable', { mode: 'testing' })">Включить (режим testing)</button>
+                        <button v-if="mtasts.enabled && mtasts.mode === 'testing'" class="btn" type="button" @click="confirm('Перевести в enforce? Отправители будут отказываться доставлять письма, если сертификат или MX не совпадут. Включайте после недели без ошибок в TLS-отчётах.') && post('/settings/mtasts/mode', { mode: 'enforce' })">Перевести в enforce</button>
+                        <button v-if="mtasts.enabled" class="btn" type="button" @click="post('/settings/mtasts/mode', { mode: 'off' })">Выключить</button>
+                    </div>
+                </div>
             </div>
 
             <div v-for="d in domains" :key="d.domain" class="card card--flush" style="margin-bottom: 16px">

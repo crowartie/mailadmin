@@ -55,6 +55,18 @@
 }
 .mobile-only { display: none; }
 
+// ── Задачи (левая колонка календаря)
+.task__add { display: flex; gap: 4px; padding: 2px 8px 6px; }
+.task { display: flex; align-items: flex-start; gap: 8px; padding: 5px 12px; font-size: 13px; border-radius: 6px; }
+.task:hover { background: var(--surface-2); }
+.task:hover .task__x { opacity: 1; }
+.task__body { flex: 1; min-width: 0; cursor: pointer; display: flex; flex-direction: column; }
+.task__title { overflow-wrap: anywhere; }
+.task__due { font-size: 11.5px; color: var(--faint); }
+.task--done .task__title { text-decoration: line-through; color: var(--faint); }
+.task--late .task__due { color: var(--no); }
+.task__x { opacity: 0; }
+
 // ── Календарь ────────────────────────────────────────────────
 .cal { --hour: 48px; }
 .cal__main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: v.$c-bg; min-height: 0; }

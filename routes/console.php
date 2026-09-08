@@ -19,6 +19,10 @@ Schedule::command('alerts:check --digest')->everyMinute()->when(function () {
         return false;
     }
 });
+// Отчёты DMARC/TLS-RPT из ящика postmaster — раз в час.
+Schedule::command('reports:fetch')->hourly()->withoutOverlapping();
+// Напоминания о событиях по почте (VALARM) — каждую минуту.
+Schedule::command('calendar:reminders')->everyMinute()->withoutOverlapping();
 // Сводка карантина сотрудникам — раз в сутки в час из настроек.
 Schedule::command('quarantine:digest')->everyMinute()->when(function () {
     try {

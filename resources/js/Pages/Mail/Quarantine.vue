@@ -5,7 +5,7 @@ import { ref } from 'vue';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import { api } from '../../mail/api';
-import { size, when } from '../../mail/format';
+import { plural, size, when } from '../../mail/format';
 
 const props = defineProps({ user: String, settings: Object, items: Array });
 const items = ref(props.items || []);
@@ -26,13 +26,13 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
 <template>
     <Head title="Карантин" />
     <MailLayout :user="user" :theme="settings.theme">
-        <div class="mail" style="grid-template-columns: 1fr">
-            <section class="mlist" style="max-width: 980px; margin: 0 auto; width: 100%">
+        <div class="mail" style="display: block">
+            <section class="mlist" style="max-width: 1100px; margin: 0 auto; width: 100%; border: 0">
                 <div class="mlist__meta" style="padding: 14px 18px 6px">
                     <a href="/mail" class="ib ib--sm"><Icon name="back" :size="16" />Почта</a>
                     <b style="font-size: 16px; margin-left: 8px">Карантин</b>
                     <span class="grow" />
-                    <span>{{ items.length }} {{ items.length === 1 ? 'письмо' : items.length < 5 ? 'письма' : 'писем' }}</span>
+                    <span>{{ items.length }} {{ plural(items.length, 'письмо', 'письма', 'писем') }}</span>
                     <button class="ib ib--sm" type="button" title="Обновить" @click="reload"><Icon name="refresh" :size="14" /></button>
                 </div>
                 <p class="hint" style="padding: 0 18px 10px; margin: 0">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а фильтр запомнит, что от этого отправителя письма нужны. Через 14 дней карантин чистится сам.</p>

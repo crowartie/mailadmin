@@ -134,8 +134,23 @@ class Outgoing
     /** Отправить сейчас, положить копию в «Отправленные», отметить исходное отвеченным, убрать черновик. */
     public function send(Email $email, array $form): string
     {
-        (new Mailer($this->session->smtp()))->send($email);
-        $this->afterSend($this->store, $email, $form, $this->session->user());
+        $from = strtolower($email->getFrom()[0]->getAddress());
+        $shared = collect(self::sharedSenders($this->session->user()))->firstWhere('mail', $from);
+        if ($shared) {
+            // Письмо от имени общего ящика: SMTP-авторизация под своим логином не пропустит чужой адрес,
+            // поэтому шлём через локальный relay (как сам сервер), а копию кладём в «Отправленные» общего ящика.
+            (new Mailer(ImapSession::smtpLocal()))->send($email);
+            try {
+                $ownerStore = new MailStore(ImapSession::master($from));
+                $ownerStore->append($ownerStore->rolePath('sent'), $email->toString(), ['\\Seen']);
+            } catch (\Throwable) {
+                $this->store->append($this->store->rolePath('sent'), $email->toString(), ['\\Seen']);
+            }
+            $this->afterSend($this->store, $email, $form, $this->session->user(), false);
+        } else {
+            (new Mailer($this->session->smtp()))->send($email);
+            $this->afterSend($this->store, $email, $form, $this->session->user());
+        }
 
         return self::messageId($email);
     }
@@ -148,10 +163,12 @@ class Outgoing
         $store->append($store->rolePath('sent'), $raw, ['\\Seen']);
     }
 
-    public function afterSend(MailStore $store, Email $email, array $form, string $user): void
+    public function afterSend(MailStore $store, Email $email, array $form, string $user, bool $copyToSent = true): void
     {
         $raw = $email->toString();
-        $store->append($store->rolePath('sent'), $raw, ['\\Seen']);
+        if ($copyToSent) {
+            $store->append($store->rolePath('sent'), $raw, ['\\Seen']);
+        }
 
         if (! empty($form['answeredFolder']) && ! empty($form['answeredUid'])) {
             $store->flag($form['answeredFolder'], [(int) $form['answeredUid']], '\\Answered', true);
@@ -224,6 +241,30 @@ class Outgoing
     }
 
     /** Адреса, от имени которых пользователь может писать: сам ящик + его дополнительные адреса. */
+    /** Общие ящики, где пользователь — редактор «Входящих»: от их имени можно писать. @return array<int,array{mail:string,name:string,primary:bool,shared:bool}> */
+    public static function sharedSenders(string $user): array
+    {
+        return \Illuminate\Support\Facades\Cache::remember('sendas.' . strtolower($user), 120, function () use ($user) {
+            $out = [];
+            try {
+                $owners = \Illuminate\Support\Facades\DB::connection('vmail')->table('share_folder')->where('to_user', strtolower($user))->pluck('from_user');
+                $shares = new FolderShares();
+                foreach ($owners as $owner) {
+                    foreach ($shares->list($owner, 'INBOX') as $s) {
+                        if ($s['mail'] === strtolower($user) && $s['level'] === 'editor') {
+                            $name = \App\Models\Vmail\Mailbox::query()->where('username', $owner)->value('name') ?: $owner;
+                            $out[] = ['mail' => strtolower($owner), 'name' => $name, 'primary' => false, 'shared' => true];
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                // doveadm недоступен — без общих отправителей
+            }
+
+            return $out;
+        });
+    }
+
     public function identities(): array
     {
         $user = $this->session->user();
@@ -238,6 +279,9 @@ class Outgoing
                 if (in_array(strtolower(substr(strrchr($a, '@') ?: '@', 1)), $local, true)) {
                     $out[] = ['mail' => $a, 'primary' => false];
                 }
+            }
+            foreach (self::sharedSenders($user) as $s) {
+                $out[] = $s;
             }
         } catch (\Throwable) {
             // схема vmail недоступна — только основной адрес

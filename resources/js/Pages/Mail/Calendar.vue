@@ -341,6 +341,40 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKey); clearInt
 watch(view, async () => { await nextTick(); if (gridRef.value) gridRef.value.scrollTop = 7.5 * HOUR; });
 
 const STATUS = { ACCEPTED: ['принял(а)', 'ok'], DECLINED: ['отказ', 'no'], TENTATIVE: ['под вопросом', 'warn'], 'NEEDS-ACTION': ['без ответа', 'off'] };
+// ── Задачи ───────────────────────────────────────────────────
+const tasks = ref([]);
+const newTask = ref('');
+const newTaskDue = ref('');
+const showDone = ref(false);
+const editTask = ref(null);
+const today = new Date().toISOString().slice(0, 10);
+const openTasks = computed(() => tasks.value.filter((t) => !t.done));
+const visibleTasks = computed(() => showDone.value ? tasks.value : openTasks.value);
+async function loadTasks() { try { tasks.value = await api.tasks(); } catch (e) { fail(e); } }
+async function addTask() {
+    if (!newTask.value.trim()) return;
+    try { const t = await api.createTask({ calendar: 'personal', title: newTask.value.trim(), due: newTaskDue.value || null, done: false }); tasks.value = [t, ...tasks.value]; newTask.value = ''; newTaskDue.value = ''; } catch (e) { fail(e); }
+}
+async function toggleTask(t) {
+    try { const u = await api.updateTask(t.calendar, t.id, { done: !t.done }); tasks.value = tasks.value.map((x) => (x.id === t.id && x.calendar === t.calendar ? u : x)); } catch (e) { fail(e); }
+}
+async function saveTask() {
+    const t = editTask.value;
+    try { const u = await api.updateTask(t.calendar, t.id, { title: t.title, due: t.due || null, description: t.description || '', priority: t.priority || 0 }); tasks.value = tasks.value.map((x) => (x.id === t.id && x.calendar === t.calendar ? u : x)); editTask.value = null; } catch (e) { fail(e); }
+}
+async function removeTask(t) {
+    try { await api.deleteTask(t.calendar, t.id); tasks.value = tasks.value.filter((x) => !(x.id === t.id && x.calendar === t.calendar)); } catch (e) { fail(e); }
+}
+function dueLabel(due) {
+    const d = due.slice(0, 10);
+    if (d === today) return 'сегодня';
+    const t = new Date(d + 'T00:00:00'); const diff = Math.round((t - new Date(today + 'T00:00:00')) / 86400000);
+    if (diff === 1) return 'завтра';
+    if (diff === -1) return 'вчера';
+    return t.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + (due.length > 10 ? ' ' + due.slice(11) : '');
+}
+onMounted(loadTasks);
+
 const ALARMS = [['', 'без напоминания'], [0, 'в момент начала'], [5, 'за 5 минут'], [15, 'за 15 минут'], [30, 'за 30 минут'], [60, 'за час'], [120, 'за 2 часа'], [1440, 'за день'], [2880, 'за 2 дня']];
 </script>
 
@@ -380,6 +414,17 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     <span class="grow">{{ c.name }}<small v-if="c.owner" class="faint"> · {{ c.owner.name }}</small></span>
                     <Icon v-if="c.readonly" name="eye" :size="13" style="color: var(--faint)" title="только чтение" />
                 </button>
+                <div class="mnav__group">Задачи <span v-if="openTasks.length" class="mnav__count" style="margin-left: 4px">{{ openTasks.length }}</span><button class="ib ib--sm" type="button" title="Показать выполненные" :class="{ 'ib--on': showDone }" @click="showDone = !showDone"><Icon name="check" :size="14" /></button></div>
+                <form class="task__add" @submit.prevent="addTask"><input v-model="newTask" class="input" placeholder="Новая задача…" style="height: 32px"><input v-model="newTaskDue" class="input" type="date" title="Срок" style="height: 32px; width: 40px; padding: 0 4px"></form>
+                <div v-for="t in visibleTasks" :key="t.calendar + t.id" class="task" :class="{ 'task--done': t.done, 'task--late': !t.done && t.due && t.due < today }">
+                    <input type="checkbox" class="check" :checked="t.done" @change="toggleTask(t)">
+                    <span class="task__body" @click="editTask = { ...t }" title="Изменить">
+                        <span class="task__title">{{ t.title }}</span>
+                        <span v-if="t.due" class="task__due">{{ dueLabel(t.due) }}</span>
+                    </span>
+                    <button class="ib ib--sm task__x" type="button" title="Удалить" @click="removeTask(t)"><Icon name="x" :size="13" /></button>
+                </div>
+                <div v-if="!visibleTasks.length" class="hint" style="padding: 2px 12px 6px">Задач нет — введите текст выше и нажмите Enter.</div>
                 <div style="flex: 1" />
                 <div class="hint" style="padding: 8px 12px">Телефон: CalDAV/CardDAV по адресу <span class="mono">{{ origin }}/dav/</span>, логин и пароль от почты.</div>
             </nav>
@@ -597,6 +642,14 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                 <label class="check"><input v-model="dialog.mode" type="radio" value="all"> Все повторы</label>
             </div>
             <p v-else class="hint" style="margin: 0">{{ dialog.e.attendees?.length ? 'Участники получат отмену.' : 'Событие пропадёт и с телефона.' }}</p>
+        </Dialog>
+        <Dialog v-if="editTask" title="Задача" confirm-label="Сохранить" @close="editTask = null" @confirm="saveTask">
+            <div class="field"><label>Название</label><input v-model="editTask.title" class="input" required></div>
+            <div class="grid-2">
+                <div class="field"><label>Срок</label><input v-model="editTask.due" class="input" :type="editTask.due && editTask.due.length > 10 ? 'datetime-local' : 'date'"></div>
+                <div class="field"><label>Важность</label><select v-model.number="editTask.priority" class="input"><option :value="0">обычная</option><option :value="1">высокая</option><option :value="9">низкая</option></select></div>
+            </div>
+            <div class="field"><label>Заметка</label><textarea v-model="editTask.description" class="input" rows="3" style="height: auto"></textarea></div>
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'newCal'" title="Новый календарь" :prompt="{ label: 'Название', placeholder: 'Например, Проекты' }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog">
             <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: dialog.color === c }" :style="{ background: c }" @click="dialog.color = c" /></div>

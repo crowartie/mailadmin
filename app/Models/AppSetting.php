@@ -26,6 +26,8 @@ class AppSetting extends Model
         'quarantine' => ['digest' => true, 'digest_time' => '09:00', 'keep_days' => 14],
         'fail2ban' => ['maxretry' => 5, 'findtime' => 10, 'bantime_hours' => 24],
         'cloud' => ['enabled' => false, 'url' => '', 'login' => '', 'app_password' => '', 'folder' => 'Почта', 'threshold_mb' => 10, 'expire_days' => 30, 'link_password' => ''],
+        'reports' => ['mailbox' => ''],
+        'mtasts' => ['enabled' => false, 'mode' => 'testing', 'max_age' => 604800, 'id' => ''],
         'limits' => ['default_quota_mb' => 2048, 'blocked_ext' => 'exe, scr, bat, cmd, js, vbs, pif', 'max_recipients' => 100],
     ];
 

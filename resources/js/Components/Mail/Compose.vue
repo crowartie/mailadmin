@@ -188,7 +188,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         <div v-if="identities.length > 1" class="compose__row">
             <label>От кого</label>
             <select v-model="from">
-                <option v-for="i in identities" :key="i.mail" :value="i.mail">{{ i.mail }}</option>
+                <option v-for="i in identities" :key="i.mail" :value="i.mail">{{ i.shared ? `${i.mail} — общий ящик «${i.name}»` : i.mail }}</option>
             </select>
         </div>
         <div class="compose__row">

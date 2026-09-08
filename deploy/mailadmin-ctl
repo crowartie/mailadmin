@@ -74,6 +74,15 @@ case "$cmd" in
   cert-info)      exec openssl x509 -in /etc/ssl/certs/iRedMail.crt -noout -subject -issuer -dates -ext subjectAltName ;;
   cert-renew)     certbot renew --no-random-sleep-on-renew 2>&1 | tail -20; systemctl reload nginx postfix dovecot; echo "rc=$?" ;;
   cert-log)       exec tail -n 40 /var/log/letsencrypt/letsencrypt.log ;;
+  # Добавить имя (например mta-sts.домен) в сертификат Let's Encrypt и в server_name веб-почты.
+  cert-expand)    re='^[a-z0-9.-]+$'; [[ "$1" =~ $re ]] || die "bad name"; n="$1"
+                  cn=$(certbot certificates 2>/dev/null | awk '/Certificate Name:/{print $3; exit}'); [ -n "$cn" ] || die "no certbot certificate"
+                  cur=$(certbot certificates 2>/dev/null | awk '/Domains:/{ $1=""; print; exit}')
+                  args=""; for d in $cur; do args="$args -d $d"; done; echo "$cur" | grep -qw "$n" || args="$args -d $n"
+                  grep -q "$n" /etc/nginx/sites-enabled/mailweb.conf || sed -i -E "s/^(\s*server_name\s+)(.*);/\1\2 $n;/" /etc/nginx/sites-enabled/mailweb.conf
+                  nginx -t >/dev/null 2>&1 && systemctl reload nginx
+                  certbot certonly --non-interactive --webroot -w /opt/www/well_known --cert-name "$cn" --expand $args 2>&1 | tail -3
+                  systemctl reload nginx postfix dovecot; echo "rc=$?" ;;
   # ── резервные копии ────────────────────────────────────────────
   backup-run)     exec /usr/local/sbin/mailadmin-backup "$@" ;;
   backup-list)    d="${1:-/var/backups/mail}"; re='^/[A-Za-z0-9/_.-]+$'; [[ "$d" =~ $re ]] || die "bad dir"; ls -1 --time-style=+%s -l "$d" 2>/dev/null | awk '{print $6, $5, $7}' ;;

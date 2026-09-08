@@ -120,6 +120,9 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/settings/dns/recheck', [SettingsController::class, 'recheckDns']);
         Route::post('/settings/domains/{domain}', [SettingsController::class, 'saveDomain']);
         Route::post('/settings/dkim/rotate', [SettingsController::class, 'rotateDkim']);
+        Route::post('/settings/mtasts/enable', [SettingsController::class, 'enableMtaSts']);
+        Route::post('/settings/mtasts/mode', [SettingsController::class, 'mtaStsMode']);
+        Route::post('/settings/reports/fetch', [SettingsController::class, 'fetchReports']);
         Route::post('/settings/spam', [SettingsController::class, 'saveSpam']);
         Route::post('/settings/wblist', [SettingsController::class, 'addWblist']);
         Route::delete('/settings/wblist/{id}', [SettingsController::class, 'removeWblist']);

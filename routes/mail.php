@@ -36,6 +36,13 @@ Route::middleware('area:mail')->group(function () {
     Route::get('/mail/config-v1.1.xml', [\App\Http\Controllers\Mail\AutoconfigController::class, 'autoconfig']);
     Route::get('/.well-known/autoconfig/mail/config-v1.1.xml', [\App\Http\Controllers\Mail\AutoconfigController::class, 'autoconfig']);
     Route::get('/mail/apple.mobileconfig', [\App\Http\Controllers\Mail\AutoconfigController::class, 'mobileconfig']);
+    Route::get('/.well-known/mta-sts.txt', function () {
+        $s = \App\Models\AppSetting::group('mtasts');
+        abort_unless($s['enabled'] ?? false, 404);
+        $mx = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'mail.' . config('areas.default_domain');
+
+        return response("version: STSv1\nmode: {$s['mode']}\nmx: {$mx}\nmax_age: " . (int) ($s['max_age'] ?: 604800) . "\n", 200, ['Content-Type' => 'text/plain; charset=utf-8']);
+    });
     Route::get('/.well-known/caldav', [DavController::class, 'wellKnown']);
     Route::get('/.well-known/carddav', [DavController::class, 'wellKnown']);
 
@@ -50,6 +57,10 @@ Route::middleware('area:mail')->group(function () {
         Route::prefix('/mail/api')->group(function () {
             Route::get('folders', [FolderController::class, 'index']);
             Route::get('status', [FolderController::class, 'status']);
+            Route::get('tasks', [\App\Http\Controllers\Mail\Api\TasksController::class, 'index']);
+            Route::post('tasks', [\App\Http\Controllers\Mail\Api\TasksController::class, 'store']);
+            Route::patch('tasks/{calendar}/{uri}', [\App\Http\Controllers\Mail\Api\TasksController::class, 'update']);
+            Route::delete('tasks/{calendar}/{uri}', [\App\Http\Controllers\Mail\Api\TasksController::class, 'destroy']);
             Route::get('quarantine', [\App\Http\Controllers\Mail\QuarantineController::class, 'list']);
             Route::post('quarantine/{id}/release', [\App\Http\Controllers\Mail\QuarantineController::class, 'release']);
             Route::delete('quarantine/{id}', [\App\Http\Controllers\Mail\QuarantineController::class, 'destroy']);

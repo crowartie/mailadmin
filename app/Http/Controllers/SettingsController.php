@@ -82,6 +82,8 @@ class SettingsController extends Controller
 
         return [
             'mailHost' => $mailHost,
+            'reports' => $this->safe(fn () => (new \App\Services\Server\Reports())->summary(30)),
+            'mtasts' => AppSetting::group('mtasts') + ['host' => 'mta-sts.' . config('areas.default_domain'), 'inCert' => in_array('mta-sts.' . config('areas.default_domain'), $this->safe(fn () => $this->cert->info()['names'] ?? [], []), true)],
             'domains' => $domains->map(fn (Domain $d) => [
                 'domain' => $d->domain, 'description' => $d->description, 'active' => $d->active,
                 'mailboxes' => $d->mailboxes_count, 'aliases' => $d->aliases_count,
@@ -122,6 +124,42 @@ class SettingsController extends Controller
         AdminAction::log('settings.update', 'домен ' . $domain);
 
         return back()->with('success', 'Домен ' . $domain . ' сохранён');
+    }
+
+    /** MTA-STS: имя в сертификат + server_name, политика отдаётся по /.well-known/mta-sts.txt. */
+    public function enableMtaSts(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['mode' => ['required', Rule::in(['testing', 'enforce'])]]);
+        $host = 'mta-sts.' . config('areas.default_domain');
+        try {
+            $out = Ctl::out('cert-expand', [$host], 300);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', 'Сертификат не расширен (нужна A-запись ' . $host . ' на этот сервер и открытый порт 80): ' . mb_substr($e->getMessage(), 0, 300));
+        }
+        if (! str_contains($out, 'rc=0') || str_contains($out, 'Some challenges have failed')) {
+            return back()->with('error', 'Let\'s Encrypt не выдал имя ' . $host . ': ' . mb_substr($out, 0, 300));
+        }
+        Cache::forget('cert.info');
+        AppSetting::put('mtasts', ['enabled' => true, 'mode' => $data['mode'], 'id' => now()->format('YmdHi')]);
+        AdminAction::log('settings.update', 'MTA-STS', $data['mode']);
+
+        return back()->with('success', 'MTA-STS включён: добавьте TXT-запись _mta-sts (значение показано ниже)');
+    }
+
+    public function mtaStsMode(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['mode' => ['required', Rule::in(['testing', 'enforce', 'off'])]]);
+        AppSetting::put('mtasts', $data['mode'] === 'off' ? ['enabled' => false] : ['enabled' => true, 'mode' => $data['mode'], 'id' => now()->format('YmdHi')]);
+        AdminAction::log('settings.update', 'MTA-STS', $data['mode']);
+
+        return back()->with('success', $data['mode'] === 'off' ? 'MTA-STS выключен (обновите TXT _mta-sts новым id или удалите)' : 'Режим MTA-STS: ' . $data['mode'] . ' — обновите id в TXT _mta-sts');
+    }
+
+    public function fetchReports(): RedirectResponse
+    {
+        \Illuminate\Support\Facades\Artisan::call('reports:fetch');
+
+        return back()->with('success', trim(\Illuminate\Support\Facades\Artisan::output()));
     }
 
     public function rotateDkim(Request $request): RedirectResponse

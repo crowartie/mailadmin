@@ -56,6 +56,8 @@ class DnsCheck
             $rows[] = ['name' => $sub, 'expected' => 'CNAME → ' . $mailHost, 'actual' => $c ? 'CNAME → ' . rtrim($c[0]['target'], '.') : ($a ? 'A ' . $a[0]['ip'] : 'нет записи'), 'kind' => $ok ? 'ok' : 'warn', 'note' => $ok ? 'совпадает' : 'автонастройка телефонов и Outlook не сработает'];
         }
 
+        $rpt = array_values(array_filter($this->txt('_smtp._tls.' . $domain), fn ($t) => str_starts_with($t, 'v=TLSRPTv1')));
+        $rows[] = ['name' => 'TLS-RPT _smtp._tls', 'expected' => 'v=TLSRPTv1; rua=mailto:postmaster@' . $domain, 'actual' => $rpt[0] ?? 'нет записи', 'kind' => $rpt ? 'ok' : 'warn', 'note' => $rpt ? 'отчёты о TLS будут приходить' : 'необязательно: отчёты о сбоях TLS от Google и др.'];
         $sts = $this->txt('_mta-sts.' . $domain);
         $rows[] = ['name' => 'MTA-STS', 'expected' => 'v=STSv1; id=…', 'actual' => $sts[0] ?? 'не настроено', 'kind' => $sts ? 'ok' : 'warn', 'note' => $sts ? 'настроено' : 'необязательно: защита от подмены TLS'];
 
