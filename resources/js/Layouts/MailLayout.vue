@@ -69,10 +69,13 @@ function logout() {
             <Link class="rail__item" :class="{ 'rail__item--on': current.startsWith('/mail/settings') }" href="/mail/settings" title="Настройки">
                 <Icon name="sliders" />
             </Link>
+            <Link class="rail__item" :class="{ 'rail__item--on': current.startsWith('/mail/help') }" href="/mail/help" title="Справка">
+                <Icon name="info" />
+            </Link>
             <button class="rail__item" type="button" title="Тёмная / светлая тема" style="border: none; background: none; cursor: pointer" @click="toggleTheme">
                 <Icon :name="isDark ? 'sun' : 'moon'" />
             </button>
-            <button class="rail__item" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" @click="logout">
+            <button v-if="user" class="rail__item" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" @click="logout">
                 <Icon name="logout" />
             </button>
             <div class="rail__avatar" :title="user">{{ initials }}</div>

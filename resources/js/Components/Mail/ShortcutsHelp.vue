@@ -27,6 +27,7 @@ const groups = [
                     </div>
                 </div>
             </div>
+        <p class="hint" style="margin: 12px 0 0"><a href="/mail/help">Полная справка по почте →</a></p>
         </div>
     </div>
 </template>

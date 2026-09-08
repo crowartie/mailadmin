@@ -43,6 +43,7 @@ Route::middleware('area:mail')->group(function () {
 
         return response("version: STSv1\nmode: {$s['mode']}\nmx: {$mx}\nmax_age: " . (int) ($s['max_age'] ?: 604800) . "\n", 200, ['Content-Type' => 'text/plain; charset=utf-8']);
     });
+    Route::get('/mail/help', [\App\Http\Controllers\Mail\HelpController::class, 'index']);
     Route::get('/.well-known/caldav', [DavController::class, 'wellKnown']);
     Route::get('/.well-known/carddav', [DavController::class, 'wellKnown']);
 

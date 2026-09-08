@@ -190,6 +190,7 @@ const shortcuts = [
             <div class="mset__grid">
                 <nav class="card mset__menu">
                     <Link v-for="[key, label] in SECTIONS" :key="key" :href="'/mail/settings/' + key" :class="{ on: section === key }">{{ label }}</Link>
+                    <Link href="/mail/help" style="margin-top: 6px; border-top: 1px solid var(--border); border-radius: 0; padding-top: 12px">Справка по почте →</Link>
                 </nav>
 
                 <div class="mset__body">

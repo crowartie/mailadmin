@@ -914,3 +914,41 @@ select.input { padding-right: 28px; }
     }
 }
 @media (min-width: 861px) { .fab { display: none; } }
+
+// ── Справочник сотрудника ─────────────────────────────────────────
+.help {
+    &__head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    &__head h1 { margin: 0; font-size: 22px; }
+    &__search { display: flex; align-items: center; gap: 8px; flex: 1 1 320px; max-width: 520px; background: v.$c-surface; border: 1px solid v.$c-border; border-radius: v.$r-control; padding: 0 10px; color: v.$c-muted; }
+    &__search .input { border: none; background: none; box-shadow: none; flex: 1; padding-left: 0; }
+    &__count { margin: -6px 0 12px; }
+    &__toc { display: flex; flex-direction: column; max-height: calc(100vh - 40px); overflow-y: auto; }
+    &__toc a { font-size: 13.5px; }
+    &__section { scroll-margin-top: 12px; gap: 6px; }
+    &__section > .hint { margin: 0 0 6px; }
+    &__section h2 { font-size: 18px; margin-bottom: 4px; }
+    &__item { padding: 10px 0 4px; border-top: 1px solid v.$c-border; }
+    &__item:first-of-type { border-top: none; }
+    &__item h3 { margin: 0 0 6px; font-size: 14.5px; font-weight: 600; }
+    &__item p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.55; color: v.$c-text; }
+    &__item p:last-child { margin-bottom: 0; }
+    &__item kbd { display: inline-block; padding: 1px 6px; border: 1px solid v.$c-border; border-bottom-width: 2px; border-radius: 5px; background: v.$c-surface-2; font: 12px ui-monospace, Menlo, Consolas, monospace; }
+    &__item code { padding: 1px 5px; border-radius: 4px; background: v.$c-surface-2; font: 12.5px ui-monospace, Menlo, Consolas, monospace; }
+    &__table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 4px 0 8px; }
+    &__table td { padding: 6px 10px 6px 0; border-bottom: 1px solid v.$c-border; vertical-align: top; }
+    &__table td:first-child { width: 34%; color: v.$c-muted; }
+    &__table tr:last-child td { border-bottom: none; }
+    &__keys td:first-child { color: v.$c-text; white-space: nowrap; }
+}
+@media (max-width: 860px) {
+    .help .mset__grid { grid-template-columns: 1fr; }
+    .help__toc { max-height: none; flex-direction: row; flex-wrap: wrap; gap: 2px; position: static; }
+    .help__table td:first-child { width: 40%; }
+}
+@media print {
+    .rail, .help__head .btn, .help__search, .help__toc, .mobile-bar { display: none !important; }
+    .help { padding: 0; overflow: visible; }
+    .help .mset__grid { grid-template-columns: 1fr; }
+    .help__section { break-inside: avoid; box-shadow: none; border: none; padding: 0 0 12px; }
+    .help__item { break-inside: avoid; }
+}
