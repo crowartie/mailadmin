@@ -80,7 +80,7 @@ const COLS = '300px minmax(0, 1fr) 260px 120px';
         <div class="card card--pad" style="display: flex; flex-direction: column; gap: 12px">
             <div class="card__title" style="margin: 0">Проверить адрес</div>
             <form style="display: flex; gap: 10px" @submit.prevent="runTrace">
-                <input v-model="traceInput" class="input input--w" style="width: 420px" placeholder="sales@innotec.su">
+                <input v-model="traceInput" class="input input--w" style="width: 420px" placeholder="sales@домен">
                 <button class="btn" type="submit">Проследить</button>
             </form>
             <TraceNode v-if="trace" :node="trace" :root="true" />

@@ -36,7 +36,7 @@ class AddressResolver
 
         [$local, $domain] = array_pad(explode('@', $address, 2), 2, '');
 
-        // Алиас домена: ired.innotec.su → innotec.su.
+        // Алиас домена: mail.example.ru → example.ru.
         $canonical = DB::connection('vmail')->table('alias_domain')
             ->where('alias_domain', $domain)->value('target_domain');
         if ($canonical && $canonical !== $domain) {

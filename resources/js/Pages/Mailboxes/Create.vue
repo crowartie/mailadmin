@@ -118,7 +118,7 @@ function submit() {
                     <p class="hint" style="margin-top: -6px">Дополнительный адрес — псевдоним в нашем домене (например sales@), письма с него попадают сюда и с него можно писать. Личная почта сотрудника — в поле ниже, писать с неё нельзя.</p>
                     <div class="field">
                         <label>Дополнительный адрес</label>
-                        <input v-model="extraAddress" class="input" placeholder="i.ivanov@innotec.su">
+                        <input v-model="extraAddress" class="input" placeholder="i.ivanov@домен">
                         <p v-if="form.errors['aliases.0']" class="error">{{ form.errors['aliases.0'] }}</p>
                     </div>
                     <div class="field">

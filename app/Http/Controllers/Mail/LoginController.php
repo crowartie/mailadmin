@@ -34,7 +34,7 @@ class LoginController extends Controller
             return redirect('/mail');
         }
 
-        return Inertia::render('Mail/Login', ['domain' => config('areas.default_domain', 'innotec.su')]);
+        return Inertia::render('Mail/Login', ['domain' => config('areas.default_domain')]);
     }
 
     public function store(Request $request, Google2FA $google2fa): RedirectResponse
@@ -42,7 +42,7 @@ class LoginController extends Controller
         $data = $request->validate(['login' => ['required', 'string', 'max:255'], 'password' => ['required', 'string']]);
         $login = strtolower(trim($data['login']));
         if (! str_contains($login, '@')) {
-            $login .= '@' . config('areas.default_domain', 'innotec.su');
+            $login .= '@' . config('areas.default_domain');
         }
 
         if (MailLogin::recentFailures($request->ip()) >= self::MAX_FAILURES) {

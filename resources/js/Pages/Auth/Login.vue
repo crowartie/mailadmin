@@ -13,14 +13,14 @@ function submit() {
             <div class="auth__brand">
                 <div class="rail__logo" style="margin: 0">П</div>
                 <div>
-                    <div class="auth__title">Почта innotec.su</div>
+                    <div class="auth__title">Почтовый сервер</div>
                     <div class="hint">Панель администратора</div>
                 </div>
             </div>
 
             <div class="field">
                 <label>Адрес</label>
-                <input v-model="form.email" class="input" type="email" placeholder="admin@innotec.su" autocomplete="username" autofocus>
+                <input v-model="form.email" class="input" type="email" placeholder="admin@домен" autocomplete="username" autofocus>
                 <p v-if="form.errors.email" class="error">{{ form.errors.email }}</p>
             </div>
             <div class="field">

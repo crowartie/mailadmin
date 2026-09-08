@@ -180,7 +180,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                 <template v-if="activeTab === 'addresses'">
                     <p class="hint">Дополнительные адреса, письма с которых попадают в этот ящик.</p>
                     <div v-for="(_, i) in form.aliases" :key="i" class="field__row">
-                        <input v-model="form.aliases[i]" class="input" placeholder="sales@innotec.su">
+                        <input v-model="form.aliases[i]" class="input" placeholder="sales@домен">
                         <button class="btn" type="button" @click="form.aliases.splice(i, 1)">Убрать</button>
                     </div>
                     <template v-for="(_, i) in form.aliases" :key="`ae-${i}`">

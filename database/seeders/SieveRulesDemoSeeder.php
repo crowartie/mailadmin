@@ -16,12 +16,12 @@ class SieveRulesDemoSeeder extends Seeder
         SieveRule::query()->delete();
 
         $rows = [
-            ['adv@innotec.su', 'Арсентьев', 'fileinto', 'Тема содержит «Счёт» или «Акт»', 'Переместить в «Бухгалтерия», Пометить важным', true, null],
-            ['adv@innotec.su', 'Арсентьев', 'redirect', 'Отправитель содержит «irkutskenergo.ru»', 'Копия на info@innotec.su', true, null],
-            ['info@innotec.su', 'Общий ящик', 'fileinto', 'Тема содержит «***SPAM***»', 'Переместить в «Спам», остановить обработку', true, null],
-            ['koviazinsa@innotec.su', 'Ковязин С. А.', 'vacation', 'Любое входящее', 'Автоответ «В отпуске до 15 сентября»', true, '2026-09-15'],
-            ['petrovaa@innotec.su', 'Петров Алексей', 'fileinto', 'Отправитель содержит «supplier@example.org»', 'Переместить в «Поставщики»', false, null],
-            ['test@innotec.su', 'Тестовый ящик', 'redirect', 'Письмо больше 10 МБ', 'Переслать на archive@innotec.su', true, null],
+            ['buh@example.ru', 'Бухгалтерия', 'fileinto', 'Тема содержит «Счёт» или «Акт»', 'Переместить в «Бухгалтерия», Пометить важным', true, null],
+            ['buh@example.ru', 'Бухгалтерия', 'redirect', 'Отправитель содержит «energo.example.org»', 'Копия на info@example.ru', true, null],
+            ['info@example.ru', 'Общий ящик', 'fileinto', 'Тема содержит «***SPAM***»', 'Переместить в «Спам», остановить обработку', true, null],
+            ['ivanov@example.ru', 'Иванов И. И.', 'vacation', 'Любое входящее', 'Автоответ «В отпуске до 15 сентября»', true, '2026-09-15'],
+            ['petrov@example.ru', 'Петров П. П.', 'fileinto', 'Отправитель содержит «supplier@example.org»', 'Переместить в «Поставщики»', false, null],
+            ['test@example.ru', 'Тестовый ящик', 'redirect', 'Письмо больше 10 МБ', 'Переслать на archive@example.ru', true, null],
         ];
 
         foreach ($rows as $i => [$owner, $name, $kind, $cond, $action, $active, $until]) {

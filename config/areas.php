@@ -7,11 +7,11 @@ return [
     'mail_port' => (int) env('MAIL_PORT', 80),
 
     // Домен, который подставляется к короткому логину в веб-почте («ivanov» → ivanov@домен).
-    'default_domain' => env('MAIL_DEFAULT_DOMAIN', 'innotec.su'),
+    'default_domain' => env('MAIL_DEFAULT_DOMAIN', 'example.ru'),
 
     // Почтовый сервер, к которому ходит веб-почта.
     'imap' => [
-        'host' => env('MAIL_IMAP_HOST', '192.168.30.102'),
+        'host' => env('MAIL_IMAP_HOST', '127.0.0.1'),
         'port' => (int) env('MAIL_IMAP_PORT', 993),
         'encryption' => env('MAIL_IMAP_ENCRYPTION', 'ssl'),
         'validate_cert' => (bool) env('MAIL_IMAP_VALIDATE_CERT', false),
@@ -21,7 +21,7 @@ return [
         'master_password' => env('MAIL_IMAP_MASTER_PASSWORD'),
     ],
     'smtp' => [
-        'host' => env('MAIL_SMTP_HOST', '192.168.30.102'),
+        'host' => env('MAIL_SMTP_HOST', '127.0.0.1'),
         'port' => (int) env('MAIL_SMTP_PORT', 587),
     ],
     // ManageSieve — правила и автоответ пользователя.

@@ -74,7 +74,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
                 <div class="group-title">Доставлять на</div>
                 <div v-for="(_, i) in form.targets" :key="i" class="field__row">
-                    <input v-model="form.targets[i]" class="input" placeholder="info@innotec.su">
+                    <input v-model="form.targets[i]" class="input" placeholder="info@домен">
                     <button class="btn" type="button" :disabled="form.targets.length === 1" @click="form.targets.splice(i, 1)">Убрать</button>
                 </div>
                 <p v-if="form.errors.targets" class="error">{{ form.errors.targets }}</p>

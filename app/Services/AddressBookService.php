@@ -89,7 +89,7 @@ class AddressBookService
             $lines[] = 'TEL;TYPE=CELL:' . $esc($mailbox->mobile);
         }
         if ($mailbox->department || $mailbox->rank) {
-            $lines[] = 'ORG:' . $esc(config('app.company', 'innotec.su')) . ';' . $esc($mailbox->department);
+            $lines[] = 'ORG:' . $esc(config('app.company', config('areas.default_domain'))) . ';' . $esc($mailbox->department);
             $lines[] = 'TITLE:' . $esc($mailbox->rank);
         }
 
