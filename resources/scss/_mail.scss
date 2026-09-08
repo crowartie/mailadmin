@@ -925,6 +925,7 @@ select.input { padding-right: 28px; }
     &__toc { display: flex; flex-direction: column; max-height: calc(100vh - 40px); overflow-y: auto; }
     &__toc a { font-size: 13.5px; }
     &__section { scroll-margin-top: 12px; gap: 6px; }
+    &__section[hidden], &__item[hidden] { display: none !important; } // .card задаёт display:flex и перебивает атрибут hidden
     &__section > .hint { margin: 0 0 6px; }
     &__section h2 { font-size: 18px; margin-bottom: 4px; }
     &__item { padding: 10px 0 4px; border-top: 1px solid v.$c-border; }
