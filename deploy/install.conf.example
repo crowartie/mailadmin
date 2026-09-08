@@ -1,0 +1,28 @@
+# Параметры установки почтового сервера. Скопируйте в install.conf рядом и заполните.
+# Файл читается bash-ом: значения без пробелов или в кавычках.
+
+# Почтовый домен и имя сервера (A-запись HOSTNAME должна указывать на этот сервер ДО запуска).
+DOMAIN=example.ru
+HOSTNAME=mail.example.ru
+
+# Часовой пояс сервера и приложения.
+TIMEZONE=Asia/Irkutsk
+
+# Пароль root MariaDB и пароль postmaster@DOMAIN (его создаёт iRedMail). Пусто — сгенерировать.
+MYSQL_ROOT_PASSWORD=
+POSTMASTER_PASSWORD=
+
+# Первый администратор веб-админки (порт 8443). Пусто — сгенерировать пароль.
+ADMIN_EMAIL=admin@example.ru
+ADMIN_PASSWORD=
+
+# Сертификат Let's Encrypt: yes — получить сразу (нужны DNS-записи и открытый порт 80), no — оставить самоподписанный.
+LETSENCRYPT=no
+LETSENCRYPT_EMAIL=admin@example.ru
+
+# Антивирус ClamAV: yes/no. Из России CDN ClamAV недоступен — укажите своё зеркало (пусто — официальный CDN).
+ENABLE_CLAMAV=yes
+CLAMAV_MIRROR=
+
+# Лимит исходящих писем в час на сотрудника (0 — без лимита).
+OUTBOUND_PER_HOUR=200

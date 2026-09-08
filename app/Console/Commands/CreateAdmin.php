@@ -8,7 +8,7 @@ use Illuminate\Support\Str;
 
 class CreateAdmin extends Command
 {
-    protected $signature = 'admin:create {email} {--name=Администратор} {--password= : если не задан — сгенерировать}';
+    protected $signature = 'admin:create {email} {--name=Администратор} {--password= : если не задан — сгенерировать} {--role=owner : owner|admin|viewer|operator}';
 
     protected $description = 'Создать администратора панели';
 
@@ -19,7 +19,7 @@ class CreateAdmin extends Command
 
         $user = User::updateOrCreate(
             ['email' => $email],
-            ['name' => $this->option('name'), 'password' => $password, 'is_active' => true]
+            ['name' => $this->option('name'), 'password' => $password, 'is_active' => true, 'role' => in_array($this->option('role'), array_keys(User::ROLES), true) ? $this->option('role') : 'owner']
         );
 
         $this->info("Администратор {$user->email} " . ($user->wasRecentlyCreated ? 'создан' : 'обновлён') . '.');

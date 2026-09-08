@@ -1,5 +1,5 @@
 #!/bin/bash
-# MAIL01: полнотекстовый поиск (fts_xapian) и обучение SpamAssassin по переносу писем в «Спам» (imapsieve).
+# Dovecot: полнотекстовый поиск (fts_xapian) и обучение SpamAssassin по переносу писем в «Спам» (imapsieve).
 # Идемпотентно: повторный запуск ничего не дублирует. Запускать под sudo.
 set -euo pipefail
 CONF=/etc/dovecot/dovecot.conf

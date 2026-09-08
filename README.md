@@ -1,58 +1,63 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# mailadmin — корпоративная почта: веб-почта и админка для iRedMail
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Замена Kerio Connect на своих серверах: iRedMail (Postfix, Dovecot, Amavis, SpamAssassin, ClamAV, MariaDB, nginx, fail2ban)
+плюс это приложение на Laravel 13 + Inertia + Vue 3.
 
-## About Laravel
+- **Веб-почта** (порт 443, `/mail`): письма, папки, метки, правила, автоответ, отложенные письма, отправка позже,
+  напоминания «если не ответят», большие вложения через Nextcloud, общие папки и общие ящики, контакты
+  (личные, отдела, компании), календарь с приглашениями и занятостью, задачи, карантин, решения по спаму
+  и рассылкам, пароли приложений, 2FA, автонастройка Outlook/телефонов, справка для сотрудников (`/mail/help`).
+- **Админка** (порт 8443): сотрудники и подразделения, псевдонимы, рассылки, импорт CSV, перенос с другого
+  сервера (imapsync + CardDAV/CalDAV), очередь и журналы Postfix, антиспам и карантин, белые/чёрные списки,
+  решения сотрудников, лимиты, сертификат, резервные копии, DNS-проверка, DKIM, DMARC/TLS-RPT отчёты,
+  MTA-STS, уведомления (почта/Telegram), fail2ban, администраторы с ролями.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Установка на чистый сервер
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+Нужна Ubuntu 24.04, 2+ CPU, 8 ГБ памяти (ClamAV ест ~1 ГБ), диск под почту, белый IP, FQDN-имя
+(например `mail.example.ru`) с A-записью на сервер и доступ в интернет.
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+apt-get install -y git
+git clone <адрес репозитория> /opt/mailadmin
+cd /opt/mailadmin/deploy
+cp install.conf.example install.conf
+nano install.conf          # домен, имя сервера, пароли (пусто — сгенерируются), Let's Encrypt, ClamAV
+sudo bash install.sh
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Скрипт сам ставит iRedMail без вопросов, PHP, Node, Redis, собирает приложение, настраивает nginx
+(443 веб-почта, 8443 админка, iRedAdmin уезжает на 8444), Dovecot (master-пользователь, пароли приложений,
+полнотекстовый поиск, обучение спама, общий Sieve), Amavis (пороги, карантин в базу, антивирус), fail2ban,
+резервные копии, планировщик, imapsync. В конце печатает адреса, пароли и список DNS-записей.
+Секреты — в `/root/mailadmin-install.txt`. Скрипт можно запускать повторно: он доделывает пропущенное.
 
-## Contributing
+Из России CDN ClamAV отдаёт 403 — укажите `CLAMAV_MIRROR=http://<свой сервер>` (зеркало: `pip install cvdupdate`,
+`cvd update` по cron и любой веб-сервер над каталогом баз).
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+После установки: перезагрузить сервер, войти в админку, включить 2FA, проверить «Настройки → Домены и DNS»,
+при необходимости «Настройки → Сертификат» и «Файлы и облако».
 
-## Code of Conduct
+## Обновление
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+sudo bash /opt/mailadmin/deploy/update.sh
+```
 
-## Security Vulnerabilities
+Тянет ветку из git, ставит зависимости, собирает фронт, применяет миграции, обновляет служебные скрипты
+(`mailadmin-ctl`, `mailadmin-backup`, fail2ban, logrotate, Dovecot).
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Как устроено
 
-## License
+- `app/Http/Controllers` — админка; `app/Http/Controllers/Mail` — веб-почта (Inertia-страницы и `/mail/api/*`).
+- `app/Services/Mail` — IMAP (webklex/php-imap), отправка, правила Sieve, общие папки (ACL), решения по отправителям.
+- `app/Services/Dav`, `app/Dav` — CalDAV/CardDAV на sabre/dav внутри приложения (`/dav/`).
+- `app/Services/Server` — сервер: Amavis, карантин, белые списки, Postfix-очередь, журналы, fail2ban, копии, сертификат,
+  DNS, отчёты DMARC/TLS-RPT. Всё, что требует root, идёт через `sudo mailadmin-ctl <подкоманда>` — белый список в `deploy/mailadmin-ctl`.
+- `app/Console/Commands` — планировщик (`routes/console.php`): уведомления, копии, сводка карантина, напоминания,
+  отчёты, возврат отложенных, очередь отправки, перенос ящиков.
+- `deploy/` — установщик, обновление, служебные скрипты и шаблоны конфигов.
+- `resources/js/Pages` — Vue-страницы (`Mail/*` — веб-почта), `resources/js/Components/Mail` — компоненты веб-почты.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Базы: `mailadmin` (приложение), `vmail` (iRedMail: домены, ящики, псевдонимы), `amavisd` (карантин, списки), `iredapd` (лимиты).
+Пароли сотрудников меняет только администратор — самообслуживания намеренно нет.
