@@ -51,6 +51,7 @@ class SettingsController extends Controller
                 'limits' => AppSetting::group('limits'),
                 'sizeLimitMb' => $this->safe(fn () => $this->amavis->current()['sizeLimitMb'], 15),
                 'fail2ban' => AppSetting::group('fail2ban'),
+                'throttle' => $this->safe(fn () => \App\Services\Server\Throttle::get(), ['max_msgs' => 0, 'period_min' => 60, 'enabled' => false]),
             ],
             'cert' => [
                 'cert' => $this->safe(fn () => $this->cert->info()),
@@ -258,7 +259,13 @@ class SettingsController extends Controller
             'blocked_ext' => ['nullable', 'string', 'max:300'],
             'max_recipients' => ['required', 'integer', 'min:1', 'max:5000'],
             'maxretry' => ['required', 'integer', 'min:2', 'max:100'], 'findtime' => ['required', 'integer', 'min:1', 'max:1440'], 'bantime_hours' => ['required', 'integer', 'min:1', 'max:8760'],
+            'out_max_msgs' => ['required', 'integer', 'min:0', 'max:100000'], 'out_period_min' => ['required', 'integer', 'min:1', 'max:1440'],
         ]);
+        try {
+            \App\Services\Server\Throttle::set((int) $data['out_max_msgs'], (int) $data['out_period_min']);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Лимит исходящих не записан в iRedAPD: ' . mb_substr($e->getMessage(), 0, 160));
+        }
         try {
             if ($data['sizeLimitMb'] !== $this->amavis->current()['sizeLimitMb']) {
                 $this->amavis->setSizeLimit($data['sizeLimitMb']);

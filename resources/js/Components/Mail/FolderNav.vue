@@ -9,6 +9,7 @@ const props = defineProps({
     folder: String,
     filter: { type: String, default: 'all' },
     outbox: { type: Number, default: 0 },
+    quarantine: { type: Number, default: 0 },
     quota: { type: Object, default: null },
 });
 const emit = defineEmits(['go', 'compose', 'context', 'drop', 'new-folder', 'label', 'outbox']);
@@ -75,6 +76,7 @@ function onDrop(e, f) {
         >
             <span>Важное</span>
         </button>
+        <a class="mnav__item" href="/mail/quarantine" title="Письма, задержанные антиспамом"><span>Карантин</span><span v-if="quarantine" class="mnav__count">{{ quarantine }}</span></a>
         <button v-if="outbox" type="button" class="mnav__item" @click="$emit('outbox')">
             <span>Ждут отправки</span><span class="mnav__count">{{ outbox }}</span>
         </button>

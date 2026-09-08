@@ -54,6 +54,33 @@ class FolderController extends Controller
         return response()->json(['folders' => $store->folders()]);
     }
 
+    /** Опрос «есть ли новое»: статус папки + напоминания календаря, которые пора показать. */
+    public function status(Request $request, ImapSession $imap): JsonResponse
+    {
+        $folder = (string) $request->query('folder', 'INBOX');
+        $store = new MailStore($imap->client());
+        $st = $store->status($folder);
+        $inbox = $folder === 'INBOX' ? $st : $store->status('INBOX');
+        $reminders = [];
+        try {
+            $dav = app(\App\Services\Dav\DavStore::class);
+            $now = now();
+            foreach ($dav->events($imap->user(), $now->copy()->subMinutes(5), $now->copy()->addDays(2)) as $e) {
+                if (! isset($e['alarm']) || $e['alarm'] === null || empty($e['start'])) {
+                    continue;
+                }
+                $trigger = \Carbon\Carbon::parse($e['start'])->subMinutes((int) $e['alarm']);
+                if ($trigger->between($now->copy()->subMinutes(2), $now->copy()->addSeconds(30))) {
+                    $reminders[] = ['key' => ($e['uid'] ?? $e['id']) . '@' . $e['start'], 'title' => $e['title'] ?? '', 'start' => $e['start'], 'allDay' => (bool) ($e['allDay'] ?? false), 'location' => $e['location'] ?? ''];
+                }
+            }
+        } catch (\Throwable) {
+            // календарь недоступен — только почта
+        }
+
+        return response()->json(['folder' => $st, 'inboxUnseen' => $inbox['unseen'], 'reminders' => $reminders, 'at' => now()->toIso8601String()]);
+    }
+
     /** Кому открыта папка + кандидаты. */
     public function shares(ImapSession $imap, string $folder): JsonResponse
     {

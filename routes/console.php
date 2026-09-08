@@ -19,6 +19,16 @@ Schedule::command('alerts:check --digest')->everyMinute()->when(function () {
         return false;
     }
 });
+// Сводка карантина сотрудникам — раз в сутки в час из настроек.
+Schedule::command('quarantine:digest')->everyMinute()->when(function () {
+    try {
+        $q = \App\Models\AppSetting::group('quarantine');
+
+        return ($q['digest'] ?? true) && now()->format('H:i') === ($q['digest_time'] ?? '09:00');
+    } catch (\Throwable) {
+        return false;
+    }
+});
 // Резервная копия по расписанию из настроек и чистка карантина по сроку хранения.
 Schedule::command('backup:run --if-due')->everyMinute()->withoutOverlapping()->runInBackground();
 Schedule::command('backup:run --purge-quarantine')->dailyAt('04:10');

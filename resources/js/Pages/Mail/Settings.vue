@@ -72,7 +72,7 @@ async function saveSettings(patch) {
 }
 function saveGeneral() {
     saveSettings({
-        display_name: s.value.display_name, reply_all: s.value.reply_all, undo_seconds: Number(s.value.undo_seconds),
+        display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, undo_seconds: Number(s.value.undo_seconds),
         preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, show_images: s.value.show_images,
         quick_replies: quickText.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8),
     });
@@ -148,6 +148,15 @@ async function recolor(l, color) {
     try { labels.value = await api.updateLabel(l.id, l.name, color); } catch (e) { say(e.message, true); }
 }
 
+// ── Уведомления браузера ─────────────────────────────────────
+const notifyState = ref(typeof Notification === 'undefined' ? 'Этот браузер не поддерживает уведомления' : Notification.permission === 'denied' ? 'Уведомления запрещены в настройках браузера для этого сайта' : '');
+async function askNotify(e) {
+    if (!e.target.checked || typeof Notification === 'undefined') return;
+    const p = await Notification.requestPermission();
+    notifyState.value = p === 'granted' ? 'Разрешено — придёт при новом письме, даже если вкладка не активна' : 'Браузер не дал разрешение';
+    if (p !== 'granted') s.value.notify_browser = false;
+}
+
 const shortcuts = [
     ['Навигация', [['j / k', 'следующее / предыдущее письмо'], ['Enter', 'открыть'], ['u', 'к списку'], ['g i', 'Входящие'], ['g s', 'Отправленные'], ['g d', 'Черновики'], ['/', 'поиск']]],
     ['Письмо', [['r', 'ответить'], ['a', 'ответить всем'], ['f', 'переслать'], ['e', 'архив'], ['#', 'удалить'], ['s', 'флажок'], ['i', 'прочитано / нет'], ['z', 'отложить']]],
@@ -193,6 +202,8 @@ const shortcuts = [
                             </div>
                             <label class="toggle"><input v-model="s.shortcuts" type="checkbox"><span class="toggle__track" />Горячие клавиши</label>
                             <label class="toggle"><input v-model="s.reply_all" type="checkbox"><span class="toggle__track" />По умолчанию отвечать всем</label>
+                            <label class="toggle"><input v-model="s.notify_browser" type="checkbox" @change="askNotify"><span class="toggle__track" />Уведомления браузера о новых письмах и напоминаниях</label>
+                            <p v-if="notifyState" class="hint" style="margin: 0">{{ notifyState }}</p>
                             <div class="field">
                                 <label>Быстрые ответы (каждый с новой строки)</label>
                                 <textarea v-model="quickText" class="input" rows="4" />

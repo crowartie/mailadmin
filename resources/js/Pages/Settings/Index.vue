@@ -21,6 +21,7 @@ const props = defineProps({
     limits: Object,
     sizeLimitMb: Number,
     fail2ban: Object,
+    throttle: Object,
     // сертификат
     cert: Object,
     lastAttempt: String,
@@ -74,7 +75,7 @@ const quarantineRows = computed(() => (props.quarantine || []).filter((q) => !qS
 const pct = (v) => Math.min(100, Math.max(0, (v / 20) * 100));
 
 // ── Лимиты ─────────────────────────────────────────────────────────────
-const limitsForm = useForm({ sizeLimitMb: props.sizeLimitMb ?? 15, ...(props.limits || {}), ...(props.fail2ban || {}) });
+const limitsForm = useForm({ sizeLimitMb: props.sizeLimitMb ?? 15, ...(props.limits || {}), ...(props.fail2ban || {}), out_max_msgs: props.throttle?.max_msgs ?? 0, out_period_min: props.throttle?.period_min ?? 60 });
 
 // ── Копии ──────────────────────────────────────────────────────────────
 const backupForm = useForm({ ...(props.backup || {}) });
@@ -286,6 +287,12 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                         <input v-model.number="limitsForm.bantime_hours" class="input" type="number" min="1" max="8760" style="width: 70px; height: 34px"><span>ч</span>
                     </div>
                     <p class="hint">Действует на IMAP, SMTP, веб-почту и админку. Свои адреса добавляйте в белый список в разделе «Безопасность → Блокировки».</p>
+                    <div class="card__title" style="margin-top: 18px">Лимит исходящих на ящик</div>
+                    <div class="field__row" style="flex-wrap: wrap">
+                        <span>Не больше</span><input v-model.number="limitsForm.out_max_msgs" class="input" type="number" min="0" max="100000" style="width: 80px; height: 34px"><span>писем за</span>
+                        <input v-model.number="limitsForm.out_period_min" class="input" type="number" min="1" max="1440" style="width: 70px; height: 34px"><span>минут с одного ящика</span>
+                    </div>
+                    <p class="hint">Одно правило на всех сотрудников (iRedAPD). Если ящик украдут, спамер упрётся в лимит, а не разошлёт тысячи писем и не загонит сервер в чёрные списки. Обычному человеку хватает 100–200 в час. 0 — без ограничения.</p>
                     <div class="form-actions" style="margin-top: 20px"><button class="btn btn--primary" type="submit" :disabled="limitsForm.processing">Сохранить</button></div>
                 </div>
             </form>

@@ -1,7 +1,7 @@
 <script setup>
 // Веб-почта: папки · список · чтение. Страница отрисовывается с данными первой страницы,
 // дальше всё живёт на /mail/api/* без перезагрузок.
-import { computed, onBeforeUnmount, onMounted, ref, nextTick } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, nextTick, watch } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
@@ -28,6 +28,7 @@ const props = defineProps({
     list: Object,
     outbox: { type: Number, default: 0 },
     cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50 }) },
+    quarantine: { type: Number, default: 0 },
     openUid: { type: Number, default: null },
     composeTo: { type: String, default: null },
 });
@@ -79,6 +80,53 @@ function syncUrl() {
 }
 
 // ── Списки ────────────────────────────────────────────────────
+// ── Живое обновление ──────────────────────────────────────────
+let lastUidnext = null;
+let lastPoll = 0;
+const shownReminders = new Set(JSON.parse(localStorage.getItem('mail.reminders.shown') || '[]'));
+function updateTitle() {
+    const inbox = folders.value.find((f) => f.role === 'inbox');
+    const n = inbox?.unread || 0;
+    document.title = (n ? `(${n}) ` : '') + (folderInfo.value.name || 'Почта') + ' — ' + (props.user || 'Почта');
+}
+function canNotify() { return settings.value.notify_browser && typeof Notification !== 'undefined' && Notification.permission === 'granted'; }
+function notify(title, body, tag, onclick) {
+    if (!canNotify()) return;
+    try {
+        const n = new Notification(title, { body, tag, icon: '/favicon.ico' });
+        n.onclick = () => { window.focus(); onclick?.(); n.close(); };
+        setTimeout(() => n.close(), 15000);
+    } catch {}
+}
+async function poll() {
+    if (document.visibilityState !== 'visible' && Date.now() - lastPoll < 60000) return;
+    if (compose.value || menu.value) return;
+    lastPoll = Date.now();
+    try {
+        const st = await api.status(folder.value);
+        const inbox = folders.value.find((f) => f.role === 'inbox');
+        if (inbox && inbox.unread !== st.inboxUnseen) { inbox.unread = st.inboxUnseen; updateTitle(); }
+        const cur = folders.value.find((f) => f.path === folder.value);
+        if (cur) { cur.unread = st.folder.unseen; cur.total = st.folder.messages; }
+        if (lastUidnext !== null && st.folder.uidnext > lastUidnext) {
+            const prev = lastUidnext;
+            await load(list.value.page, true);
+            const fresh = (list.value.messages || []).filter((m) => m.uid >= prev && m.unread);
+            fresh.slice(0, 3).forEach((m) => notify(m.from?.name || m.from?.mail || 'Новое письмо', m.subject || '(без темы)', 'mail-' + m.uid, () => openMessage(m.uid)));
+            if (fresh.length > 3) notify('Новые письма', `и ещё ${fresh.length - 3}`, 'mail-more');
+        }
+        lastUidnext = st.folder.uidnext;
+        for (const r of st.reminders || []) {
+            if (shownReminders.has(r.key)) continue;
+            shownReminders.add(r.key);
+            localStorage.setItem('mail.reminders.shown', JSON.stringify([...shownReminders].slice(-200)));
+            const t = r.allDay ? 'сегодня' : new Date(r.start).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            notify('Напоминание: ' + r.title, (r.allDay ? 'Весь день' : 'В ' + t) + (r.location ? ' · ' + r.location : ''), 'rem-' + r.key, () => { window.location.href = '/calendar'; });
+            showToast({ text: 'Напоминание: ' + r.title + ' — ' + t }, 8000);
+        }
+    } catch {}
+}
+
 async function load(page = 1, keepOpen = false) {
     loading.value = true;
     try {
@@ -205,6 +253,7 @@ function snooze(at) {
 }
 const customSnooze = ref('');
 
+watch(folder, () => { lastUidnext = null; updateTitle(); });
 function folderContext(e, f) {
     menu.value = { kind: 'folder', x: e.clientX, y: e.clientY, folder: f };
 }
@@ -475,7 +524,10 @@ function onKey(e) {
 onMounted(() => {
     document.addEventListener('keydown', onKey);
     window.addEventListener('beforeunload', flushPending);
-    refreshTimer = setInterval(() => { if (!compose.value && !menu.value && document.visibilityState === 'visible') load(list.value.page, true); }, 90000);
+    // Опрос «есть ли новое» каждые 20 с (60 с в фоне): дёшево (один STATUS), список перечитываем только когда изменился.
+    refreshTimer = setInterval(() => poll(), 20000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poll(); });
+    updateTitle();
     if (props.openUid) openMessage(props.openUid);
     if (props.composeTo !== null) {
         startCompose('new');
@@ -502,6 +554,7 @@ onBeforeUnmount(() => {
                 :folder="folder"
                 :filter="filter"
                 :outbox="outboxCount"
+                :quarantine="quarantine"
                 @go="go"
                 @compose="startCompose('new')"
                 @context="folderContext"

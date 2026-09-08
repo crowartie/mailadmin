@@ -13,6 +13,17 @@ use Illuminate\Http\Request;
  */
 final class Area
 {
+    /** То же без запроса (для писем из планировщика): по APP_URL и порту веб-почты. */
+    public static function mailBase(): string
+    {
+        $host = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'mail.' . config('areas.default_domain');
+        $scheme = parse_url((string) config('app.url'), PHP_URL_SCHEME) ?: 'https';
+        $port = (int) config('areas.mail_port');
+        $default = $scheme === 'https' ? 443 : 80;
+
+        return $scheme . '://' . $host . ($port === $default ? '' : ':' . $port);
+    }
+
     /** Базовый адрес веб-почты для ссылок из админки: https://host[:port]. */
     public static function mailUrl(Request $request): string
     {

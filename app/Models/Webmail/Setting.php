@@ -25,6 +25,7 @@ class Setting extends Model
         'theme' => 'light',
         'density' => 'normal',
         'reply_all' => false,
+        'notify_browser' => false,
         'undo_seconds' => 5,
         'quick_replies' => ['Спасибо, получил.', 'Принято, сделаю.', 'Давайте обсудим по телефону.'],
         'shortcuts' => true,

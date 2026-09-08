@@ -37,6 +37,10 @@ async function request(method, url, body, opts = {}) {
 const enc = (s) => encodeURIComponent(s);
 
 export const api = {
+    quarantineList: () => request('GET', '/mail/api/quarantine'),
+    quarantineRelease: (id) => request('POST', `/mail/api/quarantine/${enc(id)}/release`),
+    quarantineDelete: (id) => request('DELETE', `/mail/api/quarantine/${enc(id)}`),
+    status: (folder) => request('GET', `/mail/api/status?folder=${enc(folder)}`),
     folders: () => request('GET', '/mail/api/folders'),
     createFolder: (name, parent) => request('POST', '/mail/api/folders', { name, parent }),
     renameFolder: (path, name) => request('PATCH', `/mail/api/folders/${enc(path)}`, { name }),

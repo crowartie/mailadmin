@@ -633,6 +633,18 @@ class MailStore
         return (new \HTMLPurifier($config))->purify($html);
     }
 
+    /** Быстрый статус папки для опроса «есть ли новое»: без списка писем. @return array{messages:int,unseen:int,uidnext:int} */
+    public function status(string $path): array
+    {
+        try {
+            $st = array_change_key_case((array) $this->folder($path)->status(), CASE_LOWER);
+        } catch (\Throwable) {
+            $st = [];
+        }
+
+        return ['messages' => (int) ($st['messages'] ?? 0), 'unseen' => (int) ($st['unseen'] ?? 0), 'uidnext' => (int) ($st['uidnext'] ?? 0)];
+    }
+
     private function safeStatus(Folder $folder): array
     {
         try {

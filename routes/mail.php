@@ -25,6 +25,8 @@ Route::middleware('area:mail')->group(function () {
     Route::get('/mail/login/code', [LoginController::class, 'code']);
     Route::post('/mail/login/code', [LoginController::class, 'verifyCode']);
     Route::post('/mail/logout', [LoginController::class, 'destroy']);
+    // Выпуск письма из карантина по подписанной ссылке из сводки (вход не нужен).
+    Route::get('/mail/quarantine/release/{id}/{secret}', [\App\Http\Controllers\Mail\QuarantineController::class, 'releaseSigned'])->name('mail.quarantine.release')->middleware('signed:relative');
 
     // CalDAV/CardDAV для телефонов и почтовых программ (Basic-авторизация паролем от почты).
     Route::match(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'PROPFIND', 'PROPPATCH', 'REPORT', 'MKCOL', 'MKCALENDAR', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'ACL'], '/dav/{path?}', DavController::class)->where('path', '.*');
@@ -40,12 +42,17 @@ Route::middleware('area:mail')->group(function () {
     // Корень «/» здесь не объявляем: он есть у админки, а на почтовом порту его перенаправляет nginx.
     Route::middleware('mail.auth')->group(function () {
         Route::get('/mail', [InboxController::class, 'index']);
+        Route::get('/mail/quarantine', [\App\Http\Controllers\Mail\QuarantineController::class, 'index']);
         Route::get('/mail/settings/{section?}', [InboxController::class, 'settings'])->where('section', '[a-z]+');
         Route::get('/mail/folder/{folder}', [InboxController::class, 'index'])->where('folder', '.*');
 
         // Живые данные для интерфейса.
         Route::prefix('/mail/api')->group(function () {
             Route::get('folders', [FolderController::class, 'index']);
+            Route::get('status', [FolderController::class, 'status']);
+            Route::get('quarantine', [\App\Http\Controllers\Mail\QuarantineController::class, 'list']);
+            Route::post('quarantine/{id}/release', [\App\Http\Controllers\Mail\QuarantineController::class, 'release']);
+            Route::delete('quarantine/{id}', [\App\Http\Controllers\Mail\QuarantineController::class, 'destroy']);
             Route::post('folders', [FolderController::class, 'store']);
             // Общий доступ — раньше маршрутов с {folder}=.*, иначе «INBOX/shares» уходит в delete/update.
             Route::get('folders/{folder}/shares', [FolderController::class, 'shares'])->where('folder', '.*');
