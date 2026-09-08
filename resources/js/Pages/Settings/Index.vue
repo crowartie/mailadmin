@@ -46,7 +46,7 @@ const props = defineProps({
     cloudStatus: Object,
 });
 
-const TABS = [['domains', 'Домены и DNS'], ['spam', 'Антиспам и карантин'], ['limits', 'Вложения и лимиты'], ['cert', 'Сертификат'], ['backup', 'Резервные копии'], ['admins', 'Администраторы'], ['alerts', 'Уведомления'], ['cloud', 'Файлы и облако']];
+const TABS = [['domains', 'Домены и DNS'], ['spam', 'Антиспам и карантин'], ['limits', 'Вложения и лимиты'], ['cert', 'Сертификат'], ['backup', 'Резервные копии'], ['admins', 'Администраторы'], ['alerts', 'Уведомления'], ['cloud', 'Файлы и облако'], ['migrate', 'Перенос']];
 
 function post(url, data = {}, opts = {}) { router.post(url, data, { preserveScroll: true, ...opts }); }
 function del(url) { router.delete(url, { preserveScroll: true }); }

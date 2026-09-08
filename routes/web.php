@@ -15,6 +15,7 @@ use App\Http\Controllers\QueueController;
 use App\Http\Controllers\MailboxController;
 use App\Http\Controllers\RulesController;
 use App\Http\Controllers\SecurityController;
+use App\Http\Controllers\MigrationController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -145,6 +146,15 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/settings/cloud', [SettingsController::class, 'cloudSave']);
         Route::post('/settings/cloud/disconnect', [SettingsController::class, 'cloudDisconnect']);
         Route::post('/settings/cloud/test', [SettingsController::class, 'cloudTest']);
+        Route::get('/settings/migrate', [MigrationController::class, 'index']);
+        Route::get('/settings/migrate/status', [MigrationController::class, 'status']);
+        Route::post('/settings/migrate/source', [MigrationController::class, 'saveSource']);
+        Route::post('/settings/migrate', [MigrationController::class, 'store']);
+        Route::post('/settings/migrate/run-all', [MigrationController::class, 'runAll']);
+        Route::post('/settings/migrate/{migration}/test', [MigrationController::class, 'test']);
+        Route::post('/settings/migrate/{migration}/run', [MigrationController::class, 'run']);
+        Route::get('/settings/migrate/{migration}/log', [MigrationController::class, 'log']);
+        Route::delete('/settings/migrate/{migration}', [MigrationController::class, 'destroy']);
 
     });
 });

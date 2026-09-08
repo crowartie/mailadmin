@@ -184,14 +184,23 @@ class MailboxService
         $mailbox->isadmin = (bool) ($data['isadmin'] ?? false);
         $mailbox->isglobaladmin = (bool) ($data['isglobaladmin'] ?? false);
 
-        // Флаги служб: Dovecot читает их напрямую при аутентификации.
-        foreach (self::serviceFlags() as $flag) {
-            $mailbox->{$flag} = (bool) ($data['services'][$flag] ?? false);
-        }
-
-        // Эти три в схеме — char(1) со значениями y/n, а не tinyint.
-        foreach (self::sogoFlags() as $flag) {
-            $mailbox->{$flag} = ($data['services'][$flag] ?? false) ? 'y' : 'n';
+        // Флаги служб: Dovecot читает их напрямую при аутентификации. Если форма их не прислала —
+        // новому ящику включаем всё (иначе он не примет ни письмо, ни вход), у существующего не трогаем.
+        if (array_key_exists('services', $data)) {
+            foreach (self::serviceFlags() as $flag) {
+                $mailbox->{$flag} = (bool) ($data['services'][$flag] ?? false);
+            }
+            // Эти три в схеме — char(1) со значениями y/n, а не tinyint.
+            foreach (self::sogoFlags() as $flag) {
+                $mailbox->{$flag} = ($data['services'][$flag] ?? false) ? 'y' : 'n';
+            }
+        } elseif (! $mailbox->exists) {
+            foreach (self::serviceFlags() as $flag) {
+                $mailbox->{$flag} = true;
+            }
+            foreach (self::sogoFlags() as $flag) {
+                $mailbox->{$flag} = 'y';
+            }
         }
     }
 

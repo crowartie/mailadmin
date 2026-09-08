@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\AppSetting;
 use App\Services\Mail\ImapSession;
+use App\Services\Mail\MailStore;
 use App\Services\Server\Reports;
 use Illuminate\Console\Command;
 
@@ -28,14 +29,18 @@ class ReportsFetch extends Command
             return self::FAILURE;
         }
         $inbox = $client->getFolder('INBOX');
+        $store = new MailStore($client);
         $target = null;
         if (! $this->option('keep')) {
             try {
-                $target = $client->getFolder('Reports') ?: $client->createFolder('Reports');
-            } catch (\Throwable) {
+                $has = collect($store->folders())->contains(fn ($f) => strcasecmp($f['path'], 'Reports') === 0);
+                $target = $has ? 'Reports' : $store->createFolder('Reports');
+            } catch (\Throwable $e) {
+                $this->warn('Папка Reports: ' . $e->getMessage());
                 $target = null;
             }
         }
+        $toMove = [];
         $found = 0;
         $parsed = ['dmarc' => 0, 'tls' => 0];
         $messages = $inbox->query()->since(now()->subDays(60))->leaveUnread()->get();
@@ -62,12 +67,14 @@ class ReportsFetch extends Command
                 $found++;
                 $parsed['dmarc'] += $got['dmarc'];
                 $parsed['tls'] += $got['tls'];
-                if ($target) {
-                    try {
-                        $m->move('Reports');
-                    } catch (\Throwable) {
-                    }
-                }
+                $toMove[] = (int) $m->getUid();
+            }
+        }
+        if ($target && $toMove) {
+            try {
+                $store->move('INBOX', $toMove, $target);
+            } catch (\Throwable $e) {
+                $this->warn('Не переложил в Reports: ' . $e->getMessage());
             }
         }
         $this->info("Писем с отчётами: {$found}; новых DMARC: {$parsed['dmarc']}, TLS-RPT: {$parsed['tls']}");
