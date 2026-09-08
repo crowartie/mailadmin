@@ -289,8 +289,10 @@ select.input { padding-right: 32px; }
     border-bottom: 1px solid v.$c-border;
     padding: 0 22px;
     overflow-x: auto;
+    flex-wrap: wrap;
 
     &__item {
+        white-space: nowrap;
         padding: 12px;
         font: inherit;
         font-size: 13.5px;

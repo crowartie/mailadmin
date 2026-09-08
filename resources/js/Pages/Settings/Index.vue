@@ -3,6 +3,7 @@
 import { Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
+import { SETTINGS_TABS } from './tabs';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
 
@@ -46,7 +47,7 @@ const props = defineProps({
     cloudStatus: Object,
 });
 
-const TABS = [['domains', 'Домены и DNS'], ['spam', 'Антиспам и карантин'], ['limits', 'Вложения и лимиты'], ['cert', 'Сертификат'], ['backup', 'Резервные копии'], ['admins', 'Администраторы'], ['alerts', 'Уведомления'], ['cloud', 'Файлы и облако'], ['migrate', 'Перенос']];
+const TABS = SETTINGS_TABS;
 
 function post(url, data = {}, opts = {}) { router.post(url, data, { preserveScroll: true, ...opts }); }
 function del(url) { router.delete(url, { preserveScroll: true }); }

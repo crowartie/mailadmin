@@ -3,6 +3,7 @@
 import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
+import { SETTINGS_TABS } from './tabs';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
 
@@ -17,7 +18,7 @@ const props = defineProps({
     defaultDomain: String,
 });
 
-const TABS = [['domains', 'Домены и DNS'], ['spam', 'Антиспам и карантин'], ['limits', 'Вложения и лимиты'], ['cert', 'Сертификат'], ['backup', 'Резервные копии'], ['admins', 'Администраторы'], ['alerts', 'Уведомления'], ['cloud', 'Файлы и облако'], ['migrate', 'Перенос']];
+const TABS = SETTINGS_TABS;
 
 const sourceForm = useForm({ host: props.source?.host || '', port: props.source?.port || 993, ssl: props.source?.ssl ?? true, dav_url: props.source?.dav_url || '' });
 const linesForm = useForm({ lines: '' });
