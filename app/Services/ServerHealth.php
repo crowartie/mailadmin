@@ -16,7 +16,8 @@ class ServerHealth
         'postfix' => 'Postfix — приём и отправка',
         'dovecot' => 'Dovecot — IMAP и POP3',
         'amavis' => 'Amavis — антиспам и антивирус',
-        'clamav-daemon' => 'ClamAV — базы вирусов',
+        'clamav-daemon' => 'ClamAV — антивирус',
+        'clamav-freshclam' => 'ClamAV — обновление баз',
         'nginx' => 'nginx — веб',
         'iredapd' => 'iRedAPD — фильтр на входе',
     ];
@@ -78,7 +79,7 @@ class ServerHealth
         ];
     }
 
-    private function unitState(string $unit): string
+    public function unitState(string $unit): string
     {
         if (! is_executable('/usr/bin/systemctl') && ! is_executable('/bin/systemctl')) {
             return 'unknown';

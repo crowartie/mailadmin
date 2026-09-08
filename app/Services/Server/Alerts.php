@@ -57,6 +57,11 @@ class Alerts
                     $fire('service.' . md5($s['name']), 'Служба остановлена: ' . $s['name']);
                 }
             }
+            // Базы ClamAV берутся с нашего зеркала; если оно недоступно, freshclam молча живёт на старых базах.
+            $daily = glob('/var/lib/clamav/daily.c?d') ?: [];
+            if ($daily && ($age = (time() - (int) filemtime($daily[0])) / 86400) > 3 && $this->health->unitState('clamav-daemon') === 'active') {
+                $fire('clamav.stale', 'Базы ClamAV не обновлялись ' . (int) $age . ' дн — проверьте зеркало баз и журнал freshclam');
+            }
             $c = $this->cert->info();
             if ($c && $c['daysLeft'] < 14) {
                 $fire('cert', 'Сертификат истекает через ' . $c['daysLeft'] . ' дн — автопродление не сработало');
