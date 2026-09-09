@@ -41,7 +41,7 @@ class DnsCheck
         $rows[] = ['name' => 'DKIM ' . $selector . '._domainkey', 'expected' => $dkimTxt ? mb_substr($dkimTxt, 0, 40) . '…' : 'v=DKIM1; k=rsa; p=…', 'actual' => $dkimRec ? mb_substr($dkimRec, 0, 40) . '…' : 'нет записи', 'kind' => $dkimOk ? 'ok' : ($dkimRec ? 'no' : 'no'), 'note' => $dkimOk ? 'совпадает с ключом сервера' : ($dkimRec ? 'ключ в DNS не совпадает с ключом сервера' : 'подпись писем не проверяется')];
 
         $dmarc = array_values(array_filter($this->txt('_dmarc.' . $domain), fn ($t) => str_starts_with($t, 'v=DMARC1')));
-        $rows[] = ['name' => 'DMARC _dmarc', 'expected' => 'v=DMARC1; p=quarantine; rua=mailto:postmaster@' . $domain, 'actual' => $dmarc[0] ?? 'нет записи', 'kind' => $dmarc ? (preg_match('/p=(quarantine|reject)/', $dmarc[0]) ? 'ok' : 'warn') : 'no', 'note' => $dmarc ? (preg_match('/p=(quarantine|reject)/', $dmarc[0]) ? 'совпадает' : 'политика none — только отчёты') : 'нет политики'];
+        $rows[] = ['name' => 'DMARC _dmarc', 'expected' => 'v=DMARC1; p=quarantine; rua=mailto:' . $this->reportsMailbox($domain), 'actual' => $dmarc[0] ?? 'нет записи', 'kind' => $dmarc ? (preg_match('/p=(quarantine|reject)/', $dmarc[0]) ? 'ok' : 'warn') : 'no', 'note' => $dmarc ? (preg_match('/p=(quarantine|reject)/', $dmarc[0]) ? 'совпадает' : 'политика none — только отчёты') : 'нет политики'];
 
         $ptr = $this->ptr($domain, $ip, $mailHost);
         if ($ptr) {
@@ -57,7 +57,7 @@ class DnsCheck
         }
 
         $rpt = array_values(array_filter($this->txt('_smtp._tls.' . $domain), fn ($t) => str_starts_with($t, 'v=TLSRPTv1')));
-        $rows[] = ['name' => 'TLS-RPT _smtp._tls', 'expected' => 'v=TLSRPTv1; rua=mailto:postmaster@' . $domain, 'actual' => $rpt[0] ?? 'нет записи', 'kind' => $rpt ? 'ok' : 'warn', 'note' => $rpt ? 'отчёты о TLS будут приходить' : 'необязательно: отчёты о сбоях TLS от Google и др.'];
+        $rows[] = ['name' => 'TLS-RPT _smtp._tls', 'expected' => 'v=TLSRPTv1; rua=mailto:' . $this->reportsMailbox($domain), 'actual' => $rpt[0] ?? 'нет записи', 'kind' => $rpt ? 'ok' : 'warn', 'note' => $rpt ? 'отчёты о TLS будут приходить' : 'необязательно: отчёты о сбоях TLS от Google и др.'];
         $sts = $this->txt('_mta-sts.' . $domain);
         $rows[] = ['name' => 'MTA-STS', 'expected' => 'v=STSv1; id=…', 'actual' => $sts[0] ?? 'не настроено', 'kind' => $sts ? 'ok' : 'warn', 'note' => $sts ? 'настроено' : 'необязательно: защита от подмены TLS'];
 
@@ -201,4 +201,13 @@ class DnsCheck
 
         return $norm($a) !== null && $norm($a) === $norm($b);
     }
+
+    /** Куда приходят отчёты DMARC/TLS-RPT: ящик из настроек или postmaster. */
+    private function reportsMailbox(string $domain): string
+    {
+        $m = (string) (\App\Models\AppSetting::group('reports')['mailbox'] ?? '');
+
+        return $m !== '' ? $m : 'postmaster@' . $domain;
+    }
 }
+

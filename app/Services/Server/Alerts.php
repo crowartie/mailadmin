@@ -103,6 +103,12 @@ class Alerts
 
     public function send(string $text, bool $securityOnly = false): void
     {
+        // Копия в раздел «Отчёты» — чтобы история уведомлений не зависела от почтового ящика администратора.
+        try {
+            app(SystemReports::class)->save(str_contains($text, 'сводка за сутки') ? 'digest' : 'alerts', $text);
+        } catch (\Throwable $e) {
+            Log::warning('Отчёт не сохранён: ' . $e->getMessage());
+        }
         $ch = AppSetting::group('channels');
         $emails = array_values(array_filter(array_map('trim', preg_split('/[,;\s]+/', (string) $ch['emails']))));
         foreach ($emails as $to) {

@@ -14,6 +14,7 @@ const props = defineProps({
     mailHost: String,
     domains: Array,
     reports: Object,
+    reportsMailbox: String,
     mtasts: Object,
     // антиспам
     spam: Object,
@@ -179,10 +180,10 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                         <p v-else class="hint">Все письма от нашего имени подтверждены — подделок не замечено.</p>
                         <p class="hint" style="margin: 4px 0 0">Присылают: {{ reports.orgs.map((o) => o.org + ' (' + o.reports + ')').join(', ') }}. Последний отчёт {{ reports.lastReport ? date(reports.lastReport) : '—' }}.</p>
                     </template>
-                    <p v-else class="hint" style="margin-top: 0">Отчётов ещё нет. Крупные почтовики (Mail.ru, Google, Яндекс) присылают их раз в сутки на адрес из DMARC-записи (rua=postmaster@…). Они забираются автоматически раз в час из ящика postmaster и складываются в папку «Reports».</p>
+                    <p v-else class="hint" style="margin-top: 0">Отчётов ещё нет. Крупные почтовики (Mail.ru, Google, Яндекс) присылают их раз в сутки на адрес из DMARC-записи (rua=mailto:{{ reportsMailbox }}). Они забираются автоматически раз в час из ящика postmaster и складываются в папку «Reports».</p>
                     <div class="card__title" style="margin-top: 14px">TLS-отчёты (TLS-RPT)</div>
                     <p v-if="reports && reports.tls.reports" class="hint" style="margin: 0">За 30 дней: {{ reports.tls.ok }} соединений с TLS удачно, {{ reports.tls.fail }} сбоев.<span v-for="(f, i) in reports.tls.failures" :key="i" style="display: block">{{ f.type }} · {{ f.ip }} → {{ f.mx }} · {{ f.count }} ({{ f.org }})</span></p>
-                    <p v-else class="hint" style="margin: 0">Пока нет: добавьте TXT-запись <span class="mono">_smtp._tls</span> со значением <span class="mono">v=TLSRPTv1; rua=mailto:postmaster@{{ domains[0]?.domain }}</span> — чужие серверы начнут сообщать, если не смогли установить TLS с нами.</p>
+                    <p v-else class="hint" style="margin: 0">Пока нет: добавьте TXT-запись <span class="mono">_smtp._tls</span> со значением <span class="mono">v=TLSRPTv1; rua=mailto:{{ reportsMailbox }}</span> — чужие серверы начнут сообщать, если не смогли установить TLS с нами.</p>
                 </div>
                 <div class="card card--pad">
                     <div class="card__title">MTA-STS — защита входящей почты от подмены</div>

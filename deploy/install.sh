@@ -253,6 +253,7 @@ open(p, 'w').write(s.replace(old, new, 1))
 PYEOF
 fi
 bash "$HERE/dovecot-fts-learn.sh"
+bash "$HERE/setup-reports.sh"
 doveconf -n >/dev/null && systemctl restart dovecot
 
 # ── 8. Amavis: пороги, карантин в базу, антивирус ──────────────────────────

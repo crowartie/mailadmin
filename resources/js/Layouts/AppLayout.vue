@@ -40,6 +40,7 @@ const groups = [
         { href: '/domains', icon: 'globe', label: 'Домены', count: 'domains' },
         { href: '/queue', icon: 'queue', label: 'Очередь', count: 'queue' },
         { href: '/logs', icon: 'log', label: 'Журналы' },
+        { href: '/reports', icon: 'file', label: 'Отчёты' },
         { href: '/security', icon: 'shield', label: 'Безопасность' },
         { href: '/settings', icon: 'gear', label: 'Настройки' },
     ] },

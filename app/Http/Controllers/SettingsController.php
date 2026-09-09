@@ -83,6 +83,7 @@ class SettingsController extends Controller
         return [
             'mailHost' => $mailHost,
             'reports' => $this->safe(fn () => (new \App\Services\Server\Reports())->summary(30)),
+            'reportsMailbox' => (string) (AppSetting::group('reports')['mailbox'] ?: 'postmaster@' . config('areas.default_domain')),
             'mtasts' => AppSetting::group('mtasts') + ['host' => 'mta-sts.' . config('areas.default_domain'), 'inCert' => in_array('mta-sts.' . config('areas.default_domain'), $this->safe(fn () => $this->cert->info()['names'] ?? [], []), true)],
             'domains' => $domains->map(fn (Domain $d) => [
                 'domain' => $d->domain, 'description' => $d->description, 'active' => $d->active,

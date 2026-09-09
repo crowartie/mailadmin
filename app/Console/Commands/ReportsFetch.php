@@ -20,11 +20,24 @@ class ReportsFetch extends Command
 
     public function handle(Reports $reports): int
     {
-        $mailbox = strtolower((string) ($this->option('mailbox') ?: (AppSetting::group('reports')['mailbox'] ?? '') ?: 'postmaster@' . config('areas.default_domain')));
+        $configured = strtolower((string) ($this->option('mailbox') ?: (AppSetting::group('reports')['mailbox'] ?? '')));
+        $mailboxes = array_values(array_unique(array_filter([$configured, 'postmaster@' . config('areas.default_domain')])));
+        $rc = self::SUCCESS;
+        foreach ($mailboxes as $mailbox) {
+            if ($this->fetchFrom($mailbox, $reports) !== self::SUCCESS) {
+                $rc = self::FAILURE;
+            }
+        }
+
+        return $rc;
+    }
+
+    private function fetchFrom(string $mailbox, Reports $reports): int
+    {
         try {
             $client = ImapSession::master($mailbox);
         } catch (\Throwable $e) {
-            $this->error('IMAP: ' . $e->getMessage());
+            $this->error($mailbox . ' IMAP: ' . $e->getMessage());
 
             return self::FAILURE;
         }
@@ -77,7 +90,7 @@ class ReportsFetch extends Command
                 $this->warn('Не переложил в Reports: ' . $e->getMessage());
             }
         }
-        $this->info("Писем с отчётами: {$found}; новых DMARC: {$parsed['dmarc']}, TLS-RPT: {$parsed['tls']}");
+        $this->info("{$mailbox}: писем с отчётами {$found}; новых DMARC: {$parsed['dmarc']}, TLS-RPT: {$parsed['tls']}");
 
         return self::SUCCESS;
     }

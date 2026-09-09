@@ -17,6 +17,7 @@ use App\Http\Controllers\RulesController;
 use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\MigrationController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\SystemReportsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -149,6 +150,9 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/settings/cloud', [SettingsController::class, 'cloudSave']);
         Route::post('/settings/cloud/disconnect', [SettingsController::class, 'cloudDisconnect']);
         Route::post('/settings/cloud/test', [SettingsController::class, 'cloudTest']);
+        Route::get('/reports', [SystemReportsController::class, 'index']);
+        Route::get('/reports/{kind}/{file}/download', [SystemReportsController::class, 'download'])->where(['kind' => '[a-z0-9-]+', 'file' => '[A-Za-z0-9._-]+']);
+        Route::delete('/reports/{kind}/{file}', [SystemReportsController::class, 'destroy'])->where(['kind' => '[a-z0-9-]+', 'file' => '[A-Za-z0-9._-]+']);
         Route::get('/settings/migrate', [MigrationController::class, 'index']);
         Route::get('/settings/migrate/status', [MigrationController::class, 'status']);
         Route::post('/settings/migrate/source', [MigrationController::class, 'saveSource']);

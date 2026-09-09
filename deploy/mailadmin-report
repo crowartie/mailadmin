@@ -1,0 +1,19 @@
+#!/bin/bash
+# mailadmin-report <вид> <команда…>
+# Запускает команду и складывает её вывод в отчёт для админки (Отчёты), вместо письма root'у/postmaster'у.
+# Пустой вывод не сохраняется. Отчёты старше 180 дней удаляются. Каталог читает www-data (группа).
+set -u
+DIR=/var/lib/mailadmin/reports
+kind="${1:?вид отчёта}"; shift
+[[ "$kind" =~ ^[a-z0-9-]{1,40}$ ]] || { echo "mailadmin-report: плохой вид «$kind»" >&2; exit 2; }
+[ $# -ge 1 ] || { echo "mailadmin-report: нет команды" >&2; exit 2; }
+install -d -o root -g www-data -m 2750 "$DIR" "$DIR/$kind"
+f="$DIR/$kind/$(date +%Y-%m-%d_%H%M).txt"
+n=0; while [ -e "$f" ]; do n=$((n+1)); f="$DIR/$kind/$(date +%Y-%m-%d_%H%M)-$n.txt"; done
+out=$("$@" 2>&1); rc=$?
+if [[ -n "${out//[[:space:]]/}" ]]; then
+    { printf '# %s · %s · код возврата %s\n\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" "$rc"; printf '%s\n' "$out"; } > "$f"
+    chown root:www-data "$f"; chmod 640 "$f"
+fi
+find "$DIR" -type f -name '*.txt' -mtime +180 -delete 2>/dev/null
+exit $rc
