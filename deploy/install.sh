@@ -18,7 +18,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 APP=$(cd "$HERE/.." && pwd)
 CONF="$HERE/install.conf"
 IREDMAIL_VER=1.8.7
-IREDMAIL_URL="https://github.com/iredmail/iRedMail/releases/download/${IREDMAIL_VER}/iRedMail-${IREDMAIL_VER}.tar.gz"
+# Архив тега, а не «release asset»: ассеты у iRedMail пропадают (1.8.7 отдаёт 404), архив тега есть всегда и распаковывается в ту же папку.
+IREDMAIL_URL="https://github.com/iredmail/iRedMail/archive/refs/tags/${IREDMAIL_VER}.tar.gz"
 NODE_MAJOR=22
 SECRETS=/root/mailadmin-install.txt
 
@@ -103,6 +104,35 @@ AMAVIS_DB_PASSWORD=$(pyval /opt/iredapd/settings.py amavisd_db_password)
 mysql() { command mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$@"; }
 mysql -e 'select 1' >/dev/null 2>&1 || mysql() { command mysql "$@"; }   # на свежем iRedMail root входит через сокет
 mysql -e 'select 1' >/dev/null || die "нет доступа к MariaDB от root"
+
+# ── 1b. Свой рекурсивный DNS (unbound) ─────────────────────────────────────
+# DNSBL (Spamhaus и др.) не отвечают запросам через публичные резолверы (8.8.8.8 → NXDOMAIN), а домашние
+# роутеры отдают 127.255.255.254 «резолвер заблокирован» — тогда postscreen либо слеп, либо отбивает всех.
+# Свой резолвер спрашивает корневые серверы сам, с адреса сервера.
+log "Локальный DNS-резолвер unbound"
+apt-get install -y -q unbound >/dev/null
+cat > /etc/unbound/unbound.conf.d/mailadmin.conf <<'EOF'
+server:
+    interface: 127.0.0.1
+    access-control: 127.0.0.0/8 allow
+    do-ip6: no
+    prefetch: yes
+    cache-min-ttl: 60
+    qname-minimisation: yes
+    hide-identity: yes
+    hide-version: yes
+EOF
+systemctl enable --now unbound >/dev/null 2>&1; systemctl restart unbound
+# systemd-resolved → unbound (без DNSStubListener он не мешает); /etc/resolv.conf остаётся на stub 127.0.0.53
+mkdir -p /etc/systemd/resolved.conf.d
+printf '[Resolve]
+DNS=127.0.0.1
+FallbackDNS=
+Domains=~.
+DNSSEC=no
+' > /etc/systemd/resolved.conf.d/mailadmin-unbound.conf
+systemctl restart systemd-resolved
+if dig +short +time=5 2.0.0.127.zen.spamhaus.org @127.0.0.1 | grep -q '^127\.0\.0\.'; then log "DNSBL через unbound отвечает"; else warn "Spamhaus через unbound не ответил — проверьте, что исходящие DNS-запросы (UDP/TCP 53) не блокируются"; fi
 
 # ── 2. Пакеты приложения ───────────────────────────────────────────────────
 log "Пакеты: PHP-расширения, Redis, Node $NODE_MAJOR, Composer, fts_xapian, imapsync"
