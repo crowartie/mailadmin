@@ -953,3 +953,12 @@ select.input { padding-right: 28px; }
     .help__section { break-inside: avoid; box-shadow: none; border: none; padding: 0 0 12px; }
     .help__item { break-inside: avoid; }
 }
+
+// ── Подключить телефон ────────────────────────────────────────────
+.setup .tabs { background: none; border-radius: 0; padding: 0 4px; }
+.setup .tabs__item { cursor: pointer; }
+.setup__qr { position: sticky; top: 12px; align-self: start; }
+.setup__qrbox { background: #fff; border-radius: 10px; padding: 10px; display: flex; justify-content: center; }
+.setup__qrbox svg { width: 180px; height: 180px; display: block; }
+.btn--disabled { opacity: .5; pointer-events: none; }
+@media (max-width: 860px) { .setup .mset__grid { grid-template-columns: 1fr; } .setup__qr { position: static; } }

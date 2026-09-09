@@ -419,7 +419,7 @@ const shortcuts = [
                             <p class="hint" style="margin: 0">Пароль от почты выдаёт и меняет администратор. Если пароль стал известен кому-то ещё — сообщите администратору и завершите чужие сеансы выше.</p>
                         </div>
                         <div class="card mset__section">
-                            <h2>Подключение почтовых программ</h2>
+                            <h2>Подключение почтовых программ<span class="grow" /><Link href="/mail/setup" class="btn btn--sm"><Icon name="mobile" :size="14" />Подключить телефон</Link></h2>
                             <div class="mset__cols">
                                 <div class="kv"><span>Входящие (IMAP)</span><b class="mono">imap.{{ user.split('@')[1] }} : 993, SSL</b></div>
                                 <div class="kv"><span>Исходящие (SMTP)</span><b class="mono">smtp.{{ user.split('@')[1] }} : 587, STARTTLS</b></div>

@@ -83,6 +83,7 @@ case "$cmd" in
   dkim-rotate)    re='^[a-z0-9.-]+$'; [[ "$1" =~ $re ]] || die "bad domain"; f="/var/lib/dkim/$1.pem"; cp -a "$f" "$f.$(date +%Y%m%d%H%M%S).bak"
                   openssl genrsa -out "$f" 2048 2>/dev/null; chown amavis:amavis "$f"; chmod 0400 "$f"; systemctl restart amavis; echo ok ;;
   cert-info)      exec openssl x509 -in /etc/ssl/certs/iRedMail.crt -noout -subject -issuer -dates -ext subjectAltName ;;
+  cert-pem)       exec cat /etc/ssl/certs/iRedMail.crt ;;
   cert-renew)     certbot renew --no-random-sleep-on-renew 2>&1 | tail -20; systemctl reload nginx postfix dovecot; echo "rc=$?" ;;
   cert-log)       exec tail -n 40 /var/log/letsencrypt/letsencrypt.log ;;
   # Добавить имя (например mta-sts.домен) в сертификат Let's Encrypt и в server_name веб-почты.

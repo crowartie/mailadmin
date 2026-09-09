@@ -36,7 +36,8 @@ function submit() {
             </div>
 
             <button class="btn btn--primary" type="submit" style="height: 44px" :disabled="form.processing">Войти</button>
-            <p class="hint" style="margin: 0">Тот же пароль, что в почтовой программе и на телефоне. <a href="/mail/help">Справка по почте</a></p>
+            <p class="hint" style="margin: 0">Тот же пароль, что в почтовой программе и на телефоне.</p>
+            <p class="hint" style="margin: 0; display: flex; gap: 14px; flex-wrap: wrap"><a href="/mail/setup">Подключить телефон или программу</a><a href="/mail/help">Справка по почте</a></p>
         </form>
     </div>
 </template>
