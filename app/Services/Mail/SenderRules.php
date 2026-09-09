@@ -277,13 +277,69 @@ class SenderRules
     public static function pending(): array
     {
         $global = SenderRule::query()->get()->keyBy(fn ($r) => $r->kind . '|' . $r->value);
-        $rows = SenderMark::query()->whereIn('kind', ['spam', 'lists'])
+        $white = [];
+        try {
+            foreach (app(WbList::class)->all() as $w) {
+                if ($w['wb'] === 'W') {
+                    $white[ltrim($w['email'], '@')] = true;
+                }
+            }
+        } catch (\Throwable) {
+        }
+        $dismissed = array_flip((array) (AppSetting::group('senders_dismissed')['items'] ?? []));
+        $rows = SenderMark::query()
             ->select('kind', 'match', 'value', DB::raw('count(distinct user) as votes'), DB::raw('group_concat(distinct user order by user separator ", ") as users'), DB::raw('max(created_at) as last_at'))
-            ->groupBy('kind', 'match', 'value')->orderByDesc('votes')->orderBy('value')->limit(200)->get();
+            ->groupBy('kind', 'match', 'value')->orderByDesc('last_at')->limit(300)->get();
 
-        return $rows->filter(fn ($r) => ! $global->has($r->kind . '|' . $r->value))
-            ->map(fn ($r) => ['kind' => $r->kind, 'match' => $r->match, 'value' => $r->value, 'votes' => (int) $r->votes, 'users' => $r->users, 'lastAt' => $r->last_at])
+        return $rows->filter(function ($r) use ($global, $white, $dismissed) {
+            if (isset($dismissed[$r->kind . '|' . $r->value])) {
+                return false;
+            }
+
+            return $r->kind === 'ham' ? ! isset($white[$r->value]) : ! $global->has($r->kind . '|' . $r->value);
+        })
+            ->map(fn ($r) => ['kind' => $r->kind, 'match' => $r->match, 'value' => $r->value, 'votes' => (int) $r->votes, 'users' => $r->users, 'lastAt' => $r->last_at ? substr((string) $r->last_at, 0, 16) : null])
             ->values()->all();
+    }
+
+    /** Администратор утвердил заявку: «не спам» → общий белый список, «спам»/«рассылка» → общее правило. */
+    public function approve(string $kind, string $match, string $value, ?string $by): void
+    {
+        $value = self::normalize($match, $value);
+        if ($kind === 'ham') {
+            $removed = SenderRule::query()->where('value', $value)->delete() > 0;
+            $this->whitelist($match, $value, 'заявка сотрудника, утвердил ' . ($by ?: 'администратор'));
+            if ($removed) {
+                $this->pushGlobal();
+            }
+        } else {
+            $votes = SenderMark::query()->where('kind', $kind)->where('value', $value)->distinct('user')->count('user');
+            $this->promote($kind, $match, $value, 'admin', $votes, $by);
+        }
+        $this->undismiss($kind, $value);
+    }
+
+    /** Отклонить заявку: у сотрудников остаются их личные правила, в списке заявок она больше не показывается. */
+    public static function dismiss(string $kind, string $value): void
+    {
+        $items = (array) (AppSetting::group('senders_dismissed')['items'] ?? []);
+        $items[] = $kind . '|' . strtolower($value);
+        AppSetting::put('senders_dismissed', ['items' => array_values(array_unique(array_slice($items, -500)))]);
+    }
+
+    public static function undismiss(string $kind, string $value): void
+    {
+        $items = (array) (AppSetting::group('senders_dismissed')['items'] ?? []);
+        AppSetting::put('senders_dismissed', ['items' => array_values(array_diff($items, [$kind . '|' . strtolower($value)]))]);
+    }
+
+    public static function pendingCount(): int
+    {
+        try {
+            return count(self::pending());
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     private function list(array $values): string

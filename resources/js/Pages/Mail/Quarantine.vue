@@ -26,7 +26,7 @@ async function notSpam(match) {
     ask.value.busy = true;
     try {
         const r = await api.markSender('ham', match, match === 'domain' ? ask.value.domain : ask.value.from, true);
-        say(`Добавлено в исключения: ${match === 'domain' ? '@' + ask.value.domain : ask.value.from}${r.moved ? `, из «Спама» возвращено писем: ${r.moved}` : ''}`);
+        say(`${r.global ? 'Добавлено в исключения' : 'Заявка на исключение ушла администратору'}: ${match === 'domain' ? '@' + ask.value.domain : ask.value.from}${r.moved ? `, из «Спама» возвращено писем: ${r.moved}` : ''}`);
         ask.value = null;
     } catch (e) { ask.value.busy = false; say(e.message, true); }
 }

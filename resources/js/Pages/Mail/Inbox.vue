@@ -272,7 +272,7 @@ async function markSender(match) {
         }
         dialog.value = null;
         const who = values.length === 1 ? values[0] : `${values.length} ${match === 'domain' ? 'домена' : 'адреса'}`;
-        const tail = d.what === 'folder' ? '' : d.what === 'ham' ? (global ? ' Фильтр больше не тронет эти письма — у всех сотрудников.' : '') : (global ? ' Правило стало общим для всех сотрудников.' : (votes ? ` Станет общим для всех, когда так отметят ${votes.split(' из ')[1]} сотрудника (сейчас ${votes.split(' из ')[0]}).` : ''));
+        const tail = d.what === 'folder' ? '' : d.what === 'ham' ? (global ? ' Фильтр больше не тронет эти письма — у всех сотрудников.' : ' Заявка на исключение ушла администратору.') : (global ? ' Правило стало общим для всех сотрудников.' : (votes ? ` Станет общим для всех, когда так отметят ${votes.split(' из ')[1]} сотрудника (сейчас ${votes.split(' из ')[0]}).` : ''));
         showToast({ text: `${who}: правило добавлено${moved ? `, перемещено писем: ${moved}` : ''}.${tail}` }, 8000);
         await refresh();
     } catch (e) { d.busy = false; fail(e); }

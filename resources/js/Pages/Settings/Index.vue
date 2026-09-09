@@ -322,6 +322,7 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                     <p class="hint" style="margin-top: 0">Сотрудник в веб-почте отмечает письмо как спам, рассылку или «не спам» — по адресу или по всему домену. Это сразу становится его личным правилом, а старые письма раскладываются по папкам. Когда одинаково отметят несколько человек, правило становится общим для всех ящиков.</p>
                     <form @submit.prevent="sendersForm.post('/settings/senders', { preserveScroll: true })">
                         <Toggle v-model="sendersForm.ham_global" label="«Не спам» сразу добавляет отправителя в общий белый список" />
+                        <p class="hint" style="margin: 4px 0 0">Выключено — «не спам» становится заявкой, и в белый список отправитель попадёт только после вашего «Добавить». Порог «1» для спама и рассылок означает «сразу без заявки».</p>
                         <div class="grid-2" style="margin-top: 10px">
                             <label class="field"><span>«Спам» становится общим после</span><input v-model.number="sendersForm.spam_votes" class="input" type="number" min="1" max="50"><span class="hint">сотрудников; 1 — сразу</span></label>
                             <label class="field"><span>«Рассылка» становится общей после</span><input v-model.number="sendersForm.lists_votes" class="input" type="number" min="1" max="50"><span class="hint">сотрудников; 1 — сразу</span></label>
@@ -337,14 +338,17 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                     <div v-if="!senderRules.length" class="empty-inline">Общих правил пока нет</div>
                 </div>
                 <div class="card card--pad">
-                    <div class="card__title">Личные отметки, ещё не общие <span class="chip">{{ senderPending.length }}</span></div>
-                    <p class="hint" style="margin-top: 0">Что сотрудники отметили у себя. Любое можно сделать общим сразу, не дожидаясь голосов.</p>
+                    <div class="card__title">Заявки сотрудников <span class="chip" :class="senderPending.length ? 'chip--warn' : ''">{{ senderPending.length }}</span></div>
+                    <p class="hint" style="margin-top: 0">Каждая отметка сотрудника — заявка. «Добавить» делает решение общим для всех сразу: «не спам» — в общий белый список, «спам» и «рассылка» — в общие правила. «Отклонить» убирает заявку из списка; у сотрудника его личное правило остаётся. Проверить отправителя можно по журналу.</p>
                     <div v-for="p in senderPending" :key="p.kind + p.value" class="row" style="grid-template-columns: minmax(0, 1fr) 90px auto; padding: 7px 0">
-                        <span><b>{{ p.match === 'domain' ? '@' + p.value : p.value }}</b><span class="row__sub" style="display: block" :title="p.users">{{ p.votes }} {{ p.votes === 1 ? 'сотрудник' : (p.votes < 5 ? 'сотрудника' : 'сотрудников') }}: {{ p.users }}</span></span>
-                        <span><span class="chip" :class="p.kind === 'spam' ? 'chip--no' : 'chip--warn'">{{ KIND[p.kind] }}</span></span>
-                        <button class="btn btn--sm" type="button" @click="post('/settings/senders/promote', { kind: p.kind, match: p.match, value: p.value })">Сделать общим</button>
+                        <span><b>{{ p.match === 'domain' ? '@' + p.value : p.value }}</b> <Link :href="'/logs?q=' + encodeURIComponent(p.value)" class="row__sub" title="Письма этого отправителя в журнале">журнал ↗</Link><span class="row__sub" style="display: block" :title="p.users">{{ p.votes }} {{ p.votes === 1 ? 'сотрудник' : (p.votes < 5 ? 'сотрудника' : 'сотрудников') }}: {{ p.users }}{{ p.lastAt ? ' · ' + p.lastAt : '' }}</span></span>
+                        <span><span class="chip" :class="p.kind === 'spam' ? 'chip--no' : p.kind === 'ham' ? 'chip--ok' : 'chip--warn'">{{ KIND[p.kind] }}</span></span>
+                        <span style="display: flex; gap: 6px">
+                            <button class="btn btn--sm btn--primary" type="button" @click="post('/settings/senders/promote', { kind: p.kind, match: p.match, value: p.value })">Добавить</button>
+                            <button class="btn btn--sm" type="button" @click="post('/settings/senders/dismiss', { kind: p.kind, value: p.value })">Отклонить</button>
+                        </span>
                     </div>
-                    <div v-if="!senderPending.length" class="empty-inline">Пока никто ничего не отмечал</div>
+                    <div v-if="!senderPending.length" class="empty-inline">Заявок нет</div>
                 </div>
             </div>
         </template>

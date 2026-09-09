@@ -131,6 +131,7 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/settings/quarantine/policy', [SettingsController::class, 'saveQuarantine']);
         Route::post('/settings/senders', [SettingsController::class, 'saveSenders']);
         Route::post('/settings/senders/promote', [SettingsController::class, 'promoteSender']);
+        Route::post('/settings/senders/dismiss', [SettingsController::class, 'dismissSender']);
         Route::delete('/settings/senders/{rule}', [SettingsController::class, 'demoteSender']);
         Route::post('/settings/quarantine/{id}/release', [SettingsController::class, 'releaseQuarantine']);
         Route::delete('/settings/quarantine/{id}', [SettingsController::class, 'deleteQuarantine']);

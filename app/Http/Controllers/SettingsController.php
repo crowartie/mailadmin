@@ -229,15 +229,24 @@ class SettingsController extends Controller
     /** Сделать личную отметку общим правилом — не дожидаясь голосов. */
     public function promoteSender(Request $request, \App\Services\Mail\SenderRules $senders): RedirectResponse
     {
-        $data = $request->validate(['kind' => ['required', 'in:spam,lists'], 'match' => ['required', 'in:address,domain'], 'value' => ['required', 'string', 'max:255']]);
+        $data = $request->validate(['kind' => ['required', 'in:ham,spam,lists'], 'match' => ['required', 'in:address,domain'], 'value' => ['required', 'string', 'max:255']]);
         try {
-            $senders->promote($data['kind'], $data['match'], $data['value'], 'admin', 0, auth()->user()?->email);
+            $senders->approve($data['kind'], $data['match'], $data['value'], auth()->user()?->email);
         } catch (\Throwable $e) {
             return back()->with('error', $e->getMessage());
         }
-        AdminAction::log('settings.update', 'общее правило', $data['kind'] . ' ' . $data['value']);
+        AdminAction::log('settings.update', 'заявка по отправителю утверждена', $data['kind'] . ' ' . $data['value']);
 
-        return back()->with('success', 'Правило стало общим: ' . $data['value']);
+        return back()->with('success', ($data['kind'] === 'ham' ? 'Добавлено в общий белый список: ' : 'Правило стало общим: ') . $data['value']);
+    }
+
+    public function dismissSender(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['kind' => ['required', 'in:ham,spam,lists'], 'value' => ['required', 'string', 'max:255']]);
+        \App\Services\Mail\SenderRules::dismiss($data['kind'], $data['value']);
+        AdminAction::log('settings.update', 'заявка по отправителю отклонена', $data['kind'] . ' ' . $data['value']);
+
+        return back()->with('success', 'Заявка отклонена: ' . $data['value']);
     }
 
     public function demoteSender(\App\Models\SenderRule $rule, \App\Services\Mail\SenderRules $senders): RedirectResponse
