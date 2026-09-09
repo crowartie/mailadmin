@@ -879,7 +879,7 @@ select.input { padding-right: 28px; }
         &:hover { text-decoration: none; }
     }
     .mset { padding-bottom: calc(56px + 32px + env(safe-area-inset-bottom)); }
-    .fab { bottom: calc(24px + 56px + env(safe-area-inset-bottom)); }
+
     .mnav {
         position: fixed;
         inset: 0 auto 0 0;
@@ -926,8 +926,9 @@ select.input { padding-right: 28px; }
     .mset__cols { grid-template-columns: 1fr; }
     .fab {
         position: fixed;
-        right: 20px;
-        bottom: 24px;
+        right: 16px;
+        // над нижней панелью разделов и безопасной зоной iPhone — как в почтовых приложениях
+        bottom: calc(16px + 56px + env(safe-area-inset-bottom));
         width: 56px;
         height: 56px;
         border-radius: 18px;
