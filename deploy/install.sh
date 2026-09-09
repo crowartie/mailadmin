@@ -258,6 +258,12 @@ doveconf -n >/dev/null && systemctl restart dovecot
 
 # ── 8. Amavis: пороги, карантин в базу, антивирус ──────────────────────────
 log "Amavis и ClamAV"
+# Правила SpamAssassin: в Ubuntu ежедневный sa-update выключен, пока в /etc/default/spamassassin нет CRON=1.
+# Без этого сервер годами живёт на правилах из пакета. Плюс Pyzor — сетевая проверка известного спама.
+echo "CRON=1" > /etc/default/spamassassin
+apt-get install -y -q pyzor razor >/dev/null 2>&1 || true
+(cd /tmp && sudo -u amavis razor-admin -home=/var/lib/amavis/.razor -register >/dev/null 2>&1) || true
+sa-update >/dev/null 2>&1 || true
 AMV=/etc/amavis/conf.d/50-user
 sed -i -E 's/^(\$sa_tag2_level_deflt\s*=\s*)[0-9.]+;/\16.2;/; s/^(\$sa_kill_level_deflt\s*=\s*)[0-9.]+;/\112.0;/; s/^(\$sa_dsn_cutoff_level\s*=\s*)[0-9.]+;/\110.0;/' "$AMV"
 # Карантин включается политикой в базе amavisd: без spam_quarantine_to письма выше kill просто выбрасываются.
