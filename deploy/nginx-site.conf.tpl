@@ -6,6 +6,12 @@ server {
     root /opt/mailadmin/public;
     index index.php;
     charset utf-8;
+    # Свой набор заголовков: add_header на уровне server отменяет общий набор iRedMail (conf-enabled/headers.conf),
+    # где Referrer-Policy strict-origin — с ним браузер шлёт Referer «/», и back() после ошибки уводит на главную.
+    add_header X-Frame-Options sameorigin;
+    add_header X-Content-Type-Options nosniff;
+    add_header Referrer-Policy same-origin;
+    add_header Content-Security-Policy "default-src https: data: 'unsafe-inline' 'unsafe-eval'";
     ssl_certificate /etc/ssl/certs/iRedMail.crt;
     ssl_certificate_key /etc/ssl/private/iRedMail.key;
     access_log /var/log/nginx/@@LOG@@.access.log;

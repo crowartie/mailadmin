@@ -42,7 +42,7 @@ class TwoFactorController extends Controller
         if (! $this->google2fa->verifyKey($user->totp_secret, $request->input('code'), 1)) {
             AdminLogin::record($request, $user->email, 'bad_code');
 
-            return back()->withErrors(['code' => 'Код не подошёл. Проверьте время на телефоне и попробуйте ещё раз.']);
+            return redirect('/login/code')->withErrors(['code' => 'Код не подошёл. Проверьте время на телефоне и попробуйте ещё раз.']);
         }
 
         $request->session()->forget('2fa.pending');
@@ -78,7 +78,7 @@ class TwoFactorController extends Controller
         $secret = $request->session()->get('2fa.setup_secret');
 
         if (! $secret || ! $this->google2fa->verifyKey($secret, $request->input('code'), 1)) {
-            return back()->withErrors(['code' => 'Код не подошёл — приложение ещё не привязано. Отсканируйте QR ещё раз.']);
+            return redirect('/security/2fa')->withErrors(['code' => 'Код не подошёл — приложение ещё не привязано. Отсканируйте QR ещё раз.']);
         }
 
         $user->forceFill(['totp_secret' => $secret, 'totp_enabled_at' => now()])->save();

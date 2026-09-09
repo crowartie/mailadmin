@@ -34,7 +34,7 @@ class LoginController extends Controller
             return redirect('/mail');
         }
 
-        return Inertia::render('Mail/Login', ['domain' => config('areas.default_domain')]);
+        return Inertia::render('Mail/Login', ['domain' => config('areas.default_domain', 'innotec.su')]);
     }
 
     public function store(Request $request, Google2FA $google2fa): RedirectResponse
@@ -42,20 +42,20 @@ class LoginController extends Controller
         $data = $request->validate(['login' => ['required', 'string', 'max:255'], 'password' => ['required', 'string']]);
         $login = strtolower(trim($data['login']));
         if (! str_contains($login, '@')) {
-            $login .= '@' . config('areas.default_domain');
+            $login .= '@' . config('areas.default_domain', 'innotec.su');
         }
 
         if (MailLogin::recentFailures($request->ip()) >= self::MAX_FAILURES) {
             MailLogin::record($request, $login, 'blocked');
 
-            return back()->withErrors(['login' => 'Слишком много попыток. Подождите 15 минут.'])->onlyInput('login');
+            return redirect('/mail/login')->withErrors(['login' => 'Слишком много попыток. Подождите 15 минут.'])->onlyInput('login');
         }
 
         $profile = EmployeeProfile::for($login);
         if ($profile->exists && $profile->login_blocked) {
             MailLogin::record($request, $login, 'blocked');
 
-            return back()->withErrors(['login' => 'Вход в веб-почту закрыт администратором. Почта продолжает приниматься.'])->onlyInput('login');
+            return redirect('/mail/login')->withErrors(['login' => 'Вход в веб-почту закрыт администратором. Почта продолжает приниматься.'])->onlyInput('login');
         }
 
         try {
@@ -63,7 +63,7 @@ class LoginController extends Controller
         } catch (\Throwable) {
             MailLogin::record($request, $login, 'bad_password');
 
-            return back()->withErrors(['login' => 'Не удалось войти: неверный адрес или пароль.'])->onlyInput('login');
+            return redirect('/mail/login')->withErrors(['login' => 'Не удалось войти: неверный адрес или пароль.'])->onlyInput('login');
         }
 
         $settings = Setting::for($login, true);
@@ -98,7 +98,7 @@ class LoginController extends Controller
         if (! $secret || ! $google2fa->verifyKey($secret, $request->input('code'), 1)) {
             MailLogin::record($request, $pending['user'], 'bad_code');
 
-            return back()->withErrors(['code' => 'Код не подошёл. Проверьте время на телефоне и попробуйте ещё раз.']);
+            return redirect('/mail/login/code')->withErrors(['code' => 'Код не подошёл. Проверьте время на телефоне и попробуйте ещё раз.']);
         }
         $request->session()->forget('mail.pending');
 

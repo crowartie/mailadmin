@@ -32,7 +32,7 @@ class LoginController extends Controller
         if (AdminLogin::recentFailures($request->ip()) >= self::MAX_FAILURES) {
             AdminLogin::record($request, $data['email'], 'blocked');
 
-            return back()->withErrors(['email' => 'Слишком много попыток. Подождите 15 минут.']);
+            return redirect('/login')->withErrors(['email' => 'Слишком много попыток. Подождите 15 минут.']);
         }
 
         $user = User::where('email', strtolower($data['email']))->first();
@@ -40,7 +40,7 @@ class LoginController extends Controller
         if (! $user || ! $user->is_active || ! $this->passwordOk($user, $data['password'])) {
             AdminLogin::record($request, $data['email'], 'bad_password');
 
-            return back()->withErrors(['email' => 'Неверный адрес или пароль.'])->onlyInput('email');
+            return redirect('/login')->withErrors(['email' => 'Неверный адрес или пароль.'])->onlyInput('email');
         }
 
         Auth::login($user, remember: false);
