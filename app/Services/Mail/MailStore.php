@@ -430,7 +430,7 @@ class MailStore
             }
             $attachments[] = [
                 'index' => $i,
-                'name' => Charset::header($a->getName()) ?: ('вложение-' . ($i + 1)),
+                'name' => self::attachmentName($a, 'вложение-' . ($i + 1)),
                 // getSize() — размер в base64 из структуры письма; получателю нужен размер самого файла.
                 'size' => strlen((string) $a->getContent()) ?: $a->getSize(),
                 'type' => $a->getMimeType(),
@@ -521,6 +521,19 @@ class MailStore
         abort_unless(isset($list[$index]), 404, 'Вложение не найдено');
 
         return $list[$index];
+    }
+
+    /** Имя вложения: сначала из сырых заголовков части (библиотека ломается на koi8-r в две строки и RFC 2231), потом её версия. */
+    public static function attachmentName(Attachment $a, string $fallback = 'attachment'): string
+    {
+        $raw = '';
+        try {
+            $part = (fn () => $this->part)->call($a);
+            $raw = (string) ($part->getHeader()->raw ?? '');
+        } catch (\Throwable) {
+        }
+
+        return ($raw !== '' ? Charset::attachmentName($raw) : null) ?: Charset::header($a->getName()) ?: $fallback;
     }
 
     public function raw(string $path, int $uid): string
