@@ -42,6 +42,23 @@ sudo bash install.sh
 
 Logwatch, cron-скрипты iRedMail и уведомления приложения не уходят письмами на postmaster, а складываются в `/var/lib/mailadmin/reports` (через `mailadmin-report <вид> <команда>`) и в `storage/app/private/reports`. Смотреть и скачивать — раздел «Отчёты» в админке. Настраивает `deploy/setup-reports.sh` (вызывается из install.sh).
 
+## Переезд с Kerio Connect без паролей сотрудников
+
+Ящики в админке переносятся через imapsync (нужны пароли на старом сервере). Если паролей нет, почту можно забрать
+прямо из хранилища Kerio (`/opt/kerio/mailserver/store/mail/<домен>`): смонтировать его по sshfs и сложить в Maildir.
+
+```bash
+sshfs -o ro,allow_other root@старый-сервер:/opt/kerio/mailserver/store/mail/example.com /mnt/kerio
+python3 deploy/kerio2maildir.py --src /mnt/kerio --domain example.com --jobs 4   # ящики должны быть уже заведены
+python3 deploy/kerio-dav-extract.py --src /mnt/kerio --out /var/lib/mailadmin/kerio-dav
+sudo -u www-data php artisan dav:import ivanov@example.com /var/lib/mailadmin/kerio-dav/ivanov
+```
+
+`kerio2maildir.py` переносит папки (включая вложенные), флаги «прочитано/отвечено/помечено/черновик» и даты,
+запоминает сделанное в `/var/lib/mailadmin/kerio-migrate.db` — повторный запуск в день переключения докачивает только новое
+и подтягивает изменившиеся флаги. `kerio-dav-extract.py` достаёт vCard/iCalendar из папок Contacts, Calendar, Tasks,
+`dav:import` кладёт их в личную книгу и календарь (по UID, без дублей).
+
 ## Обновление
 
 ```bash

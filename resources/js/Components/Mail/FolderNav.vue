@@ -15,7 +15,19 @@ const props = defineProps({
 const emit = defineEmits(['go', 'compose', 'context', 'drop', 'new-folder', 'label', 'outbox']);
 
 const system = computed(() => props.folders.filter((f) => f.role !== 'custom' && f.role !== 'shared'));
-const custom = computed(() => props.folders.filter((f) => f.role === 'custom'));
+// Свои папки. Вложенные во «Входящие» (INBOX/…, так делает Outlook и переезд с Kerio) показываем под строкой-заголовком «Входящие».
+const custom = computed(() => {
+    const out = [];
+    let header = false;
+    for (const f of props.folders.filter((x) => x.role === 'custom')) {
+        if (!header && f.parent === 'INBOX') {
+            out.push({ path: 'INBOX', name: 'Входящие', role: 'custom', depth: 0, unread: 0, virtual: true });
+            header = true;
+        }
+        out.push(f);
+    }
+    return out;
+});
 // Чужие папки, открытые нам: группируем по владельцу.
 const shared = computed(() => {
     const groups = [];
@@ -92,12 +104,12 @@ function onDrop(e, f) {
             class="mnav__item"
             :class="['mnav__item--depth-' + Math.min(f.depth, 3), { 'mnav__item--on': isOn(f), 'mnav__item--drop': dropTarget === f.path }]"
             @click="$emit('go', f.path, 'all')"
-            @contextmenu.prevent="$emit('context', $event, f)"
+            @contextmenu.prevent="f.virtual ? null : $emit('context', $event, f)"
             @dragover="onDragOver($event, f)"
             @dragleave="dropTarget = null"
             @drop="onDrop($event, f)"
         >
-            <Icon name="folder" :size="16" style="color: var(--faint); flex: 0 0 16px" />
+            <Icon :name="f.virtual ? 'inbox' : 'folder'" :size="16" style="color: var(--faint); flex: 0 0 16px" />
             <span>{{ f.name }}</span>
             <span v-if="f.unread" class="mnav__count">{{ f.unread }}</span>
         </button>
