@@ -46,6 +46,7 @@ Route::middleware('area:mail')->group(function () {
     Route::get('/mail/help', [\App\Http\Controllers\Mail\HelpController::class, 'index']);
     Route::get('/mail/setup', [\App\Http\Controllers\Mail\SetupController::class, 'index']);
     Route::get('/mail/server.crt', [\App\Http\Controllers\Mail\SetupController::class, 'certificate']);
+    Route::post('/mail/setup/login', [\App\Http\Controllers\Mail\SetupController::class, 'login'])->middleware('throttle:12,1');
     Route::get('/.well-known/caldav', [DavController::class, 'wellKnown']);
     Route::get('/.well-known/carddav', [DavController::class, 'wellKnown']);
 

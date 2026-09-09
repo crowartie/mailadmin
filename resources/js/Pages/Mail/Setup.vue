@@ -32,6 +32,28 @@ function applyEmail() {
     if (emailOk.value && email.value !== props.email) router.get('/mail/setup', { email: email.value }, { preserveScroll: true, preserveState: true, only: ['email', 'qr', 'pageUrl'] });
 }
 const login = computed(() => (emailOk.value ? email.value : 'имя@' + props.domain));
+
+// Профиль без указанного адреса: окно входа — адрес и пароль от почты, после проверки файл скачивается сам.
+const auth = ref(null); // { login, password, busy, error }
+function installProfile(e) {
+    if (emailOk.value) return; // обычная ссылка
+    e.preventDefault();
+    auth.value = { login: email.value || '', password: '', busy: false, error: '' };
+}
+async function authSubmit() {
+    const a = auth.value;
+    if (!a || a.busy) return;
+    a.busy = true; a.error = '';
+    try {
+        const r = await fetch('/mail/setup/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-XSRF-TOKEN': decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '') }, body: JSON.stringify({ login: a.login, password: a.password }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.message || 'Не удалось проверить пароль');
+        email.value = d.email;
+        auth.value = null;
+        applyEmail();
+        window.location.href = d.profile;
+    } catch (err) { a.error = err.message; a.busy = false; }
+}
 </script>
 
 <template>
@@ -67,7 +89,7 @@ const login = computed(() => (emailOk.value ? email.value : 'имя@' + props.do
                                 <li>iPhone/iPad: Настройки → «Профиль загружен» → Установить → введите код устройства → введите пароль от почты (или пароль приложения). Mac: Системные настройки → Основные → Профили.</li>
                                 <li>Через минуту в «Почте», «Контактах» и «Календаре» появится учётная запись «{{ domain }}».</li>
                             </ol>
-                            <p style="margin: 12px 0 0"><a :href="profileUrl" class="btn btn--primary" :class="{ 'btn--disabled': !emailOk }" :aria-disabled="!emailOk" @click="!emailOk && $event.preventDefault()"><Icon name="download" :size="15" />Установить профиль</a> <span v-if="!emailOk" class="hint" style="margin-left: 8px">сначала укажите адрес</span></p>
+                            <p style="margin: 12px 0 0"><a :href="profileUrl" class="btn btn--primary" @click="installProfile"><Icon name="download" :size="15" />Установить профиль</a></p>
                             <p class="hint" style="margin-top: 10px">Профиль не содержит пароль — устройство спросит его само. Удалить всё разом: Настройки → Основные → VPN и управление устройством → профиль «{{ domain }}» → Удалить.</p>
                         </article>
                         <article class="help__item">
@@ -137,6 +159,19 @@ const login = computed(() => (emailOk.value ? email.value : 'имя@' + props.do
                     <p class="hint mono" style="word-break: break-all; font-size: 11.5px">{{ pageUrl }}</p>
                 </aside>
             </div>
+        </div>
+        <div v-if="auth" class="overlay" @mousedown.self="auth = null">
+            <form class="dialog" @submit.prevent="authSubmit">
+                <h2>Вход в почту</h2>
+                <p class="hint" style="margin: 0 0 12px">Профиль собирается под ваш адрес. Введите адрес и пароль от почты — пароль в профиль не попадает, устройство спросит его отдельно.</p>
+                <div class="field"><label>Адрес или логин</label><input v-model.trim="auth.login" class="input" :placeholder="'имя@' + domain" autocomplete="username" autofocus required></div>
+                <div class="field"><label>Пароль</label><input v-model="auth.password" class="input" type="password" autocomplete="current-password" required></div>
+                <p v-if="auth.error" class="error" style="margin: 0 0 8px">{{ auth.error }}</p>
+                <div class="dialog__actions">
+                    <button class="btn" type="button" @click="auth = null">Отмена</button>
+                    <button class="btn btn--primary" type="submit" :disabled="auth.busy">{{ auth.busy ? 'Проверяю…' : 'Скачать профиль' }}</button>
+                </div>
+            </form>
         </div>
     </MailLayout>
 </template>

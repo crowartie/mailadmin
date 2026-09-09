@@ -59,6 +59,34 @@ class SetupController extends Controller
         ]);
     }
 
+    /**
+     * «Установить профиль» без входа: проверяем адрес и пароль от почты и отдаём адрес для профиля.
+     * Сессию веб-почты не создаём — телефону нужен только файл, а двухфакторная защита здесь ни при чём.
+     */
+    public function login(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate(['login' => ['required', 'string', 'max:200'], 'password' => ['required', 'string', 'max:200']]);
+        if (\App\Models\MailLogin::recentFailures($request->ip()) >= 8) {
+            return response()->json(['message' => 'Слишком много попыток. Подождите 15 минут.'], 429);
+        }
+        $login = strtolower(trim($data['login']));
+        if (! str_contains($login, '@')) {
+            $login .= '@' . config('areas.default_domain');
+        }
+        if (! preg_match('/^[^\s@]+@[^\s@]+$/', $login)) {
+            return response()->json(['message' => 'Укажите адрес почты'], 422);
+        }
+        try {
+            \App\Services\Mail\ImapSession::verify($login, $data['password']);
+        } catch (\Throwable) {
+            \App\Models\MailLogin::record($request, $login, 'bad_password');
+
+            return response()->json(['message' => 'Неверный адрес или пароль'], 422);
+        }
+
+        return response()->json(['email' => $login, 'profile' => '/mail/apple.mobileconfig?email=' . rawurlencode($login)]);
+    }
+
     /** Сертификат сервера (открытая часть) — для устройств, которым нужно доверие вручную. */
     public function certificate(): HttpResponse
     {
