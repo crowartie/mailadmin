@@ -28,9 +28,12 @@ class SenderController extends Controller
         // Свой домен в «спам»/«рассылки» не отправляем: эти решения могут стать общими, и сотрудник отрежет
         // рабочую почту всем. Личная папка — дело самого сотрудника, там ограничения нет.
         $own = strtolower(substr(strrchr($imap->user(), '@'), 1));
-        if (in_array($data['kind'], ['spam', 'lists'], true) && ($value === $own || str_ends_with($value, '@' . $own))) {
-            abort(422, 'Свой домен нельзя отправить в спам или рассылки — сделайте обычное правило');
+        $ownDomain = $value === $own || str_ends_with($value, '@' . $own);
+        if ($data['kind'] === 'spam' && $ownDomain) {
+            abort(422, 'Свой домен нельзя отправить в спам');
         }
+        // «Рассылка» своего домена (новости от info@, hr@) — только личное правило, общим для всех оно не станет.
+        $personalOnly = $data['kind'] === 'lists' && $ownDomain;
         set_time_limit(600);
         $store = new MailStore($imap->client());
         $folder = null;
@@ -43,7 +46,7 @@ class SenderController extends Controller
             $folderName = $f['name'];
         }
         try {
-            $r = $senders->mark($imap->user(), $data['kind'], $data['match'], $value, $imap, $folder, $folderName);
+            $r = $senders->mark($imap->user(), $data['kind'], $data['match'], $value, $imap, $folder, $folderName, $personalOnly);
         } catch (\RuntimeException $e) {
             abort(422, $e->getMessage());
         }
@@ -52,6 +55,6 @@ class SenderController extends Controller
             $moved = $senders->resort($store, $data['kind'], $data['match'], $value, $folder);
         }
 
-        return response()->json($r + ['moved' => $moved, 'folders' => $store->folders()]);
+        return response()->json($r + ['moved' => $moved, 'personalOnly' => $personalOnly, 'folders' => $store->folders()]);
     }
 }

@@ -49,12 +49,12 @@ class SenderRules
      *
      * @return array{global:bool,votes:int,threshold:int,removedGlobal:bool}
      */
-    public function mark(string $user, string $kind, string $match, string $value, ?ImapSession $session = null, ?string $folder = null, ?string $folderName = null): array
+    public function mark(string $user, string $kind, string $match, string $value, ?ImapSession $session = null, ?string $folder = null, ?string $folderName = null, bool $personalOnly = false): array
     {
         $user = strtolower($user);
         $value = self::normalize($match, $value);
-        // «В свою папку» — только личное правило, без голосов и общих списков.
-        if ($kind === 'folder') {
+        // «В свою папку» (и рассылка своего домена) — только личное правило, без голосов и общих списков.
+        if ($kind === 'folder' || $personalOnly) {
             SenderMark::query()->where('user', $user)->where('value', $value)->whereIn('kind', ['spam', 'lists'])->delete();
             if ($session) {
                 $this->syncPersonal($user, $session, $kind, $match, $value, $folder, $folderName);

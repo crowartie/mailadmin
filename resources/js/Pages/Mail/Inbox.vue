@@ -263,16 +263,16 @@ async function markSender(match) {
     if (!d || d.busy) return;
     d.busy = true;
     const values = match === 'domain' ? d.domains : d.mails;
-    let moved = 0; let global = false; let votes = null;
+    let moved = 0; let global = false; let votes = null; let personalOnly = false;
     try {
         for (const v of values) {
             const r = await api.markSender(d.what, match, v, d.resort, d.folder?.path || null);
-            moved += r.moved || 0; global = global || r.global; if (r.threshold > 1) votes = `${r.votes} из ${r.threshold}`;
+            moved += r.moved || 0; global = global || r.global; personalOnly = personalOnly || !!r.personalOnly; if (r.threshold > 1 && !r.personalOnly) votes = `${r.votes} из ${r.threshold}`;
             if (r.folders) folders.value = r.folders;
         }
         dialog.value = null;
         const who = values.length === 1 ? values[0] : `${values.length} ${match === 'domain' ? 'домена' : 'адреса'}`;
-        const tail = d.what === 'folder' ? '' : d.what === 'ham' ? (global ? ' Фильтр больше не тронет эти письма — у всех сотрудников.' : ' Заявка на исключение ушла администратору.') : (global ? ' Правило стало общим для всех сотрудников.' : (votes ? ` Станет общим для всех, когда так отметят ${votes.split(' из ')[1]} сотрудника (сейчас ${votes.split(' из ')[0]}).` : ''));
+        const tail = d.what === 'folder' ? '' : personalOnly ? ' Отправитель вашего домена: правило только у вас, общим не станет.' : d.what === 'ham' ? (global ? ' Фильтр больше не тронет эти письма — у всех сотрудников.' : ' Заявка на исключение ушла администратору.') : (global ? ' Правило стало общим для всех сотрудников.' : (votes ? ` Станет общим для всех, когда так отметят ${votes.split(' из ')[1]} сотрудника (сейчас ${votes.split(' из ')[0]}).` : ''));
         showToast({ text: `${who}: правило добавлено${moved ? `, перемещено писем: ${moved}` : ''}.${tail}` }, 8000);
         await refresh();
     } catch (e) { d.busy = false; fail(e); }
