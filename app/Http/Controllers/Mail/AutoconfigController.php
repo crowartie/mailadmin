@@ -206,6 +206,31 @@ XML;
 </plist>
 XML;
 
-        return response($xml, 200, ['Content-Type' => 'application/x-apple-aspen-config; charset=utf-8', 'Content-Disposition' => 'attachment; filename="' . $h['domain'] . '.mobileconfig"']);
+        // Подписываем профиль сертификатом сервера (CMS через openssl под root): iPhone показывает «Проверено»
+        // вместо «Неподписанный профиль». Если подписать не вышло — отдаём как есть.
+        $body = $this->signProfile($xml) ?? $xml;
+        $signed = $body !== $xml;
+
+        return response($body, 200, ['Content-Type' => 'application/x-apple-aspen-config' . ($signed ? '' : '; charset=utf-8'), 'Content-Disposition' => 'attachment; filename="' . $h['domain'] . '.mobileconfig"']);
+    }
+
+    private function signProfile(string $xml): ?string
+    {
+        $dir = storage_path('app/private/profiles');
+        if (! is_dir($dir)) {
+            mkdir($dir, 0750, true);
+        }
+        $file = $dir . '/' . bin2hex(random_bytes(8)) . '.mobileconfig';
+        try {
+            file_put_contents($file, $xml);
+            chmod($file, 0644);
+            $der = \App\Services\Server\Ctl::out('profile-sign', [$file], 20);
+
+            return strlen($der) > 100 ? $der : null;
+        } catch (\Throwable) {
+            return null;
+        } finally {
+            @unlink($file);
+        }
     }
 }

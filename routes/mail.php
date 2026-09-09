@@ -47,8 +47,9 @@ Route::middleware('area:mail')->group(function () {
     Route::get('/mail/setup', [\App\Http\Controllers\Mail\SetupController::class, 'index']);
     Route::get('/mail/server.crt', [\App\Http\Controllers\Mail\SetupController::class, 'certificate']);
     Route::post('/mail/setup/login', [\App\Http\Controllers\Mail\SetupController::class, 'login'])->middleware('throttle:12,1');
-    Route::get('/.well-known/caldav', [DavController::class, 'wellKnown']);
-    Route::get('/.well-known/carddav', [DavController::class, 'wellKnown']);
+    // iPhone ищет календарь через PROPFIND /.well-known/caldav — GET-only маршрут отвечал 405, и учётка не проходила проверку.
+    Route::match(['GET', 'HEAD', 'OPTIONS', 'PROPFIND'], '/.well-known/caldav', [DavController::class, 'wellKnown']);
+    Route::match(['GET', 'HEAD', 'OPTIONS', 'PROPFIND'], '/.well-known/carddav', [DavController::class, 'wellKnown']);
 
     // Корень «/» здесь не объявляем: он есть у админки, а на почтовом порту его перенаправляет nginx.
     Route::middleware('mail.auth')->group(function () {

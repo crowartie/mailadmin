@@ -84,6 +84,8 @@ case "$cmd" in
                   openssl genrsa -out "$f" 2048 2>/dev/null; chown amavis:amavis "$f"; chmod 0400 "$f"; systemctl restart amavis; echo ok ;;
   cert-info)      exec openssl x509 -in /etc/ssl/certs/iRedMail.crt -noout -subject -issuer -dates -ext subjectAltName ;;
   cert-pem)       exec cat /etc/ssl/certs/iRedMail.crt ;;
+  profile-sign)   re='^/opt/mailadmin/storage/app/private/profiles/[a-f0-9]{16}\.mobileconfig$'; [[ "$1" =~ $re && -f "$1" ]] || die "bad file"
+                  exec openssl smime -sign -signer /etc/ssl/certs/iRedMail.crt -inkey /etc/ssl/private/iRedMail.key -certfile /etc/ssl/certs/iRedMail.crt -nodetach -outform der -in "$1" ;;
   cert-renew)     certbot renew --no-random-sleep-on-renew 2>&1 | tail -20; systemctl reload nginx postfix dovecot; echo "rc=$?" ;;
   cert-log)       exec tail -n 40 /var/log/letsencrypt/letsencrypt.log ;;
   # Добавить имя (например mta-sts.домен) в сертификат Let's Encrypt и в server_name веб-почты.
