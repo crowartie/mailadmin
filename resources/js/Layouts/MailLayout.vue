@@ -82,5 +82,18 @@ function logout() {
         </aside>
 
         <slot />
+
+        <!-- Телефон: боковая полоса скрыта, разделы и выход — в нижней панели -->
+        <nav v-if="user" class="tabbar" aria-label="Разделы">
+            <Link v-for="s in services" :key="s.href" class="tabbar__item" :class="{ 'tabbar__item--on': current.startsWith(s.href) && !current.startsWith('/mail/settings') && !current.startsWith('/mail/help') }" :href="s.href">
+                <Icon :name="s.icon" :size="22" /><span>{{ s.label }}</span>
+            </Link>
+            <Link class="tabbar__item" :class="{ 'tabbar__item--on': current.startsWith('/mail/settings') || current.startsWith('/mail/help') }" href="/mail/settings">
+                <Icon name="sliders" :size="22" /><span>Настройки</span>
+            </Link>
+            <button class="tabbar__item" type="button" @click="logout">
+                <Icon name="logout" :size="22" /><span>Выйти</span>
+            </button>
+        </nav>
     </div>
 </template>
