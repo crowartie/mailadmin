@@ -139,11 +139,22 @@ def ensure_maildir(base, sub):
     return d
 
 
+KEY_RE = re.compile(r'^(\d+)\.k([0-9a-f]+)_([0-9a-f]+)\.[^,]*,S=(\d+):2,([A-Z]*)$')
+
+
 def process_user(args):
-    user, srcdir, home, dbpath, dry = args
+    try:
+        return _process_user(args)
+    except Exception as e:
+        sys.stderr.write(f'{args[0]}: СБОЙ {e!r}\n')
+        return dict(user=args[0], new=0, bytes=0, flags=0, missing=0, folders=0, errors=1)
+
+
+def _process_user(args):
+    user, srcdir, home, dbdir, dry = args
     maildir = os.path.join(home, 'Maildir')
-    db = sqlite3.connect(dbpath, timeout=120)
-    db.execute('PRAGMA journal_mode=WAL')
+    dbpath = os.path.join(dbdir, user + '.db')
+    db = sqlite3.connect(dbpath, timeout=300)
     db.execute('''CREATE TABLE IF NOT EXISTS msgs(user TEXT, folder TEXT, uid TEXT, flags INT, size INT, mdsub TEXT, mdfile TEXT,
                   PRIMARY KEY(user, folder, uid))''')
     known = {(r[0], r[1]): (r[2], r[3], r[4]) for r in db.execute('SELECT folder,uid,flags,mdsub,mdfile FROM msgs WHERE user=?', (user,))}
@@ -161,11 +172,29 @@ def process_user(args):
         mdir = None
         if not dry:
             mdir = ensure_maildir(maildir, sub)
+        # Уже лежащие в cur/ файлы прошлого прогона (если база не успела их записать) — подхватываем, не копируем заново.
+        existing = {}
+        curdir = os.path.join(mdir, 'cur') if mdir else None
+        if curdir and os.path.isdir(curdir):
+            for fn in os.listdir(curdir):
+                m = KEY_RE.match(fn)
+                if m:
+                    existing[m.group(2)] = fn
         msgs = os.path.join(srcdir, rel, '#msgs')
         n = 0
         for uid, kf, size, t, mod in items:
             fl = md_flags(kf, is_drafts)
             key = (rel, uid)
+            if key not in known and uid in existing:
+                fn = existing[uid]
+                db.execute('INSERT OR REPLACE INTO msgs VALUES(?,?,?,?,?,?,?)', (user, rel, uid, kf, int(KEY_RE.match(fn).group(4)), sub, fn))
+                known[key] = (kf, sub, fn)
+                nf = fn.split(':2,')[0] + ':2,' + fl
+                if nf != fn:
+                    os.rename(os.path.join(curdir, fn), os.path.join(curdir, nf))
+                    db.execute('UPDATE msgs SET mdfile=? WHERE user=? AND folder=? AND uid=?', (nf, user, rel, uid))
+                stats['adopted'] = stats.get('adopted', 0) + 1
+                continue
             if key in known:
                 oflags, osub, ofile = known[key]
                 if oflags != kf and not dry:
@@ -233,10 +262,25 @@ def main():
     ap.add_argument('--domain', required=True)
     ap.add_argument('--users', default='')
     ap.add_argument('--jobs', type=int, default=3)
-    ap.add_argument('--db', default='/var/lib/mailadmin/kerio-migrate.db')
+    ap.add_argument('--db', default='/var/lib/mailadmin/kerio-migrate', help='каталог с базами состояния, по одной на ящик')
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args()
-    os.makedirs(os.path.dirname(a.db), exist_ok=True)
+    os.makedirs(a.db, exist_ok=True)
+    legacy = a.db + '.db'
+    if os.path.isfile(legacy):
+        # старый формат: одна общая база — раскладываем по ящикам
+        old = sqlite3.connect(legacy)
+        for (u,) in old.execute('SELECT DISTINCT user FROM msgs').fetchall():
+            nd = sqlite3.connect(os.path.join(a.db, u + '.db'))
+            nd.execute('CREATE TABLE IF NOT EXISTS msgs(user TEXT, folder TEXT, uid TEXT, flags INT, size INT, mdsub TEXT, mdfile TEXT, PRIMARY KEY(user, folder, uid))')
+            nd.executemany('INSERT OR REPLACE INTO msgs VALUES(?,?,?,?,?,?,?)', old.execute('SELECT * FROM msgs WHERE user=?', (u,)).fetchall())
+            nd.commit()
+            nd.close()
+        old.close()
+        os.rename(legacy, legacy + '.old')
+        for suf in ('-wal', '-shm'):
+            if os.path.exists(legacy + suf):
+                os.remove(legacy + suf)
     homes = {}
     q = "select username, concat(storagebasedirectory,'/',storagenode,'/',maildir) from vmail.mailbox where domain='%s'" % a.domain
     out = subprocess.run(['mysql', '-N', '-e', q], capture_output=True, text=True).stdout
@@ -258,8 +302,8 @@ def main():
         for st in ex.map(process_user, tasks):
             for k in tot:
                 tot[k] += st[k]
-            print("%-30s папок %3d  новых %6d  %9.1f МБ  флаги %5d  нет файла %3d  ошибок %d" % (
-                st['user'], st['folders'], st['new'], st['bytes'] / 1048576, st['flags'], st['missing'], st['errors']), flush=True)
+            print("%-30s папок %3d  новых %6d  %9.1f МБ  подхвачено %5d  флаги %5d  нет файла %3d  ошибок %d" % (
+                st['user'], st['folders'], st['new'], st['bytes'] / 1048576, st.get('adopted', 0), st['flags'], st['missing'], st['errors']), flush=True)
     print("Итого: новых %d, %.1f ГБ, флагов обновлено %d, без файла %d, ошибок %d, %d с" % (
         tot['new'], tot['bytes'] / 1073741824, tot['flags'], tot['missing'], tot['errors'], int(time.time() - t0)))
 
