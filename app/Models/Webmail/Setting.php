@@ -26,6 +26,7 @@ class Setting extends Model
         'density' => 'normal',
         'reply_all' => false,
         'notify_browser' => false,
+        'ask_rule_on_move' => true,
         'undo_seconds' => 5,
         'quick_replies' => ['Спасибо, получил.', 'Принято, сделаю.', 'Давайте обсудим по телефону.'],
         'shortcuts' => true,

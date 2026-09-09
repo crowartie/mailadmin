@@ -49,10 +49,19 @@ class SenderRules
      *
      * @return array{global:bool,votes:int,threshold:int,removedGlobal:bool}
      */
-    public function mark(string $user, string $kind, string $match, string $value, ?ImapSession $session = null): array
+    public function mark(string $user, string $kind, string $match, string $value, ?ImapSession $session = null, ?string $folder = null, ?string $folderName = null): array
     {
         $user = strtolower($user);
         $value = self::normalize($match, $value);
+        // «В свою папку» — только личное правило, без голосов и общих списков.
+        if ($kind === 'folder') {
+            SenderMark::query()->where('user', $user)->where('value', $value)->whereIn('kind', ['spam', 'lists'])->delete();
+            if ($session) {
+                $this->syncPersonal($user, $session, $kind, $match, $value, $folder, $folderName);
+            }
+
+            return ['global' => false, 'votes' => 0, 'threshold' => 1, 'removedGlobal' => false];
+        }
         $opposite = $kind === 'ham' ? ['spam', 'lists'] : ['ham', $kind === 'spam' ? 'lists' : 'spam'];
 
         SenderMark::query()->where('user', $user)->where('value', $value)->whereIn('kind', $opposite)->delete();
@@ -164,10 +173,10 @@ class SenderRules
     }
 
     /** Правило в формате интерфейса: адрес/домен → папка. */
-    public static function personalRule(string $kind, string $match, string $value): array
+    public static function personalRule(string $kind, string $match, string $value, ?string $folder = null, ?string $folderName = null): array
     {
-        $folder = $kind === 'spam' ? 'Junk' : 'Newsletters';
-        $title = $kind === 'spam' ? 'Спам' : 'Рассылки';
+        $folder = $kind === 'folder' ? (string) $folder : ($kind === 'spam' ? 'Junk' : 'Newsletters');
+        $title = $kind === 'folder' ? '«' . ($folderName ?: $folder) . '»' : ($kind === 'spam' ? 'Спам' : 'Рассылки');
 
         return [
             'id' => self::ruleId($kind, $value),
@@ -178,14 +187,15 @@ class SenderRules
         ];
     }
 
-    private function syncPersonal(string $user, ImapSession $session, string $kind, string $match, string $value): void
+    private function syncPersonal(string $user, ImapSession $session, string $kind, string $match, string $value, ?string $folder = null, ?string $folderName = null): void
     {
         $set = RuleSet::find($user);
         $rules = $set?->rules ?? [];
-        $rules = array_values(array_filter($rules, fn ($r) => ! in_array($r['id'] ?? '', [self::ruleId('spam', $value), self::ruleId('lists', $value)], true)));
+        // У отправителя одно правило «куда класть»: новое заменяет прежнее (спам, рассылки или папка).
+        $rules = array_values(array_filter($rules, fn ($r) => ! in_array($r['id'] ?? '', [self::ruleId('spam', $value), self::ruleId('lists', $value), self::ruleId('folder', $value)], true)));
         if ($kind !== 'ham') {
             // Правила по отправителю — в начало, чтобы сработали раньше остальных.
-            array_unshift($rules, self::personalRule($kind, $match, $value));
+            array_unshift($rules, self::personalRule($kind, $match, $value, $folder, $folderName));
         }
         $labels = Label::where('user', $user)->pluck('name', 'id')->all();
         $script = $this->builder->build($rules, $set?->autoreply, $labels);
@@ -224,13 +234,16 @@ class SenderRules
      * Разложить старые письма отправителя: спам/рассылка — из всех обычных папок в целевую,
      * «не спам» — из «Спама» во «Входящие». @return int сколько перемещено
      */
-    public function resort(MailStore $store, string $kind, string $match, string $value): int
+    public function resort(MailStore $store, string $kind, string $match, string $value, ?string $folder = null): int
     {
         $value = self::normalize($match, $value);
         $folders = $store->folders();
         if ($kind === 'ham') {
             $target = $store->rolePath('inbox');
             $sources = array_filter($folders, fn ($f) => $f['role'] === 'spam');
+        } elseif ($kind === 'folder') {
+            $target = (string) $folder;
+            $sources = array_filter($folders, fn ($f) => ! in_array($f['role'], ['sent', 'drafts', 'trash', 'snoozed', 'shared', 'spam'], true));
         } else {
             $target = $store->rolePath($kind);
             $skip = ['sent', 'drafts', 'trash', 'snoozed', 'shared', $kind];

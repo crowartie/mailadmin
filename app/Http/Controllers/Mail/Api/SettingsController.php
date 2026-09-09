@@ -27,6 +27,7 @@ class SettingsController extends Controller
             'density' => ['nullable', 'in:normal,compact'],
             'reply_all' => ['nullable', 'boolean'],
             'notify_browser' => ['nullable', 'boolean'],
+            'ask_rule_on_move' => ['nullable', 'boolean'],
             'undo_seconds' => ['nullable', 'integer', 'min:0', 'max:30'],
             'quick_replies' => ['nullable', 'array', 'max:8'],
             'quick_replies.*' => ['string', 'max:200'],

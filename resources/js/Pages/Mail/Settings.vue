@@ -72,7 +72,7 @@ async function saveSettings(patch) {
 }
 function saveGeneral() {
     saveSettings({
-        display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, undo_seconds: Number(s.value.undo_seconds),
+        display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, ask_rule_on_move: !!s.value.ask_rule_on_move, undo_seconds: Number(s.value.undo_seconds),
         preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, show_images: s.value.show_images,
         quick_replies: quickText.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8),
     });
@@ -216,6 +216,7 @@ const shortcuts = [
                             </div>
                             <label class="toggle"><input v-model="s.shortcuts" type="checkbox"><span class="toggle__track" />Горячие клавиши</label>
                             <label class="toggle"><input v-model="s.reply_all" type="checkbox"><span class="toggle__track" />По умолчанию отвечать всем</label>
+                            <label class="toggle"><input v-model="s.ask_rule_on_move" type="checkbox"><span class="toggle__track" />При переносе письма из «Входящих» в папку предлагать правило для отправителя</label>
                             <label class="toggle"><input v-model="s.notify_browser" type="checkbox" @change="askNotify"><span class="toggle__track" />Уведомления браузера о новых письмах и напоминаниях</label>
                             <p v-if="notifyState" class="hint" style="margin: 0">{{ notifyState }}</p>
                             <div class="field">

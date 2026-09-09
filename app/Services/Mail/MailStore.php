@@ -313,6 +313,10 @@ class MailStore
         $conn = $this->client->getConnection();
         $set = implode(',', array_map('intval', $uids));
         $out = [];
+        // Длинные PREVIEW (например, отчёты Logwatch) библиотека разбирает с предупреждениями «Uninitialized string offset».
+        // Laravel превращает предупреждение в исключение, разбор обрывается на середине ответа, и следующая команда
+        // читает недочитанный хвост («Empty response», 500 на всю страницу). Поэтому на время разбора предупреждения глушим.
+        set_error_handler(fn () => true, E_WARNING | E_NOTICE | E_DEPRECATED);
         try {
             foreach ((array) $conn->fetch(['PREVIEW'], $uids)->data() as $uid => $text) {
                 if (is_string($text) && ! str_starts_with($text, '"')) {
@@ -326,6 +330,8 @@ class MailStore
             }
         } catch (\Throwable) {
             return [];
+        } finally {
+            restore_error_handler();
         }
         foreach ($out as $uid => $text) {
             $text = trim(preg_replace('/\s+/u', ' ', (string) Charset::fix($text)) ?? '');
@@ -337,6 +343,16 @@ class MailStore
         }
 
         return $out;
+    }
+
+    /** Размер письма; если сервер не ответил — 0, а не 500 на весь список. */
+    private function sizeOf(Message $message): int
+    {
+        try {
+            return (int) $message->getSize();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /** @return array<string,mixed> */
@@ -366,7 +382,7 @@ class MailStore
             'flagged' => $flags->has('flagged'),
             'answered' => $flags->has('answered'),
             'hasAttachments' => str_contains($contentType, 'multipart/mixed'),
-            'size' => $message->getSize(),
+            'size' => $this->sizeOf($message),
             'labels' => $labels,
             'messageId' => trim((string) ($message->getMessageId()->first() ?? ''), '<>'),
             'preview' => $preview,

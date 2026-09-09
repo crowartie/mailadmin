@@ -83,7 +83,7 @@ export const api = {
     rules: () => request('GET', '/mail/api/rules'),
     saveRules: (rules, autoreply) => request('PUT', '/mail/api/rules', { rules, autoreply }),
     applyRules: () => request('POST', '/mail/api/rules/apply'),
-    markSender: (kind, match, value, resort = true) => request('POST', '/mail/api/sender/mark', { kind, match, value, resort }),
+    markSender: (kind, match, value, resort = true, folder = null) => request('POST', '/mail/api/sender/mark', { kind, match, value, resort, folder }),
 
     // Безопасность.
     security: () => request('GET', '/mail/api/security'),
