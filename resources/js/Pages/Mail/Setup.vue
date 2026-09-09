@@ -45,7 +45,7 @@ const login = computed(() => (emailOk.value ? email.value : 'имя@' + props.do
                 <Link href="/mail/help#devices" class="btn btn--sm"><Icon name="info" :size="14" />Справка</Link>
             </div>
 
-            <div class="mset__grid" style="grid-template-columns: minmax(0, 1fr) 300px">
+            <div class="mset__grid setup__grid">
                 <div class="mset__body">
                     <section class="card mset__section help__section">
                         <h2>Ваш адрес</h2>
