@@ -25,9 +25,10 @@ class SenderController extends Controller
         if ($data['match'] === 'address' && ! str_contains($value, '@')) {
             abort(422, 'Укажите полный адрес');
         }
-        // Свой домен и себя в спам не отправляем — иначе сотрудник отрежет себе рабочую почту.
+        // Свой домен в «спам»/«рассылки» не отправляем: эти решения могут стать общими, и сотрудник отрежет
+        // рабочую почту всем. Личная папка — дело самого сотрудника, там ограничения нет.
         $own = strtolower(substr(strrchr($imap->user(), '@'), 1));
-        if ($data['kind'] !== 'ham' && ($value === $own || str_ends_with($value, '@' . $own))) {
+        if (in_array($data['kind'], ['spam', 'lists'], true) && ($value === $own || str_ends_with($value, '@' . $own))) {
             abort(422, 'Свой домен нельзя отправить в спам или рассылки — сделайте обычное правило');
         }
         set_time_limit(600);
