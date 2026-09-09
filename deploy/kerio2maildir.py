@@ -167,7 +167,7 @@ def process_user(args):
 
 
 def _process_user(args):
-    user, srcdir, home, dbdir, dry = args
+    user, srcdir, home, dbdir, dry, recopy = args
     maildir = os.path.join(home, 'Maildir')
     dbpath = os.path.join(dbdir, user + '.db')
     db = sqlite3.connect(dbpath, timeout=300)
@@ -195,14 +195,23 @@ def _process_user(args):
             for fn in os.listdir(curdir):
                 m = KEY_RE.match(fn)
                 if m:
-                    existing[m.group(2)] = fn
+                    # ключ — полный префикс имени: две папки Kerio могут склеиваться в одну (Sent + Sent Items), uid у них пересекаются
+                    existing[m.group(1) + '.k' + m.group(2) + '_' + m.group(3)] = fn
         msgs = os.path.join(srcdir, rel, '#msgs')
         n = 0
         for uid, kf, size, t, mod in items:
             fl = md_flags(kf, is_drafts)
             key = (rel, uid)
-            if key not in known and uid in existing:
-                fn = existing[uid]
+            prefix = f'{t}.k{uid}_{mod:x}'
+            if key in known and recopy and not dry:
+                # файла нет на месте (потерян прошлой версией при склейке папок) — забываем запись и копируем заново
+                # (запись может указывать на чужой файл с тем же uid из склеенной папки — поэтому смотрим по префиксу, а не по имени из базы)
+                if prefix not in existing:
+                    db.execute('DELETE FROM msgs WHERE user=? AND folder=? AND uid=?', (user, rel, uid))
+                    del known[key]
+                    stats['recopied'] = stats.get('recopied', 0) + 1
+            if key not in known and prefix in existing:
+                fn = existing[prefix]
                 db.execute('INSERT OR REPLACE INTO msgs VALUES(?,?,?,?,?,?,?)', (user, rel, uid, kf, int(KEY_RE.match(fn).group(4)), sub, fn))
                 known[key] = (kf, sub, fn)
                 nf = fn.split(':2,')[0] + ':2,' + fl
@@ -280,6 +289,7 @@ def main():
     ap.add_argument('--jobs', type=int, default=3)
     ap.add_argument('--db', default='/var/lib/mailadmin/kerio-migrate', help='каталог с базами состояния, по одной на ящик')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--recopy-missing', action='store_true', help='если файл из базы пропал с диска — скопировать заново (осторожно: вернёт и то, что сотрудник удалил)')
     a = ap.parse_args()
     os.makedirs(a.db, exist_ok=True)
     legacy = a.db + '.db'
@@ -309,7 +319,7 @@ def main():
         if u not in homes:
             skipped.append(u)
             continue
-        tasks.append((u + '@' + a.domain, os.path.join(a.src, u), homes[u], a.db, a.dry_run))
+        tasks.append((u + '@' + a.domain, os.path.join(a.src, u), homes[u], a.db, a.dry_run, a.recopy_missing))
     if skipped:
         print('Нет ящика на новом сервере, пропущены:', ' '.join(skipped), flush=True)
     t0 = time.time()
@@ -318,8 +328,8 @@ def main():
         for st in ex.map(process_user, tasks):
             for k in tot:
                 tot[k] += st[k]
-            print("%-30s папок %3d  новых %6d  %9.1f МБ  подхвачено %5d  флаги %5d  нет файла %3d  ошибок %d" % (
-                st['user'], st['folders'], st['new'], st['bytes'] / 1048576, st.get('adopted', 0), st['flags'], st['missing'], st['errors']), flush=True)
+            print("%-30s папок %3d  новых %6d  %9.1f МБ  подхвачено %5d  заново %4d  флаги %5d  нет файла %3d  ошибок %d" % (
+                st['user'], st['folders'], st['new'], st['bytes'] / 1048576, st.get('adopted', 0), st.get('recopied', 0), st['flags'], st['missing'], st['errors']), flush=True)
     print("Итого: новых %d, %.1f ГБ, флагов обновлено %d, без файла %d, ошибок %d, %d с" % (
         tot['new'], tot['bytes'] / 1073741824, tot['flags'], tot['missing'], tot['errors'], int(time.time() - t0)))
 
