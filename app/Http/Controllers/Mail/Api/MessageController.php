@@ -42,7 +42,8 @@ class MessageController extends Controller
     public function attachment(Request $request, ImapSession $imap, string $folder, int $uid, int $index): Response
     {
         $a = (new MailStore($imap->client()))->attachment($folder, $uid, $index);
-        $name = \App\Services\Mail\Charset::fix($a->getName()) ?: 'attachment';
+        // Outlook кладёт имя как =?utf-8?B?…?= — раскодировать, иначе файл скачается с «сырым» именем.
+        $name = \App\Services\Mail\Charset::header($a->getName()) ?: 'attachment';
         $type = $a->getMimeType() ?: 'application/octet-stream';
         $inline = $request->boolean('inline') && (str_starts_with($type, 'image/') || $type === 'application/pdf');
 
