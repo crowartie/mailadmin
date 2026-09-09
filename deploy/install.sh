@@ -69,14 +69,27 @@ else
   cd /root
   [ -f "iRedMail-${IREDMAIL_VER}.tar.gz" ] || curl -fsSL -o "iRedMail-${IREDMAIL_VER}.tar.gz" "$IREDMAIL_URL"
   [ -d "iRedMail-${IREDMAIL_VER}" ] || tar xzf "iRedMail-${IREDMAIL_VER}.tar.gz"
+  # Пароли служебных пользователей базы iRedMail генерирует только его интерактивный диалог; при установке
+  # с готовым config их надо задать самим, иначе vmail/vmailadmin/iredapd/amavisd остаются с пустым паролем.
+  for v in VMAIL_DB_BIND_PASSWD VMAIL_DB_ADMIN_PASSWD IREDADMIN_DB_PASSWD IREDAPD_DB_PASSWD AMAVISD_DB_PASSWD FAIL2BAN_DB_PASSWD MLMMJADMIN_API_AUTH_TOKEN; do
+    val=$(getsecret "$v"); [ -n "$val" ] || { val=$(rand 32); secret "$v" "$val"; }
+    declare "$v=$val"
+  done
   cat > "iRedMail-${IREDMAIL_VER}/config" <<EOF
 export STORAGE_BASE_DIR=/var/vmail
 export WEB_SERVER=NGINX
 export BACKEND_ORIG=MARIADB
 export BACKEND=MYSQL
-export MYSQL_ROOT_PASSWD=${MYSQL_ROOT_PASSWORD}
+export MYSQL_ROOT_PASSWD='${MYSQL_ROOT_PASSWORD}'
 export FIRST_DOMAIN=${DOMAIN}
-export DOMAIN_ADMIN_PASSWD_PLAIN=${POSTMASTER_PASSWORD}
+export DOMAIN_ADMIN_PASSWD_PLAIN='${POSTMASTER_PASSWORD}'
+export VMAIL_DB_BIND_PASSWD='${VMAIL_DB_BIND_PASSWD}'
+export VMAIL_DB_ADMIN_PASSWD='${VMAIL_DB_ADMIN_PASSWD}'
+export IREDADMIN_DB_PASSWD='${IREDADMIN_DB_PASSWD}'
+export IREDAPD_DB_PASSWD='${IREDAPD_DB_PASSWD}'
+export AMAVISD_DB_PASSWD='${AMAVISD_DB_PASSWD}'
+export FAIL2BAN_DB_PASSWD='${FAIL2BAN_DB_PASSWD}'
+export MLMMJADMIN_API_AUTH_TOKEN='${MLMMJADMIN_API_AUTH_TOKEN}'
 export USE_IREDADMIN=YES
 export USE_SOGO=NO
 export USE_NETDATA=NO
