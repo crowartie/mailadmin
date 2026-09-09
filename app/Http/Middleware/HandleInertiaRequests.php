@@ -23,6 +23,20 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
+     * Inertia ходит XHR-запросами, а Laravel запоминает «предыдущую страницу» (для back()) только у обычных GET.
+     * Поэтому, если браузер или расширение не прислали Referer, back() после «Сохранить» уводил на «/» — на Обзор.
+     * Запоминаем страницу сами при каждом переходе Inertia.
+     */
+    public function handle(Request $request, \Closure $next)
+    {
+        if ($request->isMethod('GET') && $request->header('X-Inertia') && ! $request->header('X-Inertia-Partial-Data') && $request->hasSession()) {
+            $request->session()->setPreviousUrl($request->fullUrl());
+        }
+
+        return parent::handle($request, $next);
+    }
+
+    /**
      * Данные для каждой страницы: флеш-сообщения, кто вошёл, счётчики в меню, состояние сервера.
      *
      * @return array<string, mixed>
