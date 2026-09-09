@@ -128,14 +128,30 @@ def md_flags(kf, is_drafts):
 
 
 # ── один пользователь ─────────────────────────────────────────────────
+def own(path):
+    try:
+        os.chown(path, 2000, 2000)
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+
+
 def ensure_maildir(base, sub):
+    # Каталоги сразу отдаём vmail: иначе Dovecot не создаст индексы, и ящик до конца копирования выглядит пустым.
+    home = os.path.dirname(base)
+    os.makedirs(base, exist_ok=True)
+    own(home)
+    own(base)
     d = os.path.join(base, sub) if sub else base
     for x in ('cur', 'new', 'tmp'):
         os.makedirs(os.path.join(d, x), exist_ok=True)
+        own(os.path.join(d, x))
+    own(d)
     if sub:
         mf = os.path.join(d, 'maildirfolder')
         if not os.path.exists(mf):
             open(mf, 'w').close()
+            os.chown(mf, 2000, 2000)
     return d
 
 
