@@ -44,7 +44,9 @@ plugin {
   fts = xapian
   fts_xapian = partial=3 full=20 verbose=0
   fts_autoindex = yes
-  fts_enforced = no
+  # body: полнотекстовый индекс обязателен только для поиска по телу. Иначе любой IMAP SEARCH по заголовкам
+  # (цепочка ответов при открытии письма) сначала достраивает индекс всей папки — минуты на большом ящике.
+  fts_enforced = body
   fts_autoindex_exclude = \Junk
   fts_autoindex_exclude2 = \Trash
 
@@ -61,6 +63,8 @@ plugin {
 }
 EOF
 fi
+# Старые установки: fts_enforced = no → body (см. выше)
+sed -i 's/^\(\s*\)fts_enforced = no$/\1fts_enforced = body/' "$CONF"
 # Скрипты компилируются в контексте imapsieve; на лету их скомпилирует сам Dovecot (каталог принадлежит vmail).
 sievec -x "+vnd.dovecot.pipe +imapsieve" /var/vmail/sieve/learn-spam.sieve 2>/dev/null || true
 sievec -x "+vnd.dovecot.pipe +imapsieve" /var/vmail/sieve/learn-ham.sieve 2>/dev/null || true

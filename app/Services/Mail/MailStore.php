@@ -393,7 +393,12 @@ class MailStore
 
     public function message(string $path, int $uid, bool $markSeen = true): array
     {
-        $message = $this->folder($path)->query()->getMessageByUid($uid);
+        try {
+            $message = $this->folder($path)->query()->getMessageByUid($uid);
+        } catch (\Webklex\PHPIMAP\Exceptions\MessageHeaderFetchingException) {
+            // webklex на несуществующий UID бросает «no headers found», а не возвращает null
+            $message = null;
+        }
         abort_unless($message, 404, 'Письмо не найдено');
 
         $data = $this->full($message, $path);
