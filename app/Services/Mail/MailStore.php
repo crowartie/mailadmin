@@ -418,7 +418,8 @@ class MailStore
     public function threadOf(string $path, int $uid): array
     {
         try {
-            $message = $this->folder($path)->query()->getMessageByUid($uid);
+            // Для цепочки нужны только заголовки письма — тело не тянем.
+            $message = $this->folder($path)->query()->setFetchBody(false)->setFetchFlags(false)->getMessageByUid($uid);
         } catch (\Webklex\PHPIMAP\Exceptions\MessageHeaderFetchingException) {
             $message = null;
         }

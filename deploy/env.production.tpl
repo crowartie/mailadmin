@@ -36,8 +36,10 @@ MAIL_PORT=443
 
 # Локальный Dovecot/Postfix для веб-почты.
 MAIL_IMAP_HOST=127.0.0.1
-MAIL_IMAP_PORT=993
-MAIL_IMAP_ENCRYPTION=ssl
+# Dovecot на этом же сервере: соединение с 127.0.0.1 он считает защищённым и пускает без TLS
+# даже при ssl=required — экономим TLS-рукопожатие на каждый запрос веб-почты (~150 мс).
+MAIL_IMAP_PORT=143
+MAIL_IMAP_ENCRYPTION=false
 MAIL_IMAP_VALIDATE_CERT=false
 MAIL_SMTP_HOST=127.0.0.1
 MAIL_SMTP_PORT=587
