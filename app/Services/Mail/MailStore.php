@@ -408,9 +408,23 @@ class MailStore
             $data['seen'] = true;
         }
 
-        $data['thread'] = $this->thread($message, $path);
+        // Цепочку ответов отдаём отдельным запросом (threadOf): письмо открывается сразу, поиск по папкам идёт фоном.
+        $data['thread'] = null;
 
         return $data;
+    }
+
+    /** Цепочка ответов для уже открытого письма. */
+    public function threadOf(string $path, int $uid): array
+    {
+        try {
+            $message = $this->folder($path)->query()->getMessageByUid($uid);
+        } catch (\Webklex\PHPIMAP\Exceptions\MessageHeaderFetchingException) {
+            $message = null;
+        }
+        abort_unless($message, 404, 'Письмо не найдено');
+
+        return $this->thread($message, $path);
     }
 
     /** Полное письмо: тело, адреса, вложения. */
@@ -475,42 +489,65 @@ class MailStore
             return [];
         }
 
+        // Все условия — в ОДИН IMAP SEARCH с OR на папку (раньше было до 14 отдельных поисков на папку,
+        // на ящике в десятки тысяч писем каждый — проход по всей папке).
+        $terms = [];
+        if ($id !== '') {
+            $terms[] = ['References', $id];
+            $terms[] = ['In-Reply-To', $id];
+        }
+        foreach (array_slice($ids, -6) as $ref) {
+            $terms[] = ['Message-ID', $ref];
+            $terms[] = ['References', $ref];
+        }
+        $criteria = self::orCriteria($terms);
+
         $found = [];
         $paths = array_unique([$path, $this->rolePath('sent'), $this->rolePath('inbox')]);
         foreach ($paths as $p) {
             try {
                 $folder = $this->folder($p);
-            } catch (\Throwable) {
-                continue;
-            }
-            $queries = [];
-            if ($id !== '') {
-                $queries[] = $folder->query()->whereHeader('References', $id);
-                $queries[] = $folder->query()->whereInReplyTo($id);
-            }
-            foreach (array_slice($ids, -6) as $ref) {
-                $queries[] = $folder->query()->whereMessageId($ref);
-                $queries[] = $folder->query()->whereHeader('References', $ref);
-            }
-            foreach ($queries as $q) {
-                try {
-                    foreach ($q->setFetchBody(true)->setFetchFlags(true)->limit(15)->get() as $m) {
-                        $mid = trim((string) ($m->getMessageId()->first() ?? ''), '<>');
-                        $key = $mid !== '' ? $mid : $p . '#' . $m->getUid();
-                        if ($mid === $id || isset($found[$key])) {
-                            continue;
-                        }
-                        $found[$key] = $this->full($m, $p) + ['thread' => []];
-                    }
-                } catch (\Throwable) {
-                    // папка без нужных заголовков или сервер не поддерживает — пропускаем
+                $this->client->openFolder($p, true);
+                $uids = (array) $this->client->getConnection()->search($criteria)->validatedData();
+                $uids = array_values(array_filter(array_map('intval', $uids), fn ($u) => $u > 0 && ! ($p === $path && $u === (int) $message->getUid())));
+                if ($uids === []) {
+                    continue;
                 }
+                $uids = array_slice($uids, -20);
+                foreach ($folder->query()->whereUidIn($uids)->setFetchBody(true)->setFetchFlags(true)->get() as $m) {
+                    $mid = trim((string) ($m->getMessageId()->first() ?? ''), '<>');
+                    $key = $mid !== '' ? $mid : $p . '#' . $m->getUid();
+                    if ($mid === $id || isset($found[$key])) {
+                        continue;
+                    }
+                    $found[$key] = $this->full($m, $p) + ['thread' => []];
+                }
+            } catch (\Throwable) {
+                // папка без нужных заголовков или сервер не поддерживает — пропускаем
             }
         }
 
         usort($found, fn ($a, $b) => strcmp((string) $a['date'], (string) $b['date']));
 
         return array_values($found);
+    }
+
+    /**
+     * Критерии IMAP SEARCH «любое из»: OR в IMAP бинарный, поэтому N условий = N-1 вложенных OR.
+     *
+     * @param  array<int,array{0:string,1:string}>  $terms  [заголовок, значение]
+     * @return string[]
+     */
+    private static function orCriteria(array $terms): array
+    {
+        $quote = fn (string $v) => '"' . addcslashes($v, '"\\') . '"';
+        $parts = array_map(fn ($t) => ['HEADER', $t[0], $quote($t[1])], $terms);
+        $out = array_pop($parts) ?? [];
+        while ($parts) {
+            $out = array_merge(['OR'], array_pop($parts), $out);
+        }
+
+        return $out;
     }
 
     public function attachment(string $path, int $uid, int $index): Attachment

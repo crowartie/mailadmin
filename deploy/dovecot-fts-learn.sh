@@ -63,6 +63,8 @@ plugin {
 }
 EOF
 fi
+# Заголовки цепочки ответов — в кэш индекса: поиск In-Reply-To/References идёт по индексу, а не по файлам.
+grep -q "mail_always_cache_fields" "$CONF" || printf '\n# mailadmin: заголовки цепочки в кэше индекса\nmail_always_cache_fields = hdr.message-id hdr.in-reply-to hdr.references\n' >> "$CONF"
 # Старые установки: fts_enforced = no → body (см. выше)
 sed -i 's/^\(\s*\)fts_enforced = no$/\1fts_enforced = body/' "$CONF"
 # Скрипты компилируются в контексте imapsieve; на лету их скомпилирует сам Dovecot (каталог принадлежит vmail).

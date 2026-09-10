@@ -81,6 +81,7 @@ Route::middleware('area:mail')->group(function () {
             Route::get('list/{folder}', [MessageController::class, 'list'])->where('folder', '.*');
             Route::get('message/{folder}/{uid}/attachment/{index}', [MessageController::class, 'attachment'])->where('folder', '.*')->whereNumber('uid')->whereNumber('index');
             Route::get('message/{folder}/{uid}/raw', [MessageController::class, 'raw'])->where('folder', '.*')->whereNumber('uid');
+            Route::get('message/{folder}/{uid}/thread', [MessageController::class, 'thread'])->where('folder', '.*')->whereNumber('uid');
             Route::get('message/{folder}/{uid}', [MessageController::class, 'show'])->where('folder', '.*')->whereNumber('uid');
 
             Route::post('action', [ActionController::class, 'store']);

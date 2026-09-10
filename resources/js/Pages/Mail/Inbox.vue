@@ -165,6 +165,10 @@ async function openMessage(uid, e) {
         open.value = m;
         mobileRead.value = true;
         if (row && !row.seen) { row.seen = true; bump(folder.value, -1); }
+        // Цепочка ответов — фоном, чтобы письмо показывалось сразу.
+        api.thread(folder.value, uid).then((t) => {
+            if (open.value && open.value.uid === m.uid && open.value.folder === m.folder) open.value.thread = t;
+        }).catch(() => {});
     } catch (e) { fail(e); } finally { loading.value = false; }
 }
 

@@ -39,6 +39,12 @@ class MessageController extends Controller
         return response()->json($m);
     }
 
+    /** Цепочка ответов — отдельным запросом после открытия письма. */
+    public function thread(ImapSession $imap, string $folder, int $uid): JsonResponse
+    {
+        return response()->json((new MailStore($imap->client()))->threadOf($folder, $uid));
+    }
+
     public function attachment(Request $request, ImapSession $imap, string $folder, int $uid, int $index): Response
     {
         $a = (new MailStore($imap->client()))->attachment($folder, $uid, $index);

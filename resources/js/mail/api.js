@@ -60,6 +60,7 @@ export const api = {
         return request('GET', `/mail/api/list/${enc(folder)}?${p}`);
     },
     message: (folder, uid, peek = false) => request('GET', `/mail/api/message/${enc(folder)}/${uid}${peek ? '?peek=1' : ''}`),
+    thread: (folder, uid) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/thread`),
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
     rawUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/raw`,
 
