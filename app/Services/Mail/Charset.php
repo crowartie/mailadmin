@@ -13,6 +13,9 @@ final class Charset
     public static function header(?string $s): ?string
     {
         if ($s !== null && str_contains($s, '=?')) {
+            // Outlook склеивает encoded-word без пробела («?==?utf-8?B?…») и переносит внутри слова — приводим к RFC 2047.
+            $s = preg_replace('/\?=(?==\?)/', '?= ', $s);
+            $s = preg_replace_callback('/=\?[^?\s]+\?[BbQq]\?[^?]*\?=/', fn ($w) => preg_replace('/\s+/', '', $w[0]), $s);
             $decoded = @iconv_mime_decode($s, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
             if (is_string($decoded) && $decoded !== '') {
                 $s = $decoded;

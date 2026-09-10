@@ -418,8 +418,8 @@ class MailStore
         return [
             'uid' => $message->getUid(),
             'subject' => $subject !== '' ? $subject : '(без темы)',
-            'from' => $from ? ['name' => Charset::header($from->personal) ?: $from->mail, 'mail' => $from->mail] : ['name' => '—', 'mail' => ''],
-            'toName' => $to ? (Charset::header($to->personal) ?: $to->mail) : null,
+            'from' => $from ? self::address($from->personal, $from->mail) : ['name' => '—', 'mail' => ''],
+            'toName' => $to ? self::address($to->personal, $to->mail)['name'] : null,
             'date' => $date ? $date->toIso8601String() : null,
             'seen' => $flags->has('seen'),
             'flagged' => $flags->has('flagged'),
@@ -755,10 +755,33 @@ class MailStore
         $out = [];
         // Attribute — только ArrayAccess, не итератор: перебираем через toArray().
         foreach (($attribute ? $attribute->toArray() : []) as $a) {
-            $out[] = ['name' => Charset::header($a->personal) ?: $a->mail, 'mail' => $a->mail];
+            $out[] = self::address($a->personal, $a->mail);
         }
 
         return $out;
+    }
+
+    /**
+     * Имя и адрес из разобранного библиотекой адреса. Outlook пишет «=?utf-8?B?…?=<user@host>» без пробела —
+     * библиотека тогда считает адресом всю строку; вытаскиваем адрес и имя сами.
+     *
+     * @return array{name:string,mail:string}
+     */
+    public static function address(?string $personal, ?string $mail): array
+    {
+        $mail = trim((string) $mail);
+        $name = trim((string) $personal);
+        if ($mail !== '' && (str_contains($mail, '<') || str_contains($mail, '=?') || str_contains($mail, ' ') || ! str_contains($mail, '@'))) {
+            $addr = preg_match('/<([^<>\s]+@[^<>\s]+)>/', $mail, $m) ? $m[1] : (preg_match('/[^\s<>"]+@[^\s<>"]+/', $mail, $m) ? $m[0] : $mail);
+            $rest = trim(preg_replace('/<[^<>]*>/', '', str_replace($addr, '', $mail)), " \t\"'");
+            if ($name === '' || $name === $mail) {
+                $name = $rest;
+            }
+            $mail = $addr;
+        }
+        $name = (string) Charset::header($name);
+
+        return ['name' => $name !== '' ? $name : $mail, 'mail' => $mail];
     }
 
     /**
