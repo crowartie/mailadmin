@@ -779,7 +779,7 @@ class MailStore
             }
             $mail = $addr;
         }
-        $name = (string) Charset::header($name);
+        $name = trim((string) Charset::header($name), " \t\"'<>");
 
         return ['name' => $name !== '' ? $name : $mail, 'mail' => $mail];
     }
