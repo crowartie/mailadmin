@@ -19,6 +19,14 @@ const search = ref(props.filters.search ?? '');
 const filter = ref(props.filters.filter ?? 'all');
 let timer = null;
 
+function pageUrl(p) {
+    const u = new URL(props.mailboxes.path, window.location.origin);
+    if (search.value) u.searchParams.set('search', search.value);
+    if (filter.value !== 'all') u.searchParams.set('filter', filter.value);
+    u.searchParams.set('page', p);
+    return u.pathname + u.search;
+}
+
 function reload() {
     router.get('/mailboxes', { search: search.value || undefined, filter: filter.value !== 'all' ? filter.value : undefined }, {
         preserveState: true,
@@ -135,7 +143,22 @@ function close() {
             <div v-if="!mailboxes.data.length" class="empty">Ничего не найдено</div>
         </div>
 
-        <p class="faint">Показаны {{ mailboxes.data.length }} из {{ mailboxes.total }} · сортировка по адресу</p>
+        <div class="faint" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+            <span>Показаны {{ mailboxes.from ?? 0 }}–{{ mailboxes.to ?? 0 }} из {{ mailboxes.total }} · сортировка по адресу</span>
+            <template v-if="mailboxes.last_page > 1">
+                <span style="flex: 1" />
+                <Link v-if="mailboxes.prev_page_url" class="btn btn--sm" :href="mailboxes.prev_page_url" preserve-scroll>← Назад</Link>
+                <Link
+                    v-for="p in mailboxes.last_page"
+                    :key="p"
+                    class="btn btn--sm"
+                    :class="{ 'btn--primary': p === mailboxes.current_page }"
+                    :href="pageUrl(p)"
+                    preserve-scroll
+                >{{ p }}</Link>
+                <Link v-if="mailboxes.next_page_url" class="btn btn--sm" :href="mailboxes.next_page_url" preserve-scroll>Вперёд →</Link>
+            </template>
+        </div>
 
         <template #overlay>
             <ImportModal v-if="importing" :domains="domains" @close="importing = false" />
