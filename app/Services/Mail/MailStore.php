@@ -544,9 +544,14 @@ class MailStore
             foreach ($byFolder as $p => $uids) {
                 $got = [];
                 try {
-                    foreach ($this->folder($p)->query()->whereUidIn($uids)->setFetchBody(true)->setFetchFlags(true)->get() as $m) {
-                        $got[] = (int) $m->getUid();
-                        $found[] = $this->full($m, $p) + ['thread' => []];
+                    // Только заголовки и превью: свёрнутому письму в цепочке больше не нужно, тело подгрузится при раскрытии.
+                    $this->client->openFolder($p, true);
+                    $previews = $this->previews($uids);
+                    foreach ($this->folder($p)->query()->whereUidIn($uids)->setFetchBody(false)->setFetchFlags(true)->get() as $m) {
+                        $uid = (int) $m->getUid();
+                        $got[] = $uid;
+                        $found[] = $this->summary($m, $previews[$uid] ?? null)
+                            + ['folder' => $p, 'text' => (string) ($previews[$uid] ?? ''), 'to' => [], 'cc' => [], 'attachments' => [], 'html' => null, 'light' => true, 'thread' => []];
                     }
                 } catch (\Throwable) {
                     continue;

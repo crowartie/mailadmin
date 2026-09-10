@@ -28,7 +28,15 @@ const isLast = (m) => m === props.message;
 const isOpen = (m) => isLast(m) || expanded.value[m.folder + '#' + m.uid];
 function toggle(m) {
     if (isLast(m)) return;
-    expanded.value[m.folder + '#' + m.uid] = !expanded.value[m.folder + '#' + m.uid];
+    const key = m.folder + '#' + m.uid;
+    expanded.value[key] = !expanded.value[key];
+    // Письма цепочки приходят «лёгкими» (заголовки и превью); тело и вложения — при первом раскрытии.
+    if (expanded.value[key] && m.light && !m.loading) {
+        m.loading = true;
+        api.message(m.folder, m.uid, true)
+            .then((d) => { Object.assign(m, d, { light: false, loading: false, thread: [] }); })
+            .catch(() => { m.loading = false; });
+    }
 }
 
 function hasExternalImages(m) {
