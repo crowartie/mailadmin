@@ -33,6 +33,8 @@ Schedule::command('quarantine:digest')->everyMinute()->when(function () {
         return false;
     }
 });
+// Индекс цепочек ответов: дочитать письма, пришедшие с почтой или через телефон/Outlook (веб-почта обновляет его сама).
+Schedule::command('threads:sync --all')->everyTwoMinutes()->withoutOverlapping()->runInBackground();
 // Резервная копия по расписанию из настроек и чистка карантина по сроку хранения.
 Schedule::command('backup:run --if-due')->everyMinute()->withoutOverlapping()->runInBackground();
 Schedule::command('backup:run --purge-quarantine')->dailyAt('04:10');

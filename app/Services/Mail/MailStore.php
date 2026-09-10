@@ -46,6 +46,49 @@ class MailStore
         return $this->client;
     }
 
+    /** Чей это ящик (в режиме администратора логин вида user*master — берём часть до звёздочки). */
+    public function user(): string
+    {
+        $u = (string) $this->client->username;
+
+        return strtolower(strstr($u, '*', true) ?: $u);
+    }
+
+    /** STATUS папки: uidvalidity, uidnext, messages, unseen (пусто, если папки нет). */
+    public function folderStatus(string $path): array
+    {
+        try {
+            return $this->safeStatus($this->folder($path));
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /** UID писем начиная с заданного (для дочитывания новых). @return int[] */
+    public function searchFrom(string $path, int $fromUid): array
+    {
+        $this->client->openFolder($path, true);
+        $r = $this->client->getConnection()->search(['UID', $fromUid . ':*'], IMAP::ST_UID)->validatedData();
+
+        return array_values(array_filter(array_map('intval', is_array($r) ? $r : []), fn ($u) => $u >= $fromUid));
+    }
+
+    /** Сырые заголовки писем по UID. @return array<int,string> */
+    public function rawHeaders(string $path, array $uids): array
+    {
+        if (! $uids) {
+            return [];
+        }
+        $this->client->openFolder($path, true);
+        $raw = $this->client->getConnection()->headers(array_values($uids), 'RFC822', IMAP::ST_UID)->validatedData();
+        $out = [];
+        foreach ((array) $raw as $uid => $text) {
+            $out[(int) $uid] = (string) $text;
+        }
+
+        return $out;
+    }
+
     // ── Папки ────────────────────────────────────────────────────────────
 
     /** @return array<int,array{path:string,name:string,role:string,depth:int,unread:int,total:int,parent:?string}> */
@@ -490,7 +533,34 @@ class MailStore
             return [];
         }
 
-        // Все условия — в ОДИН IMAP SEARCH с OR на папку (раньше было до 14 отдельных поисков на папку,
+        // Сначала индекс цепочек в базе: один запрос по ключу вместо поиска по папкам.
+        $members = ThreadIndex::threadOf($this->user(), $path, (int) $message->getUid());
+        if ($members !== null) {
+            $found = [];
+            $byFolder = [];
+            foreach ($members as $m) {
+                $byFolder[$m['folder']][] = $m['uid'];
+            }
+            foreach ($byFolder as $p => $uids) {
+                $got = [];
+                try {
+                    foreach ($this->folder($p)->query()->whereUidIn($uids)->setFetchBody(true)->setFetchFlags(true)->get() as $m) {
+                        $got[] = (int) $m->getUid();
+                        $found[] = $this->full($m, $p) + ['thread' => []];
+                    }
+                } catch (\Throwable) {
+                    continue;
+                }
+                if ($missing = array_diff($uids, $got)) {
+                    ThreadIndex::forget($this->user(), $p, $missing); // письмо удалили или переложили — индекс подчистим
+                }
+            }
+            usort($found, fn ($a, $b) => strcmp((string) $a['date'], (string) $b['date']));
+
+            return $found;
+        }
+
+        // Папка ещё не проиндексирована — все условия в ОДИН IMAP SEARCH с OR на папку (раньше было до 14 отдельных поисков на папку,
         // на ящике в десятки тысяч писем каждый — проход по всей папке).
         $terms = [];
         if ($id !== '') {
@@ -608,6 +678,7 @@ class MailStore
         $this->client->openFolder($path, true);
         $this->client->getConnection()->moveManyMessages($uids, $target, IMAP::ST_UID);
         $this->folderCache = null;
+        ThreadIndex::touch($this, [$path, $target]);
     }
 
     /** Удалить: из корзины — навсегда, откуда угодно ещё — в корзину. */
@@ -664,6 +735,7 @@ class MailStore
     public function append(string $path, string $raw, array $flags = ['\\Seen'], ?string $messageId = null): ?int
     {
         $this->folder($path)->appendMessage($raw, $flags, Carbon::now());
+        ThreadIndex::touch($this, [$path]);
         if ($messageId) {
             return $this->findByMessageId($path, $messageId);
         }
@@ -757,6 +829,7 @@ class MailStore
         }
         $this->client->openFolder($path, true);
         $this->client->getConnection()->copyManyMessages($uids, $target, IMAP::ST_UID);
+        ThreadIndex::touch($this, [$target]);
     }
 
     /** @return int[] все UID папки */
