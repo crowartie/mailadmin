@@ -508,6 +508,9 @@ select.input { padding-right: 32px; }
     flex-direction: column;
     padding: 22px 28px 26px;
     overflow: hidden;
+    // .app задаёт только min-height: переписке нужна точная высота, иначе поле ввода уезжает за экран
+    height: 100vh;
+    height: 100dvh;
 
     // На широком экране переписку не растягиваем во всю ширину: читать длинные строки неудобно.
     &__inner { width: 100%; max-width: 1240px; margin: 0 auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
