@@ -632,3 +632,23 @@ select.input { padding-right: 32px; }
     .fbchat--list .fbchat__body { display: none; }
     .fbchat__b { max-width: 88%; }
 }
+
+// Обращения в админке: правая часть — одна карточка переписки, а не набор блоков во всю ширину
+.fbadmin__chat {
+    display: flex;
+    flex-direction: column;
+    max-width: 1040px;
+    overflow: hidden;
+
+    .fbchat__foot { border-top: 1px solid v.$c-border; }
+}
+
+.fbadmin__bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 11px 14px;
+    border-top: 1px solid v.$c-border;
+    background: v.$c-surface-2;
+}

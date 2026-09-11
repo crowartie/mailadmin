@@ -29,8 +29,9 @@ const reply = ref('');
 const closing = ref(null);      // выбранный итог перед закрытием
 const closeNote = ref('');
 const duplicateOf = ref('');
+const showErrors = ref(false);
 
-watch(() => props.open?.id, () => { reply.value = ''; closing.value = null; closeNote.value = ''; duplicateOf.value = ''; });
+watch(() => props.open?.id, () => { reply.value = ''; closing.value = null; closeNote.value = ''; duplicateOf.value = ''; showErrors.value = false; });
 
 function url(patch = {}) {
     const p = { filter: props.filter, ...(q.value ? { search: q.value } : {}), ...(props.open ? { id: props.open.id } : {}), ...patch };
@@ -107,97 +108,93 @@ const errors = computed(() => props.open?.context?.errors || []);
                 <div v-if="!rows.length" class="empty">Обращений нет. Сотрудники пишут из веб-почты кнопкой «Сообщить о проблеме».</div>
             </div>
 
-            <div v-if="open">
-                <div class="card" style="margin-bottom: 14px">
-                    <div style="display: flex; align-items: flex-start; gap: 12px">
-                        <div style="min-width: 0; flex: 1">
-                            <h2 class="fb__h2" style="margin: 0 0 4px" :title="open.subject">№{{ open.id }} · {{ open.subject }}</h2>
-                            <p class="hint" style="margin: 0">
-                                {{ open.userName || open.user }} &lt;{{ open.user }}&gt; · {{ open.kindLabel }} · {{ when(open.createdAt) }}
-                                <span v-if="open.assignedTo"> · в работе у {{ open.assignedTo }}</span>
-                            </p>
-                        </div>
-                        <span class="chip" :class="chip(open)">{{ open.statusLabel }}</span>
+            <!-- Одна карточка: шапка, что снялось само, переписка, ответ и действия -->
+            <div v-if="open" class="card card--flush fbadmin__chat">
+                <div class="fbchat__head">
+                    <span class="fbchat__ava" :class="look(open).ava"><Icon :name="look(open).icon" :size="18" /></span>
+                    <div style="min-width: 0; flex: 1">
+                        <h2 :title="open.subject">№{{ open.id }} · {{ open.subject }}</h2>
+                        <p class="hint" style="margin: 2px 0 0">
+                            {{ open.userName || open.user }} · {{ open.user }} · {{ open.kindLabel }} · {{ when(open.createdAt) }}
+                            <span v-if="open.assignedTo"> · у {{ open.assignedTo }}</span>
+                        </p>
                     </div>
+                    <span class="chip" :class="chip(open)">{{ open.statusLabel }}</span>
+                </div>
 
-                    <!-- Обстановка, снятая автоматически: сотруднику не пришлось это описывать -->
-                    <div class="fb__ctx" style="margin-top: 14px">
-                        <div><span>Страница</span><b>{{ open.page || '—' }}</b></div>
-                        <div><span>Адрес</span><b class="mono">{{ open.pageUrl || '—' }}</b></div>
-                        <div><span>Программа</span><b>{{ open.client || '—' }}</b></div>
-                        <div><span>Экран</span><b>{{ open.context.screen || '—' }}<span v-if="open.context.viewport">, окно {{ open.context.viewport }}</span></b></div>
-                        <div><span>Адрес в сети</span><b class="mono">{{ open.ip }}</b></div>
-                        <div v-if="errors.length"><span>Ошибки на странице</span><b class="mono" style="font-size: 11.5px">{{ errors.map((e) => e.text).join(' · ') }}</b></div>
+                <div class="fbfacts">
+                    <span>Снято автоматически:</span>
+                    <span>Страница <b>{{ open.page || '—' }}</b></span>
+                    <span>Адрес <b class="mono">{{ open.pageUrl || '—' }}</b></span>
+                    <span>Программа <b>{{ open.client || '—' }}</b></span>
+                    <span v-if="open.context.screen">Экран <b>{{ open.context.screen }}<template v-if="open.context.viewport">, окно {{ open.context.viewport }}</template></b></span>
+                    <span>В сети <b class="mono">{{ open.ip }}</b></span>
+                    <button v-if="errors.length" type="button" class="fb__more" style="font-size: 12px" @click="showErrors = !showErrors">
+                        <Icon :name="showErrors ? 'down' : 'chevron'" :size="13" />Ошибки на странице ({{ errors.length }})
+                    </button>
+                </div>
+                <div v-if="showErrors && errors.length" class="fbfacts" style="display: block">
+                    <div v-for="(e, i) in errors" :key="i" class="mono" style="font-size: 11.5px">{{ e.text }}</div>
+                </div>
+
+                <div class="fbchat__scroll" style="min-height: 220px; max-height: 42vh">
+                    <div
+                        v-for="m in open.messages"
+                        :key="m.id"
+                        class="fbchat__b"
+                        :class="m.role === 'admin' ? 'fbchat__b--me' : (m.role === 'system' ? 'fbchat__b--sys' : 'fbchat__b--them')"
+                    >
+                        <div v-if="m.role === 'user'" class="fbchat__who">{{ open.userName || open.user }}</div>
+                        <div v-else-if="m.role === 'admin'" class="fbchat__who">{{ m.author }}</div>
+                        <div>{{ m.text }}</div>
+                        <a v-if="m.file" :href="`/feedback/${open.id}/file/${m.id}`" target="_blank" class="fbchat__shot">
+                            <img :src="`/feedback/${open.id}/file/${m.id}`" alt="снимок экрана">
+                        </a>
+                        <div class="fbchat__at">{{ when(m.at) }}</div>
                     </div>
                 </div>
 
-                <div class="card card--flush" style="margin-bottom: 14px">
-                    <div class="fbchat__scroll" style="max-height: 46vh">
-                        <div
-                            v-for="m in open.messages"
-                            :key="m.id"
-                            class="fbchat__b"
-                            :class="m.role === 'admin' ? 'fbchat__b--me' : (m.role === 'system' ? 'fbchat__b--sys' : 'fbchat__b--them')"
-                        >
-                            <div v-if="m.role === 'user'" class="fbchat__who">{{ open.userName || open.user }}</div>
-                            <div v-else-if="m.role === 'admin'" class="fbchat__who">{{ m.author }}</div>
-                            <div>{{ m.text }}</div>
-                            <a v-if="m.file" :href="`/feedback/${open.id}/file/${m.id}`" target="_blank" class="fbchat__shot">
-                                <img :src="`/feedback/${open.id}/file/${m.id}`" alt="снимок экрана">
-                            </a>
-                            <div class="fbchat__at">{{ when(m.at) }}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="field">
-                        <label>Ответ сотруднику <span class="hint">— уйдёт ему письмом и появится в его разделе «Мои обращения»</span></label>
-                        <textarea v-model="reply" class="input" rows="3" style="resize: vertical" placeholder="Например: поправили, обновите страницу. Или: подскажите, на какой кнопке это происходит?" />
-                    </div>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px">
-                        <button class="btn" type="button" :disabled="!reply.trim()" @click="send(true)"><Icon name="reply" :size="15" />Уточнить и ждать ответа</button>
+                <div class="fbchat__foot" style="flex-direction: column; align-items: stretch; gap: 10px">
+                    <textarea v-model="reply" class="input" rows="2" style="resize: vertical; min-height: 62px; height: auto" placeholder="Ответ сотруднику — уйдёт письмом и появится у него в «Обращениях»" />
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
+                        <button v-if="open.status === 'new' || !open.assignedTo" class="btn btn--sm" type="button" @click="post(`/feedback/${open.id}`, { status: 'open', assign: true })"><Icon name="check" :size="14" />Взять в работу</button>
+                        <span style="flex: 1" />
+                        <button class="btn" type="button" :disabled="!reply.trim()" @click="send(true)"><Icon name="reply" :size="15" />Уточнить и ждать</button>
                         <button class="btn btn--primary" type="button" :disabled="!reply.trim()" @click="send(false)"><Icon name="send" :size="15" />Ответить</button>
-                        <span class="grow" style="flex: 1" />
-                        <button v-if="open.status === 'new' || !open.assignedTo" class="btn" type="button" @click="post(`/feedback/${open.id}`, { status: 'open', assign: true })"><Icon name="check" :size="15" />Взять в работу</button>
                     </div>
+                </div>
 
-                    <div class="sep" style="margin: 16px 0" />
-
-                    <div v-if="open.status !== 'closed'">
-                        <label class="hint" style="display: block; margin-bottom: 8px">Закрыть обращение — выберите итог:</label>
+                <div class="fbadmin__bar">
+                    <template v-if="open.status !== 'closed'">
+                        <span class="hint">Закрыть с итогом:</span>
                         <div class="seg">
                             <button v-for="(label, key) in dict.resolutions" :key="key" type="button" class="seg__item" :class="{ 'seg__item--on': closing === key }" @click="closing = closing === key ? null : key">{{ label }}</button>
                         </div>
-                        <template v-if="closing">
-                            <div v-if="closing === 'duplicate'" class="field" style="margin-top: 10px">
-                                <label>Номер обращения, повтором которого это является</label>
-                                <input v-model="duplicateOf" class="input" type="number" min="1" placeholder="например, 12">
-                            </div>
-                            <div class="field" style="margin-top: 10px">
-                                <label>Что написать сотруднику <span class="hint">— необязательно, но лучше объяснить</span></label>
-                                <textarea v-model="closeNote" class="input" rows="2" style="resize: vertical" :placeholder="closing === 'done' ? 'Исправлено, обновите страницу' : closing === 'not_a_bug' ? 'Так и задумано: письма из рассылок складываются в отдельную папку' : 'Пока сделать не сможем: причина'" />
-                            </div>
-                            <div style="display: flex; justify-content: flex-end; margin-top: 10px">
-                                <button class="btn btn--primary" type="button" @click="close">Закрыть: {{ dict.resolutions[closing].toLowerCase() }}</button>
-                            </div>
-                        </template>
+                    </template>
+                    <template v-else>
+                        <span class="hint">Закрыто {{ when(open.closedAt) }}: {{ open.statusLabel.toLowerCase() }}<span v-if="open.duplicateOf">, повтор №{{ open.duplicateOf }}</span></span>
+                        <button class="btn btn--sm" type="button" @click="post(`/feedback/${open.id}/reopen`)"><Icon name="refresh" :size="14" />Вернуть в работу</button>
+                    </template>
+                    <span style="flex: 1" />
+                    <span class="hint">Важность:</span>
+                    <div class="seg">
+                        <button v-for="(label, key) in dict.priorities" :key="key" type="button" class="seg__item" :class="{ 'seg__item--on': open.priority === key }" @click="post(`/feedback/${open.id}`, { priority: key })">{{ label }}</button>
                     </div>
-                    <div v-else style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
-                        <span class="hint">Закрыто {{ when(open.closedAt) }} — {{ open.statusLabel.toLowerCase() }}<span v-if="open.duplicateOf">, повтор №{{ open.duplicateOf }}</span>.</span>
-                        <span class="grow" style="flex: 1" />
-                        <button class="btn" type="button" @click="post(`/feedback/${open.id}/reopen`)"><Icon name="refresh" :size="15" />Вернуть в работу</button>
+                    <button class="btn btn--sm btn--danger" type="button" title="Удалить обращение" @click="del"><Icon name="trash" :size="15" /></button>
+                </div>
+
+                <div v-if="closing" class="fbadmin__bar" style="flex-direction: column; align-items: stretch">
+                    <div v-if="closing === 'duplicate'" class="field">
+                        <label>Номер обращения, повтором которого это является</label>
+                        <input v-model="duplicateOf" class="input" type="number" min="1" placeholder="например, 12" style="max-width: 200px">
                     </div>
-
-                    <div class="sep" style="margin: 16px 0" />
-
-                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
-                        <span class="hint">Важность:</span>
-                        <div class="seg">
-                            <button v-for="(label, key) in dict.priorities" :key="key" type="button" class="seg__item" :class="{ 'seg__item--on': open.priority === key }" @click="post(`/feedback/${open.id}`, { priority: key })">{{ label }}</button>
-                        </div>
-                        <span class="grow" style="flex: 1" />
-                        <button class="btn btn--sm btn--danger" type="button" @click="del"><Icon name="trash" :size="15" />Удалить</button>
+                    <div class="field">
+                        <label>Что написать сотруднику <span class="hint">— необязательно, но лучше объяснить</span></label>
+                        <textarea v-model="closeNote" class="input" rows="2" style="resize: vertical; min-height: 62px; height: auto" :placeholder="closing === 'done' ? 'Исправлено, обновите страницу' : closing === 'not_a_bug' ? 'Так и задумано: письма из рассылок складываются в отдельную папку' : 'Пока сделать не сможем: причина'" />
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; gap: 8px">
+                        <button class="btn" type="button" @click="closing = null">Отмена</button>
+                        <button class="btn btn--primary" type="button" @click="close">Закрыть: {{ dict.resolutions[closing].toLowerCase() }}</button>
                     </div>
                 </div>
             </div>
