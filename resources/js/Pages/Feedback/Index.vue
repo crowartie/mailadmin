@@ -54,7 +54,10 @@ function del() {
     if (confirm(`Удалить обращение №${props.open.id} вместе с перепиской?`)) router.delete(`/feedback/${props.open.id}`);
 }
 
-const chip = (t) => (t.status === 'closed' ? (t.resolution === 'done' ? 'chip--ok' : 'chip--off') : (t.status === 'waiting' ? 'chip--warn' : 'chip--acc'));
+const look = (t) => (t.status === 'closed'
+    ? (t.resolution === 'done' ? { ava: 'fbchat__ava--ok', chip: 'chip--ok', icon: 'check' } : { ava: 'fbchat__ava--off', chip: 'chip--off', icon: 'x' })
+    : (t.status === 'waiting' ? { ava: 'fbchat__ava--warn', chip: 'chip--warn', icon: 'reply' } : { ava: '', chip: 'chip--acc', icon: t.kind === 'idea' ? 'star' : t.kind === 'question' ? 'info' : 'warn' }));
+const chip = (t) => look(t).chip;
 const when = (iso) => (iso ? new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const ago = (iso) => {
     if (!iso) return '';
@@ -63,7 +66,6 @@ const ago = (iso) => {
     if (m < 1440) return Math.round(m / 60) + ' ч назад';
     return Math.round(m / 1440) + ' дн назад';
 };
-const COLS = 'minmax(0, 1fr) 130px 120px';
 const errors = computed(() => props.open?.context?.errors || []);
 </script>
 
@@ -78,28 +80,29 @@ const errors = computed(() => props.open?.context?.errors || []);
             <input v-model="q" class="input input--w" style="width: 240px" type="search" placeholder="Номер, тема или сотрудник">
         </template>
 
-        <div class="grid-2-1" style="grid-template-columns: minmax(320px, 420px) minmax(0, 1fr)">
-            <div class="card card--flush">
-                <div class="thead" :style="{ gridTemplateColumns: COLS }"><span>Обращение</span><span>Когда</span><span>Состояние</span></div>
+        <div class="grid-2-1" style="grid-template-columns: minmax(300px, 380px) minmax(0, 1fr)">
+            <div class="card card--flush fbchat__list fbchat__list--plain" style="max-height: calc(100vh - 176px)">
                 <Link
                     v-for="t in rows"
                     :key="t.id"
-                    class="row row--click"
-                    :class="{ 'row--on': open && open.id === t.id }"
-                    :style="{ gridTemplateColumns: COLS }"
+                    class="fbchat__item"
+                    :class="{ 'fbchat__item--on': open && open.id === t.id }"
                     :href="url({ id: t.id })"
                     preserve-scroll
                 >
-                    <span style="min-width: 0">
-                        <span class="row__name fb__row">
-                            <span v-if="t.newForAdmin" class="dot dot--no" title="Не прочитано" />
-                            <span v-if="t.priority === 'high'" class="chip chip--no" style="margin-right: 6px">срочно</span>
-                            №{{ t.id }} · {{ t.subject }}
+                    <span class="fbchat__ava" :class="look(t).ava"><Icon :name="look(t).icon" :size="18" /></span>
+                    <span class="fbchat__main">
+                        <span class="fbchat__top">
+                            <span class="fbchat__title">{{ t.subject }}</span>
+                            <span class="fbchat__time" :title="when(t.createdAt)">{{ ago(t.lastReplyAt || t.createdAt) }}</span>
                         </span>
-                        <span class="row__sub fb__row">{{ t.userName || t.user }} · {{ t.kindLabel }}<span v-if="t.page"> · {{ t.page }}</span></span>
+                        <span class="fbchat__snip">№{{ t.id }} · {{ t.userName || t.user }} · {{ t.kindLabel }}</span>
+                        <span class="fbchat__badges">
+                            <span class="chip" :class="look(t).chip" style="height: 20px; font-size: 11px">{{ t.statusLabel }}</span>
+                            <span v-if="t.priority === 'high'" class="chip chip--no" style="height: 20px; font-size: 11px">срочно</span>
+                            <span v-if="t.newForAdmin" class="dot dot--no" title="Не прочитано" />
+                        </span>
                     </span>
-                    <span class="row__sub" :title="when(t.createdAt)">{{ ago(t.lastReplyAt || t.createdAt) }}</span>
-                    <span><span class="chip" :class="chip(t)">{{ t.statusLabel }}</span></span>
                 </Link>
                 <div v-if="!rows.length" class="empty">Обращений нет. Сотрудники пишут из веб-почты кнопкой «Сообщить о проблеме».</div>
             </div>
@@ -128,17 +131,21 @@ const errors = computed(() => props.open?.context?.errors || []);
                     </div>
                 </div>
 
-                <div class="card" style="margin-bottom: 14px">
-                    <div class="fb__thread">
-                        <div v-for="m in open.messages" :key="m.id" class="fb__msg" :class="'fb__msg--' + m.role">
-                            <div class="fb__msg-hd">
-                                <b>{{ m.role === 'user' ? (open.userName || open.user) : (m.role === 'system' ? 'Итог' : m.author) }}</b>
-                                <span class="hint">{{ when(m.at) }}</span>
-                            </div>
-                            <div class="fb__msg-text">{{ m.text }}</div>
-                            <a v-if="m.file" :href="`/feedback/${open.id}/file/${m.id}`" target="_blank" class="fb__msg-shot">
+                <div class="card card--flush" style="margin-bottom: 14px">
+                    <div class="fbchat__scroll" style="max-height: 46vh">
+                        <div
+                            v-for="m in open.messages"
+                            :key="m.id"
+                            class="fbchat__b"
+                            :class="m.role === 'admin' ? 'fbchat__b--me' : (m.role === 'system' ? 'fbchat__b--sys' : 'fbchat__b--them')"
+                        >
+                            <div v-if="m.role === 'user'" class="fbchat__who">{{ open.userName || open.user }}</div>
+                            <div v-else-if="m.role === 'admin'" class="fbchat__who">{{ m.author }}</div>
+                            <div>{{ m.text }}</div>
+                            <a v-if="m.file" :href="`/feedback/${open.id}/file/${m.id}`" target="_blank" class="fbchat__shot">
                                 <img :src="`/feedback/${open.id}/file/${m.id}`" alt="снимок экрана">
                             </a>
+                            <div class="fbchat__at">{{ when(m.at) }}</div>
                         </div>
                     </div>
                 </div>
