@@ -66,6 +66,9 @@ export const api = {
     thread: (folder, uid) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/thread`),
     feedback: (form) => request('POST', '/mail/api/feedback', form),
     feedbackReply: (id, form) => request('POST', `/mail/api/feedback/${id}/reply`, form),
+    feedbackList: () => request('GET', '/mail/api/feedback'),
+    feedbackUnread: () => request('GET', '/mail/api/feedback/unread'),
+    feedbackPoll: (id, after) => request('GET', `/mail/api/feedback/${id}?after=${after || 0}`),
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
     rawUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/raw`,
 

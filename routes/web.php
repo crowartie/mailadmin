@@ -155,6 +155,7 @@ Route::middleware('area:admin')->group(function () {
         Route::get('/feedback', [FeedbackController::class, 'index']);
         Route::post('/feedback/{ticket}', [FeedbackController::class, 'update'])->whereNumber('ticket');
         Route::post('/feedback/{ticket}/reply', [FeedbackController::class, 'reply'])->whereNumber('ticket');
+        Route::get('/feedback/{ticket}/poll', [FeedbackController::class, 'poll'])->whereNumber('ticket');
         Route::post('/feedback/{ticket}/close', [FeedbackController::class, 'close'])->whereNumber('ticket');
         Route::post('/feedback/{ticket}/reopen', [FeedbackController::class, 'reopen'])->whereNumber('ticket');
         Route::delete('/feedback/{ticket}', [FeedbackController::class, 'destroy'])->whereNumber('ticket');

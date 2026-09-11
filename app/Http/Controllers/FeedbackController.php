@@ -7,6 +7,7 @@ use App\Models\AdminAction;
 use App\Models\FeedbackMessage;
 use App\Models\FeedbackTicket;
 use App\Services\FeedbackNotifier;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -81,8 +82,22 @@ class FeedbackController extends Controller
         ]);
     }
 
+    /** Что нового в обращении после сообщения $after — для живого обновления открытой переписки. */
+    public function poll(Request $request, int $ticket): JsonResponse
+    {
+        $t = FeedbackTicket::findOrFail($ticket);
+        $after = (int) $request->query('after');
+        $new = FeedbackMessage::query()->where('ticket_id', $t->id)->where('id', '>', $after)->orderBy('id')->get()
+            ->map(fn (FeedbackMessage $m) => UserFeedback::messageRow($m))->all();
+        if ($new && $t->new_for_admin) {
+            $t->forceFill(['new_for_admin' => false])->save();
+        }
+
+        return response()->json(['messages' => $new, 'ticket' => UserFeedback::ticketRow($t->fresh())]);
+    }
+
     /** Взять в работу, сменить важность, назначить. */
-    public function update(Request $request, int $ticket): RedirectResponse
+    public function update(Request $request, int $ticket): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'status' => ['nullable', 'in:new,open,waiting'],
@@ -109,18 +124,19 @@ class FeedbackController extends Controller
         $t->save();
         AdminAction::log('feedback.update', '#' . $t->id, implode(', ', $changes));
 
-        return back()->with('success', 'Обращение №' . $t->id . ' обновлено');
+        return $this->answer($request, $t, 'Обращение №' . $t->id . ' обновлено');
     }
 
     /** Ответ администратора. С «ask» обращение переходит в «ждём ответа сотрудника». */
-    public function reply(Request $request, int $ticket): RedirectResponse
+    public function reply(Request $request, int $ticket): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'text' => ['required', 'string', 'min:1', 'max:5000'],
             'ask' => ['nullable', 'boolean'],
+            'file' => ['nullable', 'file', 'mimetypes:image/png,image/jpeg,image/webp,image/gif', 'max:8192'],
         ]);
         $t = FeedbackTicket::findOrFail($ticket);
-        $this->addMessage($t, $request, trim($data['text']));
+        $m = $this->addMessage($t, $request, trim($data['text']), 'admin', $request->file('file'));
         $t->forceFill([
             'status' => ! empty($data['ask']) ? 'waiting' : ($t->status === 'closed' ? 'closed' : 'open'),
             'assigned_to' => $t->assigned_to ?: $request->user()?->email,
@@ -132,11 +148,11 @@ class FeedbackController extends Controller
         FeedbackNotifier::toUser($t, $data['text']);
         AdminAction::log('feedback.reply', '#' . $t->id, ! empty($data['ask']) ? 'уточнение' : 'ответ');
 
-        return back()->with('success', 'Ответ отправлен сотруднику');
+        return $this->answer($request, $t, 'Ответ отправлен сотруднику', $m);
     }
 
     /** Закрыть с итогом: исправлено, не ошибка, не будем исправлять, повтор. */
-    public function close(Request $request, int $ticket): RedirectResponse
+    public function close(Request $request, int $ticket): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'resolution' => ['required', 'in:done,not_a_bug,wont_fix,duplicate'],
@@ -148,7 +164,7 @@ class FeedbackController extends Controller
         $note = trim((string) ($data['text'] ?? ''));
 
         $line = $label . ($data['resolution'] === 'duplicate' && ! empty($data['duplicate_of']) ? ' — то же, что в обращении №' . (int) $data['duplicate_of'] : '');
-        $this->addMessage($t, $request, $note !== '' ? $line . ".\n\n" . $note : $line, 'system');
+        $m = $this->addMessage($t, $request, $note !== '' ? $line . ".\n\n" . $note : $line, 'system');
 
         $t->forceFill([
             'status' => 'closed',
@@ -165,17 +181,17 @@ class FeedbackController extends Controller
         FeedbackNotifier::toUser($t, 'Ваше обращение закрыто: ' . mb_strtolower($label) . ".\n\n" . ($note !== '' ? $note : 'Если проблема осталась, ответьте в обращении — оно снова откроется.'));
         AdminAction::log('feedback.close', '#' . $t->id, $label);
 
-        return back()->with('success', 'Обращение №' . $t->id . ' закрыто: ' . mb_strtolower($label));
+        return $this->answer($request, $t, 'Обращение №' . $t->id . ' закрыто: ' . mb_strtolower($label), $m);
     }
 
     /** Вернуть в работу закрытое обращение. */
-    public function reopen(Request $request, int $ticket): RedirectResponse
+    public function reopen(Request $request, int $ticket): RedirectResponse|JsonResponse
     {
         $t = FeedbackTicket::findOrFail($ticket);
         $t->forceFill(['status' => 'open', 'resolution' => null, 'closed_at' => null, 'closed_by' => null, 'last_reply_at' => now()])->save();
         AdminAction::log('feedback.reopen', '#' . $t->id);
 
-        return back()->with('success', 'Обращение №' . $t->id . ' снова в работе');
+        return $this->answer($request, $t, 'Обращение №' . $t->id . ' снова в работе');
     }
 
     public function destroy(Request $request, int $ticket): RedirectResponse
@@ -193,13 +209,37 @@ class FeedbackController extends Controller
         return UserFeedback::fileResponse(FeedbackTicket::findOrFail($ticket), $message);
     }
 
-    private function addMessage(FeedbackTicket $t, Request $request, string $text, string $role = 'admin'): void
+    private function addMessage(FeedbackTicket $t, Request $request, string $text, string $role = 'admin', $file = null): FeedbackMessage
     {
-        FeedbackMessage::create([
+        $name = null;
+        if ($file) {
+            $name = Str::random(16) . '.' . ($file->guessExtension() ?: 'png');
+            $file->storeAs('feedback/' . $t->id, $name, 'local');
+        }
+
+        return FeedbackMessage::create([
             'ticket_id' => $t->id,
             'author' => (string) ($request->user()?->email ?? 'админ'),
             'author_role' => $role,
             'text' => Str::limit($text, 5000, ''),
+            'file' => $name,
         ]);
+    }
+
+    /**
+     * Страница обновляет себя сама, когда действие пришло обычным запросом (fetch), и перерисовывается
+     * через Inertia только если запрос пришёл из формы — так админка не моргает на каждое действие.
+     */
+    private function answer(Request $request, FeedbackTicket $t, string $message, ?FeedbackMessage $m = null): RedirectResponse|JsonResponse
+    {
+        if ($request->expectsJson() && ! $request->header('X-Inertia')) {
+            return response()->json([
+                'ticket' => UserFeedback::ticketRow($t->fresh()),
+                'message' => $m ? UserFeedback::messageRow($m) : null,
+                'flash' => $message,
+            ]);
+        }
+
+        return back()->with('success', $message);
     }
 }

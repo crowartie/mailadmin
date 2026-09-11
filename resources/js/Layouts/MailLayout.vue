@@ -1,6 +1,6 @@
 <script setup>
 import { Link, usePage, router } from '@inertiajs/vue3';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Components/Icon.vue';
 import FeedbackDialog from '../Components/Mail/FeedbackDialog.vue';
 
@@ -11,8 +11,19 @@ const props = defineProps({
 
 const page = usePage();
 const current = computed(() => page.url.split('?')[0]);
-// Новые ответы по обращениям — красная точка на значке «Сообщить о проблеме».
-const feedbackNew = computed(() => Number(page.props.feedbackNew || 0));
+// Новые ответы по обращениям — число на значке «Сообщить о проблеме»; обновляется само.
+const feedbackOwn = ref(null);
+const feedbackNew = computed(() => (feedbackOwn.value === null ? Number(page.props.feedbackNew || 0) : feedbackOwn.value));
+let feedbackTimer = null;
+async function checkFeedback() {
+    if (document.hidden || !props.user) return;
+    try {
+        const r = await fetch('/mail/api/feedback/unread', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' });
+        if (r.ok) feedbackOwn.value = (await r.json()).unread;
+    } catch { /* не страшно */ }
+}
+onMounted(() => { feedbackTimer = setInterval(checkFeedback, 60000); });
+onBeforeUnmount(() => clearInterval(feedbackTimer));
 
 // Почта, календарь и контакты — один интерфейс; рельс переключает разделы.
 const services = [

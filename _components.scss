@@ -506,11 +506,9 @@ select.input { padding-right: 32px; }
     min-width: 0;
     display: flex;
     flex-direction: column;
-    padding: 22px 28px 26px;
+    padding: 18px 24px 24px;
+    gap: 14px;
     overflow: hidden;
-
-    // На широком экране переписку не растягиваем во всю ширину: читать длинные строки неудобно.
-    &__inner { width: 100%; max-width: 1240px; margin: 0 auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
 }
 
 .fbchat {
@@ -520,33 +518,27 @@ select.input { padding-right: 32px; }
     grid-template-columns: 320px minmax(0, 1fr);
     background: v.$c-surface;
     border: 1px solid v.$c-border;
-    border-radius: 14px;
+    border-radius: v.$r-card;
     overflow: hidden;
-    box-shadow: 0 1px 2px rgba(27, 36, 48, .04), 0 8px 24px -16px rgba(27, 36, 48, .18);
 
-    &__list { border-right: 1px solid v.$c-border; overflow-y: auto; overflow-x: hidden; padding: 8px; }
-    &__list--plain { border-right: none; }
+    &__list { border-right: 1px solid v.$c-border; overflow-y: auto; }
 
-    // Каждая переписка — отдельная карточка со скруглением и отступами, а не строка во всю ширину.
     &__item {
         display: grid;
         grid-template-columns: 38px minmax(0, 1fr);
         gap: 11px;
-        padding: 11px 12px;
-        margin-bottom: 6px;
+        padding: 12px 14px;
         cursor: pointer;
-        border: 1px solid transparent;
-        border-radius: 12px;
+        border-bottom: 1px solid v.$c-border;
         text-align: left;
         width: 100%;
+        border-left: 3px solid transparent;
         background: none;
         font: inherit;
         color: inherit;
-        overflow: hidden;
 
-        &:last-child { margin-bottom: 0; }
         &:hover { background: v.$c-surface-2; }
-        &--on { background: v.$c-accent-soft; border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+        &--on { background: v.$c-accent-soft; border-left-color: v.$c-accent; }
     }
 
     &__ava {
@@ -560,11 +552,10 @@ select.input { padding-right: 32px; }
         &--off { background: v.$c-surface-2; color: v.$c-faint; }
     }
 
-    &__main { display: block; min-width: 0; overflow: hidden; }
     &__top { display: flex; align-items: baseline; gap: 8px; }
     &__title { font-weight: 600; font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     &__time { font-size: 11px; color: v.$c-faint; flex: 0 0 auto; }
-    &__snip { display: block; font-size: 12.5px; color: v.$c-muted; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+    &__snip { font-size: 12.5px; color: v.$c-muted; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
     &__badges { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 
     &__body { display: flex; flex-direction: column; min-width: 0; }
@@ -589,7 +580,7 @@ select.input { padding-right: 32px; }
     }
 
     &__b {
-        max-width: min(74%, 620px);
+        max-width: 74%;
         padding: 9px 13px 7px;
         border-radius: 14px;
         line-height: 1.45;
@@ -608,7 +599,7 @@ select.input { padding-right: 32px; }
     &__shot img { max-width: 100%; max-height: 280px; border-radius: 8px; display: block; }
 
     &__foot { padding: 12px 14px; border-top: 1px solid v.$c-border; display: flex; gap: 10px; align-items: flex-end; }
-    &__foot textarea.input { flex: 1; resize: none; min-height: 42px; height: 42px; max-height: 140px; padding: 11px 12px; overflow-y: hidden; }
+    &__foot textarea.input { flex: 1; resize: none; min-height: 42px; height: 42px; max-height: 140px; padding: 11px 12px; overflow-y: auto; }
 
     &__empty { display: grid; place-items: center; text-align: center; padding: 40px; color: v.$c-muted; }
 }
@@ -631,47 +622,4 @@ select.input { padding-right: 32px; }
     .fbchat--list .fbchat__list { display: block; border-right: none; }
     .fbchat--list .fbchat__body { display: none; }
     .fbchat__b { max-width: 88%; }
-}
-
-// Обращения в админке: правая часть — одна карточка переписки, а не набор блоков во всю ширину
-.fbadmin__chat {
-    display: flex;
-    flex-direction: column;
-    max-width: 1040px;
-    overflow: hidden;
-
-    .fbchat__foot { border-top: 1px solid v.$c-border; }
-}
-
-.fbadmin__bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    padding: 11px 14px;
-    border-top: 1px solid v.$c-border;
-    background: v.$c-surface-2;
-}
-
-// Прикреплённый снимок до отправки
-.fbchat__attach {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 14px;
-    border-top: 1px solid v.$c-border;
-    background: v.$c-surface-2;
-
-    img { height: 44px; border-radius: 6px; border: 1px solid v.$c-border; }
-}
-
-// Сообщение в пути и не ушедшее
-.fbchat__b--pending { opacity: .65; }
-.fbchat__b--failed { outline: 1px solid v.$c-no; }
-
-// Кнопка возврата к списку нужна только на узком экране
-.fbchat__back { display: none; flex: 0 0 auto; }
-
-@media (max-width: 860px) {
-    .fbchat__back { display: inline-flex; }
 }

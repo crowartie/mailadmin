@@ -116,7 +116,7 @@ class FeedbackController extends Controller
         $t = FeedbackTicket::query()->where('user', $user)->findOrFail($ticket);
 
         $file = $request->file('file');
-        FeedbackMessage::create([
+        $m = FeedbackMessage::create([
             'ticket_id' => $t->id,
             'author' => $user,
             'author_role' => 'user',
@@ -132,7 +132,44 @@ class FeedbackController extends Controller
             'last_reply_at' => now(),
         ])->save();
 
-        return response()->json(['ok' => true]);
+        // Отдаём созданное сообщение и обращение: страница дорисовывает их сама, без перезагрузки.
+        return response()->json(['message' => self::messageRow($m), 'ticket' => self::ticketRow($t->fresh())]);
+    }
+
+    /** Что нового в обращении после сообщения $after — для живого обновления открытой переписки. */
+    public function poll(Request $request, int $ticket): JsonResponse
+    {
+        $user = strtolower((string) $request->session()->get('mail.user'));
+        $t = FeedbackTicket::query()->where('user', $user)->findOrFail($ticket);
+        $after = (int) $request->query('after');
+        $new = FeedbackMessage::query()->where('ticket_id', $t->id)->where('id', '>', $after)->orderBy('id')->get()
+            ->map(fn (FeedbackMessage $m) => self::messageRow($m))->all();
+        if ($new && $t->new_for_user) {
+            $t->forceFill(['new_for_user' => false])->save();
+        }
+
+        return response()->json(['messages' => $new, 'ticket' => self::ticketRow($t->fresh())]);
+    }
+
+    /** Сколько ответов сотрудник ещё не видел — для значка в рельсе (дешёвый запрос). */
+    public function unread(Request $request): JsonResponse
+    {
+        $user = strtolower((string) $request->session()->get('mail.user'));
+
+        return response()->json(['unread' => FeedbackTicket::query()->where('user', $user)->where('new_for_user', 1)->count()]);
+    }
+
+    /** Список обращений сотрудника — для обновления боковой колонки и значка. */
+    public function listJson(Request $request): JsonResponse
+    {
+        $user = strtolower((string) $request->session()->get('mail.user'));
+        $list = FeedbackTicket::query()->where('user', $user)->orderByDesc('last_reply_at')->orderByDesc('id')->limit(100)->get();
+        $last = self::lastMessages($list->pluck('id')->all());
+
+        return response()->json([
+            'tickets' => $list->map(fn (FeedbackTicket $t) => self::ticketRow($t) + ['last' => $last[$t->id] ?? null])->all(),
+            'unread' => $list->where('new_for_user', true)->count(),
+        ]);
     }
 
     /** Снимок экрана из своего обращения. */
@@ -177,14 +214,19 @@ class FeedbackController extends Controller
     public static function messageRows(FeedbackTicket $ticket): array
     {
         return FeedbackMessage::query()->where('ticket_id', $ticket->id)->orderBy('id')->get()
-            ->map(fn (FeedbackMessage $m) => [
-                'id' => $m->id,
-                'author' => $m->author,
-                'role' => $m->author_role,
-                'text' => $m->text,
-                'file' => (bool) $m->file,
-                'at' => $m->created_at?->toIso8601String(),
-            ])->all();
+            ->map(fn (FeedbackMessage $m) => self::messageRow($m))->all();
+    }
+
+    public static function messageRow(FeedbackMessage $m): array
+    {
+        return [
+            'id' => $m->id,
+            'author' => $m->author,
+            'role' => $m->author_role,
+            'text' => $m->text,
+            'file' => (bool) $m->file,
+            'at' => $m->created_at?->toIso8601String(),
+        ];
     }
 
     public static function ticketRow(FeedbackTicket $t): array

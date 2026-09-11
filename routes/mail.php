@@ -59,6 +59,9 @@ Route::middleware('area:mail')->group(function () {
         Route::get('/mail/feedback', [\App\Http\Controllers\Mail\FeedbackController::class, 'index']);
         Route::post('/mail/api/feedback', [\App\Http\Controllers\Mail\FeedbackController::class, 'store']);
         Route::post('/mail/api/feedback/{ticket}/reply', [\App\Http\Controllers\Mail\FeedbackController::class, 'reply'])->whereNumber('ticket');
+        Route::get('/mail/api/feedback', [\App\Http\Controllers\Mail\FeedbackController::class, 'listJson']);
+        Route::get('/mail/api/feedback/unread', [\App\Http\Controllers\Mail\FeedbackController::class, 'unread']);
+        Route::get('/mail/api/feedback/{ticket}', [\App\Http\Controllers\Mail\FeedbackController::class, 'poll'])->whereNumber('ticket');
         Route::get('/mail/feedback/{ticket}/file/{message}', [\App\Http\Controllers\Mail\FeedbackController::class, 'file'])->whereNumber('ticket')->whereNumber('message');
         Route::get('/mail/settings/{section?}', [InboxController::class, 'settings'])->where('section', '[a-z]+');
         Route::get('/mail/folder/{folder}', [InboxController::class, 'index'])->where('folder', '.*');
