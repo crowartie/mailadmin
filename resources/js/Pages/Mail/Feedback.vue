@@ -68,6 +68,14 @@ function onKey(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); send(); }
 }
 
+// Поле ввода растёт под текст, как в мессенджере.
+function grow(e) {
+    const el = e.target;
+    el.style.height = '42px';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+watch(reply, (v) => { if (!v) document.querySelectorAll('.fbchat__foot textarea').forEach((el) => { el.style.height = '42px'; }); });
+
 const facts = computed(() => {
     const t = props.open;
     if (!t) return [];
@@ -83,11 +91,12 @@ const facts = computed(() => {
     <Head title="Обращения" />
     <MailLayout :user="user" :theme="settings?.theme">
         <div class="fbpage">
-            <div class="mset__head" style="margin: 0">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 0 0 auto">
                 <Link href="/mail" class="ib" title="К письмам"><Icon name="back" :size="18" /></Link>
-                <h1>Обращения</h1>
-                <span class="hint">Каждая переписка — одна проблема</span>
-                <span class="grow" style="flex: 1" />
+                <div style="min-width: 0; flex: 1">
+                    <h1 style="margin: 0; font-size: 22px; line-height: 1.2">Обращения</h1>
+                    <p class="hint" style="margin: 2px 0 0">Каждая переписка — одна проблема. Ответ администратора приходит ещё и письмом.</p>
+                </div>
                 <button class="btn btn--primary" type="button" @click="creating = true"><Icon name="plus" :size="16" />Сообщить о проблеме</button>
             </div>
 
@@ -161,6 +170,7 @@ const facts = computed(() => {
                             rows="1"
                             :placeholder="open.status === 'closed' ? 'Проблема осталась? Напишите — обращение откроется снова' : open.status === 'waiting' ? 'Администратор ждёт вашего ответа' : 'Добавить к обращению…'"
                             @keydown="onKey"
+                            @input="grow"
                         />
                         <button class="btn btn--primary" type="button" :disabled="sending || !reply.trim()" @click="send">
                             <Icon name="send" :size="16" />{{ sending ? 'Отправка…' : 'Отправить' }}
