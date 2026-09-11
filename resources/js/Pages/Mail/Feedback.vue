@@ -62,7 +62,7 @@ const waiting = computed(() => props.open?.status === 'waiting');
                 <button class="btn btn--primary" type="button" @click="creating = true"><Icon name="plus" :size="16" />Сообщить о проблеме</button>
             </div>
 
-            <div class="mset__grid">
+            <div class="mset__grid" style="grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); max-width: 1280px">
                 <div class="card card--flush">
                     <div v-for="t in tickets" :key="t.id" class="row row--click" :class="{ 'row--on': open && open.id === t.id }" style="grid-template-columns: minmax(0, 1fr) auto" @click="show(t)">
                         <span style="min-width: 0">
