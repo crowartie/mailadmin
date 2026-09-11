@@ -91,12 +91,12 @@ const errors = computed(() => props.open?.context?.errors || []);
                     preserve-scroll
                 >
                     <span style="min-width: 0">
-                        <span class="row__name">
+                        <span class="row__name fb__row">
                             <span v-if="t.newForAdmin" class="dot dot--no" title="Не прочитано" />
                             <span v-if="t.priority === 'high'" class="chip chip--no" style="margin-right: 6px">срочно</span>
                             №{{ t.id }} · {{ t.subject }}
                         </span>
-                        <span class="row__sub">{{ t.userName || t.user }} · {{ t.kindLabel }}<span v-if="t.page"> · {{ t.page }}</span></span>
+                        <span class="row__sub fb__row">{{ t.userName || t.user }} · {{ t.kindLabel }}<span v-if="t.page"> · {{ t.page }}</span></span>
                     </span>
                     <span class="row__sub" :title="when(t.createdAt)">{{ ago(t.lastReplyAt || t.createdAt) }}</span>
                     <span><span class="chip" :class="chip(t)">{{ t.statusLabel }}</span></span>
@@ -108,7 +108,7 @@ const errors = computed(() => props.open?.context?.errors || []);
                 <div class="card" style="margin-bottom: 14px">
                     <div style="display: flex; align-items: flex-start; gap: 12px">
                         <div style="min-width: 0; flex: 1">
-                            <h2 style="margin: 0 0 4px">№{{ open.id }} · {{ open.subject }}</h2>
+                            <h2 class="fb__h2" style="margin: 0 0 4px" :title="open.subject">№{{ open.id }} · {{ open.subject }}</h2>
                             <p class="hint" style="margin: 0">
                                 {{ open.userName || open.user }} &lt;{{ open.user }}&gt; · {{ open.kindLabel }} · {{ when(open.createdAt) }}
                                 <span v-if="open.assignedTo"> · в работе у {{ open.assignedTo }}</span>

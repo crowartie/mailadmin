@@ -226,6 +226,6 @@ class FeedbackController extends Controller
     {
         $line = trim((string) preg_split('/\R/', $text)[0]);
 
-        return Str::limit($line !== '' ? $line : $text, 120, '…');
+        return Str::limit($line !== '' ? $line : $text, 90, '…');
     }
 }

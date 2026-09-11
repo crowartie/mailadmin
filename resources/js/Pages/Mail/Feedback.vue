@@ -66,8 +66,8 @@ const waiting = computed(() => props.open?.status === 'waiting');
                 <div class="card card--flush">
                     <div v-for="t in tickets" :key="t.id" class="row row--click" :class="{ 'row--on': open && open.id === t.id }" style="grid-template-columns: minmax(0, 1fr) auto" @click="show(t)">
                         <span style="min-width: 0">
-                            <span class="row__name">№{{ t.id }} · {{ t.subject }}</span>
-                            <span class="row__sub">{{ t.kindLabel }} · {{ when(t.createdAt) }}</span>
+                            <span class="row__name fb__row">№{{ t.id }} · {{ t.subject }}</span>
+                            <span class="row__sub fb__row">{{ t.kindLabel }} · {{ when(t.createdAt) }}</span>
                         </span>
                         <span style="display: flex; align-items: center; gap: 6px">
                             <span v-if="t.newForUser" class="dot dot--no" title="Есть ответ" />
@@ -80,7 +80,7 @@ const waiting = computed(() => props.open?.status === 'waiting');
                 </div>
 
                 <div v-if="open" class="card">
-                    <h2 style="margin: 0 0 4px">№{{ open.id }} · {{ open.subject }}</h2>
+                    <h2 class="fb__h2" style="margin: 0 0 4px" :title="open.subject">№{{ open.id }} · {{ open.subject }}</h2>
                     <p class="hint" style="margin: 0 0 14px">
                         {{ open.kindLabel }} · создано {{ when(open.createdAt) }} ·
                         <span class="chip" :class="chip(open)">{{ open.statusLabel }}</span>
