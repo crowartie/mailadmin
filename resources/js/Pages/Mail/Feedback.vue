@@ -175,7 +175,7 @@ function backToList() {
                 <Link href="/mail" class="ib" title="К письмам"><Icon name="back" :size="18" /></Link>
                 <div style="min-width: 0; flex: 1">
                     <h1 style="margin: 0; font-size: 22px; line-height: 1.2">Обращения</h1>
-                    <p class="hint" style="margin: 2px 0 0">Каждая переписка — одна проблема. Ответ администратора приходит ещё и письмом.</p>
+                    <p class="hint fbpage__hint" style="margin: 2px 0 0">Каждая переписка — одна проблема. Ответ администратора приходит ещё и письмом.</p>
                 </div>
                 <button class="btn btn--primary" type="button" @click="creating = true"><Icon name="plus" :size="16" />Сообщить о проблеме</button>
             </div>

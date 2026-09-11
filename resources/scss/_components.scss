@@ -625,7 +625,9 @@ select.input { padding-right: 32px; }
 }
 
 @media (max-width: 860px) {
-    .fbpage { padding: 12px; }
+    // Нижняя панель разделов перекрывает поле ввода — оставляем под неё место
+    .fbpage { padding: 12px 12px calc(12px + 56px + env(safe-area-inset-bottom)); }
+    .fbpage__hint { display: none; }
     .fbchat { grid-template-columns: minmax(0, 1fr); }
     .fbchat__list { display: none; }
     .fbchat--list .fbchat__list { display: block; border-right: none; }
