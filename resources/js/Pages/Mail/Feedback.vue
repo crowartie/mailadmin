@@ -72,7 +72,9 @@ function onKey(e) {
 function grow(e) {
     const el = e.target;
     el.style.height = '42px';
-    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+    const h = Math.min(el.scrollHeight, 140);
+    el.style.height = h + 'px';
+    el.style.overflowY = el.scrollHeight > 140 ? 'auto' : 'hidden';
 }
 watch(reply, (v) => { if (!v) document.querySelectorAll('.fbchat__foot textarea').forEach((el) => { el.style.height = '42px'; }); });
 
@@ -111,7 +113,7 @@ const facts = computed(() => {
                         @click="show(t)"
                     >
                         <span class="fbchat__ava" :class="look(t).ava"><Icon :name="look(t).icon" :size="18" /></span>
-                        <span style="min-width: 0">
+                        <span class="fbchat__main">
                             <span class="fbchat__top">
                                 <span class="fbchat__title">{{ t.subject }}</span>
                                 <span class="fbchat__time">{{ when(t.last?.at || t.createdAt) }}</span>

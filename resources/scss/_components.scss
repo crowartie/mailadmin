@@ -521,7 +521,7 @@ select.input { padding-right: 32px; }
     border-radius: v.$r-card;
     overflow: hidden;
 
-    &__list { border-right: 1px solid v.$c-border; overflow-y: auto; }
+    &__list { border-right: 1px solid v.$c-border; overflow-y: auto; overflow-x: hidden; }
 
     &__item {
         display: grid;
@@ -552,11 +552,13 @@ select.input { padding-right: 32px; }
         &--off { background: v.$c-surface-2; color: v.$c-faint; }
     }
 
+    &__main { display: block; min-width: 0; overflow: hidden; }
     &__top { display: flex; align-items: baseline; gap: 8px; }
     &__title { font-weight: 600; font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     &__time { font-size: 11px; color: v.$c-faint; flex: 0 0 auto; }
-    &__snip { font-size: 12.5px; color: v.$c-muted; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+    &__snip { display: block; font-size: 12.5px; color: v.$c-muted; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
     &__badges { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+    &__item { overflow: hidden; }
 
     &__body { display: flex; flex-direction: column; min-width: 0; }
 
@@ -599,7 +601,7 @@ select.input { padding-right: 32px; }
     &__shot img { max-width: 100%; max-height: 280px; border-radius: 8px; display: block; }
 
     &__foot { padding: 12px 14px; border-top: 1px solid v.$c-border; display: flex; gap: 10px; align-items: flex-end; }
-    &__foot textarea.input { flex: 1; resize: none; min-height: 42px; height: 42px; max-height: 140px; padding: 11px 12px; overflow-y: auto; }
+    &__foot textarea.input { flex: 1; resize: none; min-height: 42px; height: 42px; max-height: 140px; padding: 11px 12px; overflow-y: hidden; }
 
     &__empty { display: grid; place-items: center; text-align: center; padding: 40px; color: v.$c-muted; }
 }
