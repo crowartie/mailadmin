@@ -93,6 +93,7 @@ const facts = computed(() => {
     <Head title="Обращения" />
     <MailLayout :user="user" :theme="settings?.theme">
         <div class="fbpage">
+          <div class="fbpage__inner">
             <div style="display: flex; align-items: center; gap: 12px; flex: 0 0 auto">
                 <Link href="/mail" class="ib" title="К письмам"><Icon name="back" :size="18" /></Link>
                 <div style="min-width: 0; flex: 1">
@@ -185,6 +186,7 @@ const facts = computed(() => {
                     <p class="hint" style="margin: 0">Выберите обращение слева.</p>
                 </div>
             </div>
+          </div>
         </div>
 
         <FeedbackDialog v-if="creating" @close="creating = false; router.reload({ only: ['tickets'] })" />

@@ -506,9 +506,11 @@ select.input { padding-right: 32px; }
     min-width: 0;
     display: flex;
     flex-direction: column;
-    padding: 18px 24px 24px;
-    gap: 14px;
+    padding: 22px 28px 26px;
     overflow: hidden;
+
+    // На широком экране переписку не растягиваем во всю ширину: читать длинные строки неудобно.
+    &__inner { width: 100%; max-width: 1240px; margin: 0 auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
 }
 
 .fbchat {
@@ -518,8 +520,9 @@ select.input { padding-right: 32px; }
     grid-template-columns: 320px minmax(0, 1fr);
     background: v.$c-surface;
     border: 1px solid v.$c-border;
-    border-radius: v.$r-card;
+    border-radius: 14px;
     overflow: hidden;
+    box-shadow: 0 1px 2px rgba(27, 36, 48, .04), 0 8px 24px -16px rgba(27, 36, 48, .18);
 
     &__list { border-right: 1px solid v.$c-border; overflow-y: auto; overflow-x: hidden; }
 
@@ -582,7 +585,7 @@ select.input { padding-right: 32px; }
     }
 
     &__b {
-        max-width: 74%;
+        max-width: min(74%, 620px);
         padding: 9px 13px 7px;
         border-radius: 14px;
         line-height: 1.45;
