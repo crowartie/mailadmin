@@ -58,6 +58,9 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
             ],
             'mailUser' => fn () => $request->session()->get('mail.user'),
+            // Новые ответы по обращениям — точка на значке «Поддержка» в рельсе веб-почты.
+            'feedbackNew' => fn () => $isAdminArea || ! $request->session()->get('mail.user') ? 0
+                : \App\Models\FeedbackTicket::query()->where('user', strtolower((string) $request->session()->get('mail.user')))->where('new_for_user', 1)->count(),
             // Веб-почта живёт на своём порту того же имени: ссылки рельса ведут туда.
             'mailUrl' => fn () => Area::mailUrl($request),
             // Меню и состояние служб нужны только админке; веб-почте лишние запросы ни к чему.

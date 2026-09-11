@@ -30,8 +30,9 @@ class FeedbackController extends Controller
     public function index(Request $request): Response
     {
         $user = strtolower((string) $request->session()->get('mail.user'));
-        $tickets = FeedbackTicket::query()->where('user', $user)->orderByDesc('id')->limit(100)->get()
-            ->map(fn (FeedbackTicket $t) => $this->row($t))->all();
+        $list = FeedbackTicket::query()->where('user', $user)->orderByDesc('last_reply_at')->orderByDesc('id')->limit(100)->get();
+        $last = self::lastMessages($list->pluck('id')->all());
+        $tickets = $list->map(fn (FeedbackTicket $t) => $this->row($t) + ['last' => $last[$t->id] ?? null])->all();
 
         $openId = (int) $request->query('id');
         $open = null;
@@ -157,6 +158,20 @@ class FeedbackController extends Controller
             'Content-Disposition' => 'inline; filename="' . $m->file . '"',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    /** Последнее сообщение каждого обращения — превью в списке переписок. @return array<int,array{text:string,at:?string,role:string}> */
+    public static function lastMessages(array $ids): array
+    {
+        if (! $ids) {
+            return [];
+        }
+        $out = [];
+        foreach (FeedbackMessage::query()->whereIn('ticket_id', $ids)->orderBy('id')->get(['ticket_id', 'text', 'author_role', 'created_at']) as $m) {
+            $out[(int) $m->ticket_id] = ['text' => \Illuminate\Support\Str::limit(preg_replace('/\s+/u', ' ', $m->text), 90), 'at' => $m->created_at?->toIso8601String(), 'role' => $m->author_role];
+        }
+
+        return $out;
     }
 
     public static function messageRows(FeedbackTicket $ticket): array

@@ -45,8 +45,9 @@ class FeedbackController extends Controller
                 ->orWhere('id', (int) ltrim($search, '#'))))
             ->orderByRaw("FIELD(status,'new','open','waiting','closed')")
             ->orderByDesc('last_reply_at')
-            ->limit(300)->get()
-            ->map(fn (FeedbackTicket $t) => UserFeedback::ticketRow($t))->all();
+            ->limit(300)->get();
+        $last = UserFeedback::lastMessages($rows->pluck('id')->all());
+        $rows = $rows->map(fn (FeedbackTicket $t) => UserFeedback::ticketRow($t) + ['last' => $last[$t->id] ?? null])->all();
 
         $open = null;
         if ($id = (int) $request->query('id')) {

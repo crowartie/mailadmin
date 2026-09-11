@@ -1,8 +1,8 @@
 <script setup>
-// «Мои обращения»: что сотрудник уже написал, в каком состоянии и что ответил администратор.
-// Без этой страницы обращение уходит в пустоту, и второй раз человек уже не пишет.
+// Обращения сотрудника в виде переписок: одна переписка — одна проблема.
+// Слева список, справа диалог с администратором; отвечать можно прямо здесь, как в мессенджере.
 import { Head, Link, router } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import FeedbackDialog from '../../Components/Mail/FeedbackDialog.vue';
@@ -20,16 +20,30 @@ const creating = ref(false);
 const reply = ref('');
 const sending = ref(false);
 const error = ref('');
+const scroll = ref(null);
 
-const chip = (t) => (t.status === 'closed'
-    ? (t.resolution === 'done' ? 'chip--ok' : 'chip--off')
-    : (t.status === 'waiting' ? 'chip--warn' : 'chip--acc'));
+// Значок переписки: по итогу, если закрыто, иначе по состоянию.
+const look = (t) => (t.status === 'closed'
+    ? (t.resolution === 'done' ? { ava: 'fbchat__ava--ok', chip: 'chip--ok', icon: 'check' } : { ava: 'fbchat__ava--off', chip: 'chip--off', icon: 'x' })
+    : (t.status === 'waiting' ? { ava: 'fbchat__ava--warn', chip: 'chip--warn', icon: 'reply' } : { ava: '', chip: 'chip--acc', icon: t.kind === 'idea' ? 'star' : t.kind === 'question' ? 'info' : 'warn' }));
 
-const when = (iso) => (iso ? new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '');
+const when = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const today = new Date().toDateString() === d.toDateString();
+    return today ? d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+};
+const full = (iso) => (iso ? new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '');
 
 function show(t) {
-    router.get('/mail/feedback', { id: t.id }, { preserveScroll: true, preserveState: true });
+    router.get('/mail/feedback', { id: t.id }, { preserveScroll: true, preserveState: true, only: ['open', 'tickets'] });
 }
+
+function toBottom() {
+    nextTick(() => { if (scroll.value) scroll.value.scrollTop = scroll.value.scrollHeight; });
+}
+watch(() => props.open?.messages?.length, toBottom, { immediate: true });
 
 async function send() {
     if (!reply.value.trim() || sending.value) return;
@@ -41,6 +55,7 @@ async function send() {
         await api.feedbackReply(props.open.id, fd);
         reply.value = '';
         router.reload({ only: ['open', 'tickets'] });
+        toBottom();
     } catch (e) {
         error.value = e.message || 'Не удалось отправить';
     } finally {
@@ -48,74 +63,114 @@ async function send() {
     }
 }
 
-const waiting = computed(() => props.open?.status === 'waiting');
+// Ctrl+Enter отправляет — привычно по любому мессенджеру.
+function onKey(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); send(); }
+}
+
+const facts = computed(() => {
+    const t = props.open;
+    if (!t) return [];
+    const out = [];
+    if (t.page) out.push(['Страница', t.page]);
+    if (t.client) out.push(['Программа', t.client]);
+    if (t.context?.screen) out.push(['Экран', t.context.screen]);
+    return out;
+});
 </script>
 
 <template>
-    <Head title="Мои обращения" />
+    <Head title="Обращения" />
     <MailLayout :user="user" :theme="settings?.theme">
-        <div class="mset">
-            <div class="mset__head">
+        <div class="fbpage">
+            <div class="mset__head" style="margin: 0">
                 <Link href="/mail" class="ib" title="К письмам"><Icon name="back" :size="18" /></Link>
-                <h1>Мои обращения</h1>
-                <span class="grow" />
+                <h1>Обращения</h1>
+                <span class="hint">Каждая переписка — одна проблема</span>
+                <span class="grow" style="flex: 1" />
                 <button class="btn btn--primary" type="button" @click="creating = true"><Icon name="plus" :size="16" />Сообщить о проблеме</button>
             </div>
 
-            <div class="mset__grid" style="grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); max-width: 1280px">
-                <div class="card card--flush">
-                    <div v-for="t in tickets" :key="t.id" class="row row--click" :class="{ 'row--on': open && open.id === t.id }" style="grid-template-columns: minmax(0, 1fr) auto" @click="show(t)">
+            <div class="fbchat" :class="{ 'fbchat--list': !open }">
+                <div class="fbchat__list">
+                    <button
+                        v-for="t in tickets"
+                        :key="t.id"
+                        type="button"
+                        class="fbchat__item"
+                        :class="{ 'fbchat__item--on': open && open.id === t.id }"
+                        @click="show(t)"
+                    >
+                        <span class="fbchat__ava" :class="look(t).ava"><Icon :name="look(t).icon" :size="18" /></span>
                         <span style="min-width: 0">
-                            <span class="row__name fb__row">№{{ t.id }} · {{ t.subject }}</span>
-                            <span class="row__sub fb__row">{{ t.kindLabel }} · {{ when(t.createdAt) }}</span>
+                            <span class="fbchat__top">
+                                <span class="fbchat__title">{{ t.subject }}</span>
+                                <span class="fbchat__time">{{ when(t.last?.at || t.createdAt) }}</span>
+                            </span>
+                            <span class="fbchat__snip">{{ t.last ? (t.last.role === 'user' ? 'Вы: ' : '') + t.last.text : '—' }}</span>
+                            <span class="fbchat__badges">
+                                <span class="chip" :class="look(t).chip" style="height: 20px; font-size: 11px">{{ t.statusLabel }}</span>
+                                <span v-if="t.newForUser" class="dot dot--no" title="Есть новый ответ" />
+                            </span>
                         </span>
-                        <span style="display: flex; align-items: center; gap: 6px">
-                            <span v-if="t.newForUser" class="dot dot--no" title="Есть ответ" />
-                            <span class="chip" :class="chip(t)">{{ t.statusLabel }}</span>
-                        </span>
-                    </div>
-                    <div v-if="!tickets.length" class="empty">
-                        Вы ещё не сообщали о проблемах. Кнопка «Сообщить о проблеме» есть и здесь, и слева в полосе значков на любой странице.
+                    </button>
+
+                    <div v-if="!tickets.length" class="fbchat__empty">
+                        <div>
+                            <Icon name="warn" :size="28" style="opacity: .4" />
+                            <p class="hint" style="margin: 10px 0 0">Здесь появятся ваши обращения.<br>Нажмите «Сообщить о проблеме».</p>
+                        </div>
                     </div>
                 </div>
 
-                <div v-if="open" class="card">
-                    <h2 class="fb__h2" style="margin: 0 0 4px" :title="open.subject">№{{ open.id }} · {{ open.subject }}</h2>
-                    <p class="hint" style="margin: 0 0 14px">
-                        {{ open.kindLabel }} · создано {{ when(open.createdAt) }} ·
-                        <span class="chip" :class="chip(open)">{{ open.statusLabel }}</span>
-                    </p>
+                <div v-if="open" class="fbchat__body">
+                    <div class="fbchat__head">
+                        <span class="fbchat__ava" :class="look(open).ava"><Icon :name="look(open).icon" :size="18" /></span>
+                        <div style="min-width: 0; flex: 1">
+                            <h2 :title="open.subject">{{ open.subject }}</h2>
+                            <p class="hint" style="margin: 2px 0 0">№{{ open.id }} · {{ open.kindLabel }} · {{ full(open.createdAt) }}</p>
+                        </div>
+                        <span class="chip" :class="look(open).chip">{{ open.statusLabel }}</span>
+                    </div>
 
-                    <div class="fb__thread">
-                        <div v-for="m in open.messages" :key="m.id" class="fb__msg" :class="'fb__msg--' + m.role">
-                            <div class="fb__msg-hd">
-                                <b>{{ m.role === 'user' ? 'Вы' : 'Администратор' }}</b>
-                                <span class="hint">{{ when(m.at) }}</span>
-                            </div>
-                            <div class="fb__msg-text">{{ m.text }}</div>
-                            <a v-if="m.file" :href="`/mail/feedback/${open.id}/file/${m.id}`" target="_blank" class="fb__msg-shot">
+                    <div v-if="facts.length" class="fbfacts">
+                        <span>Приложено автоматически:</span>
+                        <span v-for="[k, v] in facts" :key="k">{{ k }} <b>{{ v }}</b></span>
+                    </div>
+
+                    <div ref="scroll" class="fbchat__scroll">
+                        <div
+                            v-for="m in open.messages"
+                            :key="m.id"
+                            class="fbchat__b"
+                            :class="m.role === 'user' ? 'fbchat__b--me' : (m.role === 'system' ? 'fbchat__b--sys' : 'fbchat__b--them')"
+                        >
+                            <div v-if="m.role === 'admin'" class="fbchat__who">Администратор</div>
+                            <div>{{ m.text }}</div>
+                            <a v-if="m.file" :href="`/mail/feedback/${open.id}/file/${m.id}`" target="_blank" class="fbchat__shot">
                                 <img :src="`/mail/feedback/${open.id}/file/${m.id}`" alt="снимок экрана">
                             </a>
+                            <div class="fbchat__at">{{ when(m.at) }}</div>
                         </div>
                     </div>
 
-                    <p v-if="waiting" class="hint" style="margin: 14px 0 0; color: var(--warn)">Администратор ждёт вашего ответа.</p>
-
-                    <div class="field" style="margin-top: 14px">
-                        <label>{{ open.status === 'closed' ? 'Проблема осталась? Напишите — обращение откроется снова' : 'Добавить к обращению' }}</label>
-                        <textarea v-model="reply" class="input" rows="3" style="resize: vertical" placeholder="Например: повторилось сегодня в 11:20, снова на той же странице" />
+                    <div class="fbchat__foot">
+                        <textarea
+                            v-model="reply"
+                            class="input"
+                            rows="1"
+                            :placeholder="open.status === 'closed' ? 'Проблема осталась? Напишите — обращение откроется снова' : open.status === 'waiting' ? 'Администратор ждёт вашего ответа' : 'Добавить к обращению…'"
+                            @keydown="onKey"
+                        />
+                        <button class="btn btn--primary" type="button" :disabled="sending || !reply.trim()" @click="send">
+                            <Icon name="send" :size="16" />{{ sending ? 'Отправка…' : 'Отправить' }}
+                        </button>
                     </div>
-                    <p v-if="error" class="error" style="margin: 0">{{ error }}</p>
-                    <div style="display: flex; justify-content: flex-end; margin-top: 10px">
-                        <button class="btn btn--primary" type="button" :disabled="sending || !reply.trim()" @click="send">{{ sending ? 'Отправляем…' : 'Отправить' }}</button>
-                    </div>
+                    <p v-if="error" class="error" style="margin: 0; padding: 0 14px 12px">{{ error }}</p>
                 </div>
 
-                <div v-else class="card">
-                    <p class="hint" style="margin: 0">
-                        Выберите обращение слева, чтобы посмотреть переписку. Ответ администратора приходит письмом,
-                        а здесь видно состояние: «Новое», «В работе», «Ждём ответа» или чем всё закончилось.
-                    </p>
+                <div v-else-if="tickets.length" class="fbchat__body fbchat__empty">
+                    <p class="hint" style="margin: 0">Выберите обращение слева.</p>
                 </div>
             </div>
         </div>

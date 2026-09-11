@@ -11,6 +11,8 @@ const props = defineProps({
 
 const page = usePage();
 const current = computed(() => page.url.split('?')[0]);
+// Новые ответы по обращениям — красная точка на значке «Сообщить о проблеме».
+const feedbackNew = computed(() => Number(page.props.feedbackNew || 0));
 
 // Почта, календарь и контакты — один интерфейс; рельс переключает разделы.
 const services = [
@@ -76,8 +78,9 @@ function logout() {
             <Link class="rail__item" :class="{ 'rail__item--on': current.startsWith('/mail/help') }" href="/mail/help" title="Справка">
                 <Icon name="info" />
             </Link>
-            <button v-if="user" class="rail__item" type="button" title="Сообщить о проблеме" style="border: none; background: none; cursor: pointer" @click="feedback = true">
+            <button v-if="user" class="rail__item" type="button" :title="feedbackNew ? 'Есть ответ по обращению' : 'Сообщить о проблеме'" style="border: none; background: none; cursor: pointer; position: relative" @click="feedback = true">
                 <Icon name="warn" />
+                <span v-if="feedbackNew" class="rail__badge">{{ feedbackNew }}</span>
             </button>
             <button class="rail__item" type="button" title="Тёмная / светлая тема" style="border: none; background: none; cursor: pointer" @click="toggleTheme">
                 <Icon :name="isDark ? 'sun' : 'moon'" />

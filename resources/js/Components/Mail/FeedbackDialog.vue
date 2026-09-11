@@ -75,7 +75,10 @@ onBeforeUnmount(() => {
     <div class="overlay" @mousedown.self="$emit('close')">
         <div class="dialog" style="width: 560px" @paste="onPaste">
             <template v-if="!done">
-                <h2>Сообщить о проблеме</h2>
+                <div style="display: flex; align-items: center; gap: 12px">
+                    <h2 style="flex: 1">Сообщить о проблеме</h2>
+                    <a href="/mail/feedback" class="btn btn--sm"><Icon name="mail" :size="14" />Мои обращения</a>
+                </div>
 
                 <div class="seg">
                     <button v-for="k in kinds" :key="k.key" type="button" class="seg__item" :class="{ 'seg__item--on': kind === k.key }" @click="kind = k.key">{{ k.label }}</button>
