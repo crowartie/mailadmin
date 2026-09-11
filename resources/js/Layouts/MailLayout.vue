@@ -2,6 +2,7 @@
 import { Link, usePage, router } from '@inertiajs/vue3';
 import { computed, onMounted, ref, watch } from 'vue';
 import Icon from '../Components/Icon.vue';
+import FeedbackDialog from '../Components/Mail/FeedbackDialog.vue';
 
 const props = defineProps({
     user: String,
@@ -46,6 +47,9 @@ function toggleTheme() {
     }).catch(() => {});
 }
 
+// «Сообщить о проблеме» доступно с любой страницы: так и узнаём, где именно не сработало.
+const feedback = ref(false);
+
 function logout() {
     router.post('/mail/logout');
 }
@@ -72,6 +76,9 @@ function logout() {
             <Link class="rail__item" :class="{ 'rail__item--on': current.startsWith('/mail/help') }" href="/mail/help" title="Справка">
                 <Icon name="info" />
             </Link>
+            <button v-if="user" class="rail__item" type="button" title="Сообщить о проблеме" style="border: none; background: none; cursor: pointer" @click="feedback = true">
+                <Icon name="warn" />
+            </button>
             <button class="rail__item" type="button" title="Тёмная / светлая тема" style="border: none; background: none; cursor: pointer" @click="toggleTheme">
                 <Icon :name="isDark ? 'sun' : 'moon'" />
             </button>
@@ -95,5 +102,7 @@ function logout() {
                 <Icon name="logout" :size="22" /><span>Выйти</span>
             </button>
         </nav>
+
+        <FeedbackDialog v-if="feedback" @close="feedback = false" />
     </div>
 </template>

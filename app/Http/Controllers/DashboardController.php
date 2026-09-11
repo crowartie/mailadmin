@@ -66,6 +66,9 @@ class DashboardController extends Controller
         if ($no2fa > 0) {
             $out[] = ['kind' => 'warn', 'text' => $no2fa . ' ' . $this->plural($no2fa, 'сотрудник', 'сотрудника', 'сотрудников') . ' без двухфакторной защиты', 'href' => '/security/twofa'];
         }
+        if (($n = \App\Models\FeedbackTicket::newCount()) > 0) {
+            $out[] = ['kind' => 'warn', 'text' => 'Новых обращений от сотрудников: ' . $n, 'href' => '/feedback?filter=new'];
+        }
         if (($n = \App\Services\Mail\SenderRules::pendingCount()) > 0) {
             $out[] = ['kind' => 'warn', 'text' => 'Заявок от сотрудников по отправителям (спам, рассылки, не спам): ' . $n, 'href' => '/settings/spam'];
         }

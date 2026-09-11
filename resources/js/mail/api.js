@@ -1,4 +1,6 @@
 // Обёртка над fetch для /mail/api/*: CSRF из cookie, JSON, единый разбор ошибок.
+import { recordApiError } from './diag';
+
 function xsrf() {
     const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : '';
@@ -29,6 +31,7 @@ async function request(method, url, body, opts = {}) {
     try { data = text ? JSON.parse(text) : null; } catch { data = { message: text }; }
     if (!r.ok) {
         const msg = data?.message || (data?.errors && Object.values(data.errors).flat()[0]) || `Ошибка ${r.status}`;
+        recordApiError(method, url, r.status, msg);   // пригодится, если сотрудник напишет «не работает»
         throw new ApiError(msg, r.status, data);
     }
     return data;
@@ -61,6 +64,8 @@ export const api = {
     },
     message: (folder, uid, peek = false) => request('GET', `/mail/api/message/${enc(folder)}/${uid}${peek ? '?peek=1' : ''}`),
     thread: (folder, uid) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/thread`),
+    feedback: (form) => request('POST', '/mail/api/feedback', form),
+    feedbackReply: (id, form) => request('POST', `/mail/api/feedback/${id}/reply`, form),
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
     rawUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/raw`,
 

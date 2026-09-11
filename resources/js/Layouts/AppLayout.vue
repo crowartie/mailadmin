@@ -27,7 +27,10 @@ watch(flash, (value) => {
 
 // Разделы — как на макете: люди отдельно от сервера.
 const groups = [
-    { items: [{ href: '/', icon: 'home', label: 'Обзор' }] },
+    { items: [
+        { href: '/', icon: 'home', label: 'Обзор' },
+        { href: '/feedback', icon: 'warn', label: 'Обращения', count: 'feedback' },
+    ] },
     { title: 'Люди', items: [
         { href: '/mailboxes', icon: 'users', label: 'Сотрудники', count: 'mailboxes' },
         { href: '/units', icon: 'list', label: 'Подразделения', count: 'units' },

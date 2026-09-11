@@ -69,7 +69,7 @@ class HandleInertiaRequests extends Middleware
                     'rules' => SieveRule::count(),
                     'units' => \Illuminate\Support\Facades\Schema::hasTable('units') ? \Illuminate\Support\Facades\DB::table('units')->count() : null,
                     'maillists' => \App\Models\Vmail\Maillist::count(),
-                ]) + ['queue' => app(PostfixQueue::class)->count()],
+                ]) + ['queue' => app(PostfixQueue::class)->count(), 'feedback' => \App\Models\FeedbackTicket::openCount()],
                 'health' => app(ServerHealth::class)->summary(),
             ] : null,
         ]);

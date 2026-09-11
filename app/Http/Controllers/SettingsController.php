@@ -512,12 +512,12 @@ class SettingsController extends Controller
     {
         $a = $request->validate([
             'queue' => ['boolean'], 'queue_size' => ['required', 'integer', 'min:1', 'max:100000'], 'queue_age_hours' => ['required', 'integer', 'min:1', 'max:240'],
-            'disk' => ['boolean'], 'disk_pct' => ['required', 'integer', 'min:50', 'max:99'], 'services' => ['boolean'], 'backup' => ['boolean'], 'admin_login' => ['boolean'],
+            'disk' => ['boolean'], 'disk_pct' => ['required', 'integer', 'min:50', 'max:99'], 'services' => ['boolean'], 'backup' => ['boolean'], 'admin_login' => ['boolean'], 'feedback' => ['boolean'],
             'digest' => ['boolean'], 'digest_time' => ['required', 'date_format:H:i'],
             'emails' => ['nullable', 'string', 'max:500'], 'telegram_token' => ['nullable', 'string', 'max:100'], 'telegram_chat' => ['nullable', 'string', 'max:40'], 'telegram_proxy' => ['nullable', 'string', 'max:200'],
         ]);
         $channels = array_intersect_key($a, array_flip(['emails', 'telegram_token', 'telegram_chat', 'telegram_proxy']));
-        AppSetting::put('alerts', array_diff_key($a, $channels) + ['queue' => false, 'disk' => false, 'services' => false, 'backup' => false, 'admin_login' => false, 'digest' => false]);
+        AppSetting::put('alerts', array_diff_key($a, $channels) + ['queue' => false, 'disk' => false, 'services' => false, 'backup' => false, 'admin_login' => false, 'digest' => false, 'feedback' => false]);
         AppSetting::put('channels', array_map(fn ($v) => trim((string) $v), $channels));
         AdminAction::log('settings.update', 'уведомления');
 

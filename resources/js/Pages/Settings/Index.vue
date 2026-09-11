@@ -141,7 +141,7 @@ async function cloudPoll() {
 function cloudCancel() { clearInterval(cloudTimer); cloudWaiting.value = false; cloudLogin.value = ''; }
 
 // ── Уведомления ────────────────────────────────────────────────────────
-const alertsForm = useForm({ ...(props.alerts || {}), ...(props.channels || {}) });
+const alertsForm = useForm({ feedback: true, ...(props.alerts || {}), ...(props.channels || {}) });
 const testing = ref(false);
 function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, { onFinish: () => (testing.value = false) }); }
 </script>
@@ -569,6 +569,7 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                         <Toggle v-model="alertsForm.services" label="Служба остановилась или сертификат скоро истечёт" />
                         <Toggle v-model="alertsForm.backup" label="Резервная копия не удалась или не делалась больше 36 ч" />
                         <Toggle v-model="alertsForm.admin_login" label="Вход администратора с нового адреса" />
+                        <Toggle v-model="alertsForm.feedback" label="Новое обращение сотрудника (раздел «Обращения»)" />
                         <div class="field__row"><Toggle v-model="alertsForm.digest" label="Ежедневная сводка в" /><input v-model="alertsForm.digest_time" class="input" type="time" style="width: 110px; height: 34px"></div>
                     </div>
                     <p class="hint">Проверка каждые 5 минут; одно и то же событие не повторяется чаще раза в 6 часов.</p>

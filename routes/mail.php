@@ -55,6 +55,11 @@ Route::middleware('area:mail')->group(function () {
     Route::middleware('mail.auth')->group(function () {
         Route::get('/mail', [InboxController::class, 'index']);
         Route::get('/mail/quarantine', [\App\Http\Controllers\Mail\QuarantineController::class, 'index']);
+        // «Сообщить о проблеме»: форма и свои обращения — только для вошедшего сотрудника.
+        Route::get('/mail/feedback', [\App\Http\Controllers\Mail\FeedbackController::class, 'index']);
+        Route::post('/mail/api/feedback', [\App\Http\Controllers\Mail\FeedbackController::class, 'store']);
+        Route::post('/mail/api/feedback/{ticket}/reply', [\App\Http\Controllers\Mail\FeedbackController::class, 'reply'])->whereNumber('ticket');
+        Route::get('/mail/feedback/{ticket}/file/{message}', [\App\Http\Controllers\Mail\FeedbackController::class, 'file'])->whereNumber('ticket')->whereNumber('message');
         Route::get('/mail/settings/{section?}', [InboxController::class, 'settings'])->where('section', '[a-z]+');
         Route::get('/mail/folder/{folder}', [InboxController::class, 'index'])->where('folder', '.*');
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DomainController;
+use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\MaillistsController;
@@ -151,6 +152,14 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/settings/cloud', [SettingsController::class, 'cloudSave']);
         Route::post('/settings/cloud/disconnect', [SettingsController::class, 'cloudDisconnect']);
         Route::post('/settings/cloud/test', [SettingsController::class, 'cloudTest']);
+        Route::get('/feedback', [FeedbackController::class, 'index']);
+        Route::post('/feedback/{ticket}', [FeedbackController::class, 'update'])->whereNumber('ticket');
+        Route::post('/feedback/{ticket}/reply', [FeedbackController::class, 'reply'])->whereNumber('ticket');
+        Route::post('/feedback/{ticket}/close', [FeedbackController::class, 'close'])->whereNumber('ticket');
+        Route::post('/feedback/{ticket}/reopen', [FeedbackController::class, 'reopen'])->whereNumber('ticket');
+        Route::delete('/feedback/{ticket}', [FeedbackController::class, 'destroy'])->whereNumber('ticket');
+        Route::get('/feedback/{ticket}/file/{message}', [FeedbackController::class, 'file'])->whereNumber('ticket')->whereNumber('message');
+
         Route::get('/reports', [SystemReportsController::class, 'index']);
         Route::get('/reports/{kind}/{file}/download', [SystemReportsController::class, 'download'])->where(['kind' => '[a-z0-9-]+', 'file' => '[A-Za-z0-9._-]+']);
         Route::delete('/reports/{kind}/{file}', [SystemReportsController::class, 'destroy'])->where(['kind' => '[a-z0-9-]+', 'file' => '[A-Za-z0-9._-]+']);
