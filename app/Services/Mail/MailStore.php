@@ -560,7 +560,7 @@ class MailStore
                     ThreadIndex::forget($this->user(), $p, $missing); // письмо удалили или переложили — индекс подчистим
                 }
             }
-            usort($found, fn ($a, $b) => strcmp((string) $a['date'], (string) $b['date']));
+            usort($found, fn ($a, $b) => strtotime((string) $a['date']) <=> strtotime((string) $b['date']));
 
             return $found;
         }
@@ -603,7 +603,7 @@ class MailStore
             }
         }
 
-        usort($found, fn ($a, $b) => strcmp((string) $a['date'], (string) $b['date']));
+        usort($found, fn ($a, $b) => strtotime((string) $a['date']) <=> strtotime((string) $b['date']));
 
         return array_values($found);
     }

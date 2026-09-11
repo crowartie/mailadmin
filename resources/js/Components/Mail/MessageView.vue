@@ -23,7 +23,10 @@ const labelMap = computed(() => Object.fromEntries(props.labels.map((l) => [l.id
 
 watch(() => props.message.uid, () => { expanded.value = {}; quick.value = ''; });
 
-const all = computed(() => [...(props.message.thread || []), props.message]);
+// Вся переписка, новые сверху (как в Kerio); открытое письмо стоит на своём месте по дате.
+// Сравниваем по времени, а не по строке: у писем разные часовые пояса в ISO-дате.
+const ts = (m) => (m.date ? new Date(m.date).getTime() || 0 : 0);
+const all = computed(() => [...(props.message.thread || []), props.message].sort((a, b) => ts(b) - ts(a)));
 const isLast = (m) => m === props.message;
 const isOpen = (m) => isLast(m) || expanded.value[m.folder + '#' + m.uid];
 function toggle(m) {
