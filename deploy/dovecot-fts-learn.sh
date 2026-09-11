@@ -70,6 +70,8 @@ grep -q "mail_always_cache_fields" "$CONF" || printf '\n# mailadmin: загол�
 # indexer-worker по числу ядер: 10 по умолчанию на малой памяти падают с std::bad_alloc и уводят сервер в своп.
 # vsz_limit: iRedMail ставит default_vsz_limit = 256M, с ним indexer-worker падает на больших письмах (std::bad_alloc, signal 6).
 grep -q "mailadmin: indexer-worker" "$CONF" || printf '\n# mailadmin: indexer-worker — по числу ядер и с памятью под xapian\nservice indexer-worker {\n  process_limit = %s\n  vsz_limit = 2G\n}\n' "$(nproc)" >> "$CONF"
+# Старые установки: дописываем lowmemory, если блок fts уже был создан раньше
+grep -q 'lowmemory=' "$CONF" || sed -i 's/^\(\s*fts_xapian = partial=3 full=20 verbose=0\)$/\1 lowmemory=32/' "$CONF"
 # Старые установки: fts_enforced = no → body (см. выше)
 sed -i 's/^\(\s*\)fts_enforced = no$/\1fts_enforced = body/' "$CONF"
 # Скрипты компилируются в контексте imapsieve; на лету их скомпилирует сам Dovecot (каталог принадлежит vmail).
