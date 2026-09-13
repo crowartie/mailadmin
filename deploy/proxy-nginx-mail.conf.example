@@ -1,0 +1,51 @@
+# mail.innotec.su → почтовый сервер 192.168.30.111 (iRedMail + mailadmin).
+# Сертификат Let's Encrypt выпускается на самом почтовом сервере (там он нужен и для IMAP/SMTP),
+# проверка /.well-known/acme-challenge/ проксируется туда, готовые файлы он сам кладёт в /etc/nginx/certs/.
+server {
+    listen 80;
+    server_name mail.innotec.su;
+
+    location /.well-known/acme-challenge/ {
+        proxy_pass http://192.168.30.111;
+        proxy_set_header Host $host;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name mail.innotec.su;
+
+    ssl_certificate     /etc/nginx/certs/mail.innotec.su/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/mail.innotec.su/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5:!RC4:!DES:!3DES;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:50m;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    client_max_body_size 260m;      # вложения — как на самом сервере
+    access_log /var/log/nginx/mail-innotec-access.log;
+    error_log  /var/log/nginx/mail-innotec-error.log;
+
+    location / {
+        proxy_pass https://mail_backend;
+        proxy_ssl_server_name on;
+        proxy_ssl_name mail.innotec.su;
+        proxy_ssl_session_reuse on;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 600s;    # выгрузка больших вложений, перенос ящиков
+        proxy_send_timeout 600s;
+    }
+}

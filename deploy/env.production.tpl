@@ -61,3 +61,6 @@ MLMMJADMIN_URL=http://127.0.0.1:7790
 SOGO_CARDDAV_URL=
 SOGO_CARDDAV_USER=
 SOGO_CARDDAV_PASSWORD=
+
+# Обратный прокси перед 443 (реальный адрес клиента из X-Forwarded-For), через запятую. Пусто — прокси нет.
+TRUSTED_PROXIES=

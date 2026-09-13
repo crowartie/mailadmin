@@ -25,6 +25,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequests::class,
         ]);
+        // За обратным прокси (TRUSTED_PROXIES=ip,ip) адрес клиента берём из X-Forwarded-For — иначе журнал входов
+        // и fail2ban видят адрес прокси и после чужих неудачных попыток забанят всех сразу.
+        if ($proxies = array_filter(array_map('trim', explode(',', (string) env('TRUSTED_PROXIES', ''))))) {
+            $middleware->trustProxies(at: array_values($proxies));
+        }
         // DAV-клиенты (телефон, Outlook) токенов CSRF не знают — авторизация там своя, Basic.
         $middleware->validateCsrfTokens(except: ['dav', 'dav/*', 'autodiscover/*', 'Autodiscover/*', '.well-known/*']);
         $middleware->alias([
