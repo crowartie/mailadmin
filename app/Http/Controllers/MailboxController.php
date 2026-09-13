@@ -79,11 +79,13 @@ class MailboxController extends Controller
         $filter = $request->string('filter')->toString();
 
         $serviceList = \App\Models\EmployeeProfile::serviceUsernames();
+        // «Заблокированные» — и выключенные ящики (active=0, почта не принимается), и те, кому закрыт вход (почта приходит).
+        $blockedLogin = \App\Models\EmployeeProfile::query()->where('login_blocked', true)->pluck('username')->all();
         $mailboxes = Mailbox::query()
             ->with('usedQuota')
             ->search($search)
             ->when($filter === 'admins', fn ($q) => $q->where(fn ($w) => $w->where('isadmin', 1)->orWhere('isglobaladmin', 1)))
-            ->when($filter === 'blocked', fn ($q) => $q->where('active', 0))
+            ->when($filter === 'blocked', fn ($q) => $q->where(fn ($w) => $w->where('active', 0)->orWhere('enableimap', 0)->orWhereIn('username', $blockedLogin ?: ['-'])))
             ->orderBy('username')
             ->paginate(50)
             ->withQueryString()
@@ -95,6 +97,7 @@ class MailboxController extends Controller
                 'usedBytes' => $mailbox->usedQuota?->bytes ?? 0,
                 'messages' => $mailbox->usedQuota?->messages ?? 0,
                 'active' => $mailbox->active,
+                'loginBlocked' => in_array($mailbox->username, $blockedLogin, true) || ! $mailbox->enableimap,
                 'service' => in_array($mailbox->username, $serviceList, true),
                 'imap' => (bool) $mailbox->enableimap,
                 'smtp' => (bool) $mailbox->enablesmtp,

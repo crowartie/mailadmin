@@ -69,12 +69,17 @@ function usagePercent(row) {
     return Math.min(100, Math.round((row.usedBytes / 1048576 / row.quotaMb) * 100));
 }
 
+// Карточка открывается поверх списка — страница, поиск и фильтр передаются дальше, иначе список откатится на первую страницу.
+function listQuery() {
+    return { search: search.value || undefined, filter: filter.value !== 'all' ? filter.value : undefined, page: props.mailboxes.current_page > 1 ? props.mailboxes.current_page : undefined };
+}
+
 function open(row) {
-    router.get(`/mailboxes/${row.username}/edit`, {}, { preserveState: true, preserveScroll: true });
+    router.get(`/mailboxes/${row.username}/edit`, listQuery(), { preserveState: true, preserveScroll: true });
 }
 
 function close() {
-    router.get('/mailboxes', { search: search.value || undefined }, { preserveState: true, preserveScroll: true });
+    router.get('/mailboxes', listQuery(), { preserveState: true, preserveScroll: true });
 }
 </script>
 
@@ -136,7 +141,7 @@ function close() {
                     <span class="btn btn--sm btn--icon"><Icon name="dots" :size="16" /></span>
                 </div>
                 <div>
-                    <span class="chip" :class="row.active ? 'chip--ok' : 'chip--off'">{{ row.active ? 'активен' : 'заблокирован' }}</span>
+                    <span class="chip" :class="!row.active ? 'chip--off' : row.loginBlocked ? 'chip--warn' : 'chip--ok'" :title="!row.active ? 'Ящик выключен: почта не принимается' : row.loginBlocked ? 'Вход закрыт: почта приходит, войти нельзя' : ''">{{ !row.active ? 'выключен' : row.loginBlocked ? 'вход закрыт' : 'активен' }}</span>
                 </div>
             </div>
 

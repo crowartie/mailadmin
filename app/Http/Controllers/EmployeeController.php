@@ -41,8 +41,14 @@ class EmployeeController extends Controller
         $profile = EmployeeProfile::for($model->username);
         $oldUnit = $profile->unit_id;
         $wasService = (bool) $profile->is_service;
+        $wasBlocked = (bool) $profile->login_blocked;
         $profile->fill(['title' => $data['title'] ?? null, 'personal_email' => $data['personal_email'] ?? null, 'require_2fa' => (bool) ($data['require_2fa'] ?? false), 'login_blocked' => (bool) ($data['login_blocked'] ?? false), 'is_service' => (bool) ($data['is_service'] ?? false)]);
         $profile->save();
+        // Запрет входа закрывает и клиентов (IMAP/SMTP/телефоны), а не только веб-почту; доставка остаётся.
+        if ($wasBlocked !== $profile->login_blocked) {
+            app(\App\Services\Vmail\MailboxService::class)->setLoginBlocked($model, $profile->login_blocked);
+            \App\Models\AdminAction::log('mailbox.update', $profile->login_blocked ? 'вход закрыт' : 'вход открыт', $model->username);
+        }
         if ($wasService !== $profile->is_service) {
             $book = app(\App\Services\Dav\EmployeeBook::class);
             $profile->is_service ? $book->remove($model) : $book->put($model);

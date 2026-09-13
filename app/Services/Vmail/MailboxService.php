@@ -312,6 +312,40 @@ class MailboxService
     }
 
     /** @return array<int,string> */
+    /** Флаги входа с клиентов (IMAP/POP3/SMTP/Sieve) — без доставки: письма продолжают приходить в ящик. */
+    public static function clientFlags(): array
+    {
+        return [
+            'enablesmtp', 'enablesmtpsecured',
+            'enablepop3', 'enablepop3secured', 'enablepop3tls',
+            'enableimap', 'enableimapsecured', 'enableimaptls',
+            'enablemanagesieve', 'enablemanagesievesecured',
+        ];
+    }
+
+    /**
+     * Закрыть (или открыть) вход сотруднику: веб-почта, IMAP/POP3/SMTP, телефоны. Ящик остаётся активным,
+     * почта в него приходит, пересылки работают — для уволенных и «отделить рабочих от нерабочих».
+     */
+    public function setLoginBlocked(Mailbox $mailbox, bool $blocked): void
+    {
+        $profile = \App\Models\EmployeeProfile::for($mailbox->username);
+        $profile->login_blocked = $blocked;
+        $profile->save();
+        foreach (self::clientFlags() as $flag) {
+            $mailbox->{$flag} = ! $blocked;
+        }
+        $mailbox->modified = now();
+        $mailbox->save();
+        if ($blocked) {
+            try {
+                app(\App\Services\Server\Sessions::class)->kickAll($mailbox->username);
+            } catch (\Throwable) {
+                // сессии не сбросились — вход всё равно закрыт при следующем подключении
+            }
+        }
+    }
+
     public static function serviceFlags(): array
     {
         return [

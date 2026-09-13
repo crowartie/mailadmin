@@ -180,7 +180,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                 <template v-if="activeTab === 'addresses'">
                     <p class="hint">Дополнительные адреса, письма с которых попадают в этот ящик.</p>
                     <div v-for="(_, i) in form.aliases" :key="i" class="field__row">
-                        <input v-model="form.aliases[i]" class="input" placeholder="sales@домен">
+                        <input v-model="form.aliases[i]" class="input" placeholder="sales@innotec.su">
                         <button class="btn" type="button" @click="form.aliases.splice(i, 1)">Убрать</button>
                     </div>
                     <template v-for="(_, i) in form.aliases" :key="`ae-${i}`">
@@ -251,7 +251,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <div class="field"><label>Личная почта</label><input v-model="access.personal_email" class="input" type="email" placeholder="куда отправить выданный пароль"><p v-if="access.errors.personal_email" class="error">{{ access.errors.personal_email }}</p></div>
                     <div class="group-title">Защита входа</div>
                     <Toggle v-model="access.require_2fa" label="Требовать двухфакторную защиту при входе в веб-почту" />
-                    <Toggle v-model="access.login_blocked" label="Запретить вход (ящик получает почту, но войти нельзя)" />
+                    <Toggle v-model="access.login_blocked" label="Закрыть вход: веб-почта, Outlook, телефоны — всё отключается; почта продолжает приходить, пересылки работают" />
                     <p class="hint">2FA сейчас: <b>{{ mailbox.profile?.totp ? 'подключена' : 'не подключена' }}</b>.<template v-if="mailbox.profile?.totp"> Потерял телефон — <a href="#" @click.prevent="act(`${base}/reset-2fa`, {}, 'Сбросить 2FA? Сотрудник подключит её заново при входе.')">сбросить</a>.</template></p>
                     <div class="form-actions" style="margin-top: 4px"><button class="btn btn--primary" type="button" :disabled="access.processing" @click="saveAccess">Сохранить доступ</button></div>
                     <div class="divider" />
