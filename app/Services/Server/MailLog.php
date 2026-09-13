@@ -155,7 +155,7 @@ class MailLog
                     $why = str_contains($r[3], 'Intentional policy rejection') ? 'незнакомый сервер, попросили повторить позже (greylisting)' : $this->shorten($r[3]);
                     return $base + ['kind' => 'grey', 'who' => $who, 'what' => 'отложено: ' . $why . ' (' . $server . ')'];
                 }
-                $why = str_contains($r[3], 'SMTP AUTH is required') ? 'чужой сервер пишет от имени нашего домена без входа — похоже на подделку адреса' : $this->shorten($r[3]);
+                $why = str_contains($r[3], 'SMTP AUTH is required') ? 'чужой сервер пишет от имени нашего домена без входа — похоже на подделку адреса (если это сотрудник из mail.ru/Яндекса — Настройки → Антиспам → Отправка с чужих серверов)' : $this->shorten($r[3]);
 
                 return $base + ['kind' => 'spam', 'who' => $who, 'what' => 'отклонено на входе: ' . $why . ' (' . $server . ')'];
             }

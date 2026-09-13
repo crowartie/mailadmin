@@ -213,7 +213,60 @@ class SettingsController extends Controller
                 'id' => $r->id, 'kind' => $r->kind, 'match' => $r->match, 'value' => $r->value, 'source' => $r->source, 'votes' => $r->votes, 'by' => $r->created_by, 'at' => $r->created_at?->format('d.m.Y'),
             ]),
             'senderPending' => $this->safe(fn () => \App\Services\Mail\SenderRules::pending(), []),
+            'externalSenders' => \App\Models\ExternalSender::query()->orderBy('address')->get()->map(fn ($s) => [
+                'id' => $s->id, 'address' => $s->address, 'provider' => $s->provider, 'note' => $s->note, 'by' => $s->created_by, 'at' => $s->created_at?->format('d.m.Y'),
+            ]),
+            'externalProviders' => \App\Services\Server\ExternalSenders::labels(),
+            'externalRanges' => \App\Services\Server\ExternalSenders::cachedCounts(),
         ];
+    }
+
+    // ── Отправка с чужих серверов (сотрудник пишет с рабочего адреса из mail.ru / Яндекса) ───────────
+    public function addExternalSender(Request $request, \App\Services\Server\ExternalSenders $ext): RedirectResponse
+    {
+        $data = $request->validate([
+            'address' => ['required', 'email:rfc', 'max:255'],
+            'provider' => ['required', Rule::in(array_keys(\App\Services\Server\ExternalSenders::PROVIDERS))],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]);
+        $address = strtolower($data['address']);
+        $domain = substr(strrchr($address, '@'), 1);
+        if (! Domain::query()->where('domain', $domain)->exists()) {
+            return back()->with('error', 'Адрес должен быть в нашем домене — для чужих доменов исключение не нужно');
+        }
+        \App\Models\ExternalSender::updateOrCreate(['address' => $address], ['provider' => $data['provider'], 'note' => $data['note'] ?? null, 'created_by' => auth()->user()?->email]);
+        AdminAction::log('settings.update', 'отправка с чужого сервера разрешена', $address . ' · ' . $data['provider']);
+        try {
+            $ext->apply();
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'Разрешено: ' . $address);
+    }
+
+    public function removeExternalSender(\App\Models\ExternalSender $sender, \App\Services\Server\ExternalSenders $ext): RedirectResponse
+    {
+        $sender->delete();
+        AdminAction::log('settings.update', 'отправка с чужого сервера запрещена', $sender->address);
+        try {
+            $ext->apply();
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'Убрано: ' . $sender->address);
+    }
+
+    public function refreshExternalSenders(\App\Services\Server\ExternalSenders $ext): RedirectResponse
+    {
+        try {
+            $ext->apply(fresh: true);
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'Диапазоны серверов обновлены');
     }
 
     public function saveSenders(Request $request): RedirectResponse

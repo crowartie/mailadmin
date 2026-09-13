@@ -10,6 +10,10 @@ import Toggle from '../../Components/Toggle.vue';
 const props = defineProps({
     tab: String,
     ctl: Boolean,
+    // антиспам: отправка с чужих серверов
+    externalSenders: { type: Array, default: () => [] },
+    externalProviders: { type: Object, default: () => ({}) },
+    externalRanges: { type: Object, default: () => ({}) },
     // домены
     mailHost: String,
     domains: Array,
@@ -79,6 +83,9 @@ const wbForm = useForm({ pattern: '', wb: 'W', note: '' });
 const qPolicy = useForm({ ...(props.quarantinePolicy || {}) });
 const sendersForm = useForm({ ham_global: props.senders?.ham_global ?? true, spam_votes: props.senders?.spam_votes ?? 2, lists_votes: props.senders?.lists_votes ?? 2 });
 const KIND = { spam: 'спам', lists: 'рассылка', ham: 'не спам' };
+// Отправка с чужих серверов: адрес сотрудника + сервис, через который он пишет.
+const extForm = useForm({ address: '', provider: 'mailru', note: '' });
+function addExternal() { extForm.post('/settings/external-senders', { preserveScroll: true, onSuccess: () => extForm.reset('address', 'note') }); }
 const qSearch = ref('');
 const quarantineRows = computed(() => (props.quarantine || []).filter((q) => !qSearch.value || `${q.from} ${q.to} ${q.subject}`.toLowerCase().includes(qSearch.value.toLowerCase())));
 const pct = (v) => Math.min(100, Math.max(0, (v / 20) * 100));
@@ -349,6 +356,24 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                         </span>
                     </div>
                     <div v-if="!senderPending.length" class="empty-inline">Заявок нет</div>
+                </div>
+                <div class="card card--pad">
+                    <div class="card__title">Отправка с чужих серверов <span class="chip" :class="externalSenders.length ? 'chip--warn' : ''">{{ externalSenders.length }}</span></div>
+                    <p class="hint" style="margin-top: 0">Письмо от адреса нашего домена, пришедшее с чужого сервера без входа на наш SMTP, сервер отклоняет как подделку. Но так выглядит и сотрудник, который пишет с рабочего адреса из интерфейса mail.ru или Яндекса. Здесь можно разрешить это конкретному адресу — письма пройдут только с серверов выбранного сервиса (по его SPF) и только нашим получателям. Наружу такие письма всё равно идут без нашей подписи: чужие серверы могут положить их в спам. Пока список не пуст, политику DMARC лучше держать на «none».</p>
+                    <form class="grid-2" style="align-items: end" @submit.prevent="addExternal">
+                        <label class="field"><span>Адрес сотрудника</span><input v-model="extForm.address" class="input" type="email" placeholder="ivanov@innotec.su" required></label>
+                        <label class="field"><span>Пишет через</span><select v-model="extForm.provider" class="input"><option v-for="(label, k) in externalProviders" :key="k" :value="k">{{ label }}</option></select></label>
+                        <label class="field"><span>Заметка</span><input v-model="extForm.note" class="input" placeholder="Например, читает и пишет из mail.ru"></label>
+                        <div class="form-actions" style="margin: 0"><button class="btn btn--primary" type="submit" :disabled="extForm.processing">Разрешить</button></div>
+                    </form>
+                    <p v-if="extForm.errors.address || extForm.errors.provider" class="hint" style="color: var(--no)">{{ extForm.errors.address || extForm.errors.provider }}</p>
+                    <div v-for="s in externalSenders" :key="s.id" class="row" style="grid-template-columns: minmax(0, 1fr) auto auto; padding: 7px 0; margin-top: 6px">
+                        <span><b>{{ s.address }}</b> <Link :href="'/logs?q=' + encodeURIComponent(s.address)" class="row__sub" title="Письма этого адреса в журнале">журнал ↗</Link><span class="row__sub" style="display: block">{{ externalProviders[s.provider] || s.provider }}{{ s.note ? ' · ' + s.note : '' }}{{ s.by ? ' · ' + s.by : '' }}{{ s.at ? ' · ' + s.at : '' }}</span></span>
+                        <span><span class="chip" :class="s.provider === 'any' ? 'chip--no' : (externalRanges[s.provider] ? 'chip--ok' : 'chip--warn')">{{ s.provider === 'any' ? 'любой сервер' : (externalRanges[s.provider] ? externalRanges[s.provider] + ' диап.' : 'нет диапазонов') }}</span></span>
+                        <button class="btn btn--sm" type="button" @click="del(`/settings/external-senders/${s.id}`)">Убрать</button>
+                    </div>
+                    <div v-if="!externalSenders.length" class="empty-inline">Исключений нет — все письма от нашего домена принимаются только с нашего сервера</div>
+                    <div v-else class="form-actions" style="margin-top: 10px"><button class="btn btn--sm" type="button" @click="post('/settings/external-senders/refresh')"><Icon name="repeat" :size="14" /> Обновить диапазоны серверов</button><span class="hint">Обновляются сами раз в сутки</span></div>
                 </div>
             </div>
         </template>

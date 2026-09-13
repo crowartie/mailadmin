@@ -47,6 +47,21 @@ case "$cmd" in
   sieve-global)   re='^/opt/mailadmin/storage/app/private/sieve/global\.sieve$'; [[ "$1" =~ $re && -f "$1" ]] || die "bad file"
                   install -o vmail -g vmail -m 0440 "$1" /var/vmail/sieve/mailadmin-global.sieve
                   sievec /var/vmail/sieve/mailadmin-global.sieve 2>&1 || die "sievec failed"; chown vmail:vmail /var/vmail/sieve/mailadmin-global.svbin 2>/dev/null; echo ok ;;
+  # Отправка с чужих серверов: карта «адрес → класс сервиса» + SPF-диапазоны сервисов; класс пропускает письмо
+  # только нашим получателям (permit_auth_destination), дальше по цепочке письмо к iRedAPD уже не попадает.
+  external-senders) re='^/opt/mailadmin/storage/app/private/postfix$'; [[ "$1" =~ $re && -f "$1/external_senders" ]] || die "bad dir"
+                  install -d -m 0755 /etc/postfix/mailadmin
+                  install -m 0644 "$1/external_senders" /etc/postfix/mailadmin/external_senders; postmap hash:/etc/postfix/mailadmin/external_senders || die "postmap failed"
+                  for k in mailru yandex gmail; do [ -f "$1/ext_$k.cidr" ] && install -m 0644 "$1/ext_$k.cidr" "/etc/postfix/mailadmin/ext_$k.cidr"; [ -f "/etc/postfix/mailadmin/ext_$k.cidr" ] || : > "/etc/postfix/mailadmin/ext_$k.cidr"; done
+                  postconf -e 'mailadmin_ext_mailru = check_client_access cidr:/etc/postfix/mailadmin/ext_mailru.cidr' \
+                              'mailadmin_ext_yandex = check_client_access cidr:/etc/postfix/mailadmin/ext_yandex.cidr' \
+                              'mailadmin_ext_gmail = check_client_access cidr:/etc/postfix/mailadmin/ext_gmail.cidr' \
+                              'mailadmin_ext_any = permit_auth_destination'
+                  c=$(postconf -h smtpd_restriction_classes); for k in mailru yandex gmail any; do [[ "$c" == *"mailadmin_ext_$k"* ]] || c="${c:+$c, }mailadmin_ext_$k"; done; postconf -e "smtpd_restriction_classes = $c"
+                  r=$(postconf -h smtpd_recipient_restrictions | tr -s ' \n' ' ')
+                  [[ "$r" == *external_senders* ]] || postconf -e "smtpd_recipient_restrictions = ${r/check_policy_service inet:127.0.0.1:7777/check_sender_access hash:\/etc\/postfix\/mailadmin\/external_senders, check_policy_service inet:127.0.0.1:7777}"
+                  postconf -h smtpd_recipient_restrictions | grep -q external_senders || die "restriction not installed"
+                  systemctl reload postfix; echo ok ;;
   # ── службы ─────────────────────────────────────────────────────
   service-restart) case "$1" in postfix|dovecot|amavis|nginx|fail2ban|iredapd|mlmmjadmin|clamav-daemon|clamav-freshclam) exec systemctl restart "$1";; *) die "bad service";; esac ;;
   service-reload)  case "$1" in postfix|dovecot|amavis|nginx|fail2ban) exec systemctl reload "$1";; *) die "bad service";; esac ;;

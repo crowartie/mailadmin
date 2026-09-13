@@ -21,6 +21,8 @@ Schedule::command('alerts:check --digest')->everyMinute()->when(function () {
 });
 // Отчёты DMARC/TLS-RPT из ящика postmaster — раз в час.
 Schedule::command('reports:fetch')->hourly()->withoutOverlapping();
+// Сервисы меняют свои серверы — SPF-диапазоны для «отправки с чужих серверов» перечитываем ежедневно.
+Schedule::command('external-senders:refresh')->dailyAt('04:10')->withoutOverlapping();
 // Напоминания о событиях по почте (VALARM) — каждую минуту.
 Schedule::command('calendar:reminders')->everyMinute()->withoutOverlapping();
 // Сводка карантина сотрудникам — раз в сутки в час из настроек.
