@@ -296,23 +296,23 @@ class MailStore
 
         $messages = [];
         if ($searching || $filter !== 'all') {
-            // Поиск: результат небольшой, считаем сами.
-            $all = $q->get()->sortByDesc(fn (Message $m) => $m->getUid());
-            $total = $all->count();
-            $slice = $all->slice(($page - 1) * self::PAGE, self::PAGE);
-            $previews = $this->previews($slice->map(fn (Message $m) => $m->getUid())->values()->all());
-            foreach ($slice as $m) {
-                $messages[] = $this->summary($m, $previews[$m->getUid()] ?? null);
+            // Поиск/фильтр: сервер отдаёт только UID, страницу берём одним FETCH — раньше библиотека
+            // тянула и разбирала заголовки всех найденных писем (сотни непрочитанных — секунды).
+            try {
+                $uids = array_map('intval', $q->search()->all());
+            } catch (\Webklex\PHPIMAP\Exceptions\GetMessagesFailedException $e) {
+                // fts_enforced=body: поиск по тексту ждёт, пока папка доиндексируется; на большой папке это дольше
+                // таймаута соединения. Пусть сотрудник увидит понятную причину, а не «Server Error».
+                abort(503, $searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
             }
+            rsort($uids);
+            $total = count($uids);
+            $slice = array_slice($uids, ($page - 1) * self::PAGE, self::PAGE);
+            $messages = $slice ? ($this->pageFastUids($slice) ?? $this->pageViaLibraryUids($q, $slice)) : [];
         } else {
             $total = (int) ($folder->examine()['exists'] ?? 0);
             if ($total > 0) {
-                // Библиотека выбирает нужные 40 UID, но отдаёт их в порядке сервера — сортируем сами.
-                $pageMessages = $q->limit(self::PAGE, $page)->get()->sortByDesc(fn (Message $m) => $m->getUid());
-                $previews = $this->previews($pageMessages->map(fn (Message $m) => $m->getUid())->values()->all());
-                foreach ($pageMessages as $m) {
-                    $messages[] = $this->summary($m, $previews[$m->getUid()] ?? null);
-                }
+                $messages = $this->pageFast($page, $total) ?? $this->pageViaLibrary($q, $page);
             }
         }
 
@@ -348,6 +348,193 @@ class MailStore
      * @param  int[]  $uids
      * @return array<int,string>
      */
+    /**
+     * Страница списка одним FETCH по номерам сообщений (последние N в папке — это и есть новые сверху):
+     * без SEARCH по всей папке и без разбора полных заголовков библиотекой — в 6–8 раз быстрее на больших ящиках.
+     * Возвращает null, если сервер ответил неожиданно — тогда список строится прежним путём.
+     *
+     * @return array<int,array<string,mixed>>|null
+     */
+    private function pageFast(int $page, int $total): ?array
+    {
+        $hi = $total - ($page - 1) * self::PAGE;
+        if ($hi < 1) {
+            return [];
+        }
+        $lo = max(1, $hi - self::PAGE + 1);
+
+        return $this->fetchPage($lo, $hi, IMAP::ST_MSGN, $hi - $lo + 1);
+    }
+
+    /** То же для заранее известных UID (результат поиска или фильтра). */
+    private function pageFastUids(array $uids): ?array
+    {
+        return $this->fetchPage(array_values($uids), null, IMAP::ST_UID, count($uids));
+    }
+
+    /** @return array<int,array<string,mixed>>|null */
+    private function fetchPage(int|array $from, ?int $to, int $mode, int $expected): ?array
+    {
+        $items = ['UID', 'FLAGS', 'RFC822.SIZE', 'INTERNALDATE', 'PREVIEW', 'BODY.PEEK[HEADER.FIELDS (FROM TO DATE SUBJECT MESSAGE-ID CONTENT-TYPE)]'];
+        // Предупреждения разборщика на длинных PREVIEW не должны превращаться в исключения (см. previews()).
+        set_error_handler(fn () => true, E_WARNING | E_NOTICE | E_DEPRECATED);
+        try {
+            $rows = (array) $this->client->getConnection()->fetch($items, $from, $to, $mode)->data();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('list: быстрый FETCH не удался, строю список библиотекой: ' . $e->getMessage());
+
+            return null;
+        } finally {
+            restore_error_handler();
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row) || empty($row['UID'])) {
+                continue;
+            }
+            $out[] = $this->summaryFromFetch($row);
+        }
+        if (count($out) !== $expected) {
+            return null;
+        }
+        usort($out, fn ($a, $b) => $b['uid'] <=> $a['uid']);
+
+        return $out;
+    }
+
+    /** Прежний путь для найденных UID — по одному, только если быстрый FETCH не сработал. */
+    private function pageViaLibraryUids(WhereQuery $q, array $uids): array
+    {
+        $messages = [];
+        $previews = $this->previews($uids);
+        foreach ($uids as $uid) {
+            try {
+                $m = $q->getMessageByUid((int) $uid);
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($m) {
+                $messages[] = $this->summary($m, $previews[$uid] ?? null);
+            }
+        }
+
+        return $messages;
+    }
+
+    /** Прежний путь: библиотека выбирает нужные UID и разбирает заголовки сама. */
+    private function pageViaLibrary(WhereQuery $q, int $page): array
+    {
+        $messages = [];
+        $pageMessages = $q->limit(self::PAGE, $page)->get()->sortByDesc(fn (Message $m) => $m->getUid());
+        $previews = $this->previews($pageMessages->map(fn (Message $m) => $m->getUid())->values()->all());
+        foreach ($pageMessages as $m) {
+            $messages[] = $this->summary($m, $previews[$m->getUid()] ?? null);
+        }
+
+        return $messages;
+    }
+
+    /** Строка списка из сырого ответа FETCH — те же поля, что даёт summary(). */
+    private function summaryFromFetch(array $row): array
+    {
+        // Библиотека режет «BODY[HEADER.FIELDS (FROM …)]» на ключ «BODY[HEADER.FIELDS» и список, где последний элемент — сам текст заголовков.
+        $headers = '';
+        foreach ($row as $key => $value) {
+            if (is_string($key) && str_starts_with($key, 'BODY[')) {
+                $headers = is_array($value) ? (string) (end($value) ?: '') : (string) $value;
+            }
+        }
+        $h = self::parseHeaderFields($headers);
+        $flags = array_map('strtolower', array_map('strval', (array) ($row['FLAGS'] ?? [])));
+        $labels = [];
+        foreach ($flags as $flag) {
+            if (preg_match('/^lbl_(\d+)$/', $flag, $m)) {
+                $labels[] = (int) $m[1];
+            }
+        }
+        $subject = trim((string) Charset::header($h['subject'] ?? ''));
+        $from = self::firstAddress($h['from'] ?? '');
+        $to = self::firstAddress($h['to'] ?? '');
+        $date = null;
+        foreach ([$h['date'] ?? null, $row['INTERNALDATE'] ?? null] as $raw) {
+            if ($raw === null || trim((string) $raw) === '') {
+                continue;
+            }
+            try {
+                $date = \Carbon\Carbon::parse(preg_replace('/\s*\([^)]*\)\s*$/', '', trim((string) $raw)))->toIso8601String();
+                break;
+            } catch (\Throwable) {
+                // кривой Date: — возьмём время получения (INTERNALDATE)
+            }
+        }
+        $preview = null;
+        if (isset($row['PREVIEW']) && is_string($row['PREVIEW'])) {
+            $text = trim(preg_replace('/\s+/u', ' ', (string) Charset::fix($row['PREVIEW'])) ?? '');
+            $preview = $text !== '' ? mb_substr($text, 0, 160) : null;
+        }
+
+        return [
+            'uid' => (int) $row['UID'],
+            'subject' => $subject !== '' ? $subject : '(без темы)',
+            'from' => $from ?? ['name' => '—', 'mail' => ''],
+            'toName' => $to['name'] ?? null,
+            'date' => $date,
+            'seen' => in_array('\\seen', $flags, true),
+            'flagged' => in_array('\\flagged', $flags, true),
+            'answered' => in_array('\\answered', $flags, true),
+            'hasAttachments' => str_contains(strtolower($h['content-type'] ?? ''), 'multipart/mixed'),
+            'size' => (int) ($row['RFC822.SIZE'] ?? 0),
+            'labels' => $labels,
+            'messageId' => trim((string) ($h['message-id'] ?? ''), " \t<>"),
+            'preview' => $preview,
+        ];
+    }
+
+    /** Заголовки → [имя в нижнем регистре => значение] (первое вхождение, строки-продолжения склеены). */
+    private static function parseHeaderFields(string $raw): array
+    {
+        $out = [];
+        $raw = preg_replace("/\r?\n[ \t]+/", ' ', $raw) ?? $raw;
+        foreach (preg_split("/\r?\n/", $raw) as $line) {
+            if (preg_match('/^([A-Za-z0-9-]+):\s*(.*)$/s', $line, $m)) {
+                $name = strtolower($m[1]);
+                $out[$name] ??= trim($m[2]);
+            }
+        }
+
+        return $out;
+    }
+
+    /** Первый адрес из заголовка From/To: «Имя <адрес>», «"Имя" <адрес>», «=?…?= <адрес>» или просто адрес. */
+    private static function firstAddress(string $header): ?array
+    {
+        $header = trim($header);
+        if ($header === '') {
+            return null;
+        }
+        // Первый адрес: до запятой, которая не внутри кавычек и не внутри <…>.
+        $depth = 0; $quoted = false; $first = '';
+        for ($i = 0, $n = strlen($header); $i < $n; $i++) {
+            $c = $header[$i];
+            if ($c === '"' && ($i === 0 || $header[$i - 1] !== '\\')) {
+                $quoted = ! $quoted;
+            } elseif (! $quoted && $c === '<') {
+                $depth++;
+            } elseif (! $quoted && $c === '>') {
+                $depth = max(0, $depth - 1);
+            } elseif (! $quoted && $depth === 0 && $c === ',') {
+                break;
+            }
+            $first .= $c;
+        }
+        $first = trim($first);
+        if (preg_match('/^(.*?)\s*<([^<>]*)>\s*$/s', $first, $m)) {
+            return self::address(trim($m[1], " \t\"'"), trim($m[2]));
+        }
+
+        return self::address('', trim($first, " \t\"'"));
+    }
+
     private function previews(array $uids): array
     {
         if ($uids === []) {
