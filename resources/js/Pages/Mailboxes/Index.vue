@@ -46,6 +46,7 @@ function setFilter(value) {
 
 const filtersList = [
     { key: 'all', label: 'Все' },
+    { key: 'active', label: 'Активные' },
     { key: 'admins', label: 'Администраторы' },
     { key: 'blocked', label: 'Заблокированные' },
 ];
@@ -134,7 +135,7 @@ function close() {
                 <div class="tags">
                     <span class="tag" :class="{ 'tag--off': !row.imap }">IMAP</span>
                     <span class="tag" :class="{ 'tag--off': !row.smtp }">SMTP</span>
-                    <span class="tag" :class="{ 'tag--off': !row.sogo }">Веб</span>
+                    <span class="tag" :class="{ 'tag--off': !row.sogo || row.loginBlocked || !row.active }">Веб</span>
                 </div>
                 <div class="row__actions">
                     <span class="btn btn--sm">Открыть</span>

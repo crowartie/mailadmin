@@ -62,7 +62,8 @@ class MailboxController extends Controller
         $this->service->update($model, $request->validated());
         $this->applyProfile($model, $request->validated());
 
-        return redirect('/mailboxes')->with('success', "Изменения для {$model->username} сохранены");
+        // back(): карточка открыта поверх списка с page/search/filter в адресе — не откатывать на первую страницу.
+        return back()->with('success', "Изменения для {$model->username} сохранены");
     }
 
     public function destroy(string $mailbox): RedirectResponse
@@ -86,6 +87,7 @@ class MailboxController extends Controller
             ->search($search)
             ->when($filter === 'admins', fn ($q) => $q->where(fn ($w) => $w->where('isadmin', 1)->orWhere('isglobaladmin', 1)))
             ->when($filter === 'blocked', fn ($q) => $q->where(fn ($w) => $w->where('active', 0)->orWhere('enableimap', 0)->orWhereIn('username', $blockedLogin ?: ['-'])))
+            ->when($filter === 'active', fn ($q) => $q->where('active', 1)->where('enableimap', 1)->whereNotIn('username', $blockedLogin))
             ->orderBy('username')
             ->paginate(50)
             ->withQueryString()
