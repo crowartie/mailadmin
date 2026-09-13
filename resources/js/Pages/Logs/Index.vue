@@ -24,7 +24,7 @@ const showRaw = ref(false);
 let timer = null; let liveTimer = null;
 
 const TYPES = [['all', 'Все'], ['mail', 'Почта'], ['spam', 'Спам'], ['auth', 'Входы'], ['error', 'Ошибки'], ['admin', 'Действия админов']];
-const KIND = { mail: ['почта', 'ok'], spam: ['спам', 'warn'], auth: ['вход', 'acc'], error: ['ошибка', 'no'], admin: ['админ', 'acc'] };
+const KIND = { mail: ['почта', 'ok'], spam: ['спам', 'warn'], grey: ['отложено', 'off'], auth: ['вход', 'acc'], error: ['ошибка', 'no'], admin: ['админ', 'acc'] };
 
 function reload() {
     router.get('/logs', { type: type.value !== 'all' ? type.value : undefined, q: q.value || undefined, period: period.value !== 'day' ? period.value : undefined, trace: trace.value || undefined }, { preserveState: true, preserveScroll: true, replace: true, only: ['events', 'path', 'filters'], onSuccess: (p) => { events.value = p.props.events; path.value = p.props.path; } });

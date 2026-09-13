@@ -148,7 +148,16 @@ class MailLog
 
         if (str_starts_with($prog, 'postfix/smtpd')) {
             if (preg_match('/^NOQUEUE: reject: RCPT from (\S+): (\d{3}) [\d.]+ (.*?); from=<([^>]*)> to=<([^>]*)>/', $t, $r)) {
-                return $base + ['kind' => 'spam', 'who' => ($r[4] ?: 'MAILER-DAEMON') . ' → ' . $r[5], 'what' => 'отклонено на входе: ' . $this->shorten($r[3]) . ' (' . preg_replace('/\[.*$/', '', $r[1]) . ')'];
+                $who = ($r[4] ?: 'MAILER-DAEMON') . ' → ' . $r[5];
+                $server = preg_replace('/\[.*$/', '', $r[1]);
+                // 4xx — не отказ, а «зайдите позже»: greylisting незнакомого сервера, нормальный сервер повторит через 1–15 минут.
+                if ($r[2][0] === '4') {
+                    $why = str_contains($r[3], 'Intentional policy rejection') ? 'незнакомый сервер, попросили повторить позже (greylisting)' : $this->shorten($r[3]);
+                    return $base + ['kind' => 'grey', 'who' => $who, 'what' => 'отложено: ' . $why . ' (' . $server . ')'];
+                }
+                $why = str_contains($r[3], 'SMTP AUTH is required') ? 'чужой сервер пишет от имени нашего домена без входа — похоже на подделку адреса' : $this->shorten($r[3]);
+
+                return $base + ['kind' => 'spam', 'who' => $who, 'what' => 'отклонено на входе: ' . $why . ' (' . $server . ')'];
             }
             if (preg_match('/^warning: (\S+): SASL \w+ authentication failed/', $t, $r)) {
                 return $base + ['kind' => 'auth', 'who' => preg_replace('/^.*\[|\]$/', '', $r[1]) . ' → smtp', 'what' => 'неверный пароль при отправке (SASL)'];
