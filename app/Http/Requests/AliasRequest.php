@@ -15,14 +15,15 @@ class AliasRequest extends FormRequest
     /** @return array<string,mixed> */
     public function rules(): array
     {
-        $isCreate = $this->route('alias') === null;
+        $editing = $this->route('alias');   // при правке свой же адрес не считается занятым
+        $isCreate = $editing === null;
 
         return [
             'address' => [
                 Rule::requiredIf($isCreate),
                 'email:rfc',
                 'max:255',
-                Rule::unique('vmail.alias', 'address'),
+                Rule::unique('vmail.alias', 'address')->ignore($editing, 'address'),
                 Rule::unique('vmail.mailbox', 'username'),
             ],
             'name' => ['nullable', 'string', 'max:255'],
