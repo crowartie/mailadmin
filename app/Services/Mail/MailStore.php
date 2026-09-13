@@ -332,7 +332,7 @@ class MailStore
 
         return match ($filter) {
             'unread' => $q->unseen(),
-            'flagged' => $q->flagged(),
+            'flagged' => $q->where('FLAGGED'),   // ->flagged() в php-imap 6.2 требует аргумент и падает
             'attach' => $q->whereHeader('Content-Type', 'multipart/mixed'),
             default => $q,
         };
