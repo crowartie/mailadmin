@@ -199,6 +199,10 @@ if ! grep -q '^mailadmin:' /etc/dovecot/dovecot-master-users 2>/dev/null; then
   printf 'mailadmin:%s\n' "$(doveadm pw -s SSHA512 -p "$MASTER_PASSWORD")" >> /etc/dovecot/dovecot-master-users
   chown root:dovecot /etc/dovecot/dovecot-master-users; chmod 0640 /etc/dovecot/dovecot-master-users
 fi
+# auth_default_realm дописывает домен и к master-имени (user*mailadmin → mailadmin@домен) — нужна вторая запись с тем же хешем.
+if ! grep -q "^mailadmin@$FIRST_DOMAIN:" /etc/dovecot/dovecot-master-users; then
+  sed -i "s/^\(mailadmin\):\(.*\)$/\1:\2\n\1@$FIRST_DOMAIN:\2/" /etc/dovecot/dovecot-master-users
+fi
 
 # ── 4. Приложение: зависимости, сборка, миграции ───────────────────────────
 log "Composer, npm, миграции"
