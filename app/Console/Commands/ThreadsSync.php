@@ -18,7 +18,7 @@ class ThreadsSync extends Command
     public function handle(): int
     {
         $users = $this->option('all')
-            ? Mailbox::query()->where('active', 1)->orderBy('username')->pluck('username')->all()
+            ? Mailbox::query()->where('active', 1)->where('enableimap', 1)->orderBy('username')->pluck('username')->all()   // закрытым вход по IMAP недоступен и master-у
             : array_filter([strtolower(trim((string) $this->argument('user')))]);
         if (! $users) {
             $this->error('Укажите ящик или --all');
