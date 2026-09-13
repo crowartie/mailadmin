@@ -88,6 +88,7 @@ class MailboxController extends Controller
             ->when($filter === 'admins', fn ($q) => $q->where(fn ($w) => $w->where('isadmin', 1)->orWhere('isglobaladmin', 1)))
             ->when($filter === 'blocked', fn ($q) => $q->where(fn ($w) => $w->where('active', 0)->orWhere('enableimap', 0)->orWhereIn('username', $blockedLogin ?: ['-'])))
             ->when($filter === 'active', fn ($q) => $q->where('active', 1)->where('enableimap', 1)->whereNotIn('username', $blockedLogin))
+            ->when($filter === 'service', fn ($q) => $q->whereIn('username', $serviceList ?: ['-']))
             ->orderBy('username')
             ->paginate(50)
             ->withQueryString()

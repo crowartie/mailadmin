@@ -49,6 +49,7 @@ const filtersList = [
     { key: 'active', label: 'Активные' },
     { key: 'admins', label: 'Администраторы' },
     { key: 'blocked', label: 'Заблокированные' },
+    { key: 'service', label: 'Служебные' },
 ];
 
 const COLS = '36px minmax(220px, 1.4fr) minmax(120px, 1fr) 170px 140px minmax(120px, 1fr) 110px';
