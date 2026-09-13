@@ -26,7 +26,7 @@ class SuggestController extends Controller
             foreach ($employees as $e) {
                 $out[$e->username] = ['mail' => $e->username, 'name' => $e->name ?: $e->username, 'kind' => 'employee'];
                 // Личная (резервная) почта — отдельным вариантом, чтобы выбор был явным.
-                $p = strtolower((string) ($personal[$e->username] ?: $e->recovery_email));
+                $p = strtolower((string) ($personal->get($e->username) ?: $e->recovery_email));
                 if ($p !== '' && filter_var($p, FILTER_VALIDATE_EMAIL)) {
                     $out[$p] = ['mail' => $p, 'name' => $e->name ?: $e->username, 'kind' => 'personal'];
                 }

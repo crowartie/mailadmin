@@ -296,6 +296,8 @@ assert old in s, 'passdb block not found in dovecot.conf'
 open(p, 'w').write(s.replace(old, new, 1))
 PYEOF
 fi
+# Логин без домена (сотрудники привыкли к Kerio: «ivanov», а не «ivanov@домен») — Dovecot сам подставит домен.
+grep -q '^auth_default_realm' /etc/dovecot/dovecot.conf || printf '\n# mailadmin: логин без домена — домен подставляется сам\nauth_default_realm = %s\n' "$FIRST_DOMAIN" >> /etc/dovecot/dovecot.conf
 bash "$HERE/dovecot-fts-learn.sh"
 bash "$HERE/setup-reports.sh"
 doveconf -n >/dev/null && systemctl restart dovecot
