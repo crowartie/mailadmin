@@ -4,7 +4,13 @@ import { computed } from 'vue';
 
 const props = defineProps({ domain: String });
 const page = usePage();
-const flash = computed(() => page.props.flash || {});
+const flash = computed(() => {
+    const f = { ...(page.props.flash || {}) };
+    // Причина принудительного выхода приходит в адресе (?m=…) — см. mail/api.js.
+    const m = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('m') : null;
+    if (m && !f.error) f.error = m;
+    return f;
+});
 
 const form = useForm({ login: '', password: '' });
 function submit() {

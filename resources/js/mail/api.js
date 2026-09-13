@@ -22,13 +22,15 @@ async function request(method, url, body, opts = {}) {
         payload = JSON.stringify(body);
     }
     const r = await fetch(url, { method, headers, body: payload, credentials: 'same-origin', keepalive: opts.keepalive || false });
-    if (r.status === 401 || (r.redirected && r.url.includes('/mail/login'))) {
-        window.location.href = '/mail/login';
-        throw new ApiError('Сессия закончилась', 401);
-    }
     const text = await r.text();
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = { message: text }; }
+    if (r.status === 401 || (r.redirected && r.url.includes('/mail/login'))) {
+        // Причину (пароль сменили, вход закрыли) показываем на странице входа — через адрес, flash до неё не доживает.
+        const why = r.status === 401 && data?.message ? '?m=' + encodeURIComponent(data.message) : '';
+        window.location.href = '/mail/login' + why;
+        throw new ApiError(data?.message || 'Сессия закончилась', 401);
+    }
     if (!r.ok) {
         const msg = data?.message || (data?.errors && Object.values(data.errors).flat()[0]) || `Ошибка ${r.status}`;
         recordApiError(method, url, r.status, msg);   // пригодится, если сотрудник напишет «не работает»
