@@ -81,6 +81,17 @@ class EmployeeController extends Controller
     }
 
     /** Завершить сеанс (веб или IMAP) или все сразу. */
+    /** Кнопка «Закрыть вход / Открыть вход» в карточке и в списке — то же, что переключатель на вкладке «Доступ». */
+    public function block(Request $request, string $mailbox): RedirectResponse
+    {
+        $model = Mailbox::query()->findOrFail($mailbox);
+        $blocked = (bool) $request->validate(['blocked' => ['required', 'boolean']])['blocked'];
+        app(\App\Services\Vmail\MailboxService::class)->setLoginBlocked($model, $blocked);
+        AdminAction::log('mailbox.update', $blocked ? 'вход закрыт' : 'вход открыт', $model->username);
+
+        return back()->with('success', $blocked ? "Вход закрыт: {$model->username} — почта продолжает приходить" : "Вход открыт: {$model->username}");
+    }
+
     public function kick(Request $request, string $mailbox): RedirectResponse
     {
         $model = Mailbox::query()->findOrFail($mailbox);

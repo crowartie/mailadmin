@@ -139,7 +139,14 @@ function close() {
                 </div>
                 <div class="row__actions">
                     <span class="btn btn--sm">Открыть</span>
-                    <span class="btn btn--sm btn--icon"><Icon name="dots" :size="16" /></span>
+                    <button
+                        v-if="row.active"
+                        class="btn btn--sm"
+                        :class="{ 'btn--danger': !row.loginBlocked }"
+                        type="button"
+                        :title="row.loginBlocked ? 'Снова разрешить вход' : 'Закрыть вход в веб-почту, Outlook и с телефонов; почта продолжит приходить'"
+                        @click.stop="router.post(`/mailboxes/${row.username}/block`, { blocked: !row.loginBlocked }, { preserveScroll: true })"
+                    >{{ row.loginBlocked ? 'Открыть вход' : 'Закрыть вход' }}</button>
                 </div>
                 <div>
                     <span class="chip" :class="!row.active ? 'chip--off' : row.loginBlocked ? 'chip--warn' : 'chip--ok'" :title="!row.active ? 'Ящик выключен: почта не принимается' : row.loginBlocked ? 'Вход закрыт: почта приходит, войти нельзя' : ''">{{ !row.active ? 'выключен' : row.loginBlocked ? 'вход закрыт' : 'активен' }}</span>

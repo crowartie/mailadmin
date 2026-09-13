@@ -129,7 +129,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <div class="row__sub mono">{{ mailbox.username }}</div>
                 </div>
                 <span v-if="mailbox.profile?.is_service" class="tag">служебный</span>
-                <span class="chip" :class="mailbox.active ? 'chip--ok' : 'chip--off'">{{ mailbox.active ? 'активен' : 'заблокирован' }}</span>
+                <span class="chip" :class="!mailbox.active ? 'chip--off' : mailbox.profile?.login_blocked ? 'chip--warn' : 'chip--ok'">{{ !mailbox.active ? 'выключен' : mailbox.profile?.login_blocked ? 'вход закрыт' : 'активен' }}</span>
+                <button
+                    v-if="mailbox.active"
+                    class="btn btn--sm"
+                    :class="{ 'btn--danger': !mailbox.profile?.login_blocked }"
+                    type="button"
+                    :title="mailbox.profile?.login_blocked ? 'Снова разрешить вход в веб-почту, Outlook и с телефонов' : 'Закрыть вход в веб-почту, Outlook и с телефонов; почта продолжит приходить'"
+                    @click="router.post(`/mailboxes/${mailbox.username}/block`, { blocked: !mailbox.profile?.login_blocked }, { preserveScroll: true })"
+                >{{ mailbox.profile?.login_blocked ? 'Открыть вход' : 'Закрыть вход' }}</button>
                 <button class="btn btn--sm btn--icon" type="button" title="Закрыть" @click="emit('close')"><Icon name="x" :size="18" /></button>
             </header>
 
