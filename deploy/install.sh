@@ -232,7 +232,8 @@ NAMES="$HOSTNAME webmail.$DOMAIN imap.$DOMAIN smtp.$DOMAIN autoconfig.$DOMAIN au
 render_site() { # порт лог заголовок редирект-корня
   sed -e "s|@@PORT@@|$1|g" -e "s|@@LOG@@|$2|g" -e "s|@@TITLE@@|$3|g" -e "s|@@SERVER_NAMES@@|$NAMES|g" -e "s|@@ROOT_REDIRECT@@|$4|" "$HERE/nginx-site.conf.tpl"
 }
-render_site 443  mailweb  "Веб-почта"  '    location = / { return 302 /mail; }' > /etc/nginx/sites-available/mailweb.conf
+# /webmail и /integration — адреса старого Kerio, которые помнят браузеры и закладки сотрудников
+render_site 443  mailweb  "Веб-почта"  '    location = / { return 302 /mail; }  location /webmail { return 301 /mail; }  location /integration { return 301 /mail; }' > /etc/nginx/sites-available/mailweb.conf
 render_site 8443 mailadmin "Админка"   '' > /etc/nginx/sites-available/mailadmin.conf
 ln -sf /etc/nginx/sites-available/mailweb.conf /etc/nginx/sites-enabled/mailweb.conf
 ln -sf /etc/nginx/sites-available/mailadmin.conf /etc/nginx/sites-enabled/mailadmin.conf
