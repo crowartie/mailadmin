@@ -21,7 +21,7 @@ class SettingsController extends Controller
     {
         $data = $request->validate([
             'display_name' => ['nullable', 'string', 'max:120'],
-            'signature' => ['nullable', 'string', 'max:20000'],
+            'signature' => ['nullable', 'string', 'max:1200000'],   // с картинками (data:, до 400 КБ каждая)
             'signature_reply' => ['nullable', 'boolean'],
             'theme' => ['nullable', 'in:light,dark,system'],
             'density' => ['nullable', 'in:normal,compact'],

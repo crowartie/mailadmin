@@ -66,6 +66,8 @@ function counterTitle(f) { return f.unread ? `непрочитанных ${f.unr
         <button class="btn btn--primary btn--block" type="button" style="margin-bottom: 10px" @click="$emit('compose')">
             <Icon name="plus" :size="16" />Написать
         </button>
+        <!-- Список папок прокручивается отдельно: кнопка «Написать» и квота не уезжают и не сжимаются полосой прокрутки -->
+        <div class="mnav__scroll">
 
         <button
             v-for="f in system"
@@ -158,6 +160,7 @@ function counterTitle(f) { return f.unread ? `непрочитанных ${f.unr
             <span>{{ l.name }}</span>
         </button>
 
+        </div>
         <div v-if="quota" class="mnav__quota">
             Занято {{ quota.used }} из {{ quota.total }}
             <div><span :style="{ width: quota.percent + '%' }" /></div>

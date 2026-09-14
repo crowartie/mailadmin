@@ -43,13 +43,29 @@ function onKey(e) {
 }
 
 function onPaste(e) {
-    // Вставляем как текст: чужие стили из Word и сайтов ломают письмо.
+    // Картинка из буфера (снимок экрана, логотип) — вставляем как картинку.
+    const img = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+    if (img) { e.preventDefault(); insertImage(img); return; }
+    // Текст вставляем как текст: чужие стили из Word и сайтов ломают письмо.
     const text = e.clipboardData?.getData('text/plain');
     if (text) {
         e.preventDefault();
         document.execCommand('insertText', false, text);
         sync();
     }
+}
+
+// Картинка в тексте (подпись с логотипом и т. п.): встраивается как data: — при отправке сервер превращает её
+// во вложение письма (cid), чтобы показывали все почтовые программы. Ограничение — 400 КБ на картинку.
+const fileInput = ref(null);
+function pickImage() { fileInput.value?.click(); }
+function onImageFile(e) { const f = e.target.files?.[0]; e.target.value = ''; if (f) insertImage(f); }
+function insertImage(file) {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 400 * 1024) { window.alert('Картинка больше 400 КБ — уменьшите её (для подписи достаточно ширины 300–400 px).'); return; }
+    const r = new FileReader();
+    r.onload = () => { el.value.focus(); document.execCommand('insertHTML', false, `<img src="${r.result}" alt="" style="max-width: 100%; height: auto">`); sync(); };
+    r.readAsDataURL(file);
 }
 
 onMounted(() => {
@@ -80,6 +96,8 @@ defineExpose({
             <button type="button" title="Список" @click="cmd('insertUnorderedList')"><Icon name="ul" :size="15" /></button>
             <button type="button" title="Нумерованный список" @click="cmd('insertOrderedList')"><Icon name="ol" :size="15" /></button>
             <button type="button" title="Цитата" @click="cmd('formatBlock', 'blockquote')"><Icon name="quote" :size="15" /></button>
+            <button type="button" title="Картинка (файл или вставка из буфера)" @click="pickImage"><Icon name="img" :size="15" /></button>
+            <input ref="fileInput" type="file" accept="image/*" style="display: none" @change="onImageFile">
             <span class="v" />
             <button type="button" title="Убрать форматирование" @click="cmd('removeFormat')"><Icon name="eraser" :size="15" /></button>
         </div>

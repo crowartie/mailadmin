@@ -64,6 +64,7 @@ function toggleTheme() {
 const feedback = ref(false);
 
 function logout() {
+    if (!window.confirm('Выйти из почты?')) return;
     router.post('/mail/logout');
 }
 </script>

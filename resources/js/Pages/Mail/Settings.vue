@@ -22,7 +22,7 @@ const props = defineProps({
 
 const SECTIONS = [
     ['general', 'Общие'], ['signature', 'Подпись'], ['autoreply', 'Автоответ'], ['rules', 'Правила'],
-    ['folders', 'Папки и метки'], ['security', 'Безопасность'], ['shortcuts', 'Горячие клавиши'],
+    ['folders', 'Папки и метки'], ['devices', 'Телефон и программы'], ['security', 'Безопасность'], ['shortcuts', 'Горячие клавиши'],
 ];
 
 const s = ref({ ...props.settings });
@@ -232,6 +232,18 @@ const shortcuts = [
                                 <div v-for="i in identities" :key="i.mail" class="mset__li"><span class="grow mono">{{ i.mail }}</span><span class="chip" :class="i.primary ? 'chip--ok' : 'chip--off'">{{ i.primary ? 'основной' : 'дополнительный' }}</span></div>
                             </div>
                             <p class="hint" style="margin: 0">Дополнительные адреса назначает администратор в карточке сотрудника.</p>
+                        </div>
+                    </template>
+
+                    <!-- Телефон и программы: та же страница, что доступна с экрана входа -->
+                    <template v-if="section === 'devices'">
+                        <div class="card mset__section">
+                            <h2>Телефон и программы</h2>
+                            <p class="hint" style="margin-top: 0">Почта, календарь и контакты на iPhone/Android, а также Outlook и другие программы. На отдельной странице — готовый профиль для iPhone с QR-кодом, сертификат сервера и параметры для ручной настройки.</p>
+                            <p><a class="btn btn--primary" href="/mail/setup"><Icon name="mobile" :size="16" /> Открыть страницу подключения</a></p>
+                            <div class="hint">
+                                Для ручной настройки: входящая — IMAP <b>mail.innotec.su</b>, порт 993, SSL; исходящая — SMTP <b>mail.innotec.su</b>, порт 465, SSL; логин — ваш адрес целиком, пароль — от почты. Календарь и контакты: CalDAV/CardDAV по тому же адресу.
+                            </div>
                         </div>
                     </template>
 

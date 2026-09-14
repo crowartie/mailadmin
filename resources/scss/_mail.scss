@@ -20,7 +20,8 @@
     flex-direction: column;
     gap: 2px;
     padding: 14px 12px;
-    overflow-y: auto;
+    overflow: hidden;
+    &__scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px 6px; display: flex; flex-direction: column; gap: 2px; }
 
     &__group {
         font-size: 11px;
