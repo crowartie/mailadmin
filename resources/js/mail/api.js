@@ -72,6 +72,7 @@ export const api = {
     feedbackUnread: () => request('GET', '/mail/api/feedback/unread'),
     feedbackPoll: (id, after) => request('GET', `/mail/api/feedback/${id}?after=${after || 0}`),
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
+    attachmentsZipUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/attachments.zip`,
     rawUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/raw`,
 
     action: (folder, uids, op, extra = {}, opts = {}) => request('POST', '/mail/api/action', { folder, uids, op, ...extra }, opts),

@@ -153,6 +153,15 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                     >
                         <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                     </a>
+                    <!-- Несколько вложений — одним архивом (обращение №11) -->
+                    <a
+                        v-if="m.attachments.filter((a) => !a.inline).length > 1"
+                        class="att att--all"
+                        :href="api.attachmentsZipUrl(m.folder, m.uid)"
+                        title="Все вложения одним ZIP-архивом"
+                    >
+                        <Icon name="download" :size="13" /><span class="name">Скачать все ({{ m.attachments.filter((a) => !a.inline).length }})</span>
+                    </a>
                 </div>
                 <div v-if="hasExternalImages(m) && !showImages[m.folder + '#' + m.uid] && settings.show_images !== 'always'" class="msg__notice">
                     <Icon name="img" :size="16" />

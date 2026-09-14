@@ -60,6 +60,18 @@ class MessageController extends Controller
         ]);
     }
 
+    /** Все вложения письма одним архивом (обращение №11). */
+    public function attachmentsZip(ImapSession $imap, string $folder, int $uid)
+    {
+        $zip = (new MailStore($imap->client()))->attachmentsZip($folder, $uid);
+        abort_if($zip['count'] === 0, 404, 'У письма нет вложений');
+
+        return response()->download($zip['path'], $zip['name'], [
+            'Content-Type' => 'application/zip',
+            'X-Content-Type-Options' => 'nosniff',
+        ])->deleteFileAfterSend(true);
+    }
+
     /** Исходник письма (.eml) — «Сохранить» и «Показать оригинал». */
     public function raw(ImapSession $imap, string $folder, int $uid): Response
     {

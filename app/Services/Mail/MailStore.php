@@ -861,6 +861,48 @@ class MailStore
         return $list[$index];
     }
 
+    /**
+     * Все вложения письма одним ZIP (встроенные картинки из тела не берём). Возвращает путь к временному файлу,
+     * имя для скачивания и число файлов; временный файл удаляет вызывающий (deleteFileAfterSend).
+     *
+     * @return array{path:string,name:string,count:int}
+     */
+    public function attachmentsZip(string $path, int $uid): array
+    {
+        $message = $this->folder($path)->query()->getMessageByUid($uid);
+        abort_unless($message, 404, 'Письмо не найдено');
+        $html = (string) ($message->getHTMLBody() ?? '');
+        $tmp = tempnam(sys_get_temp_dir(), 'att');
+        $zip = new \ZipArchive();
+        abort_unless($zip->open($tmp, \ZipArchive::OVERWRITE) === true, 500, 'Не удалось создать архив');
+        $used = [];
+        $count = 0;
+        foreach ($message->getAttachments() as $i => $a) {
+            /** @var Attachment $a */
+            $cid = trim((string) ($a->id ?? ''), '<>');
+            if ($cid !== '' && $html !== '' && str_contains($html, 'cid:' . $cid)) {
+                continue;   // картинка из тела письма
+            }
+            $name = self::attachmentName($a, 'вложение-' . ($i + 1));
+            $name = preg_replace('#[\\\\/:*?"<>|\x00-\x1f]+#', '_', $name) ?: 'вложение-' . ($i + 1);
+            // Одинаковые имена — нумеруем, иначе ZIP молча перезапишет
+            $base = $name;
+            for ($n = 2; isset($used[mb_strtolower($name)]); $n++) {
+                $dot = strrpos($base, '.');
+                $name = $dot ? substr($base, 0, $dot) . " ($n)" . substr($base, $dot) : "$base ($n)";
+            }
+            $used[mb_strtolower($name)] = true;
+            $zip->addFromString($name, (string) $a->getContent());
+            $count++;
+        }
+        $zip->close();
+        $subject = trim((string) Charset::header((string) ($message->getSubject()->first() ?? '')));
+        $subject = preg_replace('#[\\\\/:*?"<>|\x00-\x1f]+#', ' ', $subject) ?: '';
+        $file = trim(mb_substr($subject, 0, 60)) ?: 'письмо-' . $uid;
+
+        return ['path' => $tmp, 'name' => 'Вложения — ' . $file . '.zip', 'count' => $count];
+    }
+
     /** Имя вложения: сначала из сырых заголовков части (библиотека ломается на koi8-r в две строки и RFC 2231), потом её версия. */
     public static function attachmentName(Attachment $a, string $fallback = 'attachment'): string
     {
