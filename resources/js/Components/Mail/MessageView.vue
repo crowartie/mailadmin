@@ -28,11 +28,16 @@ watch(() => props.message.uid, () => { expanded.value = {}; quick.value = ''; })
 const ts = (m) => (m.date ? new Date(m.date).getTime() || 0 : 0);
 const all = computed(() => [...(props.message.thread || []), props.message].sort((a, b) => ts(b) - ts(a)));
 const isLast = (m) => m === props.message;
-const isOpen = (m) => isLast(m) || expanded.value[m.folder + '#' + m.uid];
+// Открытое письмо по умолчанию раскрыто, но его тоже можно свернуть щелчком по шапке — чтобы не мешало
+// читать остальные письма цепочки (обращение №5, «как в mail.ru»). Остальные по умолчанию свёрнуты.
+const isOpen = (m) => {
+    const v = expanded.value[m.folder + '#' + m.uid];
+    return isLast(m) ? v !== false : !!v;
+};
 function toggle(m) {
-    if (isLast(m)) return;
     const key = m.folder + '#' + m.uid;
-    expanded.value[key] = !expanded.value[key];
+    expanded.value[key] = !isOpen(m);
+    if (isLast(m)) return;
     // Письма цепочки приходят «лёгкими» (заголовки и превью); тело и вложения — при первом раскрытии.
     if (expanded.value[key] && m.light && !m.loading) {
         m.loading = true;
