@@ -2,6 +2,7 @@
 // Правая колонка: панель действий, цепочка писем, быстрый ответ.
 import { computed, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
+import AttachmentViewer from './AttachmentViewer.vue';
 import { api } from '../../mail/api';
 import { addrList, initials, size, when } from '../../mail/format';
 
@@ -19,6 +20,19 @@ const expanded = ref({});
 const quick = ref('');
 const sending = ref(false);
 const showImages = ref({});
+
+// Просмотр вложений (обращение №6): картинки и PDF открываются поверх письма, остальное — скачивается.
+const viewer = ref(null);   // { items, start }
+const viewable = (a) => !a.inline && (String(a.type || '').startsWith('image/') || a.type === 'application/pdf');
+function openAttachment(m, a, e) {
+    if (!viewable(a)) return;   // обычная ссылка — скачивание
+    e.preventDefault();
+    const list = m.attachments.filter(viewable);
+    viewer.value = {
+        start: Math.max(0, list.findIndex((x) => x.index === a.index)),
+        items: list.map((x) => ({ url: api.attachmentUrl(m.folder, m.uid, x.index, true), downloadUrl: api.attachmentUrl(m.folder, m.uid, x.index), name: x.name, type: x.type, size: x.size })),
+    };
+}
 const labelMap = computed(() => Object.fromEntries(props.labels.map((l) => [l.id, l])));
 
 watch(() => props.message.uid, () => { expanded.value = {}; quick.value = ''; });
@@ -148,8 +162,10 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         v-for="a in m.attachments.filter((a) => !a.inline)"
                         :key="a.index"
                         class="att"
+                        :class="{ 'att--view': viewable(a) }"
                         :href="api.attachmentUrl(m.folder, m.uid, a.index)"
-                        :title="a.name + ' · ' + a.type"
+                        :title="a.name + ' · ' + a.type + (viewable(a) ? ' · открыть для просмотра' : '')"
+                        @click="openAttachment(m, a, $event)"
                     >
                         <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                     </a>
@@ -191,6 +207,7 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                 <button class="btn btn--sm" type="button" title="Открыть полный ответ" @click="$emit('reply', 'reply', message, quick)"><Icon name="edit" :size="14" /></button>
                 <button class="btn btn--sm btn--primary" type="button" :disabled="!quick.trim() || sending" @click="sendQuick"><Icon name="send" :size="14" />Отправить</button>
             </div>
-        </div>
     </div>
+    </div>
+    <AttachmentViewer v-if="viewer" :items="viewer.items" :start="viewer.start" @close="viewer = null" />
 </template>
