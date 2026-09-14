@@ -312,6 +312,15 @@ class MailboxService
     }
 
     /** @return array<int,string> */
+    /** Адреса, кому закрыт вход или ящик выключен — их не показываем в выборах сотрудников (подразделения, книги, подсказки). */
+    public static function blockedUsernames(): array
+    {
+        $byProfile = \App\Models\EmployeeProfile::query()->where('login_blocked', true)->pluck('username')->all();
+        $byMailbox = Mailbox::query()->where(fn ($q) => $q->where('active', 0)->orWhere('enableimap', 0))->pluck('username')->all();
+
+        return array_values(array_unique(array_merge($byProfile, $byMailbox)));
+    }
+
     /** Флаги входа с клиентов (IMAP/POP3/SMTP/Sieve) — без доставки: письма продолжают приходить в ящик. */
     public static function clientFlags(): array
     {

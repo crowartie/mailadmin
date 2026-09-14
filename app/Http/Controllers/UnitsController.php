@@ -25,14 +25,16 @@ class UnitsController extends Controller
         $tree = $this->units->tree();
         $selected = $unit ? Unit::query()->findOrFail($unit) : null;
         $assigned = EmployeeProfile::query()->whereNotNull('unit_id')->pluck('username');
+        // Заблокированные (вход закрыт / ящик выключен) помечаются — интерфейс прячет их по умолчанию, чтобы не мешались при раскладке.
+        $blocked = array_flip(\App\Services\Vmail\MailboxService::blockedUsernames());
         $unassigned = Mailbox::query()->people()->whereNotIn('username', $assigned)->orderBy('name')->orderBy('username')->get(['username', 'name', 'rank'])
-            ->map(fn (Mailbox $m) => ['username' => $m->username, 'name' => $m->name ?: $m->username, 'title' => $m->rank, 'active' => true, 'lead' => false])->values();
+            ->map(fn (Mailbox $m) => ['username' => $m->username, 'name' => $m->name ?: $m->username, 'title' => $m->rank, 'active' => true, 'lead' => false, 'blocked' => isset($blocked[$m->username])])->values();
 
         return Inertia::render('Units/Index', [
             'tree' => $tree,
             'flat' => $this->units->flat(),
             'total' => EmployeeProfile::query()->whereNotNull('unit_id')->count(),
-            'employees' => Mailbox::query()->people()->orderBy('name')->get(['username', 'name'])->map(fn ($m) => ['username' => $m->username, 'name' => $m->name ?: $m->username]),
+            'employees' => Mailbox::query()->people()->orderBy('name')->get(['username', 'name'])->map(fn ($m) => ['username' => $m->username, 'name' => $m->name ?: $m->username, 'blocked' => isset($blocked[$m->username])]),
             'selected' => $selected ? [
                 'id' => $selected->id, 'name' => $selected->name, 'parent_id' => $selected->parent_id, 'address' => $selected->address, 'lead' => $selected->lead,
                 'leadName' => $selected->lead ? (Mailbox::query()->where('username', $selected->lead)->value('name') ?: $selected->lead) : null,

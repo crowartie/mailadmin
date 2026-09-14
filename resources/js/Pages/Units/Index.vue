@@ -20,6 +20,11 @@ const creating = ref(false);
 const picked = ref([]);          // выбранные сотрудники для переноса
 const moveTo = ref('');
 const search = ref('');
+// Заблокированные (вход закрыт / ящик выключен) по умолчанию спрятаны — при раскладке по отделам они только мешают.
+const showBlocked = ref(false);
+const unassignedShown = computed(() => (props.unassigned || []).filter((m) => showBlocked.value || !m.blocked));
+const blockedUnassigned = computed(() => (props.unassigned || []).filter((m) => m.blocked).length);
+const blockedMembers = computed(() => (props.selected?.members || []).filter((m) => m.blocked).length);
 
 const form = useForm({ name: '', parent_id: null, address: '', lead: '' });
 watch(() => props.selected, (s) => { editing.value = false; picked.value = []; if (s) Object.assign(form, { name: s.name, parent_id: s.parent_id, address: s.address ? s.address.replace('@' + props.domain, '') : '', lead: s.lead || '' }); }, { immediate: true });
@@ -44,9 +49,9 @@ function move(unitId) {
 function addMember(username) { if (username) router.post('/units/move', { usernames: [username], unit_id: props.selected.id }, { preserveScroll: true }); }
 
 function ini(s) { const p = (s || '').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean); return p.slice(0, 2).map((x) => x[0].toUpperCase()).join('') || '?'; }
-const members = computed(() => (props.selected?.members || []).filter((m) => !search.value || `${m.name} ${m.username} ${m.title}`.toLowerCase().includes(search.value.toLowerCase())));
+const members = computed(() => (props.selected?.members || []).filter((m) => (showBlocked.value || !m.blocked)).filter((m) => !search.value || `${m.name} ${m.username} ${m.title}`.toLowerCase().includes(search.value.toLowerCase())));
 const flatNodes = computed(() => { const out = []; const walk = (n) => n.forEach((x) => { out.push(x); walk(x.children); }); walk(props.tree); return out; });
-const candidates = computed(() => (props.employees || []).filter((e) => !(props.selected?.members || []).some((m) => m.username === e.username)));
+const candidates = computed(() => (props.employees || []).filter((e) => !e.blocked && !(props.selected?.members || []).some((m) => m.username === e.username)));
 </script>
 
 <template>
@@ -78,7 +83,7 @@ const candidates = computed(() => (props.employees || []).filter((e) => !(props.
                         <label class="field"><span>Название</span><input v-model="form.name" class="input" required autofocus><p v-if="form.errors.name" class="error">{{ form.errors.name }}</p></label>
                         <label class="field"><span>Входит в</span><select v-model="form.parent_id" class="input"><option :value="null">— верхний уровень —</option><option v-for="u in flat.filter((x) => !selected || x.id !== selected.id)" :key="u.id" :value="u.id">{{ ' '.repeat(u.depth * 3) }}{{ u.name }}</option></select></label>
                         <label class="field"><span>Адрес отдела</span><div class="field__row"><input v-model="form.address" class="input" placeholder="montazh" style="flex: 1"><span class="faint">@{{ domain }}</span></div><span class="hint">Письмо на этот адрес получат все сотрудники отдела и вложенных. Пусто — без адреса.</span><p v-if="form.errors.address" class="error">{{ form.errors.address }}</p></label>
-                        <label class="field"><span>Руководитель</span><select v-model="form.lead" class="input"><option value="">—</option><option v-for="e in employees" :key="e.username" :value="e.username">{{ e.name }} — {{ e.username }}</option></select></label>
+                        <label class="field"><span>Руководитель</span><select v-model="form.lead" class="input"><option value="">—</option><option v-for="e in employees.filter((x) => !x.blocked || x.username === form.lead)" :key="e.username" :value="e.username">{{ e.name }} — {{ e.username }}</option></select></label>
                     </div>
                     <div class="form-actions"><button class="btn btn--primary" type="submit" :disabled="form.processing">{{ creating ? 'Создать' : 'Сохранить' }}</button><button class="btn" type="button" @click="cancel">Отмена</button></div>
                 </form>
@@ -104,6 +109,7 @@ const candidates = computed(() => (props.employees || []).filter((e) => !(props.
                         <div class="toolbar" style="padding: 12px 18px; border-bottom: 1px solid var(--border); gap: 10px">
                             <b>Сотрудники · {{ selected.members.length }}</b>
                             <input v-model="search" class="input" placeholder="найти в отделе" style="width: 220px; height: 34px">
+                            <label v-if="blockedMembers" class="toggle" style="display: flex; align-items: center; gap: 8px; font-size: 13px"><input v-model="showBlocked" type="checkbox"><span class="toggle__track" /><span>заблокированные ({{ blockedMembers }})</span></label>
                             <span class="grow" />
                             <select class="input" style="width: 260px; height: 34px" @change="addMember($event.target.value); $event.target.value = ''"><option value="">+ добавить сотрудника…</option><option v-for="e in candidates" :key="e.username" :value="e.username">{{ e.name }} — {{ e.username }}</option></select>
                         </div>
@@ -130,20 +136,20 @@ const candidates = computed(() => (props.employees || []).filter((e) => !(props.
                 <!-- Без подразделения -->
                 <template v-if="!selected && !creating">
                     <div class="card card--flush">
-                        <div class="toolbar" style="padding: 12px 18px; border-bottom: 1px solid var(--border)"><b>Без подразделения · {{ unassigned.length }}</b></div>
+                        <div class="toolbar" style="padding: 12px 18px; border-bottom: 1px solid var(--border); gap: 12px"><b>Без подразделения · {{ unassignedShown.length }}</b><span class="grow" /><label v-if="blockedUnassigned" class="toggle" style="display: flex; align-items: center; gap: 8px; font-size: 13px"><input v-model="showBlocked" type="checkbox"><span class="toggle__track" /><span>показать заблокированных ({{ blockedUnassigned }})</span></label></div>
                         <div v-if="picked.length" class="bulkbar" style="margin: 10px 18px 0">
                             <b>Выбрано {{ picked.length }}</b><span>перенести в</span>
                             <select v-model="moveTo" class="input" style="width: 240px; height: 32px"><option value="" disabled>выберите…</option><option v-for="u in flat" :key="u.id" :value="u.id">{{ ' '.repeat(u.depth * 3) }}{{ u.name }}</option></select>
                             <button class="btn btn--sm btn--primary" type="button" :disabled="!moveTo" @click="move(moveTo)"><Icon name="move" :size="14" /> Перенести</button>
                         </div>
-                        <div v-for="m in unassigned" :key="m.username" class="row row--click" :class="{ 'row--on': picked.includes(m.username) }" style="grid-template-columns: 24px 36px minmax(0, 1.4fr) minmax(0, 1fr) auto" @click="toggle(m.username)">
+                        <div v-for="m in unassignedShown" :key="m.username" class="row row--click" :class="{ 'row--on': picked.includes(m.username) }" style="grid-template-columns: 24px 36px minmax(0, 1.4fr) minmax(0, 1fr) auto" @click="toggle(m.username)">
                             <input type="checkbox" class="check" :checked="picked.includes(m.username)" @click.stop="toggle(m.username)">
                             <div class="avatar">{{ ini(m.name) }}</div>
-                            <div style="min-width: 0"><div class="row__name">{{ m.name }}</div><div class="row__sub mono">{{ m.username }}</div></div>
+                            <div style="min-width: 0"><div class="row__name">{{ m.name }}<span v-if="m.blocked" class="chip chip--warn" style="margin-left: 6px">вход закрыт</span></div><div class="row__sub mono">{{ m.username }}</div></div>
                             <div class="row__sub">{{ m.title || '—' }}</div>
                             <Link :href="`/mailboxes/${m.username}/edit`" class="btn btn--sm" @click.stop>Карточка</Link>
                         </div>
-                        <div v-if="!unassigned.length" class="empty">Все сотрудники распределены по подразделениям</div>
+                        <div v-if="!unassignedShown.length" class="empty">{{ unassigned.length ? 'Нераспределённых активных нет — остались только заблокированные' : 'Все сотрудники распределены по подразделениям' }}</div>
                     </div>
                 </template>
             </div>

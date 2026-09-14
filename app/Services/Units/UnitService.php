@@ -66,10 +66,12 @@ class UnitService
             return [];
         }
 
+        $blocked = array_flip(\App\Services\Vmail\MailboxService::blockedUsernames());
+
         return Mailbox::query()->whereIn('username', $profiles->keys())->orderBy('name')->orderBy('username')->get()
             ->map(fn (Mailbox $m) => [
                 'username' => $m->username, 'name' => $m->name ?: $m->username, 'title' => $profiles[$m->username]->title ?: $m->rank,
-                'active' => (bool) $m->active, 'lead' => $unit->lead === $m->username,
+                'active' => (bool) $m->active, 'lead' => $unit->lead === $m->username, 'blocked' => isset($blocked[$m->username]),
             ])->values()->all();
     }
 
