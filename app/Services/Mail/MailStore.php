@@ -516,7 +516,8 @@ class MailStore
         if ($rawHeaders === '') {
             return null;
         }
-        $h = preg_replace("/?
+        $h = preg_replace("/
+?
 [ 	]+/", ' ', $rawHeaders) ?? $rawHeaders;
 
         return preg_match('/^' . preg_quote($name, '/') . ':[ 	]*(.*)$/mi', $h, $m) ? trim($m[1]) : null;
@@ -885,6 +886,13 @@ class MailStore
             }
             $name = self::attachmentName($a, 'вложение-' . ($i + 1));
             $name = preg_replace('#[\\\\/:*?"<>|\x00-\x1f]+#', '_', $name) ?: 'вложение-' . ($i + 1);
+            // Часть без имени (библиотека подставляет кусок Content-ID) — добавим расширение по типу, чтобы файл открывался
+            if (! str_contains($name, '.')) {
+                $ext = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/gif' => 'gif', 'application/pdf' => 'pdf', 'text/plain' => 'txt', 'text/html' => 'html'][strtolower((string) $a->getMimeType())] ?? null;
+                if ($ext) {
+                    $name .= '.' . $ext;
+                }
+            }
             // Одинаковые имена — нумеруем, иначе ZIP молча перезапишет
             $base = $name;
             for ($n = 2; isset($used[mb_strtolower($name)]); $n++) {
