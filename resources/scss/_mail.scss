@@ -68,6 +68,8 @@
         font-size: 12px;
         color: v.$c-faint;
         font-variant-numeric: tabular-nums;
+        white-space: nowrap;   // «1 / 166» не переносится, длинное имя папки обрезается многоточием
+        flex: 0 0 auto;
     }
     // «непрочитанных / всего»: непрочитанные выделены, «всего» — блёкло; папка без непрочитанных — только «всего»
     &__count b { font-weight: 700; color: v.$c-text; }
