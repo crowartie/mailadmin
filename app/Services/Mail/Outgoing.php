@@ -50,12 +50,15 @@ class Outgoing
         $text = trim(html_entity_decode(strip_tags(preg_replace('/<br\s*\/?>|<\/p>|<\/div>/i', "\n", $html))));
         $email->html($html !== '' ? $html : '<p></p>')->text($text !== '' ? $text : ' ');
 
-        if (! empty($form['inReplyTo'])) {
-            $email->getHeaders()->addIdHeader('In-Reply-To', $form['inReplyTo']);
+        // Идентификаторы приходят от клиента в любом виде («<a><b>» из Kerio, «a b», голый id) — нормализуем,
+        // иначе Symfony получает склеенный «a@xb@y» и отказывается отправлять.
+        $inReplyTo = MailStore::messageIds($form['inReplyTo'] ?? null);
+        if ($inReplyTo) {
+            $email->getHeaders()->addIdHeader('In-Reply-To', $inReplyTo[0]);
         }
-        if (! empty($form['references'])) {
-            $refs = preg_split('/\s+/', trim($form['references']), -1, PREG_SPLIT_NO_EMPTY);
-            $email->getHeaders()->addIdHeader('References', array_map(fn ($r) => trim($r, '<>'), $refs));
+        $refs = MailStore::messageIds($form['references'] ?? null);
+        if ($refs) {
+            $email->getHeaders()->addIdHeader('References', $refs);
         }
         if (! empty($form['priority'])) {
             $email->priority(Email::PRIORITY_HIGH);

@@ -490,6 +490,38 @@ class MailStore
         ];
     }
 
+    /**
+     * Message-ID из заголовка References/In-Reply-To в любом виде: «<a> <b>», «<a><b>», «a b», массив таких строк.
+     * Возвращает голые идентификаторы без скобок и дублей.
+     *
+     * @return array<int,string>
+     */
+    public static function messageIds(array|string|null $raw): array
+    {
+        $joined = is_array($raw) ? implode(' ', array_map('strval', $raw)) : (string) $raw;
+        $ids = [];
+        if (preg_match_all('/<([^<>\s]+)>/', $joined, $m)) {
+            $ids = $m[1];
+        } else {
+            $ids = preg_split('/\s+/', trim($joined), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        }
+        $ids = array_map(fn ($id) => trim($id, " \t<>"), $ids);
+
+        return array_values(array_unique(array_filter($ids, fn ($id) => $id !== '' && str_contains($id, '@'))));
+    }
+
+    /** Значение одного заголовка из сырого текста заголовков (строки-продолжения склеены); null, если заголовка нет. */
+    public static function headerValue(string $rawHeaders, string $name): ?string
+    {
+        if ($rawHeaders === '') {
+            return null;
+        }
+        $h = preg_replace("/?
+[ 	]+/", ' ', $rawHeaders) ?? $rawHeaders;
+
+        return preg_match('/^' . preg_quote($name, '/') . ':[ 	]*(.*)$/mi', $h, $m) ? trim($m[1]) : null;
+    }
+
     /** Заголовки → [имя в нижнем регистре => значение] (первое вхождение, строки-продолжения склеены). */
     private static function parseHeaderFields(string $raw): array
     {
@@ -686,7 +718,13 @@ class MailStore
             $html = strtr($html, $inline);
         }
 
-        $refs = trim((string) ($message->getReferences()->first() ?? ''));
+        // Все Message-ID цепочки, каждый в <…> через пробел. Kerio пишет их слитно («<a><b>»), библиотека
+        // отдаёт по-разному — без нормализации при ответе получался склеенный «a@xb@y», и письмо не уходило.
+        // Библиотека при разборе склеивает id без пробела в один («a@xb@y»), поэтому берём сырой заголовок.
+        $rawHeader = (string) ($message->getHeader()?->raw ?? '');
+        $refIds = self::messageIds(self::headerValue($rawHeader, 'References') ?? $message->getReferences()->toArray());
+        $refs = implode(' ', array_map(fn ($id) => '<' . $id . '>', $refIds));
+        $inReplyTo = self::messageIds(self::headerValue($rawHeader, 'In-Reply-To') ?? $message->getInReplyTo()->toArray())[0] ?? '';
 
         return $this->summary($message) + [
             'folder' => $path,
@@ -695,7 +733,7 @@ class MailStore
             'to' => $this->addresses($message->getTo()),
             'cc' => $this->addresses($message->getCc()),
             'replyTo' => $this->addresses($message->getReplyTo()),
-            'inReplyTo' => trim((string) ($message->getInReplyTo()->first() ?? ''), '<>'),
+            'inReplyTo' => $inReplyTo,
             'references' => $refs,
             'attachments' => $attachments,
             'listUnsubscribe' => (string) ($message->getHeader()?->get('list_unsubscribe')?->first() ?? ''),
@@ -987,7 +1025,9 @@ class MailStore
         $config->set('HTML.TargetBlank', true);
         $config->set('AutoFormat.RemoveEmpty', true);
 
-        @mkdir(storage_path('app/purifier'), 0775, true);
+        if (! is_dir(storage_path('app/purifier'))) {
+            @mkdir(storage_path('app/purifier'), 0775, true);
+        }
 
         return (new \HTMLPurifier($config))->purify($html);
     }
