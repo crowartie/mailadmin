@@ -37,7 +37,8 @@ final class Charset
             if (preg_match_all('/[;\s]' . $param . '\*(\d*)\*?=\s*("([^"]*)"|[^;\s]+)/i', $h, $mm, PREG_SET_ORDER)) {
                 $pieces = [];
                 foreach ($mm as $m) {
-                    $pieces[(int) $m[1]] = $m[3] !== '' ? $m[3] : $m[2];
+                    // Без кавычек группа 3 отсутствует (filename*=utf-8''...) — раньше падало «Undefined array key 3».
+                    $pieces[(int) $m[1]] = ($m[3] ?? '') !== '' ? $m[3] : $m[2];
                 }
                 ksort($pieces);
                 $joined = implode('', $pieces);
