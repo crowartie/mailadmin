@@ -32,7 +32,11 @@ function pick(e) {
 function setFile(f) {
     if (f.size > 8 * 1024 * 1024) { error.value = 'Снимок больше 8 МБ — уменьшите или обрежьте.'; return; }
     file.value = f;
-    filePreview.value = URL.createObjectURL(f);
+    // Превью как data: — blob:-адреса режет наша Content-Security-Policy (img-src без blob:), и вместо снимка
+    // показывалась битая картинка (обращение №9).
+    const r = new FileReader();
+    r.onload = () => { filePreview.value = String(r.result || ''); };
+    r.readAsDataURL(f);
     error.value = '';
 }
 function onPaste(e) {
@@ -67,7 +71,6 @@ function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); emit('close')
 onMounted(() => document.addEventListener('keydown', onKey, true));
 onBeforeUnmount(() => {
     document.removeEventListener('keydown', onKey, true);
-    if (filePreview.value) URL.revokeObjectURL(filePreview.value);
 });
 </script>
 
