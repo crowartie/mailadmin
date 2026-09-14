@@ -2,8 +2,9 @@
 // Просмотр вложений без скачивания (обращение №6): картинки — через vue-easy-lightbox (зум колесом, перетаскивание,
 // поворот, отражение), PDF — встроенный просмотрщик браузера во фрейме. Стрелки и ← → листают все просматриваемые
 // вложения письма подряд, Esc / щелчок по фону закрывает. Остальные типы открываются скачиванием, сюда не попадают.
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import VueEasyLightbox from 'vue-easy-lightbox';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+// Библиотека грузится отдельным файлом только при первом открытии картинки — в основную сборку почты не входит.
+const VueEasyLightbox = defineAsyncComponent(() => import('vue-easy-lightbox').then((m) => m.default || m));
 import Icon from '../Icon.vue';
 import { size } from '../../mail/format';
 
