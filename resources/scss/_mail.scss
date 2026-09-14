@@ -12,8 +12,8 @@
 
 // ── Колонка папок ────────────────────────────────────────────
 .mnav {
-    width: 232px;
-    flex: 0 0 232px;
+    width: var(--nav-w, 232px);
+    flex: 0 0 var(--nav-w, 232px);
     background: v.$c-surface;
     border-right: 1px solid v.$c-border;
     display: flex;
@@ -87,8 +87,8 @@
 
 // ── Список ───────────────────────────────────────────────────
 .mlist {
-    width: 440px;
-    flex: 0 0 440px;
+    width: var(--list-w, 440px);
+    flex: 0 0 var(--list-w, 440px);
     border-right: 1px solid v.$c-border;
     background: v.$c-surface;
     display: flex;
@@ -856,9 +856,20 @@ select.input { padding-right: 28px; }
 .mobile-bar { display: none; }
 
 @media (max-width: 1100px) {
-    .mlist { width: 360px; flex-basis: 360px; }
-    .mnav { width: 200px; flex-basis: 200px; }
+    .mail { --nav-w: 200px; --list-w: 360px; }
 }
+
+// Разделитель колонок: тонкая полоса на границе, тянется мышью (см. Inbox.vue startResize)
+.mail__rs {
+    flex: 0 0 6px;
+    margin: 0 -3px;
+    cursor: col-resize;
+    position: relative;
+    z-index: 3;
+    &:hover, .mail--resizing & { background: v.$c-accent-soft; }
+}
+.mail--resizing { user-select: none; cursor: col-resize; }
+@media (max-width: 860px) { .mail__rs { display: none; } }
 
 // Нижняя панель разделов — только на телефоне (см. медиа-правило ниже)
 .tabbar { display: none; }

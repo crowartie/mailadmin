@@ -335,6 +335,37 @@ async function markSender(match) {
     } catch (e) { d.busy = false; fail(e); }
 }
 
+// ── Ширина колонок (папки, список): тянется за разделитель, запоминается в браузере (обращение №7) ──
+const COL_LIMITS = { nav: [160, 420], list: [300, 820] };
+const colW = ref((() => { try { return JSON.parse(localStorage.getItem('mail.cols') || '{}'); } catch { return {}; } })());
+const resizing = ref(false);
+const colStyle = computed(() => ({
+    '--nav-w': colW.value.nav ? colW.value.nav + 'px' : undefined,
+    '--list-w': colW.value.list ? colW.value.list + 'px' : undefined,
+}));
+function startResize(which, e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const pane = e.currentTarget.previousElementSibling;
+    const startX = e.clientX;
+    const startW = pane.getBoundingClientRect().width;
+    const [min, max] = COL_LIMITS[which];
+    resizing.value = true;
+    const move = (ev) => { colW.value = { ...colW.value, [which]: Math.round(Math.min(max, Math.max(min, startW + ev.clientX - startX))) }; };
+    const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        resizing.value = false;
+        try { localStorage.setItem('mail.cols', JSON.stringify(colW.value)); } catch { /* приватный режим */ }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+}
+function resetCol(which) {
+    const next = { ...colW.value }; delete next[which]; colW.value = next;
+    try { localStorage.setItem('mail.cols', JSON.stringify(next)); } catch { /* приватный режим */ }
+}
+
 // ── Меню ──────────────────────────────────────────────────────
 function openMenu(e, uid, kind = 'context') {
     e.preventDefault?.();
@@ -648,7 +679,7 @@ onBeforeUnmount(() => {
 <template>
     <Head :title="folderName + (folderInfo.unread ? ` (${folderInfo.unread})` : '')" />
     <MailLayout :user="user" :theme="settings.theme">
-        <div class="mail" :class="{ 'mail--read': mobileRead }">
+        <div class="mail" :class="{ 'mail--read': mobileRead, 'mail--resizing': resizing }" :style="colStyle">
             <FolderNav
                 :class="{ 'mnav--open': navOpen }"
                 :folders="folders"
@@ -665,6 +696,7 @@ onBeforeUnmount(() => {
                 @label="labelMenu"
                 @outbox="showOutbox"
             />
+            <div class="mail__rs" title="Потяните, чтобы изменить ширину; двойной щелчок — как было" @pointerdown="startResize('nav', $event)" @dblclick="resetCol('nav')" />
             <div v-if="navOpen" class="drawer-backdrop" style="z-index: 89" @click="navOpen = false" />
 
             <MessageList
@@ -692,6 +724,7 @@ onBeforeUnmount(() => {
                 @refresh="refresh"
                 @menu="navOpen = true"
             />
+            <div class="mail__rs" title="Потяните, чтобы изменить ширину; двойной щелчок — как было" @pointerdown="startResize('list', $event)" @dblclick="resetCol('list')" />
 
             <section class="mread">
                 <Compose
