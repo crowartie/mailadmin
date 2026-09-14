@@ -240,8 +240,7 @@ render_site() { # порт лог заголовок редирект-корня
 # Время ответа по запросам веб-почты — отдельный лог для замеров (log_format в http-контексте)
 install -m 0644 "$HERE/nginx-timing.conf" /etc/nginx/conf-enabled/00-mailadmin-timing.conf
 render_site 443  mailweb  "Веб-почта"  '    location = / { return 302 /mail; }  location /webmail { return 301 /mail; }  location /integration { return 301 /mail; }' > /etc/nginx/sites-available/mailweb.conf
-sed -i 's|^\(\s*access_log /var/log/nginx/mailweb.access.log;\)$|
-    access_log /var/log/nginx/mailweb.timing.log mailadmin_timed;|' /etc/nginx/sites-available/mailweb.conf
+sed -i 's|^\(\s*access_log /var/log/nginx/mailweb.access.log;\)$|\1\n    access_log /var/log/nginx/mailweb.timing.log mailadmin_timed;|' /etc/nginx/sites-available/mailweb.conf
 render_site 8443 mailadmin "Админка"   '' > /etc/nginx/sites-available/mailadmin.conf
 ln -sf /etc/nginx/sites-available/mailweb.conf /etc/nginx/sites-enabled/mailweb.conf
 ln -sf /etc/nginx/sites-available/mailadmin.conf /etc/nginx/sites-enabled/mailadmin.conf
