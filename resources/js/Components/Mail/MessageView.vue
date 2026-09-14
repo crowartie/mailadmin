@@ -93,9 +93,6 @@ const isDraft = computed(() => props.folderRole === 'drafts');
         </template>
         <span class="sep" />
         <button class="ib" type="button" title="Архив (e)" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" /></button>
-        <button class="ib" type="button" title="Удалить (#)" @click="$emit('act', 'delete', [message.uid])"><Icon name="trash" :size="17" /></button>
-        <button v-if="folderRole !== 'spam'" class="ib" type="button" title="Спам (!)" @click="$emit('act', 'spam', [message.uid])"><Icon name="spam" :size="17" /></button>
-        <button v-else class="ib" type="button" title="Не спам" @click="$emit('act', 'notspam', [message.uid])"><Icon name="inbox" :size="17" />Не спам</button>
         <button class="ib" type="button" title="В папку (v)" @click="$emit('context', $event, message.uid, 'move')"><Icon name="folder" :size="17" /></button>
         <button class="ib" type="button" title="Метка (l)" @click="$emit('context', $event, message.uid, 'label')"><Icon name="tag" :size="17" /></button>
         <button class="ib" type="button" title="Отложить (z)" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" /></button>
@@ -103,6 +100,11 @@ const isDraft = computed(() => props.folderRole === 'drafts');
         <span class="grow" />
         <button class="ib" type="button" title="Печать" @click="print"><Icon name="print" :size="17" /></button>
         <button class="ib" type="button" title="Ещё" @click="$emit('context', $event, message.uid, 'more')"><Icon name="dots" :size="17" /></button>
+        <!-- Опасные действия — отдельной группой у правого края, подальше от «Ответить»: иначе промахи по корзинке (обращение №12). -->
+        <span class="sep" />
+        <button v-if="folderRole !== 'spam'" class="ib" type="button" title="Спам (!)" @click="$emit('act', 'spam', [message.uid])"><Icon name="spam" :size="17" /></button>
+        <button v-else class="ib" type="button" title="Не спам" @click="$emit('act', 'notspam', [message.uid])"><Icon name="inbox" :size="17" />Не спам</button>
+        <button class="ib ib--danger" type="button" title="Удалить (#)" @click="$emit('act', 'delete', [message.uid])"><Icon name="trash" :size="17" />Удалить</button>
     </div>
 
     <div class="mread__scroll">

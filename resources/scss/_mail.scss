@@ -458,6 +458,8 @@
     white-space: nowrap;
 
     &:hover { background: v.$c-surface-2; color: v.$c-text; }
+    // Опасное действие (удалить): краснеет только при наведении, чтобы глаз заранее видел, куда жмёт.
+    &.ib--danger:hover { background: #fdecec; color: #c0392b; }
     &--on { background: v.$c-accent-soft; color: v.$c-accent-ink; }
     &--danger:hover { color: v.$c-no; background: v.$c-no-soft; }
     &--sm { height: 28px; min-width: 28px; }

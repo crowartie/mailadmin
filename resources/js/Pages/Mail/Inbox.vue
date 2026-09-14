@@ -208,7 +208,7 @@ function removeRows(uids) {
     if (open.value && set.has(open.value.uid)) { open.value = null; mobileRead.value = false; }
 }
 
-async function act(op, uids, extra = {}) {
+async function act(op, uids, extra = {}, deferrable = true) {
     if (!uids?.length) return;
     menu.value = null;
     const rows = list.value.messages.filter((m) => uids.includes(m.uid));
@@ -223,15 +223,64 @@ async function act(op, uids, extra = {}) {
         case 'delete': case 'move': case 'archive': case 'spam': case 'notspam': case 'lists': case 'snooze': case 'unsnooze': removeRows(uids); break;
         default: break;
     }
+    const names = { delete: 'Удалено', archive: 'В архиве', spam: 'Помечено как спам', move: 'Перемещено', lists: 'В рассылки', snooze: 'Отложено', notspam: 'Возвращено во Входящие', remind: 'Напомню, если не ответят' };
+    const label = `${names[op] || ''}${uids.length > 1 ? ' · ' + uids.length : ''}`;
+    // Удаление/перенос/архив/спам — с отменой: сервер получит команду через N секунд (Настройки → Общие),
+    // до этого «Отменить» просто возвращает список. Диалоги по отправителю и повторные действия — сразу.
+    const secs = Number(settings.value.undo_seconds ?? 5);
+    if (deferrable && secs > 0 && ['delete', 'archive', 'spam', 'move', 'lists'].includes(op)) {
+        flushPendingAct();
+        pendingAct = { folder: folder.value, uids, op, extra, seconds: secs, timer: null };
+        clearTimeout(toastTimer);
+        toast.value = { text: label, actionLabel: 'Отменить', seconds: secs };
+        const tick = () => {
+            if (!pendingAct) return;
+            pendingAct.seconds--;
+            if (pendingAct.seconds <= 0) {
+                const p = pendingAct; pendingAct = null; toast.value = null;
+                runAct(p).catch((e) => { fail(e); load(list.value.page, true); });
+            } else {
+                toast.value = { ...toast.value, seconds: pendingAct.seconds };
+                pendingAct.timer = setTimeout(tick, 1000);
+            }
+        };
+        pendingAct.timer = setTimeout(tick, 1000);
+        return;
+    }
     try {
-        const r = await api.action(folder.value, uids, op, extra);
-        if (r.folders) folders.value = r.folders;
-        const names = { delete: 'Удалено', archive: 'В архиве', spam: 'Помечено как спам', move: 'Перемещено', snooze: 'Отложено', notspam: 'Возвращено во Входящие', remind: 'Напомню, если не ответят' };
-        if (names[op]) showToast({ text: `${names[op]}${uids.length > 1 ? ' · ' + uids.length : ''}` }, 2500);
+        await runAct({ folder: folder.value, uids, op, extra });
+        if (names[op]) showToast({ text: label }, 2500);
     } catch (e) {
         fail(e);
         load(list.value.page, true);
     }
+}
+
+// ── Отложенное действие с отменой ────────────────────────────
+let pendingAct = null;   // { folder, uids, op, extra, seconds, timer }
+async function runAct(p, opts = {}) {
+    const r = await api.action(p.folder, p.uids, p.op, p.extra, opts);
+    if (r?.folders) folders.value = r.folders;
+    return r;
+}
+function flushPendingAct(keepalive = false) {
+    if (!pendingAct) return;
+    clearTimeout(pendingAct.timer);
+    const p = pendingAct; pendingAct = null;
+    runAct(p, keepalive ? { keepalive: true } : {}).catch(() => {});
+}
+function undoAct() {
+    if (!pendingAct) return false;
+    clearTimeout(pendingAct.timer);
+    pendingAct = null; toast.value = null;
+    // Сервер ничего не делал — достаточно перечитать список и счётчики.
+    load(list.value.page, true);
+    showToast({ text: 'Отменено' }, 2000);
+    return true;
+}
+function undoToast() {
+    if (undoAct()) return;
+    undoSend();
 }
 
 function onDrop(data, target) {
@@ -251,7 +300,7 @@ function moveTo(uids, target) {
 function askSender(kind, uids, targetFolder = null) {
     const rows = list.value.messages.filter((m) => uids.includes(m.uid));
     const mails = [...new Set(rows.map((m) => m.from?.mail).concat(open.value && uids.includes(open.value.uid) ? [open.value.from?.mail] : []).filter(Boolean).map((s) => s.toLowerCase()))];
-    if (kind === 'folder') act('move', uids, { target: targetFolder.path }); else act(kind === 'ham' ? 'notspam' : kind, uids);
+    if (kind === 'folder') act('move', uids, { target: targetFolder.path }, false); else act(kind === 'ham' ? 'notspam' : kind, uids, {}, false);
     if (!mails.length) return;
     const domains = [...new Set(mails.map((m) => m.split('@')[1]).filter(Boolean))];
     dialog.value = { kind: 'sender', what: kind, mails, domains, resort: true, busy: false, folder: targetFolder };
@@ -301,7 +350,7 @@ function snooze(at) {
 }
 const customSnooze = ref('');
 
-watch(folder, () => { lastUidnext = null; updateTitle(); });
+watch(folder, () => { flushPendingAct(); lastUidnext = null; updateTitle(); });
 function folderContext(e, f) {
     menu.value = { kind: 'folder', x: e.clientX, y: e.clientY, folder: f };
 }
@@ -468,6 +517,7 @@ function formToCompose(f) {
     return { mode: 'new', ...f, to: parseList(f.to), cc: parseList(f.cc), bcc: parseList(f.bcc), attachments: [] };
 }
 function flushPending() {
+    flushPendingAct(true);
     if (!pending) return;
     clearTimeout(pending.timer);
     const p = pending; pending = null;
@@ -850,6 +900,6 @@ onBeforeUnmount(() => {
         </Dialog>
 
         <ShortcutsHelp v-if="help" @close="help = false" />
-        <Toast :toast="toast" @action="undoSend" @close="toast = null" />
+        <Toast :toast="toast" @action="undoToast" @close="toast = null" />
     </MailLayout>
 </template>

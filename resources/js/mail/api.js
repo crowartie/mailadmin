@@ -74,7 +74,7 @@ export const api = {
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
     rawUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/raw`,
 
-    action: (folder, uids, op, extra = {}) => request('POST', '/mail/api/action', { folder, uids, op, ...extra }),
+    action: (folder, uids, op, extra = {}, opts = {}) => request('POST', '/mail/api/action', { folder, uids, op, ...extra }, opts),
 
     send: (form, opts) => request('POST', '/mail/api/send', form, opts),
     draft: (form) => request('POST', '/mail/api/draft', form),
