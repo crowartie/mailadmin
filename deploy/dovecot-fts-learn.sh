@@ -96,10 +96,18 @@ EOF
 chmod 755 /usr/local/sbin/mailadmin-salearn
 echo "*/5 * * * * root /usr/local/sbin/mailadmin-salearn >/dev/null 2>&1" > /etc/cron.d/mailadmin-salearn
 
-# ── 5. Индексация имеющихся писем в фоне ──────────────────────────────
-# doveadm под root создаёт индексы root-ом — после индексации вернуть владельца vmail, иначе IMAP не откроет индекс
-nohup sh -c 'doveadm fts rescan -A; doveadm index -A -q "*"; find /var/vmail -type d -name xapian-indexes -exec chown -R vmail:vmail {} +' >/var/log/dovecot-fts-index.log 2>&1 &
-echo "fts: индексация запущена в фоне"
+# ── 5. Первичная индексация имеющихся писем в фоне — ОДИН раз ─────────────
+# Скрипт вызывается и из update.sh при каждом обновлении; без маркера каждая выкладка запускала бы полную
+# переиндексацию всей почты (fts rescan сбрасывает индексы, на HDD это часы нагрузки). Дальше новые письма
+# индексируются при доставке (fts_autoindex), вручную ничего гонять не нужно.
+MARK=/var/lib/mailadmin/fts-initial-index.done
+install -d -m 0755 /var/lib/mailadmin
+if [ ! -f "$MARK" ]; then
+  # doveadm под root создаёт индексы root-ом — после индексации вернуть владельца vmail, иначе IMAP не откроет индекс
+  nohup sh -c 'doveadm fts rescan -A; doveadm index -A -q "*"; find /var/vmail -type d -name xapian-indexes -exec chown -R vmail:vmail {} +' >/var/log/dovecot-fts-index.log 2>&1 &
+  date > "$MARK"
+  echo "fts: первичная индексация запущена в фоне"
+fi
 
 # ── 5. Общий Sieve-скрипт решений сотрудников (спам/рассылки по отправителю), пишет веб-почта через mailadmin-ctl sieve-global
 if [ ! -f /var/vmail/sieve/mailadmin-global.sieve ]; then
