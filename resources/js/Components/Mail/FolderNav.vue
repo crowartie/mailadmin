@@ -55,6 +55,10 @@ function onDrop(e, f) {
         if (data.folder !== f.path) emit('drop', data, f.path);
     } catch {}
 }
+
+// Счётчик у папки: «непрочитанных / всего» (как в Яндексе, обращение №8); без непрочитанных — просто «всего».
+function counter(f) { return !f.virtual && ((f.unread || 0) > 0 || (f.total || 0) > 0); }
+function counterTitle(f) { return f.unread ? `непрочитанных ${f.unread} из ${f.total}` : `всего ${f.total}`; }
 </script>
 
 <template>
@@ -76,8 +80,7 @@ function onDrop(e, f) {
             @drop="onDrop($event, f)"
         >
             <span>{{ f.name }}</span>
-            <span v-if="f.role === 'drafts' && f.total" class="mnav__count">{{ f.total }}</span>
-            <span v-else-if="f.unread" class="mnav__count">{{ f.unread }}</span>
+            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b>{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
         <button
             v-if="inbox"
@@ -111,7 +114,7 @@ function onDrop(e, f) {
         >
             <Icon :name="f.virtual ? 'inbox' : 'folder'" :size="16" style="color: var(--faint); flex: 0 0 16px" />
             <span>{{ f.name }}</span>
-            <span v-if="f.unread" class="mnav__count">{{ f.unread }}</span>
+            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b>{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
         <div v-if="!custom.length" class="hint" style="padding: 4px 12px">Папки создаются здесь или из меню письма «В папку».</div>
 
@@ -133,7 +136,7 @@ function onDrop(e, f) {
                 >
                     <Icon name="folder" :size="16" style="color: var(--faint); flex: 0 0 16px" />
                     <span>{{ f.name }}</span>
-                    <span v-if="f.unread" class="mnav__count">{{ f.unread }}</span>
+                    <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b>{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
                 </button>
             </template>
         </template>

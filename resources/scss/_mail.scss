@@ -69,6 +69,10 @@
         color: v.$c-faint;
         font-variant-numeric: tabular-nums;
     }
+    // «непрочитанных / всего»: непрочитанные выделены, «всего» — блёкло; папка без непрочитанных — только «всего»
+    &__count b { font-weight: 700; color: v.$c-text; }
+    &__count i { font-style: normal; margin-left: 3px; color: v.$c-faint; font-weight: 400; }
+    &__count--all { color: v.$c-faint; }
     &__item--on &__count { color: v.$c-accent-ink; font-weight: 600; }
 
     &__swatch { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 10px; }
