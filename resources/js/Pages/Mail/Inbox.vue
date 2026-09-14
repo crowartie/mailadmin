@@ -336,7 +336,7 @@ async function markSender(match) {
 }
 
 // ── Ширина колонок (папки, список): тянется за разделитель, запоминается в браузере (обращение №7) ──
-const COL_LIMITS = { nav: [160, 420], list: [300, 820] };
+const COL_LIMITS = { nav: [160, 420], list: [360, 820] };   // уже 360 — обрезаются вкладки фильтра
 const colW = ref((() => { try { return JSON.parse(localStorage.getItem('mail.cols') || '{}'); } catch { return {}; } })());
 const resizing = ref(false);
 const colStyle = computed(() => ({
