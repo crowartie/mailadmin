@@ -23,14 +23,21 @@ const showImages = ref({});
 
 // Просмотр вложений (обращение №6): картинки и PDF открываются поверх письма, остальное — скачивается.
 const viewer = ref(null);   // { items, start }
-const viewable = (a) => !a.inline && (String(a.type || '').startsWith('image/') || a.type === 'application/pdf');
-function openAttachment(m, a, e) {
-    if (!viewable(a)) return;   // обычная ссылка — скачивание
-    e.preventDefault();
+// Офисные документы сервер на лету переводит в PDF (LibreOffice) — и показывает тем же просмотрщиком.
+const OFFICE = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
+const ext = (a) => String(a.name || '').toLowerCase().split('.').pop();
+const isImg = (a) => String(a.type || '').startsWith('image/');
+const isPdf = (a) => a.type === 'application/pdf' || ext(a) === 'pdf';
+const isOffice = (a) => OFFICE.includes(ext(a));
+const viewable = (a) => !a.inline && (isImg(a) || isPdf(a) || isOffice(a));
+function viewUrl(m, a) {
+    return isOffice(a) ? api.attachmentPreviewUrl(m.folder, m.uid, a.index) : api.attachmentUrl(m.folder, m.uid, a.index, true);
+}
+function openAttachment(m, a) {
     const list = m.attachments.filter(viewable);
     viewer.value = {
         start: Math.max(0, list.findIndex((x) => x.index === a.index)),
-        items: list.map((x) => ({ url: api.attachmentUrl(m.folder, m.uid, x.index, true), downloadUrl: api.attachmentUrl(m.folder, m.uid, x.index), name: x.name, type: x.type, size: x.size })),
+        items: list.map((x) => ({ url: viewUrl(m, x), downloadUrl: api.attachmentUrl(m.folder, m.uid, x.index), name: x.name, type: isImg(x) ? x.type : 'application/pdf', size: x.size, converted: isOffice(x) })),
     };
 }
 const labelMap = computed(() => Object.fromEntries(props.labels.map((l) => [l.id, l])));
@@ -158,17 +165,14 @@ const isDraft = computed(() => props.folderRole === 'drafts');
 
             <template v-if="isOpen(m)">
                 <div v-if="m.attachments?.filter((a) => !a.inline).length" class="msg__atts">
-                    <a
-                        v-for="a in m.attachments.filter((a) => !a.inline)"
-                        :key="a.index"
-                        class="att"
-                        :class="{ 'att--view': viewable(a) }"
-                        :href="api.attachmentUrl(m.folder, m.uid, a.index)"
-                        :title="a.name + ' · ' + a.type + (viewable(a) ? ' · открыть для просмотра' : '')"
-                        @click="openAttachment(m, a, $event)"
-                    >
-                        <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
-                    </a>
+                    <!-- Чип вложения: имя — просмотр (если умеем) или скачивание; справа явные кнопки «посмотреть» и «скачать» -->
+                    <span v-for="a in m.attachments.filter((a) => !a.inline)" :key="a.index" class="att" :class="{ 'att--view': viewable(a) }">
+                        <a class="att__main" :href="api.attachmentUrl(m.folder, m.uid, a.index)" :title="a.name + ' · ' + a.type" @click="viewable(a) && (openAttachment(m, a), $event.preventDefault())">
+                            <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
+                        </a>
+                        <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openAttachment(m, a)"><Icon name="eye" :size="14" /></button>
+                        <a class="att__btn" :href="api.attachmentUrl(m.folder, m.uid, a.index)" title="Скачать"><Icon name="download" :size="14" /></a>
+                    </span>
                     <!-- Несколько вложений — одним архивом (обращение №11) -->
                     <a
                         v-if="m.attachments.filter((a) => !a.inline).length > 1"

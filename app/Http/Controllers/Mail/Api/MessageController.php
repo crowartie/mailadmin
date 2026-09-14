@@ -60,6 +60,19 @@ class MessageController extends Controller
         ]);
     }
 
+    /** Предпросмотр офисного документа как PDF (LibreOffice на сервере, только показ — оригинал не меняется). */
+    public function attachmentPreview(ImapSession $imap, string $folder, int $uid, int $index): Response
+    {
+        $pdf = (new MailStore($imap->client()))->attachmentPreviewPdf($folder, $uid, $index);
+
+        return response(file_get_contents($pdf), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="preview.pdf"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
     /** Все вложения письма одним архивом (обращение №11). */
     public function attachmentsZip(ImapSession $imap, string $folder, int $uid)
     {

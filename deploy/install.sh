@@ -309,6 +309,10 @@ bash "$HERE/dovecot-fts-learn.sh"
 bash "$HERE/setup-reports.sh"
 doveconf -n >/dev/null && systemctl restart dovecot
 
+# ── 7b. LibreOffice без GUI — предпросмотр офисных вложений в веб-почте (docx/xlsx/pptx → PDF) ──────────
+log "LibreOffice (headless) для предпросмотра документов"
+apt-get install -y -q --no-install-recommends libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui   fonts-liberation fonts-dejavu-core fonts-crosextra-carlito >/dev/null 2>&1 || warn "LibreOffice не поставился — предпросмотр docx/xlsx работать не будет"
+
 # ── 8. Amavis: пороги, карантин в базу, антивирус ──────────────────────────
 log "Amavis и ClamAV"
 # Правила SpamAssassin: в Ubuntu ежедневный sa-update выключен, пока в /etc/default/spamassassin нет CRON=1.

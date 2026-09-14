@@ -911,6 +911,59 @@ class MailStore
         return ['path' => $tmp, 'name' => 'Вложения — ' . $file . '.zip', 'count' => $count];
     }
 
+    /**
+     * Предпросмотр офисного вложения: LibreOffice (headless) переводит документ в PDF, результат кэшируется по
+     * содержимому файла (storage/app/private/preview, чистится раз в сутки старше недели). Преобразования идут
+     * по одному — процессор слабый, а конвертер прожорливый. Возвращает путь к PDF.
+     */
+    public function attachmentPreviewPdf(string $path, int $uid, int $index): string
+    {
+        $a = $this->attachment($path, $uid, $index);
+        $content = (string) $a->getContent();
+        abort_if($content === '', 404, 'Вложение пустое');
+        abort_if(strlen($content) > 25 * 1024 * 1024, 413, 'Документ слишком большой для предпросмотра — скачайте его');
+        $name = self::attachmentName($a, 'document');
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        abort_unless(in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'], true), 415, 'Этот тип файла не показываем — скачайте его');
+        $dir = storage_path('app/private/preview');
+        if (! is_dir($dir)) {
+            mkdir($dir, 0750, true);
+        }
+        $pdf = $dir . '/' . sha1($content) . '.pdf';
+        if (is_file($pdf) && filesize($pdf) > 0) {
+            touch($pdf);
+
+            return $pdf;
+        }
+        $lock = \Illuminate\Support\Facades\Cache::lock('office-preview', 90);
+        abort_unless($lock->block(60), 503, 'Конвертер занят — попробуйте через минуту');
+        try {
+            if (is_file($pdf) && filesize($pdf) > 0) {   // пока ждали, сделал кто-то другой
+                return $pdf;
+            }
+            $work = $dir . '/tmp-' . bin2hex(random_bytes(6));
+            mkdir($work, 0750, true);
+            $src = $work . '/in.' . $ext;
+            file_put_contents($src, $content);
+            // Свой профиль в каталоге кэша: у www-data нет домашней папки, без профиля soffice не стартует.
+            $cmd = ['soffice', '-env:UserInstallation=file://' . $dir . '/profile', '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', $work, $src];
+            $p = new \Symfony\Component\Process\Process($cmd, $work, ['HOME' => $dir], null, 120);
+            $p->run();
+            $out = $work . '/in.pdf';
+            if (! $p->isSuccessful() || ! is_file($out)) {
+                \Illuminate\Support\Facades\Log::warning('office-preview: ' . $name . ': ' . trim($p->getErrorOutput() . ' ' . $p->getOutput()));
+                \Illuminate\Support\Facades\File::deleteDirectory($work);
+                abort(502, 'Не удалось подготовить предпросмотр — скачайте документ');
+            }
+            rename($out, $pdf);
+            \Illuminate\Support\Facades\File::deleteDirectory($work);
+
+            return $pdf;
+        } finally {
+            $lock->release();
+        }
+    }
+
     /** Имя вложения: сначала из сырых заголовков части (библиотека ломается на koi8-r в две строки и RFC 2231), потом её версия. */
     public static function attachmentName(Attachment $a, string $fallback = 'attachment'): string
     {

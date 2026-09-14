@@ -34,7 +34,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
     <div class="aview" @click.self="$emit('close')">
         <div class="aview__bar">
             <span class="aview__name" :title="item.name">{{ item.name }}</span>
-            <span class="aview__meta">{{ size(item.size) }} · {{ cur + 1 }} / {{ items.length }}</span>
+            <span class="aview__meta">{{ size(item.size) }} · {{ cur + 1 }} / {{ items.length }}<template v-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>
             <span class="grow" />
             <a class="ib aview__ib" :href="item.downloadUrl" title="Скачать"><Icon name="download" :size="17" /></a>
             <a class="ib aview__ib" :href="item.url" target="_blank" rel="noopener" title="Открыть в новой вкладке"><Icon name="share" :size="17" /></a>

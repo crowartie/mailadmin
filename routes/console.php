@@ -23,6 +23,20 @@ Schedule::command('alerts:check --digest')->everyMinute()->when(function () {
 Schedule::command('reports:fetch')->hourly()->withoutOverlapping();
 // Сервисы меняют свои серверы — SPF-диапазоны для «отправки с чужих серверов» перечитываем ежедневно.
 Schedule::command('external-senders:refresh')->dailyAt('04:10')->withoutOverlapping();
+// Кэш предпросмотра офисных вложений (PDF из LibreOffice): старше недели — удалить.
+Schedule::call(function () {
+    $dir = storage_path('app/private/preview');
+    foreach (glob($dir . '/*.pdf') ?: [] as $f) {
+        if (filemtime($f) < time() - 7 * 86400) {
+            @unlink($f);
+        }
+    }
+    foreach (glob($dir . '/tmp-*') ?: [] as $d) {   // брошенные рабочие каталоги упавших конвертаций
+        if (filemtime($d) < time() - 3600) {
+            \Illuminate\Support\Facades\File::deleteDirectory($d);
+        }
+    }
+})->dailyAt('04:20');
 // Напоминания о событиях по почте (VALARM) — каждую минуту.
 Schedule::command('calendar:reminders')->everyMinute()->withoutOverlapping();
 // Сводка карантина сотрудникам — раз в сутки в час из настроек.
