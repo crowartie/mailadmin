@@ -287,12 +287,16 @@ function onDrop(data, target) {
     if (data.folder === folder.value) moveTo(data.uids, target);
 }
 
-// Перенос в свою папку из «Входящих»: после переноса предлагаем правило «всегда класть сюда письма от…».
+// Единая точка переноса в папку — мышью, из меню «В папку», с клавиатуры. Что предложить, решает ПАПКА-ПОЛУЧАТЕЛЬ,
+// откуда бы письмо ни тащили: «Спам» — решение по отправителю (спам), «Рассылки» — рассылка, своя папка — правило
+// «класть сюда всегда» (отключается в Настройках). Корзина, архив, отложенные — просто перенос.
 function moveTo(uids, target) {
     const f = folders.value.find((x) => x.path === target);
-    const ask = settings.value.ask_rule_on_move !== false && folderInfo.value.role === 'inbox' && f && (f.role === 'custom' || f.role === 'lists');
-    if (!ask) { act('move', uids, { target }); return; }
-    askSender('folder', uids, f);
+    if (!f || f.path === folder.value) return;
+    if (f.role === 'spam') { askSender('spam', uids); return; }
+    if (f.role === 'lists') { askSender('lists', uids); return; }
+    if (f.role === 'custom' && settings.value.ask_rule_on_move !== false) { askSender('folder', uids, f); return; }
+    act('move', uids, { target });
 }
 
 // ── Решение по отправителю: спам / рассылка / не спам ────────────
