@@ -2,7 +2,7 @@
 // Поле адресатов: фишки «Имя <адрес>», ввод с подсказками из общей книги и недавних.
 import { ref, watch } from 'vue';
 import { api } from '../../mail/api';
-import { initials } from '../../mail/format';
+import { initials, parseAddr, splitAddrs } from '../../mail/format';
 
 const props = defineProps({
     modelValue: { type: Array, default: () => [] }, // [{name, mail}]
@@ -19,13 +19,7 @@ let timer = null;
 
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
-function parse(piece) {
-    piece = piece.trim().replace(/[,;]+$/, '').trim();
-    if (!piece) return null;
-    const m = piece.match(/^"?([^"<]*)"?\s*<([^>]+)>$/);
-    if (m) return { name: m[1].trim(), mail: m[2].trim().toLowerCase() };
-    return { name: '', mail: piece.toLowerCase() };
-}
+function parse(piece) { return parseAddr(piece); }
 
 function add(entry) {
     if (!entry) return;
@@ -37,7 +31,7 @@ function commit() {
     const raw = text.value;
     text.value = '';
     sugg.value = [];
-    raw.split(/[,;]+(?![^<]*>)/).forEach((p) => add(parse(p)));
+    splitAddrs(raw).forEach((p) => add(parse(p)));
 }
 
 function pick(s) {
@@ -93,7 +87,7 @@ function onPaste(e) {
     const t = e.clipboardData?.getData('text') || '';
     if (/[,;<]/.test(t) || (t.match(/@/g) || []).length > 1) {
         e.preventDefault();
-        t.split(/[,;\n]+(?![^<]*>)/).forEach((p) => add(parse(p)));
+        splitAddrs(t).forEach((p) => add(parse(p)));
     }
 }
 

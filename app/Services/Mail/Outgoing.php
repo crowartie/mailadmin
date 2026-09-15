@@ -227,14 +227,19 @@ class Outgoing
     public function parseAddresses(string $raw): array
     {
         $out = [];
-        foreach (preg_split('/[;,]+(?![^<]*>)/u', $raw) as $piece) {
+        foreach (self::splitAddresses($raw) as $piece) {
             $piece = trim($piece);
             if ($piece === '') {
                 continue;
             }
-            if (preg_match('/^\s*"?([^"<]*)"?\s*<([^>]+)>\s*$/u', $piece, $m)) {
+            if (preg_match('/^(.*?)\s*<([^<>]+)>\s*$/su', $piece, $m)) {
                 $mail = trim($m[2]);
                 $name = trim($m[1]);
+                // Имя в кавычках («"Иванов, Иван"», «"\"Фирма\" - Иванов"») — снять кавычки и экранирование;
+                // имя с незакрытой кавычкой («"Фирма" - Иванов») — оставить как есть, Symfony сам закавычит при отправке.
+                if (preg_match('/^"(.*)"$/su', $name, $q)) {
+                    $name = str_replace(['\\"', '\\\\'], ['"', '\\'], $q[1]);
+                }
             } else {
                 $mail = trim($piece, " \t\"'<>");
                 $name = '';
@@ -246,6 +251,39 @@ class Outgoing
         }
 
         return $out;
+    }
+
+    /** Делим список адресов по запятым и точкам с запятой, не трогая те, что внутри кавычек и угловых скобок. */
+    public static function splitAddresses(string $raw): array
+    {
+        $parts = [];
+        $cur = '';
+        $quoted = false;
+        $angle = 0;
+        $prev = '';
+        foreach (preg_split('//u', $raw, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $ch) {
+            if ($ch === '"' && $prev !== '\\') {
+                $quoted = ! $quoted;
+            } elseif (! $quoted && $ch === '<') {
+                $angle++;
+            } elseif (! $quoted && $ch === '>') {
+                $angle = max(0, $angle - 1);
+            } elseif (($ch === ',' || $ch === ';' || $ch === "\n") && ! $quoted && $angle === 0) {
+                $parts[] = $cur;
+                $cur = '';
+                $prev = $ch;
+                continue;
+            }
+            $cur .= $ch;
+            $prev = $ch;
+        }
+        $parts[] = $cur;
+        if ($quoted && count($parts) === 1 && preg_match_all('/<[^<>]+>/', $raw) > 1) {
+            // Незакрытая кавычка «съела» остальные адреса — делим грубо, по запятым вне скобок.
+            return preg_split('/[;,\n]+(?![^<]*>)/u', $raw) ?: [$raw];
+        }
+
+        return $parts;
     }
 
     /** Адрес «От»: свой или один из своих псевдонимов; всё чужое — молча заменяем на свой. */

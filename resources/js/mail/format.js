@@ -45,7 +45,35 @@ export function addrList(list) {
 }
 
 export function addrString(list) {
-    return (list || []).map((a) => (a.name && a.name !== a.mail ? `${a.name} <${a.mail}>` : a.mail)).join(', ');
+    return (list || []).map((a) => (a.name && a.name !== a.mail ? `${quoteName(a.name)} <${a.mail}>` : a.mail)).join(', ');
+}
+/** Имя с запятой, кавычками или скобками — в кавычки (RFC 5322), иначе «"Фирма" - Иванов» ломает разбор адреса. */
+export function quoteName(name) {
+    return /[,;<>"()\\]/.test(name) ? `"${name.replace(/["\\]/g, '\\$&')}"` : name;
+}
+/** Разбить список адресов по запятым, точкам с запятой и переводам строк — но не внутри кавычек и угловых скобок. */
+export function splitAddrs(raw) {
+    const parts = []; let cur = ''; let quoted = false; let angle = 0; let prev = '';
+    for (const ch of raw || '') {
+        if (ch === '"' && prev !== '\\') quoted = !quoted;
+        else if (!quoted && ch === '<') angle++;
+        else if (!quoted && ch === '>') angle = Math.max(0, angle - 1);
+        else if ((ch === ',' || ch === ';' || ch === '\n') && !quoted && angle === 0) { parts.push(cur); cur = ''; prev = ch; continue; }
+        cur += ch; prev = ch;
+    }
+    parts.push(cur);
+    return parts;
+}
+/** «Имя <адрес>» или «адрес» → { name, mail }; кавычки и экранирование в имени снимаются. */
+export function parseAddr(piece) {
+    piece = (piece || '').trim().replace(/[,;]+$/, '').trim();
+    if (!piece) return null;
+    const m = piece.match(/^([\s\S]*?)\s*<([^<>]+)>$/);
+    if (!m) return { name: '', mail: piece.toLowerCase() };
+    let name = m[1].trim();
+    const q = name.match(/^"([\s\S]*)"$/);
+    if (q) name = q[1].replace(/\\(["\\])/g, '$1');
+    return { name, mail: m[2].trim().toLowerCase() };
 }
 
 export function escapeHtml(s) {
