@@ -19,6 +19,8 @@ Schedule::command('alerts:check --digest')->everyMinute()->when(function () {
         return false;
     }
 });
+// Общий доступ к ящикам: доложить права на папки, появившиеся после выдачи доступа («Рассылки», «Архив», новые папки).
+Schedule::command('shares:sync')->everyTenMinutes()->withoutOverlapping()->runInBackground();
 // Ответы на уведомления по обращениям, присланные письмом (ящик feedback@) — в переписку обращения.
 Schedule::command('feedback:import')->everyMinute()->withoutOverlapping();
 // Отчёты DMARC/TLS-RPT из ящика postmaster — раз в час.

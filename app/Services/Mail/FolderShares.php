@@ -4,6 +4,7 @@ namespace App\Services\Mail;
 
 use App\Models\Vmail\Mailbox;
 use App\Services\Server\Ctl;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Общий доступ к папкам ящика (как в Kerio): права Dovecot ACL через doveadm.
@@ -79,37 +80,109 @@ class FolderShares
         Ctl::run('acl-delete', [strtolower($owner), $folderUtf8, $with], 20);
         Ctl::out('acl-set', array_merge([strtolower($owner), $folderUtf8, $with], self::LEVELS[$level]), 30);
         if (strtoupper($folderUtf8) === 'INBOX') {
-            // Редактор и владелец работают с ящиком целиком: спам уезжает в его «Спам», удалённое — в его «Корзину».
-            // Читателю системные папки не нужны (переносить он не может).
-            foreach (self::systemFolders($owner) as $path) {
-                Ctl::run('acl-delete', [strtolower($owner), $path, $with], 20);
-                if ($level !== 'reader') {
+            // Доступ по «Входящим» — это доступ к ящику: владелец получает все его папки, редактор — системные
+            // («Спам», «Корзина», «Отправленные», «Черновики», «Архив», «Рассылки»), читателю остальные не нужны.
+            // Сначала снимаем везде (понижение уровня), потом ставим где положено.
+            try {
+                $store = new MailStore(ImapSession::master($owner));
+                foreach (self::allFolders($store) as $path) {
+                    Ctl::run('acl-delete', [strtolower($owner), $path, $with], 20);
+                }
+                foreach (self::targetFolders($store, $level) as $path) {
                     Ctl::out('acl-set', array_merge([strtolower($owner), $path, $with], self::LEVELS[$level]), 30);
                 }
+            } catch (\Throwable $e) {
+                Log::warning('Права на папки ящика не разложены', ['owner' => $owner, 'with' => $with, 'error' => $e->getMessage()]);
             }
         }
         self::forgetCaches($owner, $with);
     }
 
-    /** Системные папки ящика (UTF-8): «Спам» и «Корзина» создаются, если их ещё нет; остальные — какие есть. */
-    private static function systemFolders(string $owner): array
+    /** Все свои папки ящика, кроме «Входящих» (UTF-8). */
+    private static function allFolders(MailStore $store): array
     {
-        try {
-            $store = new MailStore(ImapSession::master($owner));
-            $out = [];
-            foreach (['spam', 'trash'] as $role) {
-                $out[] = self::utf8($store->rolePath($role));
+        $out = [];
+        foreach ($store->folders() as $f) {
+            if ($f['role'] !== 'shared' && strtoupper($f['path']) !== 'INBOX') {
+                $out[] = self::utf8($f['path']);
             }
-            foreach ($store->folders() as $f) {
-                if (in_array($f['role'], ['sent', 'drafts', 'archive', 'lists'], true)) {
-                    $out[] = self::utf8($f['path']);
-                }
-            }
-
-            return array_values(array_unique($out));
-        } catch (\Throwable) {
-            return [];   // ящик недоступен — права только на «Входящие»
         }
+
+        return $out;
+    }
+
+    /** Папки, которые полагаются уровню доступа по «Входящим»: владельцу — все, редактору — системные. */
+    private static function targetFolders(MailStore $store, string $level): array
+    {
+        if ($level === 'reader') {
+            return [];
+        }
+        if ($level === 'owner') {
+            return self::allFolders($store);
+        }
+        $out = [];
+        foreach (['spam', 'trash'] as $role) {
+            $out[] = self::utf8($store->rolePath($role));   // создаются, если их ещё нет
+        }
+        foreach ($store->folders() as $f) {
+            if (in_array($f['role'], ['sent', 'drafts', 'archive', 'lists'], true)) {
+                $out[] = self::utf8($f['path']);
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Доложить права по папкам, появившимся после выдачи доступа (новая «Рассылки», «Архив», папка владельца).
+     * Ничего не снимает. Возвращает список «папка → кому», что пришлось доложить.
+     */
+    public function sync(string $owner): array
+    {
+        $owner = strtolower($owner);
+        $done = [];
+        $store = new MailStore(ImapSession::master($owner));
+        $inbox = self::aclLevels($store, 'INBOX');
+        foreach ($inbox as $with => $level) {
+            if ($level === 'reader') {
+                continue;
+            }
+            foreach (self::targetFolders($store, $level) as $utf8) {
+                $imapPath = mb_convert_encoding($utf8, 'UTF7-IMAP', 'UTF-8') ?: $utf8;
+                $have = self::aclLevels($store, $imapPath)[$with] ?? null;
+                if ($have === $level) {
+                    continue;
+                }
+                Ctl::run('acl-delete', [$owner, $utf8, $with], 20);
+                Ctl::out('acl-set', array_merge([$owner, $utf8, $with], self::LEVELS[$level]), 30);
+                $done[] = $utf8 . ' → ' . $with . ' (' . self::TITLES[$level] . ')';
+                self::forgetCaches($owner, $with);
+            }
+        }
+
+        return $done;
+    }
+
+    /** Кому и с каким уровнем открыта папка — через IMAP GETACL (быстро, без doveadm). @return array<string,string> */
+    private static function aclLevels(MailStore $store, string $imapPath): array
+    {
+        $conn = $store->client()->getConnection();
+        $out = [];
+        foreach ((array) $conn->requestAndResponse('GETACL', [$conn->escapeString($imapPath)])->data() as $line) {
+            if (! is_array($line) || strtoupper((string) ($line[0] ?? '')) !== 'ACL') {
+                continue;
+            }
+            for ($k = 2; $k + 1 < count($line); $k += 2) {
+                $id = strtolower((string) $line[$k]);
+                $r = (string) $line[$k + 1];
+                if ($id === $store->user() || ! str_contains($id, '@') || $id[0] === '-') {
+                    continue;
+                }
+                $out[$id] = str_contains($r, 'a') ? 'owner' : (str_contains($r, 'i') ? 'editor' : 'reader');
+            }
+        }
+
+        return $out;
     }
 
     /** Список «от имени кого писать» и пометка «открыта коллегам» кэшируются — сбросить после смены прав. */
@@ -123,8 +196,12 @@ class FolderShares
     {
         Ctl::out('acl-delete', [strtolower($owner), $folderUtf8, strtolower(trim($with))], 20);
         if (strtoupper($folderUtf8) === 'INBOX') {
-            foreach (self::systemFolders($owner) as $path) {
-                Ctl::run('acl-delete', [strtolower($owner), $path, strtolower(trim($with))], 20);
+            try {
+                foreach (self::allFolders(new MailStore(ImapSession::master($owner))) as $path) {
+                    Ctl::run('acl-delete', [strtolower($owner), $path, strtolower(trim($with))], 20);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Права на папки ящика не сняты', ['owner' => $owner, 'with' => $with, 'error' => $e->getMessage()]);
             }
         }
         self::forgetCaches($owner, $with);
