@@ -204,19 +204,25 @@ class FeedbackImport extends Command
         return (bool) preg_match('/^(bulk|junk|auto[_-]?reply|list)$/i', trim((string) ($h->get('precedence') ?? '')));
     }
 
-    /** Текст ответа без процитированного письма и без нашей же подписи уведомления. */
+    /** Текст ответа без процитированного письма, подписи и нашего же текста уведомления. */
     private function replyText(Message $m): string
     {
-        $text = trim((string) $m->getTextBody());
-        if ($text === '') {
-            $html = (string) $m->getHTMLBody();
-            // Цитата в HTML — blockquote или наш блок .quote; всё после него — старое письмо.
-            $html = preg_replace('/<(blockquote|div class="quote")[\s\S]*$/iu', '', $html) ?? $html;
+        $html = trim((string) $m->getHTMLBody());
+        if ($html !== '') {
+            // В HTML подпись и цитата размечены (наша веб-почта: div.sig и div.quote; почтовые программы: blockquote) —
+            // режем по разметке, а не по эвристикам. Всё после начала цитаты — старое письмо.
+            $html = preg_replace('/<(blockquote|div\s+class="quote")[\s\S]*$/iu', '', $html) ?? $html;
+            $html = preg_replace('/<div\s+class="sig"[\s\S]*?<\/div>/iu', '', $html) ?? $html;
+            $html = preg_replace('/<(style|script)[\s\S]*?<\/\1>/iu', '', $html) ?? $html;
             $html = preg_replace('/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/i', "\n", $html) ?? $html;
-            $text = trim(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $text = str_replace("\u{a0}", ' ', $text);
+        } else {
+            $text = (string) $m->getTextBody();
         }
+        $text = self::stripQuote($text);
 
-        return self::stripQuote($text);
+        return trim(preg_replace("/\n{3,}/", "\n\n", $text) ?? $text);
     }
 
     /** Обрезать цитату: строки с «>», «… писал(а):», «-----Original Message-----», «От: …» и наш текст уведомления. */
