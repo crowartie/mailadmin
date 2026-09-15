@@ -77,6 +77,11 @@ grep -q "mailadmin: indexer-worker" "$CONF" || printf '\n# mailadmin: indexer-wo
 grep -q 'lowmemory=' "$CONF" || sed -i 's/^\(\s*fts_xapian = partial=3 full=20 verbose=0\)$/\1 lowmemory=32/' "$CONF"
 # Старые установки: fts_enforced = no → body (см. выше)
 sed -i 's/^\(\s*\)fts_enforced = no$/\1fts_enforced = body/' "$CONF"
+# Папка «Рассылки» (Newsletters) у всех сразу, как Junk: общие правила кладут туда хлам-не-спам, и сотрудник должен
+# видеть её в списке, а не ждать первого попавшего письма.
+if ! grep -q "mailbox Newsletters" "$CONF"; then
+  sed -i '/^namespace inbox {/a\    mailbox Newsletters {\n        auto = subscribe\n    }' "$CONF"
+fi
 # Скрипты компилируются в контексте imapsieve; на лету их скомпилирует сам Dovecot (каталог принадлежит vmail).
 sievec -x "+vnd.dovecot.pipe +imapsieve" /var/vmail/sieve/learn-spam.sieve 2>/dev/null || true
 sievec -x "+vnd.dovecot.pipe +imapsieve" /var/vmail/sieve/learn-ham.sieve 2>/dev/null || true
