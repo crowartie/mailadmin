@@ -433,10 +433,21 @@ async function recolor(l, color) {
 const COLORS = ['#2F6FEB', '#16A05C', '#D9791F', '#C0392B', '#7B3FE4', '#0E8A8A', '#6B7787'];
 
 // ── Написать ──────────────────────────────────────────────────
-function signature(forReply) {
-    const s = settings.value.signature || '';
+// Подпись зависит от поля «От»: у общего ящика (info и т.п.) — его собственная, иначе личная.
+function signatureText(fromMail) {
+    const id = (props.identities || []).find((i) => i.shared && i.mail.toLowerCase() === (fromMail || '').toLowerCase());
+    return id ? (id.signature || '') : (settings.value.signature || '');
+}
+function signature(forReply, fromMail) {
+    const s = signatureText(fromMail);
     if (!s || (forReply && !settings.value.signature_reply)) return '';
     return `<p><br></p><div class="sig">${s}</div>`;
+}
+// Письмо из общей папки (или новое, пока открыта общая папка) — от имени её владельца, если нам разрешено писать за него.
+function sharedFrom(m) {
+    const path = m ? m.folder : folder.value;
+    const owner = (folders.value.find((f) => f.path === path) || {}).owner;
+    return owner && (props.identities || []).some((i) => i.shared && i.mail === owner) ? owner : '';
 }
 function quote(m) {
     const inner = m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`;
@@ -450,9 +461,9 @@ function replyTargets(m) {
 function startCompose(mode = 'new', m = null, text = '') {
     menu.value = null;
     if (mode === 'draft') { openDraft(m.uid); return; }
-    const c = { mode, to: [], cc: [], bcc: [], subject: '', html: '' };
+    const c = { mode, to: [], cc: [], bcc: [], subject: '', html: '', from: sharedFrom(m) || '' };
     if (mode === 'new') {
-        c.html = `<p>${escapeHtml(text)}</p>${signature(false)}`;
+        c.html = `<p>${escapeHtml(text)}</p>${signature(false, c.from)}`;
     } else if (mode === 'reply' || mode === 'replyAll') {
         c.to = replyTargets(m).filter((a) => !me(a) || replyTargets(m).length === 1);
         if (mode === 'replyAll') {
@@ -460,15 +471,15 @@ function startCompose(mode = 'new', m = null, text = '') {
             [...m.to, ...(m.cc || [])].forEach((a) => { if (!me(a) && !seen.has(a.mail)) { seen.add(a.mail); c.cc.push(a); } });
         }
         c.subject = /^re:/i.test(m.subject) ? m.subject : 'Re: ' + (m.subject === '(без темы)' ? '' : m.subject);
-        c.html = `<p>${escapeHtml(text)}</p>${signature(true)}${quote(m)}`;
+        c.html = `<p>${escapeHtml(text)}</p>${signature(true, c.from)}${quote(m)}`;
         c.inReplyTo = m.messageId;
         c.references = [m.references, m.messageId].filter(Boolean).join(' ');
         c.answeredFolder = m.folder; c.answeredUid = m.uid;
         c.attachments = m.attachments || []; c.sourceFolder = m.folder; c.sourceUid = m.uid; c.keepAttachments = false;
     } else if (mode === 'forward') {
         c.subject = /^fwd?:/i.test(m.subject) ? m.subject : 'Fwd: ' + (m.subject === '(без темы)' ? '' : m.subject);
-        const hdr = `<div style="color:#6B7787">---------- Пересланное письмо ----------<br>От: ${escapeHtml(m.from.name)} &lt;${escapeHtml(m.from.mail)}&gt;<br>Дата: ${escapeHtml(when(m.date, true))}<br>Тема: ${escapeHtml(m.subject)}<br>Кому: ${escapeHtml(addrString(m.to))}</div><br>`;
-        c.html = `<p><br></p>${signature(true)}<p><br></p>${hdr}${m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`}`;
+        const hdr = `<div class="fwd" style="color:#6B7787">---------- Пересланное письмо ----------<br>От: ${escapeHtml(m.from.name)} &lt;${escapeHtml(m.from.mail)}&gt;<br>Дата: ${escapeHtml(when(m.date, true))}<br>Тема: ${escapeHtml(m.subject)}<br>Кому: ${escapeHtml(addrString(m.to))}</div><br>`;
+        c.html = `<p><br></p>${signature(true, c.from)}<p><br></p>${hdr}${m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`}`;
         c.references = [m.references, m.messageId].filter(Boolean).join(' ');
         c.attachments = m.attachments || []; c.sourceFolder = m.folder; c.sourceUid = m.uid; c.keepAttachments = true;
     }
@@ -564,7 +575,8 @@ async function quickReply({ text, message: m }) {
     const form = {
         to: addrString(to),
         subject: /^re:/i.test(m.subject) ? m.subject : 'Re: ' + m.subject,
-        html: `<p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>${signature(true)}${quote(m)}`,
+        ...(sharedFrom(m) ? { from: sharedFrom(m) } : {}),
+        html: `<p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>${signature(true, sharedFrom(m))}${quote(m)}`,
         inReplyTo: m.messageId,
         references: [m.references, m.messageId].filter(Boolean).join(' '),
         answeredFolder: m.folder, answeredUid: m.uid,

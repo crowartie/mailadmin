@@ -300,6 +300,8 @@ class Outgoing
                 }
             }
             foreach (self::sharedSenders($user) as $s) {
+                // Подпись общего ящика — его собственная (задаётся в настройках самого ящика), не подпись пишущего.
+                $s['signature'] = (string) (\App\Models\Webmail\Setting::for($s['mail'])['signature'] ?? '');
                 $out[] = $s;
             }
         } catch (\Throwable) {

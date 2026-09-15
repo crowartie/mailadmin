@@ -22,7 +22,7 @@ const cc = ref(c.cc || []);
 const bcc = ref(c.bcc || []);
 const showCc = ref(cc.value.length > 0);
 const showBcc = ref(bcc.value.length > 0);
-const from = ref(c.from || props.identities[0]?.mail || '');
+const from = ref((c.from && props.identities.some((i) => i.mail === c.from) ? c.from : '') || props.identities[0]?.mail || '');
 const subject = ref(c.subject || '');
 const html = ref(c.html || '');
 const files = ref([]);
@@ -140,6 +140,32 @@ function onKey(e) {
 }
 
 watch([to, cc, bcc, subject, html, from, keepAttachments], () => { dirty.value = true; }, { deep: true });
+
+// Подпись следует за полем «От»: у общего ящика — его собственная, у своих адресов — личная.
+// Блок подписи (div.sig) заменяется целиком; текст письма, цитата и пересланное не трогаются.
+function signatureFor(mail) {
+    const id = props.identities.find((i) => i.shared && i.mail === mail);
+    return id ? (id.signature || '') : (props.settings.signature || '');
+}
+watch(from, (nv, ov) => {
+    if (!ov || nv === ov) return;
+    if (c.mode !== 'new' && c.mode !== 'draft' && !props.settings.signature_reply) return;
+    const s = signatureFor(nv);
+    const box = document.createElement('div');
+    box.innerHTML = html.value;
+    let sig = box.querySelector('div.sig');
+    if (s) {
+        if (sig) { sig.innerHTML = s; } else {
+            sig = document.createElement('div'); sig.className = 'sig'; sig.innerHTML = s;
+            const gap = document.createElement('p'); gap.innerHTML = '<br>';
+            const anchor = box.querySelector('div.quote, div.fwd');
+            if (anchor) { box.insertBefore(gap, anchor); box.insertBefore(sig, anchor); } else { box.appendChild(gap); box.appendChild(sig); }
+        }
+    } else if (sig) {
+        sig.remove();
+    }
+    html.value = box.innerHTML;
+});
 
 onMounted(() => {
     dirty.value = false;
