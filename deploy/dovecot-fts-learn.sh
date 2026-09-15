@@ -91,14 +91,24 @@ fi
 cat > /usr/local/sbin/mailadmin-salearn <<'EOF'
 #!/bin/bash
 # Обучение байесовского фильтра SpamAssassin (та же база, что у Amavis).
+# cd /: cron запускает скрипт из /root, а perl у пользователя amavis тогда падает на «lib/…: Permission denied»
+# (относительный путь в @INC) — с 13.09 по 15.09 из-за этого не обучилось ни одно письмо.
 set -u
+cd / || exit 1
+LOG=/var/log/mailadmin-salearn.log
 for kind in spam ham; do
   d=/var/spool/sa-learn/$kind
   files=$(find "$d" -type f -name '*.eml' -mmin +0 2>/dev/null | head -500)
   [ -n "$files" ] || continue
-  echo "$files" | xargs -r sudo -u amavis sa-learn --$kind --no-sync >/dev/null 2>&1 && echo "$files" | xargs -r rm -f
+  n=$(echo "$files" | wc -l)
+  if echo "$files" | xargs -r sudo -u amavis -H sa-learn --$kind --no-sync >>"$LOG" 2>&1; then
+    echo "$files" | xargs -r rm -f
+    echo "$(date '+%F %T') $kind: обучено $n" >>"$LOG"
+  else
+    echo "$(date '+%F %T') $kind: ОШИБКА sa-learn (файлы оставлены)" >>"$LOG"
+  fi
 done
-sudo -u amavis sa-learn --sync >/dev/null 2>&1 || true
+sudo -u amavis -H sa-learn --sync >>"$LOG" 2>&1 || true
 EOF
 chmod 755 /usr/local/sbin/mailadmin-salearn
 echo "*/5 * * * * root /usr/local/sbin/mailadmin-salearn >/dev/null 2>&1" > /etc/cron.d/mailadmin-salearn
