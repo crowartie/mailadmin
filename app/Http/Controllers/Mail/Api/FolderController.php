@@ -105,7 +105,9 @@ class FolderController extends Controller
             abort(500, 'Не удалось выдать доступ: ' . mb_substr($e->getMessage(), 0, 200));
         }
 
-        return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder))]);
+        \Illuminate\Support\Facades\Cache::forget('shares-any.' . $imap->user());   // пометка «открыта коллегам» в списке папок
+
+        return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder)), 'folders' => (new MailStore($imap->client()))->folders()]);
     }
 
     public function unshare(Request $request, ImapSession $imap, string $folder): JsonResponse
@@ -120,7 +122,9 @@ class FolderController extends Controller
             abort(500, 'Не удалось снять доступ: ' . mb_substr($e->getMessage(), 0, 200));
         }
 
-        return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder))]);
+        \Illuminate\Support\Facades\Cache::forget('shares-any.' . $imap->user());   // пометка «открыта коллегам» в списке папок
+
+        return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder)), 'folders' => (new MailStore($imap->client()))->folders()]);
     }
 
     /** Делиться можно только своими папками (не чужими общими и не в режиме администратора без прав). */

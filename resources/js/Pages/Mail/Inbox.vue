@@ -422,10 +422,10 @@ async function openShare(f) {
     } catch (e) { fail(e); }
 }
 async function shareSet(mail, level) {
-    try { const r = await api.shareFolder(dialog.value.folder.path, mail, level); dialog.value.shares = r.shares; showToast({ text: 'Доступ выдан' }); } catch (e) { fail(e); }
+    try { const r = await api.shareFolder(dialog.value.folder.path, mail, level); dialog.value.shares = r.shares; if (r.folders) folders.value = r.folders; showToast({ text: 'Доступ выдан' }); } catch (e) { fail(e); }
 }
 async function shareRemove(mail) {
-    try { const r = await api.unshareFolder(dialog.value.folder.path, mail); dialog.value.shares = r.shares; } catch (e) { fail(e); }
+    try { const r = await api.unshareFolder(dialog.value.folder.path, mail); dialog.value.shares = r.shares; if (r.folders) folders.value = r.folders; } catch (e) { fail(e); }
 }
 async function recolor(l, color) {
     try { labels.value = await api.updateLabel(l.id, l.name, color); } catch (e) { fail(e); }

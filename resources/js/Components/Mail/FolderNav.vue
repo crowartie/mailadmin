@@ -59,6 +59,11 @@ function onDrop(e, f) {
 // Счётчик у папки: «непрочитанных / всего» (как в Яндексе, обращение №8); без непрочитанных — просто «всего».
 function counter(f) { return !f.virtual && ((f.unread || 0) > 0 || (f.total || 0) > 0); }
 function counterTitle(f) { return f.unread ? `непрочитанных ${f.unread} из ${f.total}` : `всего ${f.total}`; }
+// Папка открыта коллегам (общий доступ): значок рядом с именем, в подсказке — кому и с какими правами.
+function sharedTitle(f) {
+    const who = (f.shared_with || []).map((s) => `${s.name} (${s.level === 'editor' ? 'редактор' : 'чтение'})`);
+    return 'Открыта коллегам: ' + who.join(', ');
+}
 </script>
 
 <template>
@@ -82,6 +87,7 @@ function counterTitle(f) { return f.unread ? `непрочитанных ${f.unr
             @drop="onDrop($event, f)"
         >
             <span>{{ f.name }}</span>
+            <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
             <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b>{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
         <button
@@ -116,6 +122,7 @@ function counterTitle(f) { return f.unread ? `непрочитанных ${f.unr
         >
             <Icon :name="f.virtual ? 'inbox' : 'folder'" :size="16" style="color: var(--faint); flex: 0 0 16px" />
             <span>{{ f.name }}</span>
+            <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
             <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b>{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
         <div v-if="!custom.length" class="hint" style="padding: 4px 12px">Папки создаются здесь или из меню письма «В папку».</div>

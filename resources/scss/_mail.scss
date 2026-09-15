@@ -64,6 +64,10 @@
         span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     }
 
+    // Значок «папка открыта коллегам» — сразу за именем, счётчик остаётся справа
+    &__shared { display: inline-flex; flex: 0 0 auto; margin-left: -4px; color: v.$c-faint; }
+    &__item--on &__shared { color: v.$c-accent-ink; }
+
     &__count {
         margin-left: auto;
         font-size: 12px;

@@ -165,6 +165,8 @@ class MailStore
             unset($row);
         }
 
+        $this->markShared($out);
+
         // Системные — в фиксированном порядке, свои — по алфавиту после них.
         usort($out, function ($a, $b) {
             $oa = self::ORDER[$a['role']] ?? 10;
@@ -174,6 +176,66 @@ class MailStore
         });
 
         return $this->folderCache = $out;
+    }
+
+    /**
+     * Свои папки, открытые коллегам (Dovecot ACL): в строку папки добавляется shared_with = [{mail,name,level}].
+     * GETACL по всем папкам — миллисекунды, но спрашиваем только если пользователь вообще кому-то открывал папки
+     * (таблицу share_folder ведёт сам Dovecot через acl_shared_dict).
+     */
+    private function markShared(array &$out): void
+    {
+        $user = $this->user();
+        try {
+            $any = \Illuminate\Support\Facades\Cache::remember('shares-any.' . $user, 60, fn () => \Illuminate\Support\Facades\DB::connection('vmail')->table('share_folder')->where('from_user', $user)->exists());
+        } catch (\Throwable) {
+            return;
+        }
+        if (! $any) {
+            return;
+        }
+        $conn = $this->client->getConnection();
+        $found = [];
+        foreach ($out as $i => $row) {
+            if ($row['role'] === 'shared') {
+                continue;
+            }
+            try {
+                $lines = (array) $conn->requestAndResponse('GETACL', [$conn->escapeString($row['path'])])->data();
+            } catch (\Throwable) {
+                continue;
+            }
+            $with = [];
+            foreach ($lines as $line) {
+                // * ACL <папка> <кому> <права> <кому> <права> …
+                $tok = is_array($line) ? $line : preg_split('/\s+/', trim((string) $line));
+                if (strtoupper((string) ($tok[0] ?? '')) !== 'ACL') {
+                    continue;
+                }
+                for ($k = 2; $k + 1 < count($tok); $k += 2) {
+                    $id = strtolower((string) $tok[$k]);
+                    if ($id === $user || $id === '' || $id[0] === '-' || ! str_contains($id, '@')) {
+                        continue;   // сам владелец, запреты, anyone/authenticated — не «открыта коллеге»
+                    }
+                    $with[$id] = str_contains((string) $tok[$k + 1], 'i') ? 'editor' : 'reader';
+                }
+            }
+            if ($with) {
+                $found[$i] = $with;
+            }
+        }
+        if (! $found) {
+            return;
+        }
+        $mails = array_unique(array_merge(...array_map('array_keys', $found)));
+        $names = \App\Models\Vmail\Mailbox::query()->whereIn('username', $mails)->pluck('name', 'username');
+        foreach ($found as $i => $with) {
+            $list = [];
+            foreach ($with as $mail => $level) {
+                $list[] = ['mail' => $mail, 'name' => $names[$mail] ?: $mail, 'level' => $level];
+            }
+            $out[$i]['shared_with'] = $list;
+        }
     }
 
     /** Имя папки из IMAP (modified UTF-7) → UTF-8. */
