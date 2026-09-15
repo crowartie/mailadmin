@@ -95,7 +95,9 @@ class Outgoing
             $src = $this->store->folder($form['sourceFolder'])->query()->getMessageByUid((int) $form['sourceUid']);
             if ($src) {
                 foreach ($src->getAttachments() as $a) {
-                    $email->attach($a->getContent(), Charset::fix($a->getName()) ?: 'attachment', $a->getMimeType());
+                    // Имя — как показываем в веб-почте: библиотека отдаёт «=?utf-8?B?…?=» сырым, и при пересылке
+                    // получатель видел закодированную абракадабру вместо имени (обращение №20).
+                    $email->attach($a->getContent(), MailStore::attachmentName($a, 'attachment'), $a->getMimeType());
                 }
             }
         }
