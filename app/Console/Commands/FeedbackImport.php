@@ -57,7 +57,8 @@ class FeedbackImport extends Command
         $foreign ? $query->where('SUBJECT', 'Обращение') : $query->where('UNSEEN');
         $messages = $query->get();
 
-        $done = [];
+        $seen = [];      // разобрано: больше не трогаем
+        $remove = [];    // подшито или автоответ: письмо в ящике больше не нужно
         $imported = 0;
         foreach ($messages as $m) {
             /** @var Message $m */
@@ -70,23 +71,26 @@ class FeedbackImport extends Command
                 continue;
             }
             $this->line("uid {$uid}: {$result}");
+            $seen[] = $uid;
             if (str_starts_with($result, 'подшито')) {
                 $imported++;
+                $remove[] = $uid;
+            } elseif (str_starts_with($result, 'пропущено')) {
+                $remove[] = $uid;
             }
-            $done[] = $uid;
+            // «без обращения» и «не автор» остаются в ящике прочитанными — админ может посмотреть их сам.
         }
-        if ($done) {
-            try {
-                $store->flag('INBOX', $done, '\\Seen', true);
-                if (! $foreign && ! $this->option('keep')) {
-                    // Текст и файл уже в обращении; письмо в ящике больше не нужно.
-                    $store->flag('INBOX', $done, '\\Deleted', true);
-                    $client->openFolder('INBOX', true);
-                    $client->getConnection()->expunge();
-                }
-            } catch (\Throwable $e) {
-                $this->warn('Не пометил обработанные: ' . $e->getMessage());
+        try {
+            if ($seen) {
+                $store->flag('INBOX', $seen, '\\Seen', true);
             }
+            if ($remove && ! $foreign && ! $this->option('keep')) {
+                $store->flag('INBOX', $remove, '\\Deleted', true);
+                $client->openFolder('INBOX', true);
+                $client->getConnection()->expunge();
+            }
+        } catch (\Throwable $e) {
+            $this->warn('Не пометил обработанные: ' . $e->getMessage());
         }
         $this->info("{$mailbox}: писем {$messages->count()}, подшито {$imported}");
 
@@ -97,7 +101,7 @@ class FeedbackImport extends Command
     private function import(Message $m, string $own): string
     {
         $from = strtolower((string) ($m->getFrom()->first()->mail ?? ''));
-        $subject = (string) $m->getSubject();
+        $subject = self::decodeHeader((string) $m->getSubject());
         if ($from === '' || $from === $own || preg_match('/^(mailer-daemon|postmaster|noreply|no-reply)@/i', $from)) {
             return 'пропущено: служебный отправитель ' . $from;
         }
@@ -159,6 +163,17 @@ class FeedbackImport extends Command
         }
 
         return "подшито в обращение №{$ticket->id} (" . mb_strlen($text) . ' симв.' . ($file ? ', снимок' : '') . ')';
+    }
+
+    /** Тема может прийти в сыром виде «=?utf-8?Q?…?=» — раскодировать. */
+    private static function decodeHeader(string $raw): string
+    {
+        if (! str_contains($raw, '=?')) {
+            return $raw;
+        }
+        $d = @iconv_mime_decode($raw, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+
+        return $d !== false && $d !== '' ? $d : (mb_decode_mimeheader($raw) ?: $raw);
     }
 
     /** Номер обращения: из In-Reply-To/References нашего уведомления, иначе из темы «Обращение №N». */
