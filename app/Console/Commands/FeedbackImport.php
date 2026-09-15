@@ -133,6 +133,9 @@ class FeedbackImport extends Command
         $others = [];
         foreach ($m->getAttachments() as $a) {
             $type = strtolower((string) $a->getMimeType());
+            if (in_array($type, self::IMAGE_TYPES, true) && strlen((string) $a->getContent()) < 30 * 1024) {
+                continue;   // логотип из подписи — не упоминаем
+            }
             if (! in_array($type, self::IMAGE_TYPES, true) || $file === null) {
                 $others[] = MailStore::attachmentName($a, 'файл');
             }
@@ -240,6 +243,10 @@ class FeedbackImport extends Command
             if (preg_match('/^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}.*[<@].*:$/u', $t)) {   // «15.09.2026 12:00, Имя <a@b>:»
                 break;
             }
+            // Подпись почтовой программы без разметки: «С уважением,» / «Best regards» одной строкой — дальше не ответ.
+            if (preg_match('/^(С уважением|С наилучшими пожеланиями|Best regards|Kind regards|Regards|Sincerely)[,!.]?$/iu', $t)) {
+                break;
+            }
             $out[] = rtrim($line);
         }
         // Подпись «-- » и всё после неё — не часть ответа.
@@ -258,7 +265,8 @@ class FeedbackImport extends Command
                 continue;
             }
             $content = (string) $a->getContent();
-            if ($content === '' || strlen($content) > 8 * 1024 * 1024) {
+            // Мелкие картинки — логотипы из подписи, не снимки экрана.
+            if ($content === '' || strlen($content) < 30 * 1024 || strlen($content) > 8 * 1024 * 1024) {
                 continue;
             }
             $ext = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp', 'image/gif' => 'gif'][$type];
