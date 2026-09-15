@@ -255,7 +255,10 @@ final class ThreadIndex
         }
         foreach ($renames as $root => $olds) {
             DB::table('mail_threads')->where('user', $user)->whereIn('thread_id', $olds)->update(['thread_id' => mb_substr($root, 0, 255)]);
-            DB::table('mail_thread_refs')->where('user', $user)->whereIn('thread_id', $olds)->update(['thread_id' => mb_substr($root, 0, 255)]);
+            // UPDATE IGNORE: после переименования часть ссылок совпадёт с уже существующими (уникальный ключ) — их просто отбрасываем.
+            $marks = implode(',', array_fill(0, count($olds), '?'));
+            DB::statement("UPDATE IGNORE mail_thread_refs SET thread_id = ? WHERE `user` = ? AND thread_id IN ($marks)", array_merge([mb_substr($root, 0, 255), $user], $olds));
+            DB::table('mail_thread_refs')->where('user', $user)->whereIn('thread_id', $olds)->delete();   // остатки-дубли
         }
 
         $insert = [];
@@ -263,14 +266,15 @@ final class ThreadIndex
             $thread = mb_substr($find($r['thread']), 0, 255);
             $insert[] = ['user' => $user, 'folder' => $folder, 'uid' => $r['uid'], 'message_id' => mb_substr($r['id'], 0, 255), 'thread_id' => $thread, 'date' => $r['date']];
             foreach ($r['refs'] as $ref) {
-                $refRows[] = ['user' => $user, 'ref_id' => mb_substr($ref, 0, 255), 'thread_id' => $thread];
+                // Одна ссылка → одна строка: в цепочке из 50 писем каждое несёт те же 50 References.
+                $refRows[mb_substr($ref, 0, 255) . '|' . $thread] = ['user' => $user, 'ref_id' => mb_substr($ref, 0, 255), 'thread_id' => $thread];
             }
         }
         foreach (array_chunk($insert, self::CHUNK) as $part) {
             DB::table('mail_threads')->upsert($part, ['user', 'folder', 'uid'], ['message_id', 'thread_id', 'date']);
         }
-        foreach (array_chunk($refRows, 1000) as $part) {
-            DB::table('mail_thread_refs')->insert($part);
+        foreach (array_chunk(array_values($refRows), 1000) as $part) {
+            DB::table('mail_thread_refs')->insertOrIgnore($part);   // уже известные (user, ref_id, thread_id) пропускаем
         }
     }
 
