@@ -487,6 +487,13 @@ function startCompose(mode = 'new', m = null, text = '') {
         c.html = `<p><br></p>${signature(true, c.from)}<p><br></p>${hdr}${m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`}`;
         c.references = [m.references, m.messageId].filter(Boolean).join(' ');
         c.attachments = m.attachments || []; c.sourceFolder = m.folder; c.sourceUid = m.uid; c.keepAttachments = true;
+    } else if (mode === 'again') {
+        // «Изменить как новое» (как в Kerio/Outlook «Отправить повторно»): те же получатели, тема, текст и вложения,
+        // без цитаты и шапки пересылки. Подпись не добавляем — в отправленном письме она уже есть.
+        c.to = [...(m.to || [])]; c.cc = [...(m.cc || [])];
+        c.subject = m.subject === '(без темы)' ? '' : (m.subject || '');
+        c.html = m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`;
+        c.attachments = m.attachments || []; c.sourceFolder = m.folder; c.sourceUid = m.uid; c.keepAttachments = true;
     }
     compose.value = c;
     mobileRead.value = true;
@@ -795,6 +802,7 @@ onBeforeUnmount(() => {
             <template v-if="menuRow && folderInfo.role !== 'drafts'">
                 <button class="pop__item" type="button" @click="openThen('reply')"><Icon name="reply" :size="16" />Ответить<span class="k">r</span></button>
                 <button class="pop__item" type="button" @click="openThen('forward')"><Icon name="fwd" :size="16" />Переслать<span class="k">f</span></button>
+                <button class="pop__item" type="button" title="Открыть как новое письмо: те же получатели, тема, текст и вложения" @click="openThen('again')"><Icon name="edit" :size="16" />Изменить как новое</button>
                 <div class="pop__sep" />
             </template>
             <button class="pop__item" type="button" @click="act(menuRow && !menuRow.seen ? 'seen' : 'unseen', menu.uids)"><Icon name="eye" :size="16" />{{ menuRow && !menuRow.seen ? 'Прочитано' : 'Непрочитано' }}<span class="k">i</span></button>
