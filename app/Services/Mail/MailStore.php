@@ -166,6 +166,7 @@ class MailStore
             unset($row);
         }
 
+        $this->dedupeRoles($out);
         $this->markShared($out);
 
         // Системные — в фиксированном порядке, свои — по алфавиту после них.
@@ -266,6 +267,41 @@ class MailStore
     }
 
     /** Путь системной папки по роли; папки «Архив» и «Отложенные» создаются при первом обращении. */
+    /**
+     * Две папки на одну роль («Deleted Items» рядом с Trash, «Sent Items» рядом с Sent — их создаёт Outlook или
+     * почтовая программа с настройками времён Kerio): роль остаётся одной папке (предпочтительно с именем,
+     * которое Dovecot объявляет как SPECIAL-USE), остальные показываются как обычные папки под своим именем.
+     * Иначе в списке две «Корзины», а удаление и «Спам» попадают в случайную из них.
+     */
+    private function dedupeRoles(array &$out): void
+    {
+        $canon = ['inbox' => 'INBOX', 'trash' => 'Trash', 'spam' => 'Junk', 'sent' => 'Sent', 'drafts' => 'Drafts', 'archive' => 'Archive', 'snoozed' => 'Snoozed', 'lists' => 'Newsletters'];
+        $byRole = [];
+        foreach ($out as $i => $row) {
+            if (! in_array($row['role'], ['custom', 'shared'], true)) {
+                $byRole[$row['role']][] = $i;
+            }
+        }
+        foreach ($byRole as $role => $idx) {
+            if (count($idx) < 2) {
+                continue;
+            }
+            $keep = $idx[0];
+            foreach ($idx as $i) {
+                if (strcasecmp($out[$i]['path'], $canon[$role] ?? '') === 0) {
+                    $keep = $i;
+                    break;
+                }
+            }
+            foreach ($idx as $i) {
+                if ($i !== $keep) {
+                    $out[$i]['role'] = 'custom';
+                    $out[$i]['name'] = self::utf8Name((string) basename($out[$i]['path']));
+                }
+            }
+        }
+    }
+
     /** Владелец общей папки Shared/<owner>/… (null — папка своя). */
     public static function sharedOwner(string $path): ?string
     {
