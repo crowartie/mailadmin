@@ -50,7 +50,9 @@ Schedule::command('quarantine:digest')->everyMinute()->when(function () {
     }
 });
 // Индекс цепочек ответов: дочитать письма, пришедшие с почтой или через телефон/Outlook (веб-почта обновляет его сама).
-Schedule::command('threads:sync --all')->everyTwoMinutes()->withoutOverlapping()->runInBackground();
+// Раз в 10 минут: перенос/доставка и так обновляют индекс сразу (ThreadIndex::touch), полный обход 111 ящиков на HDD
+// занимает минуты и раз в 2 минуты превращался в постоянную нагрузку на диск.
+Schedule::command('threads:sync --all')->everyTenMinutes()->withoutOverlapping()->runInBackground();
 // Резервная копия по расписанию из настроек и чистка карантина по сроку хранения.
 Schedule::command('backup:run --if-due')->everyMinute()->withoutOverlapping()->runInBackground();
 Schedule::command('backup:run --purge-quarantine')->dailyAt('04:10');
