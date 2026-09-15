@@ -4,6 +4,9 @@
 set -euo pipefail
 CONF=/etc/dovecot/dovecot.conf
 cp -an "$CONF" "$CONF.bak-fts-$(date +%Y%m%d%H%M%S)"
+# Слепок конфигурации до правок: перечитываем Dovecot только если что-то реально изменилось
+# (полный перезапуск при каждой выкладке рвал IMAP всем и на 1-2 минуты выключал quota-status → Postfix отвечал 451).
+BEFORE=$(doveconf -n 2>/dev/null | md5sum)
 
 # ── 1. FTS: плагин в общий список и в imap ─────────────────────────────
 grep -q "fts_xapian" "$CONF" || sed -i -E 's/^(mail_plugins\s*=\s*)(.*)$/\1\2 fts fts_xapian/' "$CONF"
@@ -78,7 +81,11 @@ sed -i 's/^\(\s*\)fts_enforced = no$/\1fts_enforced = body/' "$CONF"
 sievec -x "+vnd.dovecot.pipe +imapsieve" /var/vmail/sieve/learn-spam.sieve 2>/dev/null || true
 sievec -x "+vnd.dovecot.pipe +imapsieve" /var/vmail/sieve/learn-ham.sieve 2>/dev/null || true
 chown vmail:vmail /var/vmail/sieve/learn-*.svbin 2>/dev/null || true
-doveconf -n >/dev/null && systemctl restart dovecot && echo "dovecot перезапущен"
+if doveconf -n >/dev/null; then
+  if [ "$(doveconf -n | md5sum)" != "$BEFORE" ]; then doveadm reload && echo "dovecot: конфигурация перечитана"; fi
+else
+  echo "dovecot: ошибка в конфигурации, не перечитываю" >&2
+fi
 
 # ── 4. Cron: скормить накопленное SpamAssassin от имени amavis ─────────
 cat > /usr/local/sbin/mailadmin-salearn <<'EOF'
