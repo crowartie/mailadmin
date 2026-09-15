@@ -433,19 +433,6 @@
     button:hover { color: v.$c-no; }
 }
 
-// Письмо-уведомление по обращению: ответ письмом уходит на noreply, ведём в само обращение
-.notice--ticket {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    padding: 10px 14px;
-    border-radius: v.$r-card;
-    background: v.$c-warn-soft;
-    color: v.$c-warn;
-    font-size: 13.5px;
-    span { flex: 1; min-width: 200px; }
-}
 .quick {
     background: v.$c-surface;
     border: 1px solid v.$c-border;

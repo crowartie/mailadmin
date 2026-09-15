@@ -19,6 +19,8 @@ Schedule::command('alerts:check --digest')->everyMinute()->when(function () {
         return false;
     }
 });
+// Ответы на уведомления по обращениям, присланные письмом (ящик feedback@) — в переписку обращения.
+Schedule::command('feedback:import')->everyMinute()->withoutOverlapping();
 // Отчёты DMARC/TLS-RPT из ящика postmaster — раз в час.
 Schedule::command('reports:fetch')->hourly()->withoutOverlapping();
 // Сервисы меняют свои серверы — SPF-диапазоны для «отправки с чужих серверов» перечитываем ежедневно.

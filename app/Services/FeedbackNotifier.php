@@ -24,18 +24,20 @@ class FeedbackNotifier
     {
         $subject = 'Обращение №' . $ticket->id . ($ticket->subject !== '' ? ': ' . mb_substr($ticket->subject, 0, 120) : '');
         $link = rtrim(Area::mailBase(), '/') . '/mail/feedback?id=' . $ticket->id;
-        // Люди отвечали на это письмо как на обычное — ответ уходил на noreply и в обращение не попадал.
-        $text = "Это автоматическое уведомление. Отвечать на него письмом не нужно — такой ответ никто не увидит.\n"
-            . "Чтобы ответить, откройте обращение по ссылке: {$link}\n"
-            . "(в веб-почте: значок «!» на панели слева → Обращения → №{$ticket->id})\n\n"
-            . $body;
+        $domain = config('areas.default_domain');
+        $from = self::address();
+        // Ответ на это письмо feedback:import подшивает в обращение (по Message-ID <feedback-N-…>), если ящик есть.
+        $text = ($from === self::mailbox()
+                ? "Ответить можно прямо на это письмо — ответ попадёт в обращение. Или в веб-почте: {$link}"
+                : "Ответить можно в веб-почте: {$link}")
+            . "\n\n" . $body;
         try {
-            $domain = config('areas.default_domain');
             $email = (new Email())
-                ->from(new Address('noreply@' . $domain, 'Почта ' . $domain))
+                ->from(new Address($from, 'Обращения · ' . $domain))
                 ->to(new Address($ticket->user))
                 ->subject($subject)
                 ->text($text);
+            $email->getHeaders()->addIdHeader('Message-ID', 'feedback-' . $ticket->id . '-' . bin2hex(random_bytes(6)) . '@' . $domain);
             (new Mailer(ImapSession::smtpLocal()))->send($email);
         } catch (\Throwable $e) {
             Log::warning('Ответ по обращению не отправлен', ['ticket' => $ticket->id, 'error' => $e->getMessage()]);
@@ -60,6 +62,54 @@ class FeedbackNotifier
             app(Alerts::class)->send($body);
         } catch (\Throwable $e) {
             Log::warning('Оповещение о новом обращении не отправлено', ['ticket' => $ticket->id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /** Служебный ящик обращений: сюда приходят ответы письмом. */
+    public static function mailbox(): string
+    {
+        return 'feedback@' . config('areas.default_domain');
+    }
+
+    /** Адрес отправителя уведомлений: ящик обращений, пока его нет — noreply. */
+    public static function address(): string
+    {
+        $mailbox = self::mailbox();
+        try {
+            if (\App\Models\Vmail\Mailbox::query()->where('username', $mailbox)->where('active', 1)->exists()) {
+                return $mailbox;
+            }
+        } catch (\Throwable) {
+            // схема vmail недоступна
+        }
+
+        return 'noreply@' . config('areas.default_domain');
+    }
+
+    /**
+     * Служебный ящик обращений создаётся сам при первом запуске feedback:import: пароль случайный
+     * (в него никто не входит, читает планировщик через master-пользователя), в списке — как служебный.
+     */
+    public static function ensureMailbox(): ?string
+    {
+        $mailbox = self::mailbox();
+        try {
+            if (\App\Models\Vmail\Mailbox::query()->where('username', $mailbox)->exists()) {
+                return $mailbox;
+            }
+            [$local, $domain] = explode('@', $mailbox, 2);
+            app(\App\Services\Vmail\MailboxService::class)->create([
+                'local_part' => $local, 'domain' => $domain, 'password' => bin2hex(random_bytes(16)),
+                'name' => 'Обращения', 'quota' => 512, 'active' => true,
+            ]);
+            \App\Models\EmployeeProfile::query()->updateOrCreate(['username' => $mailbox], ['is_service' => true]);
+            Log::info('Создан служебный ящик обращений', ['mailbox' => $mailbox]);
+
+            return $mailbox;
+        } catch (\Throwable $e) {
+            Log::warning('Служебный ящик обращений не создан', ['mailbox' => $mailbox, 'error' => $e->getMessage()]);
+
+            return null;
         }
     }
 

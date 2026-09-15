@@ -178,7 +178,7 @@ class FeedbackController extends Controller
             'last_reply_at' => now(),
         ])->save();
 
-        FeedbackNotifier::toUser($t, 'Ваше обращение закрыто: ' . mb_strtolower($label) . ".\n\n" . ($note !== '' ? $note : 'Если проблема осталась, напишите в самом обращении (по ссылке выше) — оно снова откроется.'));
+        FeedbackNotifier::toUser($t, 'Ваше обращение закрыто: ' . mb_strtolower($label) . ".\n\n" . ($note !== '' ? $note : 'Если проблема осталась, просто ответьте на это письмо или напишите в обращении — оно снова откроется.'));
         AdminAction::log('feedback.close', '#' . $t->id, $label);
 
         return $this->answer($request, $t, 'Обращение №' . $t->id . ' закрыто: ' . mb_strtolower($label), $m);
