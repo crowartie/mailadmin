@@ -267,13 +267,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <p class="hint">Пароль сотруднику задаёт только администратор — на вкладке «Общие» (кнопка «Сгенерировать»). Сам сотрудник сменить его не может.</p>
                     <div class="divider" />
                     <div class="group-title">Общие папки этого ящика</div>
-                    <p class="hint">Коллега увидит открытую папку у себя в разделе «Общие папки». Читатель только смотрит, редактор может перекладывать и удалять письма. Владелец делает то же самое сам в веб-почте (правой кнопкой по папке → «Общий доступ»).</p>
+                    <p class="hint">Коллега увидит открытую папку у себя в разделе «Общие папки». Читатель только смотрит, редактор может перекладывать и удалять письма, владелец (только по «Входящим») ещё и пишет от имени этого ящика. Хозяин ящика делает то же самое сам в веб-почте (правой кнопкой по папке → «Общий доступ»).</p>
                     <p v-if="shareErr" class="error">{{ shareErr }}</p>
                     <template v-if="shares">
                         <template v-for="f in shares.folders" :key="f.path">
                             <div v-for="s in f.shares" :key="f.path + s.mail" class="kv kv--start" style="align-items: center">
                                 <Icon name="folder" :size="15" style="color: var(--faint)" />
-                                <span style="flex: 1; min-width: 0"><span style="color: inherit">{{ f.name }}</span> → {{ s.name }} <span class="row__sub">{{ s.level === 'editor' ? 'редактор' : 'читатель' }}</span></span>
+                                <span style="flex: 1; min-width: 0"><span style="color: inherit">{{ f.name }}</span> → {{ s.name }} <span class="row__sub">{{ { owner: 'владелец', editor: 'редактор' }[s.level] || 'читатель' }}</span></span>
                                 <button class="btn btn--sm" type="button" :disabled="shareBusy" @click="shareRemove(f.path, s.mail)">Закрыть</button>
                             </div>
                         </template>
@@ -281,7 +281,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                         <div class="field__row" style="flex-wrap: wrap; margin-top: 6px">
                             <select v-model="shareNew.folder" class="input" style="width: 170px; height: 34px"><option v-for="f in shares.folders" :key="f.path" :value="f.path">{{ '\u00a0'.repeat(f.depth * 2) }}{{ f.name }}</option></select>
                             <select v-model="shareNew.with" class="input" style="flex: 1; min-width: 200px; height: 34px"><option value="" disabled>кому…</option><option v-for="c in shares.candidates" :key="c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
-                            <select v-model="shareNew.level" class="input" style="width: 120px; height: 34px"><option value="reader">читатель</option><option value="editor">редактор</option></select>
+                            <select v-model="shareNew.level" class="input" style="width: 120px; height: 34px"><option value="reader">читатель</option><option value="editor">редактор</option><option v-if="shareNew.folder === 'INBOX'" value="owner">владелец</option></select>
                             <button class="btn btn--primary" type="button" :disabled="!shareNew.with || shareBusy" @click="shareSet(shareNew.folder, shareNew.with, shareNew.level)">Открыть</button>
                         </div>
                     </template>

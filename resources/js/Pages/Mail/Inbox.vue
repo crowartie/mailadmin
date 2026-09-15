@@ -908,18 +908,18 @@ onBeforeUnmount(() => {
             <p style="margin: 0" class="hint">Письма останутся, метка с них снимется при следующем разборе.</p>
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'share'" :title="'Общий доступ: ' + dialog.folder.name" confirm-label="Готово" wide @close="dialog = null" @confirm="dialog = null">
-            <p class="hint" style="margin: 0 0 10px">Сотрудник увидит эту папку у себя в разделе «Общие папки». Читатель только смотрит и помечает прочитанным, редактор ещё перекладывает и удаляет письма.</p>
+            <p class="hint" style="margin: 0 0 10px">Сотрудник увидит эту папку у себя в разделе «Общие папки». Читатель только смотрит и помечает прочитанным, редактор ещё перекладывает и удаляет письма.<template v-if="dialog.folder.role === 'inbox'"> Владелец, кроме этого, может писать от имени этого ящика.</template></p>
             <div class="mset__list">
                 <div v-for="s in dialog.shares" :key="s.mail" class="mset__li">
                     <div class="grow"><div>{{ s.name }}</div><div class="sub">{{ s.mail }}</div></div>
-                    <select class="input" style="width: 130px; height: 32px" :value="s.level" @change="shareSet(s.mail, $event.target.value)"><option value="reader">читатель</option><option value="editor">редактор</option></select>
+                    <select class="input" style="width: 130px; height: 32px" :value="s.level" @change="shareSet(s.mail, $event.target.value)"><option value="reader">читатель</option><option value="editor">редактор</option><option v-if="dialog.folder.role === 'inbox'" value="owner">владелец</option></select>
                     <button class="btn btn--sm" type="button" @click="shareRemove(s.mail)">Закрыть доступ</button>
                 </div>
                 <div v-if="!dialog.shares.length" class="empty" style="padding: 12px">Пока никому не открыта</div>
             </div>
             <div class="field__row" style="margin-top: 12px">
                 <select v-model="dialog.pick" class="input" style="flex: 1; height: 34px"><option value="" disabled>кому открыть…</option><option v-for="c in dialog.candidates.filter((c) => !dialog.shares.some((s) => s.mail === c.mail))" :key="c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
-                <select v-model="dialog.level" class="input" style="width: 130px; height: 34px"><option value="reader">читатель</option><option value="editor">редактор</option></select>
+                <select v-model="dialog.level" class="input" style="width: 130px; height: 34px"><option value="reader">читатель</option><option value="editor">редактор</option><option v-if="dialog.folder.role === 'inbox'" value="owner">владелец</option></select>
                 <button class="btn btn--primary" type="button" :disabled="!dialog.pick" @click="shareSet(dialog.pick, dialog.level); dialog.pick = ''">Открыть</button>
             </div>
         </Dialog>

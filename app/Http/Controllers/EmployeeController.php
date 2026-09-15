@@ -142,7 +142,7 @@ class EmployeeController extends Controller
     public function share(Request $request, string $mailbox): \Illuminate\Http\JsonResponse
     {
         $model = Mailbox::query()->findOrFail($mailbox);
-        $data = $request->validate(['folder' => ['required', 'string', 'max:200'], 'with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor']]);
+        $data = $request->validate(['folder' => ['required', 'string', 'max:200'], 'with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor,owner']]);
         $svc = new \App\Services\Mail\FolderShares();
         try {
             $svc->set($model->username, \App\Services\Mail\FolderShares::utf8($data['folder']), $data['with'], $data['level']);
@@ -151,7 +151,7 @@ class EmployeeController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json(['message' => 'Не удалось выдать доступ: ' . mb_substr($e->getMessage(), 0, 200)], 500);
         }
-        AdminAction::log('mailbox.update', $model->username, 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» открыта для ' . $data['with'] . ' (' . ($data['level'] === 'editor' ? 'редактор' : 'читатель') . ')');
+        AdminAction::log('mailbox.update', $model->username, 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» открыта для ' . $data['with'] . ' (' . (\App\Services\Mail\FolderShares::TITLES[$data['level']] ?? $data['level']) . ')');
 
         return $this->shares($mailbox);
     }

@@ -15,7 +15,21 @@ class FolderShares
     public const LEVELS = [
         'reader' => ['lookup', 'read', 'write-seen'],
         'editor' => ['lookup', 'read', 'write', 'write-seen', 'write-deleted', 'insert', 'post', 'expunge', 'create', 'delete'],
+        // Владелец: всё, что редактор, плюс пишет от имени ящика (только для «Входящих»). В ACL отличается правом admin.
+        'owner' => ['lookup', 'read', 'write', 'write-seen', 'write-deleted', 'insert', 'post', 'expunge', 'create', 'delete', 'admin'],
     ];
+
+    public const TITLES = ['reader' => 'читатель', 'editor' => 'редактор', 'owner' => 'владелец'];
+
+    /** Уровень по набору прав Dovecot. */
+    public static function levelOf(array $rights): string
+    {
+        if (in_array('admin', $rights, true)) {
+            return 'owner';
+        }
+
+        return in_array('insert', $rights, true) ? 'editor' : 'reader';
+    }
 
     /** Имя папки для doveadm — UTF-8 (в API папки ходят в modified UTF-7). */
     public static function utf8(string $imapPath): string
@@ -36,7 +50,7 @@ class FolderShares
                 continue;
             }
             $rights = preg_split('/\s+/', trim($m[2]));
-            $rows[] = ['mail' => strtolower($m[1]), 'level' => in_array('insert', $rights, true) ? 'editor' : 'reader'];
+            $rows[] = ['mail' => strtolower($m[1]), 'level' => self::levelOf($rights)];
         }
         $names = Mailbox::query()->whereIn('username', array_column($rows, 'mail'))->pluck('name', 'username');
         foreach ($rows as &$r) {
@@ -50,7 +64,10 @@ class FolderShares
     {
         $with = strtolower(trim($with));
         if (! isset(self::LEVELS[$level])) {
-            throw new \InvalidArgumentException('Уровень доступа: reader или editor');
+            throw new \InvalidArgumentException('Уровень доступа: reader, editor или owner');
+        }
+        if ($level === 'owner' && strtoupper($folderUtf8) !== 'INBOX') {
+            throw new \InvalidArgumentException('Владельцем можно сделать только по «Входящим» — это доступ ко всему ящику');
         }
         if ($with === strtolower($owner)) {
             throw new \InvalidArgumentException('Это ваш собственный ящик');
@@ -61,11 +78,20 @@ class FolderShares
         // doveadm acl set добавляет права к существующим — сначала снимаем, чтобы «читатель» не остался редактором.
         Ctl::run('acl-delete', [strtolower($owner), $folderUtf8, $with], 20);
         Ctl::out('acl-set', array_merge([strtolower($owner), $folderUtf8, $with], self::LEVELS[$level]), 30);
+        self::forgetCaches($owner, $with);
+    }
+
+    /** Список «от имени кого писать» и пометка «открыта коллегам» кэшируются — сбросить после смены прав. */
+    private static function forgetCaches(string $owner, string $with): void
+    {
+        \Illuminate\Support\Facades\Cache::forget('sendas.' . strtolower(trim($with)));
+        \Illuminate\Support\Facades\Cache::forget('shares-any.' . strtolower($owner));
     }
 
     public function remove(string $owner, string $folderUtf8, string $with): void
     {
         Ctl::out('acl-delete', [strtolower($owner), $folderUtf8, strtolower(trim($with))], 20);
+        self::forgetCaches($owner, $with);
     }
 
     /** Кому можно открыть доступ: активные сотрудники, кроме владельца. @return array<int,array{mail:string,name:string}> */

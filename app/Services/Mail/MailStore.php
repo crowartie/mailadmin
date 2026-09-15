@@ -217,7 +217,8 @@ class MailStore
                     if ($id === $user || $id === '' || $id[0] === '-' || ! str_contains($id, '@')) {
                         continue;   // сам владелец, запреты, anyone/authenticated — не «открыта коллеге»
                     }
-                    $with[$id] = str_contains((string) $tok[$k + 1], 'i') ? 'editor' : 'reader';
+                    $r = (string) $tok[$k + 1];
+                    $with[$id] = str_contains($r, 'a') ? 'owner' : (str_contains($r, 'i') ? 'editor' : 'reader');
                 }
             }
             if ($with) {

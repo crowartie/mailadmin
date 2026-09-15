@@ -93,7 +93,7 @@ class FolderController extends Controller
 
     public function share(Request $request, ImapSession $imap, string $folder): JsonResponse
     {
-        $data = $request->validate(['with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor']]);
+        $data = $request->validate(['with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor,owner']]);
         $store = new MailStore($imap->client());
         $this->guardOwn($store, $folder);
         $svc = new \App\Services\Mail\FolderShares();
@@ -104,8 +104,6 @@ class FolderController extends Controller
         } catch (\RuntimeException $e) {
             abort(500, 'Не удалось выдать доступ: ' . mb_substr($e->getMessage(), 0, 200));
         }
-
-        \Illuminate\Support\Facades\Cache::forget('shares-any.' . $imap->user());   // пометка «открыта коллегам» в списке папок
 
         return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder)), 'folders' => (new MailStore($imap->client()))->folders()]);
     }
@@ -121,8 +119,6 @@ class FolderController extends Controller
         } catch (\RuntimeException $e) {
             abort(500, 'Не удалось снять доступ: ' . mb_substr($e->getMessage(), 0, 200));
         }
-
-        \Illuminate\Support\Facades\Cache::forget('shares-any.' . $imap->user());   // пометка «открыта коллегам» в списке папок
 
         return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder)), 'folders' => (new MailStore($imap->client()))->folders()]);
     }

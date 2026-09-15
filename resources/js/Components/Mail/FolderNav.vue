@@ -61,7 +61,7 @@ function counter(f) { return !f.virtual && ((f.unread || 0) > 0 || (f.total || 0
 function counterTitle(f) { return f.unread ? `непрочитанных ${f.unread} из ${f.total}` : `всего ${f.total}`; }
 // Папка открыта коллегам (общий доступ): значок рядом с именем, в подсказке — кому и с какими правами.
 function sharedTitle(f) {
-    const who = (f.shared_with || []).map((s) => `${s.name} (${s.level === 'editor' ? 'редактор' : 'чтение'})`);
+    const who = (f.shared_with || []).map((s) => `${s.name} (${{ owner: 'владелец', editor: 'редактор' }[s.level] || 'чтение'})`);
     return 'Открыта коллегам: ' + who.join(', ');
 }
 </script>

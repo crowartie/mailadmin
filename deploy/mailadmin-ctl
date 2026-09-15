@@ -39,7 +39,7 @@ case "$cmd" in
   # Общий доступ к папкам: doveadm acl. Имя папки — UTF-8, без управляющих символов.
   acl-get)        mailaddr "$1"; re='^[^[:cntrl:]]{1,200}$'; [[ "$2" =~ $re ]] || die "bad folder"; exec doveadm acl get -u "$1" "$2" ;;
   acl-set)        mailaddr "$1"; re='^[^[:cntrl:]]{1,200}$'; [[ "$2" =~ $re ]] || die "bad folder"; mailaddr "$3"; o="$1"; f="$2"; w="$3"; shift 3
-                  rr='^(lookup|read|write|write-seen|write-deleted|insert|post|expunge|create|delete)$'; for r in "$@"; do [[ "$r" =~ $rr ]] || die "bad right"; done
+                  rr='^(lookup|read|write|write-seen|write-deleted|insert|post|expunge|create|delete|admin)$'; for r in "$@"; do [[ "$r" =~ $rr ]] || die "bad right"; done
                   exec doveadm acl set -u "$o" "$f" "user=$w" "$@" ;;
   acl-delete)     mailaddr "$1"; re='^[^[:cntrl:]]{1,200}$'; [[ "$2" =~ $re ]] || die "bad folder"; mailaddr "$3"; exec doveadm acl delete -u "$1" "$2" "user=$3" ;;
   kick)           mailaddr "$1"; exec doveadm kick "$1" ;;

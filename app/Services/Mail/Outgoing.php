@@ -260,7 +260,7 @@ class Outgoing
     }
 
     /** Адреса, от имени которых пользователь может писать: сам ящик + его дополнительные адреса. */
-    /** Общие ящики, где пользователь — редактор «Входящих»: от их имени можно писать. @return array<int,array{mail:string,name:string,primary:bool,shared:bool}> */
+    /** Общие ящики, где пользователь — владелец «Входящих»: от их имени можно писать. @return array<int,array{mail:string,name:string,primary:bool,shared:bool}> */
     public static function sharedSenders(string $user): array
     {
         return \Illuminate\Support\Facades\Cache::remember('sendas.' . strtolower($user), 120, function () use ($user) {
@@ -270,7 +270,7 @@ class Outgoing
                 $shares = new FolderShares();
                 foreach ($owners as $owner) {
                     foreach ($shares->list($owner, 'INBOX') as $s) {
-                        if ($s['mail'] === strtolower($user) && $s['level'] === 'editor') {
+                        if ($s['mail'] === strtolower($user) && $s['level'] === 'owner') {
                             $name = \App\Models\Vmail\Mailbox::query()->where('username', $owner)->value('name') ?: $owner;
                             $out[] = ['mail' => strtolower($owner), 'name' => $name, 'primary' => false, 'shared' => true];
                         }
