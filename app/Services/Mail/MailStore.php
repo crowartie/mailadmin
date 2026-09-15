@@ -112,7 +112,7 @@ class MailStore
                         if ($status !== []) {
                             $owner = strtolower($parts[1]);
                             $owners[$owner] = true;
-                            $out[] = ['path' => $f->path, 'name' => self::TITLES['inbox'], 'role' => 'shared', 'depth' => 0, 'parent' => null, 'owner' => $owner, 'inbox' => true, 'unread' => (int) ($status['unseen'] ?? 0), 'total' => (int) ($status['messages'] ?? 0)];
+                            $out[] = ['path' => $f->path, 'name' => self::TITLES['inbox'], 'role' => 'shared', 'srole' => 'inbox', 'depth' => 0, 'parent' => null, 'owner' => $owner, 'inbox' => true, 'unread' => (int) ($status['unseen'] ?? 0), 'total' => (int) ($status['messages'] ?? 0)];
                         }
                     }
                     if (count($parts) >= 3 && ! (count($parts) === 3 && strtoupper($parts[2]) === 'INBOX')) {
@@ -126,6 +126,7 @@ class MailStore
                             'path' => $f->path,
                             'name' => $role ? self::TITLES[$role] : $leaf,
                             'role' => 'shared',
+                            'srole' => $role ?: 'custom',   // какая это папка у владельца: spam, trash, sent…
                             'depth' => count($rel) - 1,
                             'parent' => count($rel) > 1 ? $parent : null,
                             'owner' => $owner,
@@ -265,6 +266,49 @@ class MailStore
     }
 
     /** Путь системной папки по роли; папки «Архив» и «Отложенные» создаются при первом обращении. */
+    /** Владелец общей папки Shared/<owner>/… (null — папка своя). */
+    public static function sharedOwner(string $path): ?string
+    {
+        if (! str_starts_with($path, self::SHARED_PREFIX)) {
+            return null;
+        }
+        $parts = explode('/', $path);
+
+        return isset($parts[1]) && $parts[1] !== '' ? strtolower($parts[1]) : null;
+    }
+
+    /**
+     * Папка с ролью для контекста: работаем в чужом общем ящике (Shared/<owner>/…) — его «Спам», «Корзина»…,
+     * в своих папках — свои. Если нужная папка владельца нам не открыта — 422 с понятным текстом.
+     */
+    public function rolePathFor(string $context, string $role): string
+    {
+        $owner = self::sharedOwner($context);
+        if ($owner === null) {
+            return $this->rolePath($role);
+        }
+        foreach ($this->folders() as $f) {
+            if (($f['role'] ?? '') === 'shared' && ($f['owner'] ?? '') === $owner && ($f['srole'] ?? '') === $role) {
+                return $f['path'];
+            }
+        }
+        abort(422, 'Папка «' . (self::TITLES[$role] ?? $role) . '» ящика ' . $owner . ' вам не открыта — попросите владельца или администратора');
+    }
+
+    /**
+     * Куда на самом деле переносить: из чужого общего ящика в свою системную папку («Спам», «Корзина», «Архив»,
+     * «Рассылки», «Входящие») — в такую же папку владельца; письма общего ящика не должны утекать в личные папки.
+     */
+    public function moveTarget(string $from, string $target): string
+    {
+        if (self::sharedOwner($from) === null || self::sharedOwner($target) !== null) {
+            return $target;
+        }
+        $role = collect($this->folders())->firstWhere('path', $target)['role'] ?? 'custom';
+
+        return in_array($role, ['spam', 'trash', 'archive', 'lists', 'inbox'], true) ? $this->rolePathFor($from, $role) : $target;
+    }
+
     public function rolePath(string $role): string
     {
         foreach ($this->folders() as $f) {
@@ -1080,7 +1124,7 @@ class MailStore
     /** Удалить: из корзины — навсегда, откуда угодно ещё — в корзину. */
     public function delete(string $path, array $uids): void
     {
-        $trash = $this->rolePath('trash');
+        $trash = $this->rolePathFor($path, 'trash');
         if ($path === $trash) {
             $this->flag($path, $uids, '\\Deleted', true);
             $this->client->openFolder($path, true);

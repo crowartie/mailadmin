@@ -50,20 +50,20 @@ class ActionController extends Controller
                 break;
             case 'move':
                 abort_unless(! empty($data['target']), 422, 'Не указана папка');
-                $store->move($folder, $uids, $data['target']);
+                $store->move($folder, $uids, $store->moveTarget($folder, $data['target']));
                 break;
             case 'archive':
-                $store->move($folder, $uids, $store->rolePath('archive'));
+                $store->move($folder, $uids, $store->rolePathFor($folder, 'archive'));
                 break;
             case 'spam':
                 $store->flag($folder, $uids, '\\Seen', true);
-                $store->move($folder, $uids, $store->rolePath('spam'));
+                $store->move($folder, $uids, $store->rolePathFor($folder, 'spam'));
                 break;
             case 'notspam':
-                $store->move($folder, $uids, $store->rolePath('inbox'));
+                $store->move($folder, $uids, $store->rolePathFor($folder, 'inbox'));
                 break;
             case 'lists':
-                $store->move($folder, $uids, $store->rolePath('lists'));
+                $store->move($folder, $uids, $store->rolePathFor($folder, 'lists'));
                 break;
             case 'label':
             case 'unlabel':

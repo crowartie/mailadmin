@@ -32,6 +32,11 @@ class Outgoing
         $settings = Setting::for($this->session->user());
         $fromName = trim((string) ($settings['display_name'] ?? '')) ?: $this->session->user();
         $fromMail = $this->pickFrom($form['from'] ?? null);
+        if ($fromMail !== strtolower($this->session->user()) && collect(self::sharedSenders($this->session->user()))->firstWhere('mail', $fromMail)) {
+            // От имени общего ящика — его имя (настройки ящика, иначе имя из карточки), а не имя пишущего.
+            $fromName = trim((string) (Setting::for($fromMail)['display_name'] ?? ''))
+                ?: (\App\Models\Vmail\Mailbox::query()->where('username', $fromMail)->value('name') ?: $fromMail);
+        }
 
         $email = (new Email())->from(new Address($fromMail, $fromName))->subject((string) ($form['subject'] ?? ''));
 

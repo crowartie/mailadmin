@@ -302,6 +302,11 @@ function moveTo(uids, target) {
 // ── Решение по отправителю: спам / рассылка / не спам ────────────
 // Сначала письмо уезжает в папку (act), затем спрашиваем: только это письмо или все от адреса/домена.
 function askSender(kind, uids, targetFolder = null) {
+    if (folderInfo.value.role === 'shared') {
+        // Чужой общий ящик: письмо уезжает в его «Спам»/«Рассылки»/папку (сервер подставит папку владельца), личных правил не предлагаем.
+        if (kind === 'folder') act('move', uids, { target: targetFolder.path }); else act(kind === 'ham' ? 'notspam' : kind, uids);
+        return;
+    }
     const rows = list.value.messages.filter((m) => uids.includes(m.uid));
     const mails = [...new Set(rows.map((m) => m.from?.mail).concat(open.value && uids.includes(open.value.uid) ? [open.value.from?.mail] : []).filter(Boolean).map((s) => s.toLowerCase()))];
     if (kind === 'folder') act('move', uids, { target: targetFolder.path }, false); else act(kind === 'ham' ? 'notspam' : kind, uids, {}, false);
@@ -920,7 +925,7 @@ onBeforeUnmount(() => {
             <p style="margin: 0" class="hint">Письма останутся, метка с них снимется при следующем разборе.</p>
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'share'" :title="'Общий доступ: ' + dialog.folder.name" confirm-label="Готово" wide @close="dialog = null" @confirm="dialog = null">
-            <p class="hint" style="margin: 0 0 10px">Сотрудник увидит эту папку у себя в разделе «Общие папки». Читатель только смотрит и помечает прочитанным, редактор ещё перекладывает и удаляет письма.<template v-if="dialog.folder.role === 'inbox'"> Владелец, кроме этого, может писать от имени этого ящика.</template></p>
+            <p class="hint" style="margin: 0 0 10px">Сотрудник увидит эту папку у себя в разделе «Общие папки». Читатель только смотрит и помечает прочитанным, редактор ещё перекладывает и удаляет письма.<template v-if="dialog.folder.role === 'inbox'"> Владелец, кроме этого, может писать от имени этого ящика. Редактору и владельцу вместе с «Входящими» открываются «Спам», «Корзина» и другие системные папки ящика.</template></p>
             <div class="mset__list">
                 <div v-for="s in dialog.shares" :key="s.mail" class="mset__li">
                     <div class="grow"><div>{{ s.name }}</div><div class="sub">{{ s.mail }}</div></div>

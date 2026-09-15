@@ -78,7 +78,38 @@ class FolderShares
         // doveadm acl set добавляет права к существующим — сначала снимаем, чтобы «читатель» не остался редактором.
         Ctl::run('acl-delete', [strtolower($owner), $folderUtf8, $with], 20);
         Ctl::out('acl-set', array_merge([strtolower($owner), $folderUtf8, $with], self::LEVELS[$level]), 30);
+        if (strtoupper($folderUtf8) === 'INBOX') {
+            // Редактор и владелец работают с ящиком целиком: спам уезжает в его «Спам», удалённое — в его «Корзину».
+            // Читателю системные папки не нужны (переносить он не может).
+            foreach (self::systemFolders($owner) as $path) {
+                Ctl::run('acl-delete', [strtolower($owner), $path, $with], 20);
+                if ($level !== 'reader') {
+                    Ctl::out('acl-set', array_merge([strtolower($owner), $path, $with], self::LEVELS[$level]), 30);
+                }
+            }
+        }
         self::forgetCaches($owner, $with);
+    }
+
+    /** Системные папки ящика (UTF-8): «Спам» и «Корзина» создаются, если их ещё нет; остальные — какие есть. */
+    private static function systemFolders(string $owner): array
+    {
+        try {
+            $store = new MailStore(ImapSession::master($owner));
+            $out = [];
+            foreach (['spam', 'trash'] as $role) {
+                $out[] = self::utf8($store->rolePath($role));
+            }
+            foreach ($store->folders() as $f) {
+                if (in_array($f['role'], ['sent', 'drafts', 'archive', 'lists'], true)) {
+                    $out[] = self::utf8($f['path']);
+                }
+            }
+
+            return array_values(array_unique($out));
+        } catch (\Throwable) {
+            return [];   // ящик недоступен — права только на «Входящие»
+        }
     }
 
     /** Список «от имени кого писать» и пометка «открыта коллегам» кэшируются — сбросить после смены прав. */
@@ -91,6 +122,11 @@ class FolderShares
     public function remove(string $owner, string $folderUtf8, string $with): void
     {
         Ctl::out('acl-delete', [strtolower($owner), $folderUtf8, strtolower(trim($with))], 20);
+        if (strtoupper($folderUtf8) === 'INBOX') {
+            foreach (self::systemFolders($owner) as $path) {
+                Ctl::run('acl-delete', [strtolower($owner), $path, strtolower(trim($with))], 20);
+            }
+        }
         self::forgetCaches($owner, $with);
     }
 
