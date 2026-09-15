@@ -240,7 +240,8 @@ async function act(op, uids, extra = {}, deferrable = true) {
                 const p = pendingAct; pendingAct = null; toast.value = null;
                 runAct(p).catch((e) => { fail(e); load(list.value.page, true); });
             } else {
-                toast.value = { ...toast.value, seconds: pendingAct.seconds };
+                // Обновляем только свою плашку: если её уже сменила другая («Черновик сохранён»), чужую не трогаем.
+                if (toast.value?.actionLabel === 'Отменить') toast.value = { ...toast.value, seconds: pendingAct.seconds };
                 pendingAct.timer = setTimeout(tick, 1000);
             }
         };
@@ -267,6 +268,8 @@ function flushPendingAct(keepalive = false) {
     if (!pendingAct) return;
     clearTimeout(pendingAct.timer);
     const p = pendingAct; pendingAct = null;
+    // Плашка с таймером без действия за ней зависала навсегда (обращение №4) — убираем вместе с действием.
+    if (toast.value?.actionLabel === 'Отменить' && toast.value?.seconds) toast.value = null;
     runAct(p, keepalive ? { keepalive: true } : {}).catch(() => {});
 }
 function undoAct() {
@@ -390,7 +393,9 @@ function snooze(at) {
 }
 const customSnooze = ref('');
 
-watch(folder, () => { flushPendingAct(); lastUidnext = null; updateTitle(); });
+// Смена папки отложенное действие не выполняет досрочно: таймер идёт дальше, «Отменить» работает и из другой папки
+// (сервер ещё ничего не делал, папка действия запомнена в pendingAct).
+watch(folder, () => { lastUidnext = null; updateTitle(); });
 function folderContext(e, f) {
     menu.value = { kind: 'folder', x: e.clientX, y: e.clientY, folder: f };
 }
