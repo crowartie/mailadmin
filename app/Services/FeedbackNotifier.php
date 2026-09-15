@@ -23,7 +23,12 @@ class FeedbackNotifier
     public static function toUser(FeedbackTicket $ticket, string $body): void
     {
         $subject = 'Обращение №' . $ticket->id . ($ticket->subject !== '' ? ': ' . mb_substr($ticket->subject, 0, 120) : '');
-        $text = $body . "\n\nПереписка по обращению: " . rtrim(Area::mailBase(), '/') . '/mail/feedback?id=' . $ticket->id;
+        $link = rtrim(Area::mailBase(), '/') . '/mail/feedback?id=' . $ticket->id;
+        // Люди отвечали на это письмо как на обычное — ответ уходил на noreply и в обращение не попадал.
+        $text = "Это автоматическое уведомление. Отвечать на него письмом не нужно — такой ответ никто не увидит.\n"
+            . "Чтобы ответить, откройте обращение по ссылке: {$link}\n"
+            . "(в веб-почте: значок «!» на панели слева → Обращения → №{$ticket->id})\n\n"
+            . $body;
         try {
             $domain = config('areas.default_domain');
             $email = (new Email())

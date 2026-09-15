@@ -103,6 +103,13 @@ function print() {
 }
 
 const isDraft = computed(() => props.folderRole === 'drafts');
+// Уведомление по обращению (от noreply@…, тема «Обращение №N»): ответ письмом уходит в никуда — ведём в само обращение.
+const ticketNotice = computed(() => {
+    const m = props.message;
+    if (!m || !/^noreply@/i.test(m.from?.mail || '')) return null;
+    const t = (m.subject || '').match(/^Обращение №(\d+)/);
+    return t ? Number(t[1]) : null;
+});
 </script>
 
 <template>
@@ -197,7 +204,12 @@ const isDraft = computed(() => props.folderRole === 'drafts');
             </template>
         </article>
 
-        <div v-if="!isDraft && folderRole !== 'spam'" class="quick">
+        <div v-if="ticketNotice" class="notice notice--ticket">
+            <Icon name="info" :size="16" />
+            <span>Это уведомление по обращению №{{ ticketNotice }}. Ответ на это письмо никто не увидит — отвечайте в самом обращении.</span>
+            <a class="btn btn--sm btn--primary" :href="'/mail/feedback?id=' + ticketNotice">Открыть обращение №{{ ticketNotice }}</a>
+        </div>
+        <div v-if="!isDraft && folderRole !== 'spam' && !ticketNotice" class="quick">
             <div v-if="settings.quick_replies?.length" class="quick__chips">
                 <button v-for="qr in settings.quick_replies" :key="qr" class="chip chip--btn" type="button" @click="quick = qr">{{ qr }}</button>
             </div>
