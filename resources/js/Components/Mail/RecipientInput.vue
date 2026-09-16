@@ -11,6 +11,15 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:modelValue', 'blur']);
 
+// Последнее известное значение списка: props.modelValue обновится лишь на следующем тике, а add()/verify()
+// бывают по несколько подряд — иначе вставка «a, b, c» оставляла одну фишку.
+let latest = props.modelValue;
+watch(() => props.modelValue, (v) => { latest = v; });
+function update(next) {
+    latest = next;
+    emit('update:modelValue', next);
+}
+
 const text = ref('');
 const sugg = ref([]);
 const active = ref(0);
@@ -32,25 +41,25 @@ async function verify(entry) {
     if (!domain) return;
     const r = await checkDomain(domain);
     const patch = r.status === 'ok' ? { checked: true } : { checked: true, warn: r.text, suggestion: r.suggestion };
-    emit('update:modelValue', props.modelValue.map((a) => (a.mail === entry.mail ? { ...a, ...patch } : a)));
+    update(latest.map((a) => (a.mail === entry.mail ? { ...a, ...patch } : a)));
 }
 watch(() => props.modelValue, (list) => {
     list.filter((a) => !a.bad && !a.checked && !a.checking).forEach((a) => { a.checking = true; verify(a); });
 }, { immediate: true });
 
 function fix(i) {
-    const a = props.modelValue[i];
-    const next = [...props.modelValue];
+    const a = latest[i];
+    const next = [...latest];
     next[i] = { name: a.name, mail: a.mail.replace(/@.*$/, '@' + a.suggestion) };
-    emit('update:modelValue', next);
+    update(next);
 }
 
 function parse(piece) { return parseAddr(piece); }
 
 function add(entry) {
     if (!entry) return;
-    if (props.modelValue.some((a) => a.mail === entry.mail)) return;
-    emit('update:modelValue', [...props.modelValue, { ...entry, bad: !EMAIL.test(entry.mail) }]);
+    if (latest.some((a) => a.mail === entry.mail)) return;
+    update([...latest, { ...entry, bad: !EMAIL.test(entry.mail) }]);
 }
 
 function commit() {
@@ -68,9 +77,9 @@ function pick(s) {
 }
 
 function remove(i) {
-    const next = [...props.modelValue];
+    const next = [...latest];
     next.splice(i, 1);
-    emit('update:modelValue', next);
+    update(next);
 }
 
 function onKey(e) {
@@ -82,8 +91,8 @@ function onKey(e) {
         else commit();
         return;
     }
-    if (e.key === 'Backspace' && !text.value && props.modelValue.length) {
-        remove(props.modelValue.length - 1);
+    if (e.key === 'Backspace' && !text.value && latest.length) {
+        remove(latest.length - 1);
     }
     if (e.key === 'Escape') { sugg.value = []; }
 }
@@ -95,7 +104,7 @@ watch(text, (v) => {
     timer = setTimeout(async () => {
         try {
             const list = await api.suggest(q);
-            sugg.value = list.filter((s) => !props.modelValue.some((a) => a.mail === s.mail));
+            sugg.value = list.filter((s) => !latest.some((a) => a.mail === s.mail));
             active.value = 0;
         } catch { sugg.value = []; }
     }, 160);
