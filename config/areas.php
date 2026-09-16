@@ -4,14 +4,16 @@
 // то должна быть на отдельном порту»), веб-почта — на обычном.
 return [
     'admin_port' => (int) env('ADMIN_PORT', 8080),
+    // Обратные прокси, чьим X-Forwarded-For/-Port/-Proto верим (Octane за nginx — 127.0.0.1).
+    'trusted_proxies' => array_values(array_filter(array_map('trim', explode(',', (string) env('TRUSTED_PROXIES', ''))))),
     'mail_port' => (int) env('MAIL_PORT', 80),
 
     // Домен, который подставляется к короткому логину в веб-почте («ivanov» → ivanov@домен).
-    'default_domain' => env('MAIL_DEFAULT_DOMAIN', 'example.ru'),
+    'default_domain' => env('MAIL_DEFAULT_DOMAIN', 'innotec.su'),
 
     // Почтовый сервер, к которому ходит веб-почта.
     'imap' => [
-        'host' => env('MAIL_IMAP_HOST', '127.0.0.1'),
+        'host' => env('MAIL_IMAP_HOST', '192.168.30.102'),
         'port' => (int) env('MAIL_IMAP_PORT', 993),
         'encryption' => env('MAIL_IMAP_ENCRYPTION', 'ssl'),
         'validate_cert' => (bool) env('MAIL_IMAP_VALIDATE_CERT', false),
@@ -21,7 +23,7 @@ return [
         'master_password' => env('MAIL_IMAP_MASTER_PASSWORD'),
     ],
     'smtp' => [
-        'host' => env('MAIL_SMTP_HOST', '127.0.0.1'),
+        'host' => env('MAIL_SMTP_HOST', '192.168.30.102'),
         'port' => (int) env('MAIL_SMTP_PORT', 587),
     ],
     // ManageSieve — правила и автоответ пользователя.
