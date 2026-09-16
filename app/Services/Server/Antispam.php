@@ -21,9 +21,13 @@ class Antispam
     public function stats(): array
     {
         return Cache::remember('antispam.stats', 60, function () {
-            $j = json_decode(Ctl::out('spam-stats', [], 120), true);
+            try {
+                $j = json_decode(Ctl::out('spam-stats', [], 120), true);
+            } catch (\Throwable $e) {
+                $j = ['error' => $e->getMessage()];
+            }
 
-            return is_array($j) ? $j : ['today' => [], 'yesterday' => []];
+            return is_array($j) && isset($j['today']) ? $j : ['today' => [], 'yesterday' => [], 'error' => $j['error'] ?? 'нет данных'];
         });
     }
 
