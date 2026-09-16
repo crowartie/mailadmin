@@ -94,6 +94,8 @@ function send(sendAt = null) {
         return;
     }
     if (!subject.value.trim() && !window.confirm('Отправить письмо без темы?')) return;
+    const warns = [...to.value, ...cc.value, ...bcc.value].filter((a) => a.warn).map((a) => a.warn);
+    if (warns.length && !window.confirm(warns.join('\n') + '\n\nПисьмо, скорее всего, не дойдёт. Отправить всё равно?')) return;
     menu.value = null;
     dirty.value = false;
     emit('send', { form: payload({ sendAt: sendAt ? sendAt.toISOString() : null }), files: files.value, sendAt });

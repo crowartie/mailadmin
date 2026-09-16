@@ -36,6 +36,7 @@ install -m 0755 -o root -g root "$HERE/fail2ban-mailadmin.sh" /usr/local/sbin/ma
 install -m 0644 "$HERE/logrotate-mailadmin" /etc/logrotate.d/mailadmin
 bash "$HERE/dovecot-fts-learn.sh" >/dev/null 2>&1 || true
 bash "$HERE/postfix-quota-soft.sh" >/dev/null 2>&1 || true
+bash "$HERE/postfix-delivery.sh" >/dev/null 2>&1 || true
 bash "$HERE/antispam-extras.sh" >/dev/null 2>&1 || true
 systemctl reload php8.3-fpm
 echo "==> готово: $(git -c safe.directory="$APP" log --oneline -1)"

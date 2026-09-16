@@ -19,6 +19,32 @@ let timer = null;
 
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
+// Проверка домена получателя (существует ли, принимает ли почту): результат на домен запоминаем на время сессии.
+const domainCache = new Map();
+async function checkDomain(domain) {
+    if (!domainCache.has(domain)) {
+        domainCache.set(domain, api.checkDomain(domain).catch(() => ({ status: 'ok' })));
+    }
+    return domainCache.get(domain);
+}
+async function verify(entry) {
+    const domain = (entry.mail.split('@')[1] || '').toLowerCase();
+    if (!domain) return;
+    const r = await checkDomain(domain);
+    const patch = r.status === 'ok' ? { checked: true } : { checked: true, warn: r.text, suggestion: r.suggestion };
+    emit('update:modelValue', props.modelValue.map((a) => (a.mail === entry.mail ? { ...a, ...patch } : a)));
+}
+watch(() => props.modelValue, (list) => {
+    list.filter((a) => !a.bad && !a.checked && !a.checking).forEach((a) => { a.checking = true; verify(a); });
+}, { immediate: true });
+
+function fix(i) {
+    const a = props.modelValue[i];
+    const next = [...props.modelValue];
+    next[i] = { name: a.name, mail: a.mail.replace(/@.*$/, '@' + a.suggestion) };
+    emit('update:modelValue', next);
+}
+
 function parse(piece) { return parseAddr(piece); }
 
 function add(entry) {
@@ -96,8 +122,9 @@ defineExpose({ focus: () => input.value?.focus() });
 
 <template>
     <div class="rcpt" @click="input?.focus()">
-        <span v-for="(a, i) in modelValue" :key="a.mail + i" class="rcpt__chip" :class="{ 'rcpt__chip--bad': a.bad }" :title="a.mail">
+        <span v-for="(a, i) in modelValue" :key="a.mail + i" class="rcpt__chip" :class="{ 'rcpt__chip--bad': a.bad, 'rcpt__chip--warn': a.warn }" :title="a.warn || a.mail">
             <span>{{ a.name || a.mail }}</span>
+            <button v-if="a.suggestion" type="button" class="rcpt__fix" :title="'Исправить на ' + a.mail.replace(/@.*$/, '@' + a.suggestion)" @click.stop="fix(i)">→ {{ a.suggestion }}?</button>
             <button type="button" title="Убрать" @click.stop="remove(i)">✕</button>
         </span>
         <input

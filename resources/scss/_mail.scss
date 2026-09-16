@@ -757,7 +757,11 @@
         span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         button { border: none; background: none; color: inherit; cursor: pointer; padding: 0; display: flex; }
         &--bad { background: v.$c-no-soft; color: v.$c-no; }
+        &--warn { background: v.$c-warn-soft; color: v.$c-warn; }
     }
+
+    // Подсказка «→ yandex.ru?» внутри фишки с опечаткой в домене
+    &__fix { font: inherit; font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; margin-left: 2px; }
 
     &__list {
         position: absolute;

@@ -105,6 +105,7 @@ Route::middleware('area:mail')->group(function () {
             Route::delete('outbox/{id}', [ComposeController::class, 'cancel'])->whereNumber('id');
 
             Route::get('suggest', SuggestController::class);
+            Route::get('check-domain', \App\Http\Controllers\Mail\Api\DomainCheckController::class);
 
             Route::get('settings', [SettingsController::class, 'show']);
             Route::put('settings', [SettingsController::class, 'update']);

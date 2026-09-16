@@ -85,6 +85,7 @@ export const api = {
     cancelOutbox: (id) => request('DELETE', `/mail/api/outbox/${id}`),
 
     suggest: (q) => request('GET', `/mail/api/suggest?q=${enc(q)}`),
+    checkDomain: (domain) => request('GET', `/mail/api/check-domain?domain=${enc(domain)}`),
 
     settings: () => request('GET', '/mail/api/settings'),
     saveSettings: (patch) => request('PUT', '/mail/api/settings', patch),
