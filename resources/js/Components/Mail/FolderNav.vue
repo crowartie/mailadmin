@@ -28,16 +28,35 @@ const custom = computed(() => {
     }
     return out;
 });
-// Чужие папки, открытые нам: группируем по владельцу.
+// Чужие папки, открытые нам: группируем по владельцу. Группа свёрнута в одну строку (имя + непрочитанные),
+// раскрывается по клику и помнит состояние; внутри — «Входящие», системные, потом папки хозяина деревом.
+const SROLE_ORDER = { inbox: 0, drafts: 1, sent: 2, archive: 3, lists: 4, spam: 5, trash: 6, snoozed: 7 };
 const shared = computed(() => {
     const groups = [];
     for (const f of props.folders.filter((x) => x.role === 'shared')) {
         let g = groups.find((x) => x.owner === f.owner);
-        if (!g) { g = { owner: f.owner, name: f.ownerName || f.owner, items: [] }; groups.push(g); }
+        if (!g) { g = { owner: f.owner, name: f.ownerName || f.owner, items: [], unread: 0 }; groups.push(g); }
         g.items.push(f);
+        g.unread += f.unread || 0;
+    }
+    for (const g of groups) {
+        g.items.sort((a, b) => {
+            const ra = SROLE_ORDER[a.srole] ?? 10; const rb = SROLE_ORDER[b.srole] ?? 10;
+            return ra !== rb ? ra - rb : a.path.localeCompare(b.path, 'ru');
+        });
     }
     return groups;
 });
+const collapsed = ref((() => { try { return JSON.parse(localStorage.getItem('mail.sharedCollapsed') || '{}'); } catch { return {}; } })());
+function isCollapsed(g) {
+    // Открытая сейчас папка этого ящика — группу не прячем
+    if (g.items.some((f) => f.path === props.folder)) return false;
+    return collapsed.value[g.owner] !== false;   // по умолчанию свёрнуто
+}
+function toggleGroup(g) {
+    collapsed.value = { ...collapsed.value, [g.owner]: !isCollapsed(g) };
+    try { localStorage.setItem('mail.sharedCollapsed', JSON.stringify(collapsed.value)); } catch { /* приватный режим */ }
+}
 const inbox = computed(() => props.folders.find((f) => f.role === 'inbox'));
 const dropTarget = ref(null);
 
@@ -130,9 +149,14 @@ function sharedTitle(f) {
         <template v-if="shared.length">
             <div class="mnav__group">Общие папки</div>
             <template v-for="g in shared" :key="g.owner">
-                <div class="mnav__owner" :title="g.owner"><Icon name="users" :size="14" style="color: var(--faint); flex: 0 0 14px" /><span>{{ g.name }}</span></div>
+                <button type="button" class="mnav__owner" :class="{ 'mnav__owner--open': !isCollapsed(g) }" :title="g.owner + (isCollapsed(g) ? ' — развернуть' : ' — свернуть')" @click="toggleGroup(g)">
+                    <Icon name="chevron" :size="14" class="mnav__chev" />
+                    <Icon name="users" :size="14" style="color: var(--faint); flex: 0 0 14px" />
+                    <span>{{ g.name }}</span>
+                    <span v-if="g.unread" class="mnav__count"><b>{{ g.unread }}</b></span>
+                </button>
                 <button
-                    v-for="f in g.items"
+                    v-for="f in (isCollapsed(g) ? [] : g.items)"
                     :key="f.path"
                     type="button"
                     class="mnav__item"
