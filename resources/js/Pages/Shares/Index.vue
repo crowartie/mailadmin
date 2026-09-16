@@ -67,7 +67,7 @@ async function sync() {
     try { const r = await http('POST', '/shares/sync'); rows.value = r.rows; say(r.output ? r.output.split('\n').pop() : 'Права проверены'); }
     catch (e) { say(e.message, true); } finally { busy.value = false; }
 }
-function levelOptions(r) { return r.role === 'inbox' ? ['reader', 'editor', 'owner'] : ['reader', 'editor']; }
+function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor', 'owner'] : ['reader', 'editor']; return base.includes(r.level) ? base : [...base, r.level]; }
 </script>
 
 <template>

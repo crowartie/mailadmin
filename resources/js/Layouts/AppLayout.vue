@@ -40,6 +40,7 @@ const groups = [
         { href: '/maillists', icon: 'mail', label: 'Рассылки', count: 'maillists' },
         { href: '/rules', icon: 'filter', label: 'Правила', count: 'rules' },
         { href: '/company-contacts', icon: 'book', label: 'Контакты компании' },
+        { href: '/trace', icon: 'search', label: 'Проверить адрес' },
     ] },
     { title: 'Сервер', items: [
         { href: '/domains', icon: 'globe', label: 'Домены', count: 'domains' },
