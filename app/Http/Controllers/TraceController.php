@@ -98,8 +98,17 @@ class TraceController extends Controller
                 $add('off', 'Пересылают сюда', implode(', ', $fw));
             }
         }
-        // Правила Sieve — читаем живой скрипт ящика, а не таблицу синхронизации
+        // Правила веб-почты (хранятся в приложении; имя правила — как задал сотрудник) и автоответ
         if ($mailbox) {
+            $rs = \App\Models\Webmail\RuleSet::query()->find($address);
+            $webRules = collect($rs?->rules ?? []);
+            foreach ($webRules as $r) {
+                $acts = collect($r['actions'] ?? [])->map(fn ($a) => trim(($a['type'] ?? $a['kind'] ?? '') . ' ' . ($a['folder'] ?? $a['value'] ?? $a['label'] ?? '')))->filter()->implode(', ');
+                $add(! empty($r['enabled']) ? 'ok' : 'off', 'Правило «' . ($r['name'] ?? 'без названия') . '»', ($acts !== '' ? $acts : 'действий нет') . (! empty($r['enabled']) ? '' : ' (выключено)'), '/rules');
+            }
+            if (! empty($rs?->autoreply['enabled'])) {
+                $add('warn', 'Автоответ включён', mb_substr((string) ($rs->autoreply['subject'] ?? $rs->autoreply['text'] ?? ''), 0, 120), '/rules');
+            }
             $rules = collect();
             try {
                 $reader = app(\App\Services\Sieve\SieveScriptReader::class);
@@ -112,8 +121,8 @@ class TraceController extends Controller
                 $active = $r['active'] ?? true;
                 $add($active ? 'ok' : 'off', (($r['kind'] ?? '') === 'vacation' ? 'Автоответ' : 'Правило'), trim((! empty($r['condition']) ? $r['condition'] . ' → ' : '') . ($r['action'] ?? '')) . ($active ? '' : ' (выключено)'), '/rules');
             }
-            if ($rules->isEmpty()) {
-                $add('off', 'Правила Sieve', 'личных правил нет — письмо ляжет во «Входящие», если его не заберут общие правила');
+            if ($rules->isEmpty() && $webRules->isEmpty()) {
+                $add('off', 'Правила', 'личных правил нет — письмо ляжет во «Входящие», если его не заберут общие правила');
             }
             // Общий доступ
             $shares = collect((new FolderShares())->list($address, 'INBOX'));
