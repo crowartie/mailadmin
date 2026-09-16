@@ -127,16 +127,23 @@ async function poll() {
     } catch {}
 }
 
-async function load(page = 1, keepOpen = false) {
-    loading.value = true;
+async function load(page = 1, keepOpen = false, silent = false) {
+    if (!silent) loading.value = true;
     try {
         const r = await api.list(folder.value, { page, filter: filter.value, q: query.value });
+        // Страница оказалась за концом списка (удалили всё на последней) — показать последнюю существующую.
+        if (!r.messages.length && r.page > 1 && r.pages < r.page) return load(Math.max(1, r.pages), keepOpen, silent);
         list.value = { messages: r.messages, total: r.total, page: r.page, pages: r.pages };
         folders.value = r.folders;
-        selected.value = [];
+        if (!silent) selected.value = [];
         if (!keepOpen) { open.value = null; cursor.value = null; }
         syncUrl();
-    } catch (e) { fail(e); } finally { loading.value = false; }
+    } catch (e) { fail(e); } finally { if (!silent) loading.value = false; }
+}
+// После удаления/переноса страница «подтягивает» следующие письма фоном, а не пустеет (обращение №31).
+const REMOVING = ['delete', 'move', 'archive', 'spam', 'notspam', 'lists', 'snooze', 'unsnooze'];
+function refillAfter(op) {
+    if (REMOVING.includes(op)) load(list.value.page, true, true);
 }
 
 function go(path, f = 'all') {
@@ -238,7 +245,7 @@ async function act(op, uids, extra = {}, deferrable = true) {
             pendingAct.seconds--;
             if (pendingAct.seconds <= 0) {
                 const p = pendingAct; pendingAct = null; toast.value = null;
-                runAct(p).catch((e) => { fail(e); load(list.value.page, true); });
+                runAct(p).then(() => refillAfter(p.op)).catch((e) => { fail(e); load(list.value.page, true); });
             } else {
                 // Обновляем только свою плашку: если её уже сменила другая («Черновик сохранён»), чужую не трогаем.
                 if (toast.value?.actionLabel === 'Отменить') toast.value = { ...toast.value, seconds: pendingAct.seconds };
@@ -251,6 +258,7 @@ async function act(op, uids, extra = {}, deferrable = true) {
     try {
         await runAct({ folder: folder.value, uids, op, extra });
         if (names[op]) showToast({ text: label }, 2500);
+        refillAfter(op);
     } catch (e) {
         fail(e);
         load(list.value.page, true);
@@ -270,7 +278,7 @@ function flushPendingAct(keepalive = false) {
     const p = pendingAct; pendingAct = null;
     // Плашка с таймером без действия за ней зависала навсегда (обращение №4) — убираем вместе с действием.
     if (toast.value?.actionLabel === 'Отменить' && toast.value?.seconds) toast.value = null;
-    runAct(p, keepalive ? { keepalive: true } : {}).catch(() => {});
+    runAct(p, keepalive ? { keepalive: true } : {}).then(() => { if (!keepalive) refillAfter(p.op); }).catch(() => {});
 }
 function undoAct() {
     if (!pendingAct) return false;

@@ -68,6 +68,9 @@
     &__shared { display: inline-flex; flex: 0 0 auto; margin-left: -4px; color: v.$c-faint; }
     &__item--on &__shared { color: v.$c-accent-ink; }
 
+    // Жирное число непрочитанных — кнопка «показать только непрочитанные»
+    &__unread { cursor: pointer; border-radius: 4px; padding: 0 3px; margin: 0 -3px; }
+    &__unread:hover { background: v.$c-accent-soft; color: v.$c-accent-ink; }
     &__count {
         margin-left: auto;
         font-size: 12px;

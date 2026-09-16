@@ -107,7 +107,7 @@ function sharedTitle(f) {
         >
             <span>{{ f.name }}</span>
             <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
-            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b>{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
+            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные" @click.stop="$emit('go', f.path, 'unread')">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
         <button
             v-if="inbox"
@@ -142,7 +142,7 @@ function sharedTitle(f) {
             <Icon :name="f.virtual ? 'inbox' : 'folder'" :size="16" style="color: var(--faint); flex: 0 0 16px" />
             <span>{{ f.name }}</span>
             <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
-            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b>{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
+            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные" @click.stop="$emit('go', f.path, 'unread')">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
         <div v-if="!custom.length" class="hint" style="padding: 4px 12px">Папки создаются здесь или из меню письма «В папку».</div>
 
@@ -169,7 +169,7 @@ function sharedTitle(f) {
                 >
                     <Icon name="folder" :size="16" style="color: var(--faint); flex: 0 0 16px" />
                     <span>{{ f.name }}</span>
-                    <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b>{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
+                    <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные" @click.stop="$emit('go', f.path, 'unread')">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
                 </button>
             </template>
         </template>
