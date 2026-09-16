@@ -3,6 +3,7 @@
 import { computed, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
+import { viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
 import { addrList, initials, size, when } from '../../mail/format';
 
@@ -23,22 +24,9 @@ const showImages = ref({});
 
 // Просмотр вложений (обращение №6): картинки и PDF открываются поверх письма, остальное — скачивается.
 const viewer = ref(null);   // { items, start }
-// Офисные документы сервер на лету переводит в PDF (LibreOffice) — и показывает тем же просмотрщиком.
-const OFFICE = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
-const ext = (a) => String(a.name || '').toLowerCase().split('.').pop();
-const isImg = (a) => String(a.type || '').startsWith('image/');
-const isPdf = (a) => a.type === 'application/pdf' || ext(a) === 'pdf';
-const isOffice = (a) => OFFICE.includes(ext(a));
-const viewable = (a) => !a.inline && (isImg(a) || isPdf(a) || isOffice(a));
-function viewUrl(m, a) {
-    return isOffice(a) ? api.attachmentPreviewUrl(m.folder, m.uid, a.index) : api.attachmentUrl(m.folder, m.uid, a.index, true);
-}
 function openAttachment(m, a) {
     const list = m.attachments.filter(viewable);
-    viewer.value = {
-        start: Math.max(0, list.findIndex((x) => x.index === a.index)),
-        items: list.map((x) => ({ url: viewUrl(m, x), downloadUrl: api.attachmentUrl(m.folder, m.uid, x.index), name: x.name, type: isImg(x) ? x.type : 'application/pdf', size: x.size, converted: isOffice(x) })),
-    };
+    viewer.value = { start: Math.max(0, list.findIndex((x) => x.index === a.index)), items: viewerItems(m.folder, m.uid, m.attachments) };
 }
 const labelMap = computed(() => Object.fromEntries(props.labels.map((l) => [l.id, l])));
 

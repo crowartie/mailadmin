@@ -5,6 +5,8 @@ import Icon from '../Icon.vue';
 import RecipientInput from './RecipientInput.vue';
 import Editor from './Editor.vue';
 import Popover from './Popover.vue';
+import AttachmentViewer from './AttachmentViewer.vue';
+import { viewable, viewerItems, localViewable, localViewerItems } from '../../mail/attachments';
 import { api, composeForm } from '../../mail/api';
 import { addrString, presets, size, toLocalInput, when } from '../../mail/format';
 
@@ -43,6 +45,16 @@ const toInput = ref(null);
 const fileInput = ref(null);
 let autosave = null;
 
+// Просмотр вложений прямо из окна письма: унаследованные от пересылаемого письма — с сервера, свои — из файла (data:).
+const viewer = ref(null);
+function openExisting(a) {
+    const list = existing.value.filter(viewable);
+    viewer.value = { start: Math.max(0, list.findIndex((x) => x.index === a.index)), items: viewerItems(c.sourceFolder, c.sourceUid, existing.value) };
+}
+async function openLocal(i) {
+    const list = files.value.filter(localViewable);
+    viewer.value = { start: Math.max(0, list.indexOf(files.value[i])), items: await localViewerItems(files.value) };
+}
 const MAX_FILE = (props.cloud?.maxMb || 50) * 1024 * 1024;
 const CLOUD_FROM = (props.cloud?.thresholdMb || 10) * 1024 * 1024;
 const viaCloud = ref(new Set());   // индексы файлов, которые уйдут ссылкой
@@ -181,6 +193,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
 </script>
 
 <template>
+    <AttachmentViewer v-if="viewer" :items="viewer.items" :start="viewer.start" @close="viewer = null" />
     <div
         class="compose"
         :class="{ 'compose--drop': drop }"
@@ -233,12 +246,17 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
 
         <div v-if="files.length || (keepAttachments && existing.length)" class="compose__atts">
             <template v-if="keepAttachments">
-                <span v-for="a in existing" :key="'e' + a.index" class="att" :title="a.name">
-                    <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
+                <span v-for="a in existing" :key="'e' + a.index" class="att" :title="a.name + (viewable(a) ? ' — посмотреть' : '')">
+                    <a class="att__main" :href="api.attachmentUrl(c.sourceFolder, c.sourceUid, a.index)" @click="viewable(a) && (openExisting(a), $event.preventDefault())">
+                        <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
+                    </a>
+                    <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openExisting(a)"><Icon name="eye" :size="13" /></button>
                 </span>
             </template>
             <span v-for="(f, i) in files" :key="f.name + i" class="att" :class="{ 'att--cloud': viaCloud.has(i) }" :title="viaCloud.has(i) ? 'Уйдёт ссылкой через облако' : f.name">
-                <Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span>
+                <a v-if="localViewable(f)" class="att__main" href="#" title="Посмотреть" @click.prevent="openLocal(i)"><Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></a>
+                <template v-else><Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></template>
+                <button v-if="localViewable(f)" class="att__btn" type="button" title="Посмотреть" @click="openLocal(i)"><Icon name="eye" :size="13" /></button>
                 <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'" @click="toggleCloud(i)"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
                 <button type="button" title="Убрать" @click="removeFile(i)"><Icon name="x" :size="13" /></button>
             </span>

@@ -7,6 +7,7 @@ import { Link, router } from '@inertiajs/vue3';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
+import AttachmentViewer from '../../Components/Mail/AttachmentViewer.vue';
 import { http } from '../../admin/http';
 
 const props = defineProps({
@@ -23,6 +24,13 @@ const props = defineProps({
 const list = ref([...(props.rows || [])]);
 const ticket = ref(props.open ? { ...props.open } : null);
 const messages = ref(props.open?.messages ? [...props.open.messages] : []);
+// Снимки экрана из переписки — в просмотрщике, со стрелками по всем снимкам обращения
+const viewer = ref(null);
+function openShot(m) {
+    const shots = messages.value.filter((x) => x.file && !x.pending);
+    const url = (x) => `/feedback/${ticket.value.id}/file/${x.id}`;
+    viewer.value = { start: Math.max(0, shots.findIndex((x) => x.id === m.id)), items: shots.map((x) => ({ url: url(x), downloadUrl: url(x), name: 'Снимок экрана', type: 'image/png', size: 0 })) };
+}
 const q = ref(props.search || '');
 const reply = ref('');
 const file = ref(null);
@@ -278,7 +286,7 @@ const errors = computed(() => ticket.value?.context?.errors || []);
                         <div v-if="m.role === 'user'" class="fbchat__who">{{ ticket.userName || ticket.user }}</div>
                         <div v-else-if="m.role === 'admin'" class="fbchat__who">{{ m.author }}</div>
                         <div>{{ m.text }}</div>
-                        <a v-if="m.file && !m.pending" :href="`/feedback/${ticket.id}/file/${m.id}`" target="_blank" class="fbchat__shot">
+                        <a v-if="m.file && !m.pending" :href="`/feedback/${ticket.id}/file/${m.id}`" class="fbchat__shot" title="Посмотреть" @click.prevent="openShot(m)">
                             <img :src="`/feedback/${ticket.id}/file/${m.id}`" alt="снимок экрана">
                         </a>
                         <div v-else-if="m.preview" class="fbchat__shot"><img :src="m.preview" alt="снимок экрана"></div>
@@ -363,4 +371,5 @@ const errors = computed(() => ticket.value?.context?.errors || []);
             </div>
         </div>
     </AppLayout>
+    <AttachmentViewer v-if="viewer" :items="viewer.items" :start="viewer.start" @close="viewer = null" />
 </template>

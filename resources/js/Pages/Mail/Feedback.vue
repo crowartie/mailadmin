@@ -5,6 +5,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
+import AttachmentViewer from '../../Components/Mail/AttachmentViewer.vue';
 import FeedbackDialog from '../../Components/Mail/FeedbackDialog.vue';
 import { api } from '../../mail/api';
 
@@ -19,6 +20,13 @@ const props = defineProps({
 const list = ref([...(props.tickets || [])]);
 const ticket = ref(props.open ? { ...props.open } : null);
 const messages = ref(props.open?.messages ? [...props.open.messages] : []);
+// Снимки экрана из переписки — в просмотрщике, со стрелками по всем снимкам обращения
+const viewer = ref(null);
+function openShot(m) {
+    const shots = messages.value.filter((x) => x.file && !x.pending);
+    const url = (x) => `/mail/feedback/${ticket.value.id}/file/${x.id}`;
+    viewer.value = { start: Math.max(0, shots.findIndex((x) => x.id === m.id)), items: shots.map((x) => ({ url: url(x), downloadUrl: url(x), name: 'Снимок экрана', type: 'image/png', size: 0 })) };
+}
 const creating = ref(false);
 const reply = ref('');
 const file = ref(null);
@@ -239,7 +247,7 @@ function backToList() {
                         >
                             <div v-if="m.role === 'admin'" class="fbchat__who">Администратор</div>
                             <div>{{ m.text }}</div>
-                            <a v-if="m.file && !m.pending" :href="`/mail/feedback/${ticket.id}/file/${m.id}`" target="_blank" class="fbchat__shot">
+                            <a v-if="m.file && !m.pending" :href="`/mail/feedback/${ticket.id}/file/${m.id}`" class="fbchat__shot" title="Посмотреть" @click.prevent="openShot(m)">
                                 <img :src="`/mail/feedback/${ticket.id}/file/${m.id}`" alt="снимок экрана">
                             </a>
                             <div v-else-if="m.preview" class="fbchat__shot"><img :src="m.preview" alt="снимок экрана"></div>
@@ -287,4 +295,5 @@ function backToList() {
 
         <FeedbackDialog v-if="creating" @close="creating = false; router.reload({ only: ['tickets'] })" />
     </MailLayout>
+    <AttachmentViewer v-if="viewer" :items="viewer.items" :start="viewer.start" @close="viewer = null" />
 </template>
