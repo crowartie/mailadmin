@@ -92,6 +92,32 @@ else
   echo "dovecot: ошибка в конфигурации, не перечитываю" >&2
 fi
 
+# ── 3b. Ночная доиндексация поиска: всё, что не успел индексатор днём (HDD, низкий приоритет) ──
+cat > /etc/systemd/system/mailadmin-index-nightly.service <<'EOF'
+[Unit]
+Description=mailadmin: ночная доиндексация почты (FTS)
+After=dovecot.service
+
+[Service]
+Type=oneshot
+Nice=15
+IOSchedulingClass=idle
+ExecStart=/usr/bin/doveadm index -A -q '*'
+EOF
+cat > /etc/systemd/system/mailadmin-index-nightly.timer <<'EOF'
+[Unit]
+Description=mailadmin: ночная доиндексация почты в 21:00
+
+[Timer]
+OnCalendar=*-*-* 21:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload
+systemctl enable --now mailadmin-index-nightly.timer >/dev/null 2>&1 || true
+
 # ── 4. Cron: скормить накопленное SpamAssassin от имени amavis ─────────
 cat > /usr/local/sbin/mailadmin-salearn <<'EOF'
 #!/bin/bash

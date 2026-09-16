@@ -20,7 +20,7 @@ pf_warn=$(grep -c "^$d.*postfix.*warning:" /var/log/mail.log 2>/dev/null || true
 pf_fatal=$(grep -c "^$d.*postfix.*\(fatal\|panic\):" /var/log/mail.log 2>/dev/null || true)
 sched=false; grep -qs "schedule:run" /etc/cron.d/* /var/spool/cron/crontabs/* 2>/dev/null && sched=true
 salearn_cron=false; [ -f /etc/cron.d/mailadmin-salearn ] && salearn_cron=true
-tl=$(systemctl list-timers --all --no-pager 2>/dev/null | grep "mailadmin-index-tonight" | head -1)
+tl=$(systemctl list-timers --all --no-pager 2>/dev/null | grep "mailadmin-index" | head -1)
 idx_next=$(echo "$tl" | awk '{print $1" "$2" "$3}')
 idx_timer=$(echo "$tl" | grep -o "[A-Z][a-z][a-z] [0-9-]* [0-9:]* [A-Z0-9]*" | sed -n 2p)
 upd=$(apt list --upgradable 2>/dev/null | grep -c "upgradable" || true)

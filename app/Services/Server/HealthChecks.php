@@ -88,7 +88,7 @@ class HealthChecks
         $idx = (int) ($si['indexers'] ?? 0);
         $add('Почта', 'Индексация поиска', $idx > 4 ? 'warn' : 'ok', $idx ? "{$idx} воркеров заняты" : 'очередь пуста', $idx > 4 ? 'Много воркеров днём замедляют диск; ночная доиндексация в 21:00' : null);
         $timer = (string) ($si['indexTimerLast'] ?? '');
-        $add('Почта', 'Ночная доиндексация', $timer !== '' && $timer !== 'n/a' ? 'ok' : 'warn', $timer !== '' && $timer !== 'n/a' ? 'последний запуск ' . $this->ru($timer) : 'таймер не запускался', $timer === '' ? 'systemctl status mailadmin-index-tonight.timer' : null);
+        $add('Почта', 'Ночная доиндексация', $timer !== '' && $timer !== 'n/a' ? 'ok' : 'warn', $timer !== '' && $timer !== 'n/a' ? 'последний запуск ' . $this->ru($timer) : 'таймер не запускался', $timer === '' ? 'Таймера нет — запустите deploy/dovecot-fts-learn.sh, он создаёт mailadmin-index-nightly.timer' : null);
 
         // ── Антиспам ──
         $bayes = $this->antispam->bayes();

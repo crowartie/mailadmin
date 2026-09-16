@@ -163,6 +163,39 @@ class FolderShares
         return $done;
     }
 
+    /**
+     * Все общие папки всех ящиков (страница «Общий доступ»): по каждому владельцу из share_folder — его папки и кому
+     * они открыты. Через IMAP GETACL мастер-сессией: на ящик уходит десятки миллисекунд.
+     * @return array<int,array{owner:string,ownerName:string,folder:string,folderName:string,role:string,with:string,withName:string,level:string}>
+     */
+    public function overview(): array
+    {
+        $owners = \Illuminate\Support\Facades\DB::connection('vmail')->table('share_folder')->distinct()->pluck('from_user')->map('strtolower')->sort()->values();
+        $names = Mailbox::query()->pluck('name', 'username');
+        $rows = [];
+        foreach ($owners as $owner) {
+            try {
+                $store = new MailStore(ImapSession::master($owner));
+                foreach ($store->folders() as $f) {
+                    if ($f['role'] === 'shared') {
+                        continue;
+                    }
+                    foreach (self::aclLevels($store, $f['path']) as $with => $level) {
+                        $rows[] = [
+                            'owner' => $owner, 'ownerName' => $names[$owner] ?: $owner,
+                            'folder' => $f['path'], 'folderName' => $f['name'], 'role' => $f['role'],
+                            'with' => $with, 'withName' => $names[$with] ?? $with, 'level' => $level,
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                $rows[] = ['owner' => $owner, 'ownerName' => $names[$owner] ?: $owner, 'folder' => '', 'folderName' => '', 'role' => 'error', 'with' => '', 'withName' => '', 'level' => mb_substr($e->getMessage(), 0, 120)];
+            }
+        }
+
+        return $rows;
+    }
+
     /** Кому и с каким уровнем открыта папка — через IMAP GETACL (быстро, без doveadm). @return array<string,string> */
     private static function aclLevels(MailStore $store, string $imapPath): array
     {

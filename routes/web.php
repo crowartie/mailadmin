@@ -54,6 +54,9 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/mailboxes/{mailbox}/kick', [EmployeeController::class, 'kick'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/block', [EmployeeController::class, 'block'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/reset-2fa', [EmployeeController::class, 'reset2fa'])->where('mailbox', '.*');
+        Route::get('/shares', [\App\Http\Controllers\SharesController::class, 'index']);
+        Route::get('/shares/json', [\App\Http\Controllers\SharesController::class, 'json']);
+        Route::post('/shares/sync', [\App\Http\Controllers\SharesController::class, 'sync']);
         Route::get('/mailboxes/{mailbox}/shares', [EmployeeController::class, 'shares'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/shares', [EmployeeController::class, 'share'])->where('mailbox', '.*');
         Route::delete('/mailboxes/{mailbox}/shares', [EmployeeController::class, 'unshare'])->where('mailbox', '.*');

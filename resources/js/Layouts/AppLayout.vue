@@ -35,6 +35,7 @@ const groups = [
     { title: 'Люди', items: [
         { href: '/mailboxes', icon: 'users', label: 'Сотрудники', count: 'mailboxes' },
         { href: '/units', icon: 'list', label: 'Подразделения', count: 'units' },
+        { href: '/shares', icon: 'share', label: 'Общий доступ' },
         { href: '/aliases', icon: 'at', label: 'Псевдонимы', count: 'aliases' },
         { href: '/maillists', icon: 'mail', label: 'Рассылки', count: 'maillists' },
         { href: '/rules', icon: 'filter', label: 'Правила', count: 'rules' },
