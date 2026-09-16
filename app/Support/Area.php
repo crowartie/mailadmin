@@ -40,6 +40,11 @@ final class Area
 
     public static function port(Request $request): int
     {
+        // За доверенным прокси (Octane за nginx на 127.0.0.1) SERVER_PORT — это порт самого Octane,
+        // а порт, на который пришёл клиент, nginx передаёт в X-Forwarded-Port; getPort() его и читает.
+        if ($request->isFromTrustedProxy()) {
+            return (int) $request->getPort();
+        }
         $port = (int) $request->server('SERVER_PORT');
 
         return $port > 0 ? $port : (int) $request->getPort();

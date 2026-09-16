@@ -23,3 +23,5 @@ yarn-error.log
 /.vscode
 /.zed
 /deploy/install.conf
+rr
+.rr.yaml
