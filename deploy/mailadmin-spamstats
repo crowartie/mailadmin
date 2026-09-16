@@ -1,0 +1,38 @@
+#!/bin/bash
+# Сводка антиспама за сегодня и вчера из журналов Postfix/Amavis/Dovecot — JSON для страницы «Антиспам».
+# Запускается из mailadmin-ctl (root). Считает строки по дате в начале строки (журналы могут не ротироваться в полночь).
+set -u
+export LC_ALL=C.UTF-8
+
+day() {  # $1 — дата YYYY-MM-DD
+  local d="$1"
+  cat /var/log/mail.log.1 /var/log/mail.log 2>/dev/null | awk -v d="$d" '
+    index($1, d) != 1 { next }
+    /Passed CLEAN/ { clean++ }
+    /Passed SPAMMY/ { spammy++ }
+    /Passed SPAM[ ,]/ || /Blocked SPAM/ { spam++ }
+    /Blocked BANNED|Blocked INFECTED/ { banned++ }
+    /amavis\[/ && /BAYES_9/ { bayes++ }
+    /amavis\[/ && /RAZOR2_CHECK/ { razor++ }
+    /amavis\[/ && /PYZOR_CHECK/ { pyzor++ }
+    /amavis\[/ && /URIBL_/ { uribl++ }
+    /postscreen.*DNSBL rank/ { dnsbl++ }
+    /Intentional policy rejection/ { grey++ }
+    /SMTP AUTH is required/ { authreq++ }
+    /NOQUEUE: reject/ { rejects++ }
+    END {
+      printf "{\"clean\":%d,\"spammy\":%d,\"spam\":%d,\"banned\":%d,\"bayes\":%d,\"razor\":%d,\"pyzor\":%d,\"uribl\":%d,\"dnsbl\":%d,\"grey\":%d,\"authreq\":%d,\"rejects\":%d",
+        clean, spammy, spam, banned, bayes, razor, pyzor, uribl, dnsbl, grey, authreq, rejects
+    }'
+  # общие правила: письма, уложенные Sieve в Junk/Newsletters при доставке
+  local junk news
+  junk=$(cat /var/log/dovecot/lda.log.1 /var/log/dovecot/lda.log 2>/dev/null | grep -c "^$d.*stored mail into mailbox 'Junk'" || true)
+  news=$(cat /var/log/dovecot/lda.log.1 /var/log/dovecot/lda.log 2>/dev/null | grep -c "^$d.*stored mail into mailbox 'Newsletters'" || true)
+  printf ',"toJunk":%d,"toNews":%d}' "${junk:-0}" "${news:-0}"
+}
+
+printf '{"today":'
+day "$(date +%F)"
+printf ',"yesterday":'
+day "$(date -d yesterday +%F)"
+printf ',"at":"%s"}\n' "$(date -Is)"

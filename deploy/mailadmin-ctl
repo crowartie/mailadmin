@@ -34,6 +34,13 @@ case "$cmd" in
   f2b-unban)      ipv "$1"; exec fail2ban-client unban "$1" ;;
   f2b-ban)        word "$1"; ipv "$2"; exec fail2ban-client set "$1" banip "$2" ;;
   f2b-ignore)     ipv "$1"; for j in $(fail2ban-client status | sed -n 's/.*Jail list:\s*//p' | tr ',' ' '); do fail2ban-client set "$j" addignoreip "$1" >/dev/null; done; echo ok ;;
+  # ── антиспам (страница «Антиспам») ─────────────────────────────
+  spam-stats)     exec /usr/local/sbin/mailadmin-spamstats ;;
+  spam-net)       exec /usr/local/sbin/mailadmin-spamnet ;;
+  bayes-magic)    cd /; exec sudo -u amavis -H sa-learn --dump magic ;;
+  salearn-log)    tail -n 40 /var/log/mailadmin-salearn.log 2>/dev/null || true ;;
+  salearn-spool)  echo "spam $(find /var/spool/sa-learn/spam -type f -name '*.eml' 2>/dev/null | wc -l) ham $(find /var/spool/sa-learn/ham -type f -name '*.eml' 2>/dev/null | wc -l)" ;;
+  salearn-now)    exec /usr/local/sbin/mailadmin-salearn ;;
   # ── Dovecot ────────────────────────────────────────────────────
   who)            exec doveadm who ;;
   # Общий доступ к папкам: doveadm acl. Имя папки — UTF-8, без управляющих символов.

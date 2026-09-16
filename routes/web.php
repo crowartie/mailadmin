@@ -64,6 +64,10 @@ Route::middleware('area:admin')->group(function () {
 
         Route::get('/rules', [RulesController::class, 'index']);
 
+        Route::get('/antispam', [\App\Http\Controllers\AntispamController::class, 'index']);
+        Route::get('/antispam/json', [\App\Http\Controllers\AntispamController::class, 'json']);
+        Route::post('/antispam/levels', [\App\Http\Controllers\AntispamController::class, 'levels']);
+        Route::post('/antispam/learn', [\App\Http\Controllers\AntispamController::class, 'learn']);
         Route::get('/queue', [QueueController::class, 'index']);
         Route::get('/queue/list', [QueueController::class, 'list']);
         Route::post('/queue/action', [QueueController::class, 'action']);

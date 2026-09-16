@@ -1,0 +1,33 @@
+#!/bin/bash
+# Состояние внешних баз спама — JSON для страницы «Антиспам». Только чтение.
+set -u
+export LC_ALL=C.UTF-8
+cd /
+
+# DNSBL в postscreen: имя, вес, отвечает ли на тестовый адрес 127.0.0.2
+printf '{"dnsbl":['
+first=1
+for s in $(postconf -h postscreen_dnsbl_sites 2>/dev/null | tr -s ' \n' ' '); do
+  host=${s%%=*}; host=${host%%\**}
+  w=$(echo "$s" | grep -o '\*[0-9]*$' | tr -d '*'); w=${w:-1}
+  ans=$(dig +short +time=3 "2.0.0.127.$host" 2>/dev/null | grep -c '^127\.')
+  [ $first = 1 ] || printf ','; first=0
+  printf '{"host":"%s","weight":%s,"ok":%s}' "$host" "$w" "$([ "$ans" -gt 0 ] && echo true || echo false)"
+done
+printf '],"threshold":%s' "$(postconf -h postscreen_dnsbl_threshold 2>/dev/null || echo 0)"
+
+# Razor: зарегистрирован ли
+rz=false; [ -e /var/lib/amavis/.razor/identity ] && rz=true
+printf ',"razor":%s' "$rz"
+# Pyzor: отвечает ли сервер
+pz=false; sudo -u amavis -H timeout 8 pyzor ping 2>/dev/null | grep -q "200" && pz=true
+printf ',"pyzor":%s' "$pz"
+# Серый список iRedAPD
+gl=false; [ "$(cd /opt/iredapd 2>/dev/null && python3 -c "import settings; print('greylisting' in getattr(settings, 'plugins', []))" 2>/dev/null)" = "True" ] && gl=true
+printf ',"greylist":%s' "$gl"
+# Обновление правил SpamAssassin: дата последнего
+ru=$(stat -c %Y /var/lib/spamassassin/*/updates_spamassassin_org.cf 2>/dev/null | sort -n | tail -1)
+printf ',"rulesUpdated":%s' "${ru:-0}"
+# Порог SpamAssassin (required_score) — ниже него письмо не считается спамом даже самим SA
+rs=$(grep -h "^required_score" /etc/spamassassin/local.cf 2>/dev/null | awk '{print $2}' | tail -1)
+printf ',"required":%s}\n' "${rs:-5.0}"

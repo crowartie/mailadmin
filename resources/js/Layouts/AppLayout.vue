@@ -42,6 +42,7 @@ const groups = [
     { title: 'Сервер', items: [
         { href: '/domains', icon: 'globe', label: 'Домены', count: 'domains' },
         { href: '/queue', icon: 'queue', label: 'Очередь', count: 'queue' },
+        { href: '/antispam', icon: 'spam', label: 'Антиспам' },
         { href: '/logs', icon: 'log', label: 'Журналы' },
         { href: '/reports', icon: 'file', label: 'Отчёты' },
         { href: '/security', icon: 'shield', label: 'Безопасность' },
