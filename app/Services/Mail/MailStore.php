@@ -170,12 +170,24 @@ class MailStore
         $this->markShared($out);
 
         // Системные — в фиксированном порядке, свои — по алфавиту после них.
-        usort($out, function ($a, $b) {
-            $oa = self::ORDER[$a['role']] ?? 10;
-            $ob = self::ORDER[$b['role']] ?? 10;
+        // Путь папки в IMAP — modified UTF-7 («&BBAEEQQX-»), сравнивать надо раскодированное имя и по правилам языка:
+        // иначе «АНХК» встаёт раньше «Авиа» (заглавные байтами меньше строчных), а кириллица — вперемешку (обращение №29).
+        $coll = class_exists('\Collator') ? new \Collator('ru_RU') : null;
+        $keys = [];
+        foreach ($out as $i => $row) {
+            $keys[$i] = self::utf8Name($row['path']);
+        }
+        $idx = array_keys($out);
+        usort($idx, function ($ia, $ib) use ($out, $keys, $coll) {
+            $oa = self::ORDER[$out[$ia]['role']] ?? 10;
+            $ob = self::ORDER[$out[$ib]['role']] ?? 10;
+            if ($oa !== $ob) {
+                return $oa <=> $ob;
+            }
 
-            return $oa <=> $ob ?: strcasecmp($a['path'], $b['path']);
+            return $coll ? $coll->compare($keys[$ia], $keys[$ib]) : strcmp(mb_strtolower($keys[$ia]), mb_strtolower($keys[$ib]));
         });
+        $out = array_values(array_map(fn ($i) => $out[$i], $idx));
 
         return $this->folderCache = $out;
     }
