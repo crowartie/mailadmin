@@ -87,7 +87,10 @@ async function sendQuick() {
 }
 
 function print() {
-    window.print();
+    // Печатная форма — отдельная страница без интерфейса (тема, поля, вложения, текст, переписка).
+    const m = props.message;
+    if (!m) return;
+    window.open(`/mail/print/${encodeURIComponent(m.folder)}/${m.uid}`, '_blank');
 }
 
 const isDraft = computed(() => props.folderRole === 'drafts');

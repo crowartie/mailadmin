@@ -65,6 +65,8 @@ Route::middleware('area:mail')->group(function () {
         Route::get('/mail/feedback/{ticket}/file/{message}', [\App\Http\Controllers\Mail\FeedbackController::class, 'file'])->whereNumber('ticket')->whereNumber('message');
         Route::get('/mail/settings/{section?}', [InboxController::class, 'settings'])->where('section', '[a-z]+');
         Route::get('/mail/folder/{folder}', [InboxController::class, 'index'])->where('folder', '.*');
+        // Печатная форма письма: отдельная страница, открывается в новой вкладке и сама вызывает печать.
+        Route::get('/mail/print/{folder}/{uid}', [\App\Http\Controllers\Mail\PrintController::class, 'show'])->where('folder', '.*')->whereNumber('uid');
 
         // Живые данные для интерфейса.
         Route::prefix('/mail/api')->group(function () {
