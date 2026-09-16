@@ -281,7 +281,7 @@ class FeedbackController extends Controller
     /** Тема из первой строки текста — чтобы в списке было видно, о чём обращение. */
     private function subjectFrom(string $text): string
     {
-        $line = trim((string) preg_split('/\R/', $text)[0]);
+        $line = trim((string) (preg_split('/\R/u', $text) ?: [$text])[0]);
 
         return Str::limit($line !== '' ? $line : $text, 90, '…');
     }

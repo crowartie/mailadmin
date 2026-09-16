@@ -68,11 +68,13 @@ function pick(e) {
 function setFile(f) {
     if (f.size > 8 * 1024 * 1024) { error.value = 'Снимок больше 8 МБ — уменьшите или обрежьте.'; return; }
     file.value = f;
-    filePreview.value = URL.createObjectURL(f);
     error.value = '';
+    // blob:-адреса запрещены CSP — превью через data:
+    const r = new FileReader();
+    r.onload = () => { if (file.value === f) filePreview.value = String(r.result || ''); };
+    r.readAsDataURL(f);
 }
 function clearFile() {
-    if (filePreview.value) URL.revokeObjectURL(filePreview.value);
     file.value = null;
     filePreview.value = '';
 }

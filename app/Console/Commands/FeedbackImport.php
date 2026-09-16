@@ -232,7 +232,7 @@ class FeedbackImport extends Command
     public static function stripQuote(string $text): string
     {
         $out = [];
-        foreach (preg_split('/\R/', $text) ?: [] as $line) {
+        foreach (preg_split('/\R/u', $text) ?: [$text] as $line) {
             $t = trim($line);
             if ($t !== '' && $t[0] === '>') {
                 break;
