@@ -32,6 +32,7 @@ class Setting extends Model
         'shortcuts' => true,
         'preview' => true,
         'unread_highlight' => true,   // непрочитанные — полоска слева и тема цветом (обращение №26)
+        'unread_color' => '',         // свой цвет подсветки (#rrggbb); пусто — синий темы
         'show_images' => 'ask',
         'totp_enabled' => false,
     ];

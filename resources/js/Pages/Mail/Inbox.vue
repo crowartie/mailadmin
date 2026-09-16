@@ -735,6 +735,7 @@ onBeforeUnmount(() => {
                 :folder-name="folderName"
                 :folder-role="folderInfo.role"
                 :highlight-unread="settings.unread_highlight !== false"
+                :unread-color="settings.unread_color || ''"
                 :filter="filter"
                 :query="query"
                 :selected="selected"

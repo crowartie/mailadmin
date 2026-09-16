@@ -34,6 +34,7 @@ class SettingsController extends Controller
             'shortcuts' => ['nullable', 'boolean'],
             'preview' => ['nullable', 'boolean'],
             'unread_highlight' => ['nullable', 'boolean'],
+            'unread_color' => ['nullable', 'regex:/^(#[0-9a-fA-F]{6})?$/'],
             'show_images' => ['nullable', 'in:ask,always'],
         ]);
 

@@ -73,7 +73,7 @@ async function saveSettings(patch) {
 function saveGeneral() {
     saveSettings({
         display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, ask_rule_on_move: !!s.value.ask_rule_on_move, undo_seconds: Number(s.value.undo_seconds),
-        preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, show_images: s.value.show_images, unread_highlight: !!s.value.unread_highlight,
+        preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, show_images: s.value.show_images, unread_highlight: !!s.value.unread_highlight, unread_color: s.value.unread_color || '',
         quick_replies: quickText.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8),
     });
 }
@@ -215,7 +215,13 @@ const shortcuts = [
                                     <select v-model="s.show_images" class="input"><option value="ask">Показывать по кнопке</option><option value="always">Показывать всегда</option></select>
                                 </div>
                             </div>
-                            <label class="toggle"><input v-model="s.unread_highlight" type="checkbox"><span class="toggle__track" />Подсвечивать непрочитанные цветом: полоска слева и тема синим</label>
+                            <label class="toggle"><input v-model="s.unread_highlight" type="checkbox"><span class="toggle__track" />Подсвечивать непрочитанные цветом: полоска слева и тема</label>
+                            <div v-if="s.unread_highlight" class="field__row" style="align-items: center; gap: 10px; padding-left: 44px">
+                                <span class="hint" style="margin: 0">Цвет подсветки</span>
+                                <input type="color" :value="s.unread_color || '#2F6FEB'" style="width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer" @input="s.unread_color = $event.target.value">
+                                <span class="hint" style="margin: 0"><span :style="{ display: 'inline-block', width: '3px', height: '14px', verticalAlign: 'middle', marginRight: '8px', background: s.unread_color || 'var(--accent)' }" /><b :style="{ color: s.unread_color || 'var(--accent-ink)' }">Так будет выглядеть тема непрочитанного</b></span>
+                                <button v-if="s.unread_color" class="btn btn--sm" type="button" @click="s.unread_color = ''">Синий темы</button>
+                            </div>
                             <label class="toggle"><input v-model="s.shortcuts" type="checkbox"><span class="toggle__track" />Горячие клавиши</label>
                             <label class="toggle"><input v-model="s.reply_all" type="checkbox"><span class="toggle__track" />По умолчанию отвечать всем</label>
                             <label class="toggle"><input v-model="s.ask_rule_on_move" type="checkbox"><span class="toggle__track" />При переносе письма из «Входящих» в папку предлагать правило для отправителя</label>

@@ -223,8 +223,9 @@
     &__from b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     &--unread &__from b, &--unread &__subj { font-weight: 700; }
     // «Подсвечивать непрочитанные цветом» (как в Outlook): полоска слева и тема цветом accent-ink
-    .mlist--hl &--unread::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: v.$c-accent; }
-    .mlist--hl &--unread &__subj { color: v.$c-accent-ink; }
+    // Свой цвет из настроек (--unread-c) или синий темы
+    .mlist--hl &--unread::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--unread-c, #{v.$c-accent}); }
+    .mlist--hl &--unread &__subj { color: var(--unread-c, #{v.$c-accent-ink}); }
     &__subj { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     &__prev { display: block; color: v.$c-muted; font-size: 12.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
