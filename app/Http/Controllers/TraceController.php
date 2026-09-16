@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\EmployeeProfile;
 use App\Models\ExternalSender;
 use App\Models\SenderRule;
-use App\Models\SieveRule;
 use App\Models\Vmail\Domain;
 use App\Models\Vmail\Forwarding;
 use App\Models\Vmail\Mailbox;
@@ -99,11 +98,19 @@ class TraceController extends Controller
                 $add('off', 'Пересылают сюда', implode(', ', $fw));
             }
         }
-        // Правила Sieve (по последней синхронизации)
+        // Правила Sieve — читаем живой скрипт ящика, а не таблицу синхронизации
         if ($mailbox) {
-            $rules = SieveRule::query()->where('owner', $address)->orderBy('position')->get();
+            $rules = collect();
+            try {
+                $reader = app(\App\Services\Sieve\SieveScriptReader::class);
+                $script = $reader->activeScript($mailbox);
+                $rules = collect($script !== null ? $reader->parse($script) : []);
+            } catch (\Throwable $e) {
+                $add('warn', 'Правила Sieve', 'не удалось прочитать: ' . mb_substr($e->getMessage(), 0, 100));
+            }
             foreach ($rules as $r) {
-                $add($r->active ? 'ok' : 'off', ($r->kind === 'vacation' ? 'Автоответ' : 'Правило'), trim(($r->condition ? $r->condition . ' → ' : '') . $r->action) . ($r->active ? '' : ' (выключено)'), '/rules');
+                $active = $r['active'] ?? true;
+                $add($active ? 'ok' : 'off', (($r['kind'] ?? '') === 'vacation' ? 'Автоответ' : 'Правило'), trim((! empty($r['condition']) ? $r['condition'] . ' → ' : '') . ($r['action'] ?? '')) . ($active ? '' : ' (выключено)'), '/rules');
             }
             if ($rules->isEmpty()) {
                 $add('off', 'Правила Sieve', 'личных правил нет — письмо ляжет во «Входящие», если его не заберут общие правила');
