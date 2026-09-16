@@ -1,0 +1,12 @@
+# /etc/logrotate.d/mailadmin — журналы приложения (auth.log читает fail2ban: copytruncate)
+/opt/mailadmin/storage/logs/*.log {
+    su www-data www-data
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 www-data www-data
+}
