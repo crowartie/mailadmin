@@ -274,6 +274,7 @@ install -m 0755 -o root -g root "$HERE/mailadmin-ctl" /usr/local/sbin/mailadmin-
 install -m 0755 -o root -g root "$HERE/mailadmin-backup" /usr/local/sbin/mailadmin-backup
 install -m 0755 -o root -g root "$HERE/mailadmin-spamstats" /usr/local/sbin/mailadmin-spamstats
 install -m 0755 -o root -g root "$HERE/mailadmin-spamnet" /usr/local/sbin/mailadmin-spamnet
+install -m 0755 -o root -g root "$HERE/mailadmin-sysinfo" /usr/local/sbin/mailadmin-sysinfo
 install -m 0755 -o root -g root "$HERE/fail2ban-mailadmin.sh" /usr/local/sbin/mailadmin-f2b
 printf '# Веб-приложение управляет сервером только через mailadmin-ctl (белый список подкоманд внутри).\nwww-data ALL=(root) NOPASSWD: /usr/local/sbin/mailadmin-ctl\n' > /etc/sudoers.d/mailadmin
 chmod 0440 /etc/sudoers.d/mailadmin; visudo -c >/dev/null

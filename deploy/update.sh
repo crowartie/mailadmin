@@ -31,6 +31,7 @@ install -m 0755 -o root -g root "$HERE/mailadmin-ctl" /usr/local/sbin/mailadmin-
 install -m 0755 -o root -g root "$HERE/mailadmin-backup" /usr/local/sbin/mailadmin-backup
 install -m 0755 -o root -g root "$HERE/mailadmin-spamstats" /usr/local/sbin/mailadmin-spamstats
 install -m 0755 -o root -g root "$HERE/mailadmin-spamnet" /usr/local/sbin/mailadmin-spamnet
+install -m 0755 -o root -g root "$HERE/mailadmin-sysinfo" /usr/local/sbin/mailadmin-sysinfo
 install -m 0755 -o root -g root "$HERE/fail2ban-mailadmin.sh" /usr/local/sbin/mailadmin-f2b
 install -m 0644 "$HERE/logrotate-mailadmin" /etc/logrotate.d/mailadmin
 bash "$HERE/dovecot-fts-learn.sh" >/dev/null 2>&1 || true

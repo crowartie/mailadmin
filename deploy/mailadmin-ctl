@@ -35,6 +35,7 @@ case "$cmd" in
   f2b-ban)        word "$1"; ipv "$2"; exec fail2ban-client set "$1" banip "$2" ;;
   f2b-ignore)     ipv "$1"; for j in $(fail2ban-client status | sed -n 's/.*Jail list:\s*//p' | tr ',' ' '); do fail2ban-client set "$j" addignoreip "$1" >/dev/null; done; echo ok ;;
   # ── антиспам (страница «Антиспам») ─────────────────────────────
+  sysinfo)        exec /usr/local/sbin/mailadmin-sysinfo ;;
   spam-stats)     exec /usr/local/sbin/mailadmin-spamstats ;;
   spam-net)       exec /usr/local/sbin/mailadmin-spamnet ;;
   bayes-magic)    cd /; exec sudo -u amavis -H sa-learn --dump magic ;;

@@ -35,6 +35,7 @@ class SharesSync extends Command
             $total += count($done);
         }
         $this->info('доложено прав: ' . $total);
+        \Illuminate\Support\Facades\Cache::put('heartbeat.shares_sync', time(), 86400);
 
         return self::SUCCESS;
     }

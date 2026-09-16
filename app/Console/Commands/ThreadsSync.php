@@ -46,6 +46,8 @@ class ThreadsSync extends Command
             $this->info(sprintf('%d ящиков за %.1f с', count($users), microtime(true) - $t0));
         }
 
+        \Illuminate\Support\Facades\Cache::put('heartbeat.threads_sync', time(), 86400);
+
         return $rc;
     }
 }

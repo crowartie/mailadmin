@@ -29,6 +29,7 @@ watch(flash, (value) => {
 const groups = [
     { items: [
         { href: '/', icon: 'home', label: 'Обзор' },
+        { href: '/health', icon: 'pulse', label: 'Состояние' },
         { href: '/feedback', icon: 'warn', label: 'Обращения', count: 'feedback' },
     ] },
     { title: 'Люди', items: [

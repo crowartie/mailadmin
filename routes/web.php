@@ -64,6 +64,8 @@ Route::middleware('area:admin')->group(function () {
 
         Route::get('/rules', [RulesController::class, 'index']);
 
+        Route::get('/health', [\App\Http\Controllers\HealthController::class, 'index']);
+        Route::get('/health/json', [\App\Http\Controllers\HealthController::class, 'json']);
         Route::get('/antispam', [\App\Http\Controllers\AntispamController::class, 'index']);
         Route::get('/antispam/json', [\App\Http\Controllers\AntispamController::class, 'json']);
         Route::post('/antispam/levels', [\App\Http\Controllers\AntispamController::class, 'levels']);

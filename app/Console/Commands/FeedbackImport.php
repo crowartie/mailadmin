@@ -93,6 +93,9 @@ class FeedbackImport extends Command
             $this->warn('Не пометил обработанные: ' . $e->getMessage());
         }
         $this->info("{$mailbox}: писем {$messages->count()}, подшито {$imported}");
+        if (! $foreign) {
+            \Illuminate\Support\Facades\Cache::put('heartbeat.feedback_import', time(), 86400);
+        }
 
         return self::SUCCESS;
     }
