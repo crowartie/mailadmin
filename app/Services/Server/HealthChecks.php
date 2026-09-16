@@ -136,7 +136,8 @@ class HealthChecks
         $add('Обслуживание', 'Обновления системы', $sec ? 'warn' : 'ok', $upd ? "{$upd} пакетов" . ($sec ? ", из них по безопасности {$sec}" : '') : 'всё обновлено', $sec ? 'apt upgrade в окно обслуживания' : null);
         $add('Обслуживание', 'Перезагрузка', ($si['rebootRequired'] ?? false) ? 'warn' : 'ok', ($si['rebootRequired'] ?? false) ? 'требуется после обновления ядра' : 'не требуется' . (isset($si['uptime']) ? ', работает ' . $this->days((int) $si['uptime']) : ''), ($si['rebootRequired'] ?? false) ? 'Перезагрузите в нерабочее время' : null);
         $errs = $this->appErrorsToday();
-        $add('Обслуживание', 'Ошибки веб-почты за сегодня', $errs['n'] > 20 ? 'no' : ($errs['n'] ? 'warn' : 'ok'), $errs['n'] ? "{$errs['n']}: " . $errs['top'] : 'нет', $errs['n'] ? 'storage/logs/laravel-' . date('Y-m-d') . '.log' : null);
+        // Красное — только если ошибки идут прямо сейчас; старые за день — жёлтое напоминание
+        $add('Обслуживание', 'Ошибки веб-почты', $errs['recent'] > 5 ? 'no' : ($errs['recent'] ? 'warn' : ($errs['n'] ? 'off' : 'ok')), $errs['n'] ? "за день {$errs['n']}, за последний час {$errs['recent']}. Чаще всего: " . $errs['top'] : 'нет', $errs['n'] ? 'storage/logs/laravel-' . date('Y-m-d') . '.log' : null);
 
         // ── Ящики ──
         $near = $this->quotaNearLimit();
@@ -152,14 +153,19 @@ class HealthChecks
     {
         $file = storage_path('logs/laravel-' . date('Y-m-d') . '.log');
         if (! is_readable($file)) {
-            return ['n' => 0, 'top' => ''];
+            return ['n' => 0, 'recent' => 0, 'top' => ''];
         }
         $n = 0;
+        $recent = 0;
+        $since = date('Y-m-d H:i', time() - 3600);
         $top = [];
         $h = fopen($file, 'r');
         while (($line = fgets($h)) !== false) {
             if (str_contains($line, 'production.ERROR:')) {
                 $n++;
+                if (substr($line, 1, 16) >= $since) {
+                    $recent++;
+                }
                 $msg = mb_substr(trim(substr($line, strpos($line, 'production.ERROR:') + 18)), 0, 70);
                 $msg = preg_replace('/\s*\{.*$/', '', $msg) ?: $msg;
                 $top[$msg] = ($top[$msg] ?? 0) + 1;
@@ -168,7 +174,7 @@ class HealthChecks
         fclose($h);
         arsort($top);
 
-        return ['n' => $n, 'top' => $top ? array_key_first($top) : ''];
+        return ['n' => $n, 'recent' => $recent, 'top' => $top ? array_key_first($top) : ''];
     }
 
     /** Ящики, занятые больше чем на 90 % квоты (used_quota ведёт Dovecot). @return string[] */
