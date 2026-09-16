@@ -51,6 +51,13 @@ final class Charset
                 if (strcasecmp($charset, 'UTF-8') !== 0) {
                     $decoded = @mb_convert_encoding($decoded, 'UTF-8', $charset) ?: $decoded;
                 }
+                if (str_contains($decoded, '=?')) {
+                    // РЖД и некоторые роботы режут encoded-word на куски filename*0=/filename*1= — после склейки его ещё надо раскодировать.
+                    $d = @iconv_mime_decode(preg_replace('/\s+/', '', $decoded), ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+                    if (is_string($d) && trim($d) !== '') {
+                        $decoded = $d;
+                    }
+                }
                 if (trim($decoded) !== '') {
                     return self::fix(trim($decoded));
                 }

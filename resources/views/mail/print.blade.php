@@ -33,18 +33,19 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap">
     <style>
-        /* Печатная форма письма (деловой вариант): поля браузера обнулены, свои поля — через повторяющиеся thead/tfoot. */
-        @page { size: A4; margin: 0; }
+        /* Печатная форма письма (деловой вариант). Поля страницы и подвал — через @page: Chrome/Edge с 131-й версии
+           рисуют margin-боксы (дата печати слева, номер страницы справа); Firefox поля даст, а подвал пропустит. */
+        @page {
+            size: A4; margin: 14mm 16mm 18mm;
+            @bottom-left { content: "Распечатано {{ str_replace('"', '', $printedAt) }}"; font: 11px "Golos Text", "Segoe UI", Arial, sans-serif; color: #98A3B3; vertical-align: top; padding-top: 4mm; }
+            @bottom-right { content: "Почта {{ str_replace('"', '', $domain) }} · " counter(page) " / " counter(pages); font: 11px "Golos Text", "Segoe UI", Arial, sans-serif; color: #98A3B3; vertical-align: top; padding-top: 4mm; }
+        }
         * { box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
         body { background: #E9ECF1; font-family: "Golos Text", "Segoe UI", Arial, sans-serif; color: #1B2430; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         a { color: #1B4FC4; text-decoration: none; }
         .sheet { width: 210mm; min-height: 297mm; margin: 24px auto; background: #fff; box-shadow: 0 2px 12px rgba(27, 36, 48, .12); }
-        .grid { width: 100%; border-collapse: collapse; }
-        .grid td { padding: 0; vertical-align: top; }
-        .grid .top td { height: 14mm; }
-        .grid .bottom td { height: 16mm; }
-        .page { padding: 0 16mm; }
+        .page { padding: 14mm 16mm 0; }
         .head { display: flex; flex-direction: column; gap: 6px; padding-bottom: 16px; }
         .head .box { font-size: 12px; color: #98A3B3; }
         .head h1 { margin: 0; font-size: 20px; line-height: 1.3; font-weight: 700; overflow-wrap: anywhere; }
@@ -61,9 +62,7 @@
         .thread { margin-top: 26px; padding-top: 12px; border-top: 1px solid #E3E8EF; font-size: 12.5px; color: #6B7787; display: flex; flex-direction: column; gap: 4px; break-inside: avoid; }
         .thread .t { font-weight: 600; color: #1B2430; }
         .thread .s { color: #1B2430; }
-        .foot { position: fixed; left: 0; right: 0; bottom: 0; height: 16mm; padding: 0 16mm; display: none; align-items: flex-start; justify-content: space-between; font-size: 11px; color: #98A3B3; }
-        .foot span { padding-top: 4mm; }
-        .foot-screen { padding: 0 16mm 10mm; display: flex; justify-content: space-between; font-size: 11px; color: #98A3B3; }
+        .foot-screen { padding: 14mm 16mm 10mm; display: flex; justify-content: space-between; font-size: 11px; color: #98A3B3; }
         .bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 10px 16px; background: rgba(233, 236, 241, .92); backdrop-filter: blur(6px); font-size: 13px; color: #6B7787; }
         .bar button { font: inherit; font-weight: 500; padding: 7px 14px; border-radius: 8px; border: 1px solid #C9D1DC; background: #fff; color: #1B2430; cursor: pointer; }
         .bar button.pri { background: #1B4FC4; border-color: #1B4FC4; color: #fff; }
@@ -72,12 +71,11 @@
             body { background: #fff; }
             .bar, .foot-screen { display: none; }
             .sheet { width: auto; min-height: 0; margin: 0; box-shadow: none; }
-            .foot { display: flex; }
+            .page { padding: 0; }
         }
         @media (max-width: 820px) {
             .sheet { width: auto; margin: 0; min-height: 0; }
-            .page { padding: 0 16px; }
-            .grid .top td, .grid .bottom td { height: 16px; }
+            .page { padding: 16px 16px 0; }
             .meta { grid-template-columns: minmax(0, 1fr); gap: 2px; }
             .meta .k { margin-top: 6px; }
             .foot-screen { padding: 0 16px 16px; }
@@ -91,10 +89,6 @@
     <span>Так письмо будет выглядеть на бумаге.</span>
 </div>
 <div class="sheet">
-    <table class="grid">
-        <thead><tr class="top"><td></td></tr></thead>
-        <tfoot><tr class="bottom"><td></td></tr></tfoot>
-        <tbody><tr><td>
             <div class="page">
                 <div class="head">
                     <span class="box">Почта {{ $domain }} · ящик {{ $user }}</span>
@@ -136,11 +130,8 @@
                     </div>
                 @endif
             </div>
-        </td></tr></tbody>
-    </table>
     <div class="foot-screen"><span>Распечатано {{ $printedAt }}</span><span>Почта {{ $domain }}</span></div>
 </div>
-<div class="foot"><span>Распечатано {{ $printedAt }}</span><span>Почта {{ $domain }}</span></div>
 <script>
     // Ждём шрифт и картинки, затем сразу открываем диалог печати; страница остаётся — можно напечатать ещё раз.
     (function () {
