@@ -31,6 +31,7 @@ class Setting extends Model
         'quick_replies' => ['Спасибо, получил.', 'Принято, сделаю.', 'Давайте обсудим по телефону.'],
         'shortcuts' => true,
         'preview' => true,
+        'unread_highlight' => true,   // непрочитанные — полоска слева и тема цветом (обращение №26)
         'show_images' => 'ask',
         'totp_enabled' => false,
     ];

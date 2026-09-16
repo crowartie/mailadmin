@@ -13,6 +13,7 @@ const props = defineProps({
     query: { type: String, default: '' },
     selected: { type: Array, default: () => [] },
     cursor: { type: Number, default: null },
+    highlightUnread: { type: Boolean, default: true },
     openUid: { type: Number, default: null },
     labels: { type: Array, default: () => [] },
     loading: Boolean,
@@ -40,7 +41,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
 </script>
 
 <template>
-    <section class="mlist">
+    <section class="mlist" :class="{ 'mlist--hl': highlightUnread }">
         <div class="mobile-bar">
             <button class="ib" type="button" @click="$emit('menu')"><Icon name="menu" :size="22" /></button>
             <b>{{ folderName }}</b>

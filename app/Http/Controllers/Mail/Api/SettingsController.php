@@ -33,6 +33,7 @@ class SettingsController extends Controller
             'quick_replies.*' => ['string', 'max:200'],
             'shortcuts' => ['nullable', 'boolean'],
             'preview' => ['nullable', 'boolean'],
+            'unread_highlight' => ['nullable', 'boolean'],
             'show_images' => ['nullable', 'in:ask,always'],
         ]);
 

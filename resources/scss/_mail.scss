@@ -195,7 +195,7 @@
     &:hover { background: v.$c-surface-2; }
     &--on { background: v.$c-accent-soft; }
     &--on:hover { background: v.$c-accent-soft; }
-    &--cursor { box-shadow: inset 3px 0 0 v.$c-accent; }
+    &--cursor { box-shadow: inset 0 0 0 2px v.$c-accent; }
     &--drag { opacity: .5; }
 
     .cb { opacity: .55; }
@@ -222,6 +222,9 @@
     &__from { display: flex; gap: 8px; align-items: center; min-width: 0; }
     &__from b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     &--unread &__from b, &--unread &__subj { font-weight: 700; }
+    // «Подсвечивать непрочитанные цветом» (как в Outlook): полоска слева и тема цветом accent-ink
+    .mlist--hl &--unread::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: v.$c-accent; }
+    .mlist--hl &--unread &__subj { color: v.$c-accent-ink; }
     &__subj { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     &__prev { display: block; color: v.$c-muted; font-size: 12.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
