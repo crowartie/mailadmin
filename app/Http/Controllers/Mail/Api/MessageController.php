@@ -55,7 +55,11 @@ class MessageController extends Controller
     /** Цепочка ответов — отдельным запросом после открытия письма. */
     public function thread(ImapSession $imap, string $folder, int $uid): JsonResponse
     {
-        return response()->json((new MailStore($imap->client()))->threadOf($folder, $uid));
+        $store = new MailStore($imap->client());
+        $thread = $store->threadOf($folder, $uid);
+        // Кроме самих писем отдаём, сколько ещё есть в переписке: раньше остаток
+        // просто отсутствовал, и человек не знал, что видит не всю её.
+        return response()->json(['messages' => $thread, 'hidden' => $store->threadHidden]);
     }
 
     public function attachment(Request $request, ImapSession $imap, string $folder, int $uid, int $index): Response

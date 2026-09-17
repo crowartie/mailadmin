@@ -109,11 +109,23 @@ final class ThreadIndex
         if (! $row) {
             return null;
         }
+        $others = DB::table('mail_threads')->where('user', $user)->where('thread_id', $row->thread_id)
+            ->where(fn ($q) => $q->where('folder', '!=', $folder)->orWhere('uid', '!=', $uid));
 
-        return DB::table('mail_threads')->where('user', $user)->where('thread_id', $row->thread_id)
-            ->where(fn ($q) => $q->where('folder', '!=', $folder)->orWhere('uid', '!=', $uid))
-            ->orderBy('date')->limit($limit)->get()
+        // Сколько всего писем в переписке: показываем не все, и раньше остальные просто
+        // отсутствовали, без всякой пометки.
+        self::$lastTotal = (clone $others)->count();
+
+        return $others->orderBy('date')->limit($limit)->get()
             ->map(fn ($r) => ['folder' => (string) $r->folder, 'uid' => (int) $r->uid])->all();
+    }
+
+    /** Сколько писем в цепочке нашлось в последнем threadOf() — включая непоказанные. */
+    private static int $lastTotal = 0;
+
+    public static function lastTotal(): int
+    {
+        return self::$lastTotal;
     }
 
     public static function forget(string $user, string $folder, array $uids): void

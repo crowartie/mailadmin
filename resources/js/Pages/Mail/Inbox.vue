@@ -236,7 +236,9 @@ async function openMessage(uid, e) {
         if (row && !row.seen) { row.seen = true; bump(folder.value, -1); }
         // Цепочка ответов — фоном, чтобы письмо показывалось сразу.
         api.thread(folder.value, uid).then((t) => {
-            if (open.value && open.value.uid === m.uid && open.value.folder === m.folder) open.value.thread = t;
+            if (!open.value || open.value.uid !== m.uid || open.value.folder !== m.folder) return;
+            open.value.thread = Array.isArray(t) ? t : (t?.messages || []);
+            open.value.threadHidden = Array.isArray(t) ? 0 : (t?.hidden || 0);
         }).catch(() => {});
     } catch (e) { if (want === openSeq) fail(e); } finally { if (want === openSeq) opening.value = null; }
 }

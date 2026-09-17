@@ -943,6 +943,9 @@ class MailStore
         return $data;
     }
 
+    /** Сколько писем в цепочке осталось за пределами показанного (см. threadOf). */
+    public int $threadHidden = 0;
+
     /** Цепочка ответов для уже открытого письма. */
     public function threadOf(string $path, int $uid): array
     {
@@ -1036,6 +1039,7 @@ class MailStore
         // Сначала индекс цепочек в базе: один запрос по ключу вместо поиска по папкам.
         $members = ThreadIndex::threadOf($this->user(), $path, (int) $message->getUid());
         if ($members !== null) {
+            $this->threadHidden = max(0, ThreadIndex::lastTotal() - count($members));
             $found = [];
             $byFolder = [];
             foreach ($members as $m) {
@@ -1060,7 +1064,7 @@ class MailStore
                     ThreadIndex::forget($this->user(), $p, $missing); // письмо удалили или переложили — индекс подчистим
                 }
             }
-            usort($found, fn ($a, $b) => strtotime((string) $a['date']) <=> strtotime((string) $b['date']));
+            usort($found, fn ($a, $b) => self::sortTime($a['date']) <=> self::sortTime($b['date']));
 
             return $found;
         }
@@ -1079,7 +1083,17 @@ class MailStore
         $criteria = self::orCriteria($terms);
 
         $found = [];
-        $paths = array_unique([$path, $this->rolePath('sent'), $this->rolePath('inbox')]);
+        // Раньше искали только в текущей папке, «Отправленных» и «Входящих»: ответы,
+        // разложенные правилами по проектным папкам, в переписку не попадали.
+        // Ищем по своим папкам целиком, кроме спама и корзины, но не больше двенадцати —
+        // это запасной путь, обычно работает индекс цепочек.
+        $paths = [$path, $this->rolePath('sent'), $this->rolePath('inbox')];
+        foreach ($this->folders() as $f) {
+            if (! in_array($f['role'] ?? '', ['spam', 'trash', 'shared'], true)) {
+                $paths[] = $f['path'];
+            }
+        }
+        $paths = array_slice(array_values(array_unique(array_filter($paths))), 0, 12);
         foreach ($paths as $p) {
             try {
                 $folder = $this->folder($p);
@@ -1090,22 +1104,38 @@ class MailStore
                     continue;
                 }
                 $uids = array_slice($uids, -20);
-                foreach ($folder->query()->whereUidIn($uids)->setFetchBody(true)->setFetchFlags(true)->get() as $m) {
+                // Только заголовки и превью: раньше здесь тянулись тела и все вложения
+                // до шестидесяти писем разом, и на длинной переписке запрос отваливался по времени.
+                $previews = $this->previews($uids);
+                foreach ($folder->query()->whereUidIn($uids)->setFetchBody(false)->setFetchFlags(true)->get() as $m) {
                     $mid = trim((string) ($m->getMessageId()->first() ?? ''), '<>');
                     $key = $mid !== '' ? $mid : $p . '#' . $m->getUid();
                     if ($mid === $id || isset($found[$key])) {
                         continue;
                     }
-                    $found[$key] = $this->full($m, $p) + ['thread' => []];
+                    $uidN = (int) $m->getUid();
+                    $found[$key] = $this->summary($m, $previews[$uidN] ?? null)
+                        + ['folder' => $p, 'text' => (string) ($previews[$uidN] ?? ''), 'to' => [], 'cc' => [], 'attachments' => [], 'html' => null, 'light' => true, 'thread' => []];
                 }
             } catch (\Throwable) {
                 // папка без нужных заголовков или сервер не поддерживает — пропускаем
             }
         }
 
-        usort($found, fn ($a, $b) => strtotime((string) $a['date']) <=> strtotime((string) $b['date']));
+        usort($found, fn ($a, $b) => self::sortTime($a['date']) <=> self::sortTime($b['date']));
 
         return array_values($found);
+    }
+
+    /**
+     * Время для сортировки цепочки. strtotime на непонятной дате возвращает false,
+     * то есть ноль, и такое письмо всплывало в самое начало переписки.
+     */
+    private static function sortTime(?string $date): int
+    {
+        $t = $date ? strtotime($date) : false;
+
+        return $t === false ? PHP_INT_MAX : $t;
     }
 
     /**

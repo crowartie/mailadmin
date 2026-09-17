@@ -16,9 +16,16 @@ final class Charset
             // Outlook склеивает encoded-word без пробела («?==?utf-8?B?…») и переносит внутри слова — приводим к RFC 2047.
             $s = preg_replace('/\?=(?==\?)/', '?= ', $s);
             $s = preg_replace_callback('/=\?[^?\s]+\?[BbQq]\?[^?]*\?=/', fn ($w) => preg_replace('/\s+/', '', $w[0]), $s);
+            // «utf8», «cp1251», «koi8r» — не имена кодировок для iconv, и такой заголовок
+            // оставался на экране служебной записью вида =?utf8?B?…?=. Приводим к известным именам.
+            $s = preg_replace_callback('/=\?([^?]+)\?([BbQq])\?/', fn ($m) => '=?' . self::charsetName($m[1]) . '?' . $m[2] . '?', $s);
             $decoded = @iconv_mime_decode($s, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
             if (is_string($decoded) && $decoded !== '') {
                 $s = $decoded;
+            }
+            // Если что-то осталось нераскрытым — разбираем сами: пользователю служебная запись не нужна.
+            if (str_contains($s, '=?')) {
+                $s = self::decodeWords($s);
             }
         }
 
@@ -81,6 +88,62 @@ final class Charset
         return null;
     }
 
+    /** Привести написание кодировки к тому, что понимают iconv и mbstring. */
+    private static function charsetName(string $name): string
+    {
+        $n = strtolower(trim($name));
+        $n = preg_replace('/[^a-z0-9]/', '', $n) ?? $n;
+
+        return match ($n) {
+            'utf8' => 'UTF-8',
+            'cp1251', 'win1251', 'windows1251', 'ansi1251' => 'Windows-1251',
+            'cp1252', 'win1252', 'windows1252' => 'Windows-1252',
+            'koi8r', 'koi8ru', 'koi8u' => 'KOI8-R',
+            'cp866', 'ibm866', 'dos866' => 'CP866',
+            'iso88591', 'latin1' => 'ISO-8859-1',
+            'iso88595' => 'ISO-8859-5',
+            default => $name,
+        };
+    }
+
+    /** Раскрыть encoded-word вручную — когда iconv отказался (неизвестная кодировка, битый хвост). */
+    private static function decodeWords(string $s): string
+    {
+        return (string) preg_replace_callback('/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/', function ($m) {
+            $charset = self::charsetName($m[1]);
+            $raw = strtoupper($m[2]) === 'B'
+                ? (base64_decode($m[3], false) ?: '')
+                : quoted_printable_decode(str_replace('_', ' ', $m[3]));
+            if ($raw === '') {
+                return $m[0];
+            }
+            $out = @mb_convert_encoding($raw, 'UTF-8', $charset);
+
+            return is_string($out) && $out !== '' ? $out : (self::fix($raw) ?? $m[0]);
+        }, $s);
+    }
+
+    /**
+     * Насколько строка похожа на осмысленный текст. Нужна, чтобы выбрать кодировку:
+     * один и тот же набор байтов «читается» и как windows-1251, и как koi8-r,
+     * но у неправильной таблицы получается набор редких букв и заглавных.
+     */
+    private static function score(string $utf): float
+    {
+        $len = mb_strlen($utf);
+        if ($len === 0) {
+            return -1000.0;
+        }
+        $good = preg_match_all('/[а-яёa-z0-9\s.,:;!?()\/@\-–—«»"\']/ui', $utf);
+        $lower = preg_match_all('/[а-яё]/u', $utf);
+        $upper = preg_match_all('/[А-ЯЁ]/u', $utf);
+        // Управляющие, «нехорошие» служебные и символ-замена: признак неверной таблицы.
+        $weird = preg_match_all('/[\x{0080}-\x{00BF}\x{0500}-\x{052F}\x{FFFD}]/u', $utf);
+
+        // Русский текст почти весь строчный: koi8-r, прочитанный как windows-1251, даёт сплошные заглавные.
+        return $good / $len - 2.0 * $weird / $len + 0.5 * ($lower + 1) / ($lower + $upper + 1);
+    }
+
     public static function fix(?string $s): ?string
     {
         if ($s === null || $s === '') {
@@ -88,26 +151,58 @@ final class Charset
         }
 
         if (! mb_check_encoding($s, 'UTF-8')) {
-            // Сырые байты: пробуем как UTF-8, потом как windows-1251.
-            $utf = @mb_convert_encoding($s, 'UTF-8', 'UTF-8');
-            if (mb_check_encoding($utf, 'UTF-8') && preg_match('/[\x{0400}-\x{04FF}]/u', $utf)) {
-                return $utf;
+            // Сырые байты. Раньше всё, что не UTF-8, безусловно читалось как windows-1251,
+            // и письма в koi8-r или западноевропейских кодировках превращались в кашу.
+            // Перебираем таблицы и берём ту, после которой текст больше похож на текст.
+            $best = null;
+            $bestScore = -1000.0;
+            // Непереводимые байты помечаем символом-заменой: по умолчанию mbstring ставит «?»,
+            // а знак вопроса — обычная письменная пунктуация, и оценка считала мусор хорошим текстом.
+            $prev = mb_substitute_character();
+            mb_substitute_character(0xFFFD);
+            try {
+                foreach (['UTF-8', 'Windows-1251', 'KOI8-R', 'CP866', 'ISO-8859-5', 'Windows-1252', 'ISO-8859-1'] as $table) {
+                    $try = @mb_convert_encoding($s, 'UTF-8', $table);
+                    if (! is_string($try) || $try === '' || ! mb_check_encoding($try, 'UTF-8')) {
+                        continue;
+                    }
+                    $sc = self::score($try);
+                    if ($sc > $bestScore) {
+                        $bestScore = $sc;
+                        $best = $try;
+                    }
+                }
+            } finally {
+                mb_substitute_character($prev);
             }
 
-            return mb_convert_encoding($s, 'UTF-8', 'Windows-1251');
+            return $best ?? mb_convert_encoding($s, 'UTF-8', 'Windows-1251');
         }
 
-        if (preg_match('/[\x{0400}-\x{04FF}]/u', $s) || ! preg_match('/[\x{0080}-\x{024F}]{2}/u', $s)) {
+        // Строка уже правильный UTF-8, но может быть «кракозяброй»: кириллица, прочитанная
+        // однобайтовой таблицей. Раньше при одной-единственной настоящей кириллической букве
+        // строка возвращалась как есть, и мусор в смешанной теме оставался на экране.
+        if (! preg_match('/[\x{0080}-\x{024F}]{2}/u', $s)) {
             return $s;
         }
 
-        foreach (['ISO-8859-2', 'ISO-8859-1', 'Windows-1252', 'ISO-8859-4', 'ISO-8859-10'] as $table) {
-            $back = @mb_convert_encoding($s, $table, 'UTF-8');
-            if (is_string($back) && mb_check_encoding($back, 'UTF-8') && preg_match('/[\x{0400}-\x{04FF}]/u', $back)) {
-                return $back;
+        // Чиним кусками, а не строку целиком: в смешанном письме («ÐžÑ‚Ñ‡Ñ‘Ñ‚ за сентябрь»)
+        // обратный перевод всей строки уничтожает настоящую кириллицу, которая рядом.
+        // Кракозябра — это подряд идущие знаки из «латинского» диапазона, обычными текстами
+        // такие пары не встречаются.
+        $run = '/[\x{0080}-\x{024F}\x{0192}\x{02C6}\x{2013}\x{2014}\x{2018}-\x{201E}\x{2020}-\x{2022}\x{2026}\x{2030}\x{2039}\x{203A}\x{20AC}\x{2122}\x{0160}\x{0161}\x{0178}\x{017D}\x{017E}\x{0152}\x{0153}]{2,}/u';
+        $fixed = preg_replace_callback($run, function ($m) {
+            foreach (['Windows-1252', 'ISO-8859-1', 'ISO-8859-2', 'ISO-8859-4', 'ISO-8859-10'] as $table) {
+                $back = @mb_convert_encoding($m[0], $table, 'UTF-8');
+                if (is_string($back) && $back !== '' && mb_check_encoding($back, 'UTF-8')
+                    && preg_match('/[\x{0400}-\x{04FF}]/u', $back)) {
+                    return $back;
+                }
             }
-        }
 
-        return $s;
+            return $m[0];
+        }, $s);
+
+        return is_string($fixed) && $fixed !== '' ? $fixed : $s;
     }
 }

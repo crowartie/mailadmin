@@ -175,6 +175,9 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                 <span v-if="labelMap[id]" class="lbl" :style="{ background: labelMap[id].color + '22', color: labelMap[id].color, height: '22px' }">{{ labelMap[id].name }}</span>
             </span>
             <span v-if="all.length > 1" class="thr">{{ all.length }} в цепочке</span>
+            <!-- 391: длинная переписка показывается не целиком — раньше остальные письма
+                 просто отсутствовали, без всякой пометки. -->
+            <span v-if="message.threadHidden" class="thr" :title="'В переписке есть ещё письма — найдите их поиском по теме'">показаны не все: ещё {{ message.threadHidden }}</span>
         </div>
 
         <article v-for="m in all" :key="m.folder + '#' + m.uid" class="msg" :class="{ 'msg--col': !isOpen(m) }">
