@@ -969,8 +969,14 @@ class MailStore
             /** @var Attachment $a */
             $cid = trim((string) ($a->id ?? ''), '<>');
             $isInline = $cid !== '' && $html && str_contains($html, 'cid:' . $cid);
-            if ($isInline && $a->getSize() < 2_000_000) {
+            // Картинку до 2 МБ вшиваем в письмо строкой data:. Более тяжёлую подставлять нельзя
+            // (страница раздувается), но и прятать её нельзя: раньше она оставалась битой ссылкой
+            // в тексте и при этом исчезала из списка вложений — открыть её было нечем.
+            $heavy = $isInline && $a->getSize() >= 2_000_000;
+            if ($isInline && ! $heavy) {
                 $inline['cid:' . $cid] = 'data:' . $a->getMimeType() . ';base64,' . base64_encode($a->getContent());
+            } elseif ($heavy) {
+                $inline['cid:' . $cid] = '/mail/api/message/' . rawurlencode($path) . '/' . $message->getUid() . '/attachment/' . $i . '?inline=1';
             }
             $attachments[] = [
                 'index' => $i,
@@ -978,7 +984,7 @@ class MailStore
                 // getSize() — размер в base64 из структуры письма; получателю нужен размер самого файла.
                 'size' => strlen((string) $a->getContent()) ?: $a->getSize(),
                 'type' => $a->getMimeType(),
-                'inline' => $isInline,
+                'inline' => $isInline && ! $heavy,
             ];
         }
         if ($html && $inline) {
@@ -1407,7 +1413,10 @@ class MailStore
         $config->set('HTML.ForbiddenAttributes', ['*@onclick', '*@onload', '*@onerror']);
         $config->set('CSS.AllowedProperties', ['color', 'background-color', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'font-size', 'font-family', 'padding', 'margin', 'border', 'width', 'max-width', 'line-height', 'vertical-align']);
         $config->set('URI.AllowedSchemes', ['http' => true, 'https' => true, 'mailto' => true, 'data' => true, 'tel' => true]);
-        $config->set('URI.DisableExternalResources', true);   // внешние картинки — только по кнопке, позже
+        // Внешние ссылки на картинки оставляем в разметке, но прячем в data-blocked-* (blockRemote).
+        // Раньше здесь стояло true: Purifier вырезал их совсем, поэтому обещанная кнопка
+        // «показать картинки» ничего показать не могла, а рассылки и подписи выглядели пустыми.
+        $config->set('URI.DisableExternalResources', false);
         $config->set('HTML.TargetBlank', true);
         $config->set('AutoFormat.RemoveEmpty', true);
 
@@ -1415,7 +1424,29 @@ class MailStore
             @mkdir(storage_path('app/purifier'), 0775, true);
         }
 
-        return (new \HTMLPurifier($config))->purify($html);
+        return self::blockRemote((new \HTMLPurifier($config))->purify($html));
+    }
+
+    /**
+     * Спрятать всё, что тянется из интернета при открытии письма: это следящие пиксели.
+     * Имя атрибута меняем, значение оставляем — «Показать картинки» возвращает его одной заменой.
+     * Клиентская проверка ловила только src у img, поэтому srcset и background грузились молча.
+     */
+    private static function blockRemote(string $html): string
+    {
+        $html = (string) preg_replace(
+            '/\s(src|background)\s*=\s*(["\'])\s*((?:https?:)?\/\/)/i',
+            ' data-blocked-$1=$2$3',
+            $html
+        );
+        // srcset — список адресов через запятую, первый может быть и относительным.
+        return (string) preg_replace_callback(
+            '/\ssrcset\s*=\s*(["\'])(.*?)\1/is',
+            fn ($m) => preg_match('/(^|[\s,])(https?:)?\/\//i', $m[2])
+                ? ' data-blocked-srcset=' . $m[1] . $m[2] . $m[1]
+                : $m[0],
+            $html
+        );
     }
 
     /** Быстрый статус папки для опроса «есть ли новое»: без списка писем. @return array{messages:int,unseen:int,uidnext:int} */

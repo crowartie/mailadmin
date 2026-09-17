@@ -102,9 +102,20 @@ class MessageController extends Controller
     }
 
     /** Исходник письма (.eml) — «Сохранить» и «Показать оригинал». */
-    public function raw(ImapSession $imap, string $folder, int $uid): Response
+    public function raw(ImapSession $imap, Request $request, string $folder, int $uid): Response
     {
         $raw = (new MailStore($imap->client()))->raw($folder, $uid);
+
+        // «Показать оригинал» (inline=1) — показать заголовки в окне браузера; без него это
+        // «Скачать .eml». Раньше оба пункта вели на один адрес, и «показать» открывало
+        // пустую вкладку и клало в загрузки второй файл.
+        if ($request->boolean('inline')) {
+            return response($raw, 200, [
+                'Content-Type' => 'text/plain; charset=utf-8',
+                'Content-Disposition' => 'inline',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
 
         return response($raw, 200, [
             'Content-Type' => 'message/rfc822',

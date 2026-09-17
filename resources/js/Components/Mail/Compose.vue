@@ -255,6 +255,9 @@ watch(from, (nv, ov) => {
     const hasSig = /class="sig"/.test(html.value || '');
     if (c.mode !== 'new' && c.mode !== 'draft' && !props.settings.signature_reply && !hasSig) return;
     const s = signatureFor(nv);
+    // Точечная замена в самом поле: переписывание всего письма сбрасывало курсор в начало
+    // и стирало историю отмены.
+    if (editor.value?.setSignature?.(s)) return;
     const box = document.createElement('div');
     box.innerHTML = html.value;
     let sig = box.querySelector('div.sig');

@@ -21,6 +21,38 @@ const expanded = ref({});
 const quick = ref('');
 const sending = ref(false);
 const showImages = ref({});
+const allAddrs = ref({});   // 69: у каких писем показан весь список получателей
+const failed = ref({});     // 74: какие письма цепочки не догрузились
+
+const key = (m) => m.folder + '#' + m.uid;
+
+// 76: подсказка обещает клавишу, только если горячие клавиши включены.
+const keysOn = computed(() => props.settings.shortcuts !== false);
+const tip = (text, k) => (keysOn.value ? `${text} (${k})` : text);
+
+// 68: автоматические адреса. Ответ на них не прочитает никто, а быстрый ответ
+// выглядит как обычный разговор — предупреждаем прямо в месте ответа.
+const NOREPLY = /^(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer[-_.]?daemon|bounce[sd]?|postmaster|nobody)$/i;
+const noReply = computed(() => {
+    const mail = replyTo(props.message)[0]?.mail || '';
+    return NOREPLY.test(mail.split('@')[0] || '');
+});
+
+// 69: сорок адресатов в одну строку превращали шапку письма в простыню.
+const TO_SHOWN = 3;
+function toShown(m) {
+    const list = [...(m.to || []), ...(m.cc || [])];
+    return allAddrs.value[key(m)] ? list.length : Math.min(TO_SHOWN, list.length);
+}
+function toRest(m) {
+    return Math.max(0, [...(m.to || []), ...(m.cc || [])].length - toShown(m));
+}
+function toText(m) {
+    const to = (m.to || []).slice(0, toShown(m));
+    const left = toShown(m) - to.length;
+    const cc = left > 0 ? (m.cc || []).slice(0, left) : [];
+    return addrList(to) + (cc.length ? ' · копия: ' + addrList(cc) : '');
+}
 
 // Просмотр вложений (обращение №6): картинки и PDF открываются поверх письма, остальное — скачивается.
 const viewer = ref(null);   // { items, start }
@@ -49,41 +81,49 @@ function toggle(m) {
     if (isLast(m)) return;
     // Письма цепочки приходят «лёгкими» (заголовки и превью); тело и вложения — при первом раскрытии.
     if (expanded.value[key] && m.light && !m.loading) {
-        m.loading = true;
-        api.message(m.folder, m.uid, true)
-            .then((d) => { Object.assign(m, d, { light: false, loading: false, thread: [] }); })
-            .catch(() => { m.loading = false; });
+        load(m);
     }
 }
+/** Догрузить тело письма цепочки. Раньше сбой сети молча оставлял пустое письмо. */
+function load(m) {
+    m.loading = true;
+    failed.value[key(m)] = '';
+    api.message(m.folder, m.uid, true)
+        .then((d) => { Object.assign(m, d, { light: false, loading: false, thread: [] }); })
+        .catch((e) => { m.loading = false; failed.value[key(m)] = e.message || 'не удалось загрузить'; });
+}
 
+// Прячет внешние ссылки сервер (MailStore::blockRemote) — и src, и srcset, и background.
+// Здесь только возвращаем их обратно: раньше клиент ловил один src у img, а остальное грузилось молча.
 function hasExternalImages(m) {
-    return m.html && /<img[^>]+src=["']?(https?:)?\/\//i.test(m.html);
+    return !!m.html && /\sdata-blocked-(src|srcset|background)=/i.test(m.html);
+}
+function imagesShown(m) {
+    return !!showImages.value[key(m)] || props.settings.show_images === 'always';
 }
 
 function body(m) {
     if (!m.html) return null;
-    const key = m.folder + '#' + m.uid;
-    if (showImages.value[key] || props.settings.show_images === 'always') {
-        return m.html;
-    }
-    // Внешние картинки — только по кнопке: это следящие пиксели и лишний трафик.
-    return m.html.replace(/(<img[^>]+)src=(["']?)(https?:)?\/\/[^"'\s>]+\2/gi, '$1data-blocked-src=""');
+    return imagesShown(m) ? m.html.replace(/\sdata-blocked-(src|srcset|background)=/gi, ' $1=') : m.html;
 }
 
 function replyTo(m) {
     return m.replyTo?.length ? m.replyTo : [m.from];
 }
 
-async function sendQuick() {
+/**
+ * Быстрый ответ. emit не возвращает промис, поэтому ждём ответа через done():
+ * раньше поле очищалось сразу, и при сбое отправки набранный текст пропадал.
+ */
+function sendQuick() {
     const text = quick.value.trim();
     if (!text || sending.value) return;
     sending.value = true;
-    try {
-        await emit('quick', { text, message: props.message });
-        quick.value = '';
-    } finally {
-        sending.value = false;
-    }
+    emit('quick', {
+        text,
+        message: props.message,
+        done: (ok) => { sending.value = false; if (ok) quick.value = ''; },
+    });
 }
 
 function print() {
@@ -103,33 +143,33 @@ const isDraft = computed(() => props.folderRole === 'drafts');
             <button class="ib" type="button" @click="$emit('reply', 'draft', message)"><Icon name="edit" :size="16" />Продолжить черновик</button>
         </template>
         <template v-else>
-            <button class="ib ib--keep" type="button" title="Ответить (r)" @click="$emit('reply', settings.reply_all ? 'replyAll' : 'reply', message)"><Icon name="reply" :size="16" />Ответить</button>
-            <button class="ib" type="button" title="Ответить всем (a)" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
-            <button class="ib" type="button" title="Переслать (f)" @click="$emit('reply', 'forward', message)"><Icon name="fwd" :size="16" />Переслать</button>
+            <button class="ib ib--keep" type="button" :title="noReply ? 'Отправитель — автоматический адрес, ответ, скорее всего, никто не прочитает' : tip('Ответить', 'r')" @click="$emit('reply', settings.reply_all ? 'replyAll' : 'reply', message)"><Icon name="reply" :size="16" />Ответить</button>
+            <button class="ib" type="button" :title="tip('Ответить всем', 'a')" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
+            <button class="ib" type="button" :title="tip('Переслать', 'f')" @click="$emit('reply', 'forward', message)"><Icon name="fwd" :size="16" />Переслать</button>
             <button v-if="folderRole === 'sent'" class="ib" type="button" title="Изменить как новое: открыть копию письма с теми же получателями, темой, текстом и вложениями" @click="$emit('reply', 'again', message)"><Icon name="edit" :size="16" />Как новое</button>
             <button class="ib ib--wide" type="button" title="Назначить встречу по этому письму" @click="$emit('meeting', message)"><Icon name="cal" :size="16" />Встреча</button>
         </template>
         <span class="sep" />
-        <button class="ib" type="button" title="Архив (e)" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" /></button>
-        <button class="ib" type="button" title="В папку (v)" @click="$emit('context', $event, message.uid, 'move')"><Icon name="folder" :size="17" /></button>
-        <button class="ib" type="button" title="Метка (l)" @click="$emit('context', $event, message.uid, 'label')"><Icon name="tag" :size="17" /></button>
-        <button class="ib" type="button" title="Отложить (z)" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" /></button>
-        <button class="ib" type="button" :class="{ 'ib--on': message.flagged }" title="Флажок (s)" @click="$emit('act', message.flagged ? 'unflag' : 'flag', [message.uid])"><Icon name="flag" :size="17" /></button>
+        <button class="ib" type="button" :title="tip('Архив', 'e')" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" /></button>
+        <button class="ib" type="button" :title="tip('В папку', 'v')" @click="$emit('context', $event, message.uid, 'move')"><Icon name="folder" :size="17" /></button>
+        <button class="ib" type="button" :title="tip('Метка', 'l')" @click="$emit('context', $event, message.uid, 'label')"><Icon name="tag" :size="17" /></button>
+        <button class="ib" type="button" :title="tip('Отложить', 'z')" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" /></button>
+        <button class="ib" type="button" :class="{ 'ib--on': message.flagged }" :title="tip('Флажок', 's')" @click="$emit('act', message.flagged ? 'unflag' : 'flag', [message.uid])"><Icon name="flag" :size="17" /></button>
         <span class="grow" />
         <button class="ib" type="button" title="Печать" @click="print"><Icon name="print" :size="17" /></button>
         <button class="ib" type="button" title="Ещё" @click="$emit('context', $event, message.uid, 'more')"><Icon name="dots" :size="17" /></button>
         <!-- Опасные действия — отдельной группой у правого края, подальше от «Ответить»: иначе промахи по корзинке (обращение №12). -->
         <span class="sep" />
-        <button v-if="folderRole !== 'spam'" class="ib" type="button" title="Спам (!)" @click="$emit('act', 'spam', [message.uid])"><Icon name="spam" :size="17" /></button>
+        <button v-if="folderRole !== 'spam'" class="ib" type="button" :title="tip('Спам', '!')" @click="$emit('act', 'spam', [message.uid])"><Icon name="spam" :size="17" /></button>
         <button v-else class="ib" type="button" title="Не спам" @click="$emit('act', 'notspam', [message.uid])"><Icon name="inbox" :size="17" />Не спам</button>
-        <button class="ib ib--danger" type="button" title="Удалить (#)" @click="$emit('act', 'delete', [message.uid])"><Icon name="trash" :size="17" />Удалить</button>
+        <button class="ib ib--danger" type="button" :title="tip('Удалить', '#')" @click="$emit('act', 'delete', [message.uid])"><Icon name="trash" :size="17" />Удалить</button>
     </div>
 
     <div class="mread__scroll">
         <div class="mread__title">
             <h1>{{ message.subject }}</h1>
             <span v-for="id in message.labels" :key="id">
-                <span v-if="labelMap[id]" class="lbl" :style="{ background: labelMap[id].color + '22', color: labelMap[id].color, height: 22 }">{{ labelMap[id].name }}</span>
+                <span v-if="labelMap[id]" class="lbl" :style="{ background: labelMap[id].color + '22', color: labelMap[id].color, height: '22px' }">{{ labelMap[id].name }}</span>
             </span>
             <span v-if="all.length > 1" class="thr">{{ all.length }} в цепочке</span>
         </div>
@@ -142,12 +182,15 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         <b>{{ m.from.name }}</b>
                         <span v-if="m.from.name !== m.from.mail" class="mono msg__mail" style="color: var(--muted)">{{ m.from.mail }}</span>
                     </div>
+                    <!-- 69: показываем первых троих, остальных — по щелчку; сорок адресатов
+                         раньше выдавливали текст письма далеко вниз. -->
                     <div v-if="isOpen(m)" class="msg__to" :title="addrList(m.to) + (m.cc?.length ? ' · копия: ' + addrList(m.cc) : '')">
-                        кому: {{ addrList(m.to) || '—' }}<span v-if="m.cc?.length"> · копия: {{ addrList(m.cc) }}</span>
+                        кому: {{ toText(m) || '—' }}<button v-if="toRest(m)" type="button" class="linklike" style="margin-left: 6px" @click.stop="allAddrs[key(m)] = true">и ещё {{ toRest(m) }}</button><button v-else-if="allAddrs[key(m)]" type="button" class="linklike" style="margin-left: 6px" @click.stop="allAddrs[key(m)] = false">свернуть</button>
                     </div>
                     <div v-else class="msg__snip">{{ (m.text || '').slice(0, 140) }}</div>
                 </div>
-                <div class="msg__when" :title="when(m.date, true)">{{ when(m.date, true) }}</div>
+                <!-- 84: на телефоне длинная дата отбирала всю ширину у имени отправителя. -->
+                <div class="msg__when" :title="when(m.date, true)"><span class="msg__when-full">{{ when(m.date, true) }}</span><span class="msg__when-short">{{ when(m.date) }}</span></div>
                 <div v-if="isOpen(m) && !isDraft" class="msg__acts" @click.stop>
                     <button class="ib ib--sm" type="button" title="Ответить" @click="$emit('reply', 'reply', m)"><Icon name="reply" :size="16" /></button>
                     <button class="ib ib--sm" type="button" title="Переслать" @click="$emit('reply', 'forward', m)"><Icon name="fwd" :size="16" /></button>
@@ -156,6 +199,11 @@ const isDraft = computed(() => props.folderRole === 'drafts');
             </div>
 
             <template v-if="isOpen(m)">
+                <div v-if="m.loading" class="msg__notice"><Icon name="refresh" :size="16" />Загружаем письмо…</div>
+                <div v-else-if="failed[key(m)]" class="msg__notice">
+                    <Icon name="warn" :size="16" />Письмо не загрузилось: {{ failed[key(m)] }}
+                    <button type="button" class="linklike" style="font-weight: 600" @click.stop="load(m)">Повторить</button>
+                </div>
                 <div v-if="m.attachments?.filter((a) => !a.inline).length" class="msg__atts">
                     <!-- Чип вложения: имя — просмотр (если умеем) или скачивание; справа явные кнопки «посмотреть» и «скачать» -->
                     <span v-for="a in m.attachments.filter((a) => !a.inline)" :key="a.index" class="att" :class="{ 'att--view': viewable(a) }">
@@ -175,10 +223,16 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         <Icon name="download" :size="13" /><span class="name">Скачать все ({{ m.attachments.filter((a) => !a.inline).length }})</span>
                     </a>
                 </div>
-                <div v-if="hasExternalImages(m) && !showImages[m.folder + '#' + m.uid] && settings.show_images !== 'always'" class="msg__notice">
+                <div v-if="hasExternalImages(m)" class="msg__notice">
                     <Icon name="img" :size="16" />
-                    Картинки из интернета скрыты
-                    <a style="cursor: pointer; font-weight: 600" @click="showImages[m.folder + '#' + m.uid] = true">Показать</a>
+                    <template v-if="imagesShown(m)">
+                        Картинки из интернета показаны — отправитель узнал, что письмо открыли
+                        <button v-if="settings.show_images !== 'always'" type="button" class="linklike" style="font-weight: 600" @click="showImages[key(m)] = false">Скрыть</button>
+                    </template>
+                    <template v-else>
+                        Картинки из интернета скрыты
+                        <button type="button" class="linklike" style="font-weight: 600" @click="showImages[key(m)] = true">Показать</button>
+                    </template>
                 </div>
                 <div v-if="m.html" class="msg__body" v-html="body(m)" />
                 <div v-else class="msg__body"><pre class="msg__text">{{ m.text || '' }}</pre></div>
@@ -188,7 +242,15 @@ const isDraft = computed(() => props.folderRole === 'drafts');
             </template>
         </article>
 
-        <div v-if="!isDraft && folderRole !== 'spam'" class="quick">
+        <div v-if="!isDraft && folderRole !== 'spam' && noReply" class="quick">
+            <!-- 68: быстрые ответы на no-reply уходили в никуда, но выглядели как обычный разговор. -->
+            <div class="msg__notice" style="margin: 0">
+                <Icon name="warn" :size="16" />
+                Письмо пришло с автоматического адреса <span class="mono">{{ replyTo(message)[0]?.mail }}</span> — ответ, скорее всего, никто не прочитает.
+                <button type="button" class="linklike" style="font-weight: 600" @click="$emit('reply', 'reply', message)">Всё равно ответить</button>
+            </div>
+        </div>
+        <div v-else-if="!isDraft && folderRole !== 'spam'" class="quick">
             <div v-if="settings.quick_replies?.length" class="quick__chips">
                 <button v-for="qr in settings.quick_replies" :key="qr" class="chip chip--btn" type="button" @click="quick = qr">{{ qr }}</button>
             </div>
@@ -200,7 +262,7 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                     :placeholder="'Ответить ' + (replyTo(message)[0]?.name || replyTo(message)[0]?.mail || '') + '…'"
                     @keydown.enter.prevent="sendQuick"
                 >
-                <button class="btn btn--sm" type="button" title="Открыть полный ответ" @click="$emit('reply', 'reply', message, quick)"><Icon name="edit" :size="14" /></button>
+                <button class="btn btn--sm" type="button" title="Открыть полный ответ: тема, копия, вложения, форматирование" aria-label="Открыть полный ответ" @click="$emit('reply', 'reply', message, quick)"><Icon name="edit" :size="14" />Полный ответ</button>
                 <button class="btn btn--sm btn--primary" type="button" :disabled="!quick.trim() || sending" @click="sendQuick"><Icon name="send" :size="14" />Отправить</button>
             </div>
     </div>

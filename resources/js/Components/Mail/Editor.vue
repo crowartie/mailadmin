@@ -67,11 +67,51 @@ function onKey(e) {
     if (e.code === 'KeyK') { e.preventDefault(); link(); }
 }
 
+// Что оставляем при вставке из Word, Excel и с сайтов: смысл разметки без чужого оформления.
+const KEEP = new Set(['A', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'BR', 'P', 'DIV', 'SPAN',
+    'UL', 'OL', 'LI', 'BLOCKQUOTE', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TD', 'TH',
+    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'PRE', 'CODE', 'HR']);
+
+/**
+ * Почистить вставляемую разметку: раньше всё сводилось к простому тексту, и из Word
+ * пропадали ссылки, списки и таблицы. Теперь остаётся структура, а шрифты, цвета,
+ * классы и служебные теги Office — нет. Разбираем через DOMParser: скрипты в нём не выполняются.
+ */
+function cleanHtml(raw) {
+    const doc = new DOMParser().parseFromString(raw, 'text/html');
+    const walk = (node) => {
+        [...node.children].forEach(walk);
+        const tag = node.tagName;
+        if (!KEEP.has(tag)) {
+            // Тег не нужен, а текст внутри нужен: разворачиваем содержимое на место тега.
+            node.replaceWith(...node.childNodes);
+            return;
+        }
+        [...node.attributes].forEach((a) => {
+            const n = a.name.toLowerCase();
+            const ok = (tag === 'A' && n === 'href' && /^(https?:|mailto:|tel:)/i.test(a.value))
+                || (tag === 'TD' || tag === 'TH') && (n === 'colspan' || n === 'rowspan');
+            if (!ok) node.removeAttribute(a.name);
+        });
+        if (tag === 'A') node.setAttribute('target', '_blank');
+        if (tag === 'SPAN' && !node.attributes.length) node.replaceWith(...node.childNodes);
+    };
+    [...doc.body.children].forEach(walk);
+    return doc.body.innerHTML.replace(/<!--[\s\S]*?-->/g, '').replace(/\u00a0/g, ' ');
+}
+
 function onPaste(e) {
     // Картинка из буфера (снимок экрана, логотип) — вставляем как картинку.
     const img = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
     if (img) { e.preventDefault(); insertImage(img); return; }
-    // Текст вставляем как текст: чужие стили из Word и сайтов ломают письмо.
+    const rich = e.clipboardData?.getData('text/html');
+    if (rich && rich.trim()) {
+        e.preventDefault();
+        document.execCommand('insertHTML', false, cleanHtml(rich));
+        sync();
+        emit('toast', { text: 'Вставлено с оформлением. Кнопка «Убрать форматирование» снимет его' });
+        return;
+    }
     const text = e.clipboardData?.getData('text/plain');
     if (text) {
         e.preventDefault();
@@ -107,6 +147,33 @@ watch(() => props.modelValue, (v) => {
 
 defineExpose({
     focus: () => el.value?.focus(),
+    /**
+     * Заменить только блок подписи, не переписывая поле целиком: смена отправителя
+     * переписывала весь текст, курсор прыгал в начало, а история отмены (Ctrl+Z) стиралась.
+     */
+    setSignature: (sigHtml) => {
+        const root = el.value;
+        if (!root) return false;
+        let sig = root.querySelector('div.sig');
+        if (sigHtml) {
+            if (sig) {
+                sig.innerHTML = sigHtml;
+            } else {
+                sig = document.createElement('div');
+                sig.className = 'sig';
+                sig.innerHTML = sigHtml;
+                const gap = document.createElement('p');
+                gap.innerHTML = '<br>';
+                const anchor = root.querySelector('div.quote, div.fwd');
+                if (anchor) { root.insertBefore(gap, anchor); root.insertBefore(sig, anchor); } else { root.appendChild(gap); root.appendChild(sig); }
+            }
+        } else if (sig) {
+            sig.remove();
+        }
+        sync();
+
+        return true;
+    },
     focusStart: () => {
         el.value?.focus();
         const sel = window.getSelection(); const range = document.createRange();

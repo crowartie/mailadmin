@@ -584,14 +584,15 @@ function startCompose(mode = 'new', m = null, text = '') {
             const seen = new Set(c.to.map((a) => a.mail));
             [...m.to, ...(m.cc || [])].forEach((a) => { if (!me(a) && !seen.has(a.mail)) { seen.add(a.mail); c.cc.push(a); } });
         }
-        c.subject = /^re:/i.test(m.subject) ? m.subject : 'Re: ' + (m.subject === '(без темы)' ? '' : m.subject);
+        // trim(): у письма без темы получалось «Re: » с висящим пробелом.
+        c.subject = /^re:/i.test(m.subject) ? m.subject : ('Re: ' + (m.subject === '(без темы)' ? '' : m.subject)).trim();
         c.html = `<p>${escapeHtml(text)}</p>${signature(true, c.from)}${quote(m)}`;
         c.inReplyTo = m.messageId;
         c.references = [m.references, m.messageId].filter(Boolean).join(' ');
         c.answeredFolder = m.folder; c.answeredUid = m.uid;
         c.attachments = m.attachments || []; c.sourceFolder = m.folder; c.sourceUid = m.uid; c.keepAttachments = false;
     } else if (mode === 'forward') {
-        c.subject = /^fwd?:/i.test(m.subject) ? m.subject : 'Fwd: ' + (m.subject === '(без темы)' ? '' : m.subject);
+        c.subject = /^fwd?:/i.test(m.subject) ? m.subject : ('Fwd: ' + (m.subject === '(без темы)' ? '' : m.subject)).trim();
         const hdr = `<div class="fwd" style="color:#6B7787">---------- Пересланное письмо ----------<br>От: ${escapeHtml(m.from.name)} &lt;${escapeHtml(m.from.mail)}&gt;<br>Дата: ${escapeHtml(when(m.date, true))}<br>Тема: ${escapeHtml(m.subject)}<br>Кому: ${escapeHtml(addrString(m.to))}</div><br>`;
         c.html = `<p><br></p>${signature(true, c.from)}<p><br></p>${hdr}${m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`}`;
         c.references = [m.references, m.messageId].filter(Boolean).join(' ');
@@ -698,11 +699,12 @@ function flushPending() {
     api.send(composeForm(p.payload.form, p.payload.files), { keepalive: true }).catch(() => {});
 }
 
-async function quickReply({ text, message: m }) {
+async function quickReply({ text, message: m, done }) {
     const to = replyTargets(m);
     const form = {
         to: addrString(to),
-        subject: /^re:/i.test(m.subject) ? m.subject : 'Re: ' + m.subject,
+        // Та же тема, что и у полного ответа: раньше быстрый ответ уходил с «Re: (без темы)».
+        subject: /^re:/i.test(m.subject) ? m.subject : ('Re: ' + (m.subject === '(без темы)' ? '' : m.subject)).trim(),
         ...(sharedFrom(m) ? { from: sharedFrom(m) } : {}),
         html: `<p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>${signature(true, sharedFrom(m))}${quote(m)}`,
         inReplyTo: m.messageId,
@@ -714,7 +716,9 @@ async function quickReply({ text, message: m }) {
         if (r.folders) folders.value = r.folders;
         const row = list.value.messages.find((x) => x.uid === m.uid); if (row) row.answered = true;
         showToast({ text: 'Ответ отправлен' });
-    } catch (e) { fail(e); throw e; }
+        // Поле очищает MessageView — но только после того, как письмо действительно ушло.
+        if (done) done(true);
+    } catch (e) { fail(e); if (done) done(false); }
 }
 
 /** «Встреча» из письма: событие с темой письма и всеми участниками переписки. */
@@ -1034,7 +1038,7 @@ onBeforeUnmount(() => {
             <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'remind' }"><Icon name="bell" :size="16" />Напомнить, если не ответят…</button>
             <!-- Оба пункта работают с одним письмом: при выделенной пачке честно говорим, с каким именно. -->
             <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])"><Icon name="download" :size="16" />Скачать .eml<span v-if="menu.uids.length > 1" class="k">только первое</span></a>
-            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])" target="_blank" rel="noopener"><Icon name="code" :size="16" />Показать оригинал<span v-if="menu.uids.length > 1" class="k">только первое</span></a>
+            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0]) + '?inline=1'" target="_blank" rel="noopener"><Icon name="code" :size="16" />Показать оригинал<span v-if="menu.uids.length > 1" class="k">только первое</span></a>
         </Popover>
 
         <Popover v-if="menu && menu.kind === 'remind'" :x="menu.x" :y="menu.y" @close="menu = null">
