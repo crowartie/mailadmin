@@ -37,9 +37,11 @@ function refresh() {
 }
 
 function onKey(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); emit('submit'); return; }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); emit('save'); return; }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); link(); }
+    if (!(e.ctrlKey || e.metaKey)) return;
+    // По физической клавише: в русской раскладке e.key даёт «ы» и «л» вместо «s» и «k».
+    if (e.key === 'Enter') { e.preventDefault(); emit('submit'); return; }
+    if (e.code === 'KeyS') { e.preventDefault(); emit('save'); return; }
+    if (e.code === 'KeyK') { e.preventDefault(); link(); }
 }
 
 function onPaste(e) {

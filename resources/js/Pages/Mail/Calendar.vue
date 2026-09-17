@@ -9,7 +9,7 @@ import Dialog from '../../Components/Mail/Dialog.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import RecipientInput from '../../Components/Mail/RecipientInput.vue';
 import { api } from '../../mail/api';
-import { initials, toLocalInput } from '../../mail/format';
+import { hotkey, initials, toLocalInput } from '../../mail/format';
 
 const props = defineProps({
     user: String,
@@ -322,11 +322,14 @@ function onKey(e) {
     const t = e.target;
     if (dialog.value || editing.value || menu.value) { if (e.key === 'Escape' && !dialog.value) { editing.value = null; menu.value = null; } return; }
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    if (e.key === 'c') create();
-    if (e.key === 't') goToday();
+    // Ctrl+A, Ctrl+D и Ctrl+W — команды браузера, а не переключение вида.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const key = hotkey(e);
+    if (key === 'c') create();
+    if (key === 't') goToday();
     if (e.key === 'ArrowLeft') shift(-1);
     if (e.key === 'ArrowRight') shift(1);
-    if (e.key === 'd') setView('day'); if (e.key === 'w') setView('week'); if (e.key === 'm') setView('month'); if (e.key === 'a') setView('agenda');
+    if (key === 'd') setView('day'); if (key === 'w') setView('week'); if (key === 'm') setView('month'); if (key === 'a') setView('agenda');
     if (e.key === 'Escape') open.value = null;
 }
 onMounted(async () => {

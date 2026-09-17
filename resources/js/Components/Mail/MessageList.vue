@@ -136,7 +136,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         <footer v-if="list.pages > 1" class="mlist__foot">
             <button class="btn btn--sm" type="button" :disabled="list.page <= 1" @click="$emit('page', list.page - 1)">Новее</button>
             <span class="grow" style="text-align: center">{{ list.page }} / {{ list.pages }}</span>
-            <button class="btn btn--sm" type="button" :disabled="list.page >= list.pages" @click="$emit('page', list.page + 1)">Старее</button>
+            <button class="btn btn--sm" type="button" :disabled="list.page >= list.pages" @click="$emit('page', list.page + 1)">Старше</button>
         </footer>
     </section>
 </template>

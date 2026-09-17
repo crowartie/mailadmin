@@ -308,6 +308,16 @@
 
     &__scroll { flex: 1; overflow-y: auto; padding: 18px 22px 40px; }
 
+    // На ноутбучных 1280–1440 панель не помещалась в одну строку, и «Спам» с «Удалить»
+    // переносились под «Ответить» — ровно туда, где по ним промахиваются.
+    // Поджимаем отступы и убираем подпись у самой редкой кнопки, оставляя значок.
+    @media (max-width: 1560px) {
+        &__bar { padding: 10px 12px; gap: 2px; }
+        &__bar .ib { padding: 0 6px; gap: 4px; }
+        &__bar .sep { margin: 0 2px; }
+        &__bar .ib--wide { font-size: 0; gap: 0; }
+    }
+
     &__title {
         display: flex;
         align-items: center;
@@ -496,7 +506,9 @@
 // ── Всплывающие меню ─────────────────────────────────────────
 .pop {
     position: fixed;
-    z-index: 60;
+    // Выше панели чтения письма (85) и выдвинутой колонки папок (90): на телефоне
+    // меню «Ещё», «В папку», «Метка» рисовались под письмом и были не видны.
+    z-index: 95;
     background: v.$c-surface;
     border: 1px solid v.$c-border;
     border-radius: 10px;
@@ -560,7 +572,8 @@
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: 24px;
+    // Выше подвала списка с кнопками «Новее»/«Старше», иначе плашка закрывала их.
+    bottom: 64px;
     background: v.$c-text;
     color: v.$c-bg;
     border-radius: 10px;
@@ -570,7 +583,8 @@
     align-items: center;
     font-size: 13.5px;
     box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .4);
-    z-index: 70;
+    // Выше панели чтения письма (85): иначе «Отменить» на телефоне оказывалось под письмом.
+    z-index: 96;
 
     button { border: none; background: none; color: v.$c-mark; font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
     .t { color: v.$c-faint; font-size: 12px; }
@@ -582,7 +596,8 @@
     position: fixed;
     inset: 0;
     background: var(--overlay);
-    z-index: 80;
+    // Выше всего остального интерфейса: на телефоне подтверждения прятались под письмом.
+    z-index: 100;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -963,6 +978,9 @@ select.input { padding-right: 28px; }
     .rule > div:nth-child(3) { grid-column: 2 / -1; }
     // Панель действий письма: на телефоне только значки, в одну-две строки
     .mread__bar .ib { font-size: 0; gap: 0; padding: 8px; }
+    // Круглая кнопка «Написать» висит в правом нижнем углу — освобождаем под неё место,
+    // иначе она перекрывает кнопку «Старше».
+    .mlist__foot { padding-right: 76px; }
     .mread__bar .ib.mobile-only { display: inline-flex !important; }
     .mset__grid { grid-template-columns: minmax(0, 1fr); }
     .mset__menu { position: static; display: flex; overflow-x: auto; gap: 4px; }

@@ -107,7 +107,7 @@ const isDraft = computed(() => props.folderRole === 'drafts');
             <button class="ib" type="button" title="Ответить всем (a)" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
             <button class="ib" type="button" title="Переслать (f)" @click="$emit('reply', 'forward', message)"><Icon name="fwd" :size="16" />Переслать</button>
             <button v-if="folderRole === 'sent'" class="ib" type="button" title="Изменить как новое: открыть копию письма с теми же получателями, темой, текстом и вложениями" @click="$emit('reply', 'again', message)"><Icon name="edit" :size="16" />Как новое</button>
-            <button class="ib" type="button" title="Назначить встречу по этому письму" @click="$emit('meeting', message)"><Icon name="cal" :size="16" />Встреча</button>
+            <button class="ib ib--wide" type="button" title="Назначить встречу по этому письму" @click="$emit('meeting', message)"><Icon name="cal" :size="16" />Встреча</button>
         </template>
         <span class="sep" />
         <button class="ib" type="button" title="Архив (e)" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" /></button>

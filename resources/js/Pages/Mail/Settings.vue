@@ -6,6 +6,7 @@ import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import Editor from '../../Components/Mail/Editor.vue';
 import Toast from '../../Components/Mail/Toast.vue';
+import { plural } from '../../mail/format';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import { api } from '../../mail/api';
 
@@ -343,7 +344,7 @@ const shortcuts = [
                             <div class="mset__list">
                                 <div v-for="f in folders" :key="f.path" class="mset__li" :style="{ paddingLeft: f.depth * 18 + 'px' }">
                                     <Icon :name="f.role === 'custom' ? 'folder' : 'inbox'" :size="16" style="color: var(--faint)" />
-                                    <span class="grow">{{ f.name }} <span class="sub">· {{ f.total }} писем{{ f.unread ? ', ' + f.unread + ' непрочит.' : '' }}</span></span>
+                                    <span class="grow">{{ f.name }} <span class="sub">· {{ f.total }} {{ plural(f.total, 'письмо', 'письма', 'писем') }}{{ f.unread ? ', ' + f.unread + ' не прочитано' : '' }}</span></span>
                                     <template v-if="f.role === 'custom'">
                                         <button class="ib ib--sm" type="button" title="Вложенная папка" @click="dialog = { kind: 'newFolder', parent: f.path }"><Icon name="plus" :size="14" /></button>
                                         <button class="ib ib--sm" type="button" title="Переименовать" @click="dialog = { kind: 'renameFolder', folder: f }"><Icon name="edit" :size="14" /></button>

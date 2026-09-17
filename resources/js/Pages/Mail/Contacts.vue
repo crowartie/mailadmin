@@ -8,7 +8,7 @@ import Popover from '../../Components/Mail/Popover.vue';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import { api } from '../../mail/api';
-import { initials, plural, when } from '../../mail/format';
+import { hotkey, initials, plural, when } from '../../mail/format';
 
 const props = defineProps({
     user: String,
@@ -252,8 +252,9 @@ function onKey(e) {
     const t = e.target;
     if (dialog.value || editing.value) return;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) { if (e.key === 'Escape') t.blur(); return; }
-    if (e.key === '/') { e.preventDefault(); searchInput.value?.focus(); }
-    if (e.key === 'n' && !e.ctrlKey && !e.metaKey) create();
+    const key = hotkey(e);
+    if (key === '/' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); searchInput.value?.focus(); }
+    if (key === 'n' && !e.ctrlKey && !e.metaKey) create();
     if (e.key === 'Escape') { menu.value = null; open.value = null; mobileRead.value = false; }
 }
 onMounted(() => {

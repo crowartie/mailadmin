@@ -14,7 +14,7 @@ import Toast from '../../Components/Mail/Toast.vue';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import ShortcutsHelp from '../../Components/Mail/ShortcutsHelp.vue';
 import { api, composeForm } from '../../mail/api';
-import { addrString, escapeHtml, presets, when } from '../../mail/format';
+import { addrString, escapeHtml, hotkey, plural, presets, when } from '../../mail/format';
 
 const props = defineProps({
     user: String,
@@ -231,7 +231,7 @@ async function act(op, uids, extra = {}, deferrable = true) {
         default: break;
     }
     const names = { delete: 'Удалено', archive: 'В архиве', spam: 'Помечено как спам', move: 'Перемещено', lists: 'В рассылки', snooze: 'Отложено', notspam: 'Возвращено во Входящие', remind: 'Напомню, если не ответят' };
-    const label = `${names[op] || ''}${uids.length > 1 ? ' · ' + uids.length : ''}`;
+    const label = `${names[op] || ''}${uids.length > 1 ? ` · ${uids.length} ${plural(uids.length, 'письмо', 'письма', 'писем')}` : ''}`;
     // Удаление/перенос/архив/спам — с отменой: сервер получит команду через N секунд (Настройки → Общие),
     // до этого «Отменить» просто возвращает список. Диалоги по отправителю и повторные действия — сразу.
     const secs = Number(settings.value.undo_seconds ?? 5);
@@ -344,8 +344,9 @@ async function markSender(match) {
             if (r.folders) folders.value = r.folders;
         }
         dialog.value = null;
-        const who = values.length === 1 ? values[0] : `${values.length} ${match === 'domain' ? 'домена' : 'адреса'}`;
-        const tail = d.what === 'folder' ? '' : personalOnly ? ' Отправитель вашего домена: правило только у вас, общим не станет.' : d.what === 'ham' ? (global ? ' Фильтр больше не тронет эти письма — у всех сотрудников.' : ' Заявка на исключение ушла администратору.') : (global ? ' Правило стало общим для всех сотрудников.' : (votes ? ` Станет общим для всех, когда так отметят ${votes.split(' из ')[1]} сотрудника (сейчас ${votes.split(' из ')[0]}).` : ''));
+        const who = values.length === 1 ? values[0]
+            : `${values.length} ${match === 'domain' ? plural(values.length, 'домен', 'домена', 'доменов') : plural(values.length, 'адрес', 'адреса', 'адресов')}`;
+        const tail = d.what === 'folder' ? '' : personalOnly ? ' Отправитель вашего домена: правило только у вас, общим не станет.' : d.what === 'ham' ? (global ? ' Фильтр больше не тронет эти письма — у всех сотрудников.' : ' Заявка на исключение ушла администратору.') : (global ? ' Правило стало общим для всех сотрудников.' : (votes ? ` Станет общим для всех, когда так отметят ${votes.split(' из ')[1]} ${plural(Number(votes.split(' из ')[1]) || 0, 'сотрудник', 'сотрудника', 'сотрудников')} (сейчас ${votes.split(' из ')[0]}).` : ''));
         showToast({ text: `${who}: правило добавлено${moved ? `, перемещено писем: ${moved}` : ''}.${tail}` }, 8000);
         await refresh();
     } catch (e) { d.busy = false; fail(e); }
@@ -645,6 +646,18 @@ async function cancelOutbox(id) {
 
 // ── Горячие клавиши ───────────────────────────────────────────
 let gPrefix = false; let gTimer = null;
+let starPrefix = false; let starTimer = null;
+/** Подвести список к строке под курсором: без этого j/k уводят курсор за пределы экрана. */
+function revealCursor() {
+    nextTick(() => {
+        const el = document.querySelector('.mrow--cursor');
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        if (r.top < 70 || r.bottom > window.innerHeight - 60) {
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    });
+}
 function onKey(e) {
     if (!settings.value.shortcuts) return;
     const t = e.target;
@@ -654,22 +667,29 @@ function onKey(e) {
         return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const key = hotkey(e);
     const ids = list.value.messages.map((m) => m.uid);
     const cur = cursor.value ?? open.value?.uid ?? null;
     const idx = ids.indexOf(cur);
     const target = selected.value.length ? selected.value : (cur != null ? [cur] : []);
     const row = list.value.messages.find((m) => m.uid === cur);
 
+    if (starPrefix) {
+        starPrefix = false; clearTimeout(starTimer);
+        if (key === 'a') { selected.value = list.value.messages.map((m) => m.uid); e.preventDefault(); }
+        if (key === 'n') { selected.value = []; e.preventDefault(); }
+        return;
+    }
     if (gPrefix) {
         gPrefix = false; clearTimeout(gTimer);
         const map = { i: 'inbox', s: 'sent', d: 'drafts', t: 'trash', a: 'archive' };
-        if (map[e.key] && rolePath(map[e.key])) { go(rolePath(map[e.key])); e.preventDefault(); }
+        if (map[key] && rolePath(map[key])) { go(rolePath(map[key])); e.preventDefault(); }
         return;
     }
-    switch (e.key) {
+    switch (key) {
         case 'g': gPrefix = true; gTimer = setTimeout(() => { gPrefix = false; }, 1200); break;
-        case 'j': case 'ArrowDown': if (menu.value) return; e.preventDefault(); { const n = ids[Math.min(ids.length - 1, idx + 1)]; if (n != null) { cursor.value = n; if (open.value) openMessage(n); } } break;
-        case 'k': case 'ArrowUp': if (menu.value) return; e.preventDefault(); { const n = ids[Math.max(0, idx - 1)]; if (n != null) { cursor.value = n; if (open.value) openMessage(n); } } break;
+        case 'j': case 'ArrowDown': if (menu.value) return; e.preventDefault(); { const n = ids[Math.min(ids.length - 1, idx + 1)]; if (n != null) { cursor.value = n; revealCursor(); if (open.value) openMessage(n); } } break;
+        case 'k': case 'ArrowUp': if (menu.value) return; e.preventDefault(); { const n = ids[Math.max(0, idx - 1)]; if (n != null) { cursor.value = n; revealCursor(); if (open.value) openMessage(n); } } break;
         case 'Enter': case 'o': if (cur != null) openMessage(cur); break;
         case 'u': open.value = null; mobileRead.value = false; break;
         case 'x': if (cur != null) toggle(cur); break;
@@ -685,7 +705,7 @@ function onKey(e) {
         case 'z': case 'v': case 'l': if (target.length) { menu.value = { kind: { z: 'snooze', v: 'move', l: 'label' }[e.key], x: 420, y: 160, uids: target }; } break;
         case '/': e.preventDefault(); listRef.value?.focusSearch(); break;
         case '?': help.value = true; break;
-        case '*': break;
+        case '*': starPrefix = true; clearTimeout(starTimer); starTimer = setTimeout(() => { starPrefix = false; }, 1200); e.preventDefault(); break;
         case 'Escape': if (menu.value) menu.value = null; else if (selected.value.length) selected.value = []; else { open.value = null; mobileRead.value = false; } break;
         default: return;
     }
@@ -924,8 +944,8 @@ onBeforeUnmount(() => {
                     <template v-else>Письмо перемещено. Сделать так со всеми письмами от этого отправителя — и с теми, что придут потом?</template>
                 </p>
                 <div style="display: grid; gap: 8px">
-                    <button class="btn btn--primary" type="button" :disabled="dialog.busy" @click="markSender('address')">{{ dialog.what === 'ham' ? 'Адрес' : 'Все письма с адреса' }} <b>{{ dialog.mails.length === 1 ? dialog.mails[0] : dialog.mails.length + ' адреса' }}</b></button>
-                    <button class="btn" type="button" :disabled="dialog.busy" @click="markSender('domain')">{{ dialog.what === 'ham' ? 'Весь домен' : 'Все письма с домена' }} <b>{{ dialog.domains.length === 1 ? '@' + dialog.domains[0] : dialog.domains.length + ' домена' }}</b></button>
+                    <button class="btn btn--primary" type="button" :disabled="dialog.busy" @click="markSender('address')">{{ dialog.what === 'ham' ? 'Адрес' : 'Все письма с адреса' }} <b>{{ dialog.mails.length === 1 ? dialog.mails[0] : dialog.mails.length + ' ' + plural(dialog.mails.length, 'адрес', 'адреса', 'адресов') }}</b></button>
+                    <button class="btn" type="button" :disabled="dialog.busy" @click="markSender('domain')">{{ dialog.what === 'ham' ? 'Весь домен' : 'Все письма с домена' }} <b>{{ dialog.domains.length === 1 ? '@' + dialog.domains[0] : dialog.domains.length + ' ' + plural(dialog.domains.length, 'домен', 'домена', 'доменов') }}</b></button>
                 </div>
                 <div v-if="dialog.what !== 'ham'" style="margin-top: 12px; display: flex; gap: 10px; align-items: center"><label class="toggle"><input v-model="dialog.resort" type="checkbox"><span class="toggle__track" /></label><span>Сразу разложить уже полученные письма по всем папкам</span></div>
                 <p class="hint" style="margin: 12px 0 0">{{ dialog.what === 'folder' ? 'Правило появится в Настройках → Правила, там его можно изменить или удалить.' : dialog.what === 'ham' ? 'Исключение действует для всей компании: сервер перестанет считать эти письма спамом.' : 'Правило появится в ваших «Правилах». Когда так же отметят несколько сотрудников, оно станет общим для всех ящиков.' }}</p>

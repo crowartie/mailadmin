@@ -116,9 +116,28 @@ async function saveDraft(silent = false) {
     }
 }
 
+/**
+ * Есть ли в письме что-то, ради чего стоит хранить черновик.
+ * Подпись и цитата исходного письма не в счёт: они вставляются сами, и раньше
+ * каждое открытие-закрытие окна оставляло черновик «(без темы)» с одной подписью.
+ */
+function worthSaving() {
+    if (to.value.length || cc.value.length || bcc.value.length) return true;
+    if (subject.value.trim()) return true;
+    if (files.value.length) return true;              // приложил файл и закрыл — файл терялся
+    const box = document.createElement('div');
+    box.innerHTML = html.value || '';
+    box.querySelectorAll('div.sig, blockquote').forEach((n) => n.remove());
+    if (box.querySelector('img')) return true;        // письмо из одного вставленного снимка
+    return box.textContent.replace(/\u00a0/g, ' ').trim() !== '';
+}
+
 function close() {
-    if (dirty.value && (to.value.length || subject.value || html.value.replace(/<[^>]+>/g, '').trim())) {
+    if (dirty.value && worthSaving()) {
         saveDraft(true);
+        // Окно закрывается, и надпись «Черновик сохранён» внутри него пропадает вместе с ним —
+        // без этого человек не знает, потерян текст или нет.
+        emit('toast', { text: 'Черновик сохранён — он в папке «Черновики»' });
     }
     emit('close');
 }
@@ -207,7 +226,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         <div class="compose__row" style="border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: 12px 12px 0 0">
             <b style="font-size: 15px">{{ title }}</b>
             <span style="flex: 1" />
-            <button class="ib ib--sm" type="button" title="Закрыть (черновик сохранится)" @click="close"><Icon name="x" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Закрыть — написанное сохранится в черновиках" @click="close"><Icon name="x" :size="16" /></button>
         </div>
 
         <div class="compose__row">

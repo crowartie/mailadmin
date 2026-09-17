@@ -450,6 +450,22 @@ class MailStore
         }
 
         $messages = [];
+        // Порядок писем задаёт дата письма, а не внутренний номер: письмо, перенесённое в папку
+        // сегодня, получает самый большой номер и без сортировки встаёт наверх, даже если ему два года.
+        $sorted = $this->sortedUids($searching || $filter !== 'all' ? $q : null, $path);
+        if ($sorted !== null) {
+            $total = count($sorted);
+            $slice = array_slice($sorted, ($page - 1) * self::PAGE, self::PAGE);
+            $messages = $slice ? ($this->pageFastUids($slice) ?? []) : [];
+            if ($messages || ! $slice) {
+                return [
+                    'messages' => $messages,
+                    'total' => $total,
+                    'page' => $page,
+                    'pages' => max(1, (int) ceil($total / self::PAGE)),
+                ];
+            }
+        }
         if ($searching || $filter !== 'all') {
             // Поиск/фильтр: сервер отдаёт только UID, страницу берём одним FETCH — раньше библиотека
             // тянула и разбирала заголовки всех найденных писем (сотни непрочитанных — секунды).
@@ -477,6 +493,60 @@ class MailStore
             'page' => $page,
             'pages' => max(1, (int) ceil($total / self::PAGE)),
         ];
+    }
+
+    /**
+     * UID писем папки в порядке от новых к старым по дате письма (IMAP SORT, RFC 5256).
+     * $q — построенный запрос с условиями поиска/фильтра; null — вся папка; $path — папка для кэша.
+     *
+     * Возвращает null, если сервер SORT не поддерживает или ответил не так, как ожидалось:
+     * вызывающий код тогда работает по-старому, порядком по внутреннему номеру.
+     *
+     * @return array<int,int>|null
+     */
+    private function sortedUids(?WhereQuery $q, string $path): ?array
+    {
+        // Если на этой папке SORT уже оказывался медленным — не трогаем его снова.
+        $slowKey = 'sort-slow.' . md5($this->user() . '|' . $path);
+        if (\Illuminate\Support\Facades\Cache::get($slowKey)) {
+            return null;
+        }
+        $started = microtime(true);
+        try {
+            $conn = $this->client->getConnection();
+            $criteria = 'ALL';
+            if ($q !== null) {
+                $generated = trim((string) $q->generate_query());
+                if ($generated === '') {
+                    return null;
+                }
+                $criteria = $generated;
+            }
+            $r = $conn->requestAndResponse('UID SORT', ['(REVERSE DATE)', 'UTF-8', $criteria]);
+            $lines = (array) $r->data();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $uids = [];
+        foreach ($lines as $line) {
+            $parts = is_array($line) ? $line : preg_split('/\s+/', (string) $line, -1, PREG_SPLIT_NO_EMPTY);
+            foreach ((array) $parts as $p) {
+                if (is_numeric($p)) {
+                    $uids[] = (int) $p;
+                } elseif (is_string($p) && strcasecmp($p, 'SORT') !== 0) {
+                    return null; // неожиданное слово в ответе — лучше откатиться к прежнему порядку
+                }
+            }
+        }
+
+        if ((microtime(true) - $started) > 2.0) {
+            // Большая папка без кэша сортировки: один раз отдали правильный порядок,
+            // дальше не тормозим список — вернёмся к этому через полчаса.
+            \Illuminate\Support\Facades\Cache::put($slowKey, 1, now()->addMinutes(30));
+        }
+
+        return $uids ?: null;
     }
 
     private function applyFilter(WhereQuery $q, string $filter): WhereQuery

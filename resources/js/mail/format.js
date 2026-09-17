@@ -1,5 +1,8 @@
 // Форматирование дат, размеров, инициалов — одно место на весь интерфейс.
 const DAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+// Месяцы в родительном падеже: toLocaleDateString с month:'short' добавляет точку и хвост « г.»,
+// которые приходилось вычищать заменами — вычищались не полностью («24 окт 25 г.»).
+const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
 export function when(iso, long = false) {
     if (!iso) return '';
@@ -14,15 +17,41 @@ export function when(iso, long = false) {
     const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
     if (d.toDateString() === yesterday.toDateString()) return 'вчера';
     const diff = (now - d) / 86400000;
-    if (diff < 6) return DAYS[d.getDay()];
-    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : '2-digit' }).replace('.', '');
+    // diff >= 0: письмо из будущего (сбитые часы отправителя, приём спамеров) не должно
+    // показываться днём недели — иначе выглядит как письмо этой недели.
+    if (diff >= 0 && diff < 6) return DAYS[d.getDay()];
+    const short = `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+    return d.getFullYear() === now.getFullYear() ? short : `${short} ${d.getFullYear()}`;
+}
+
+/**
+ * Какая клавиша нажата, независимо от раскладки.
+ * e.key в русской раскладке даёт «о» вместо «j» и «ы» вместо «s», поэтому буквы и знаки
+ * с цифрового ряда определяем по физической клавише (e.code). Служебные клавиши
+ * (Enter, Escape, стрелки) от раскладки не зависят — их берём как есть.
+ */
+export function hotkey(e) {
+    const code = e.code || '';
+    const letter = /^Key([A-Z])$/.exec(code);
+    if (letter) return letter[1].toLowerCase();
+    if (code === 'Digit1' && e.shiftKey) return '!';
+    if (code === 'Digit3' && e.shiftKey) return '#';
+    if (code === 'Digit8' && e.shiftKey) return '*';
+    if (code === 'Slash') return e.shiftKey ? '?' : '/';
+    if (code === 'Period' && e.shiftKey) return '>';
+    return e.key;
 }
 
 export function size(bytes) {
     if (!bytes && bytes !== 0) return '';
     if (bytes < 1024) return `${bytes} Б`;
-    if (bytes < 1048576) return `${Math.round(bytes / 1024)} КБ`;
-    return `${(bytes / 1048576).toFixed(1).replace('.0', '')} МБ`;
+    // Переход к следующей единице делаем по округлённому значению, иначе 1 048 575 Б
+    // показывались как «1024 КБ», а гигабайт — как «1024 МБ».
+    const kb = Math.round(bytes / 1024);
+    if (kb < 1024) return `${kb} КБ`;
+    const mb = bytes / 1048576;
+    if (mb < 1023.95) return `${mb.toFixed(1).replace('.0', '')} МБ`;
+    return `${(mb / 1024).toFixed(1).replace('.0', '')} ГБ`;
 }
 
 export function initials(name, mail) {

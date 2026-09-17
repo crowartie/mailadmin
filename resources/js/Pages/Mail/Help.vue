@@ -5,6 +5,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
+import { plural } from '../../mail/format';
 
 const props = defineProps({
     user: String,
@@ -69,9 +70,9 @@ const throttleText = computed(() => {
     const t = props.limits?.throttle;
     if (!t || !t.enabled || !t.maxMsgs) return '';
     const p = t.periodMin === 60 ? 'час' : t.periodMin === 1440 ? 'сутки' : `${t.periodMin} мин`;
-    return `${t.maxMsgs} писем в ${p}`;
+    return `${t.maxMsgs} ${plural(t.maxMsgs, 'письмо', 'письма', 'писем')} в ${p}`;
 });
-const votesWord = (n) => `не меньше ${n} ${n === 1 ? 'сотрудника' : 'сотрудников'}`;
+const votesWord = (n) => `не меньше ${n} ${plural(n, 'сотрудника', 'сотрудников', 'сотрудников')}`;
 function printPage() { window.print(); }
 </script>
 

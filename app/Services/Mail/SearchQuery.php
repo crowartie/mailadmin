@@ -26,21 +26,37 @@ class SearchQuery
 
     private function parse(string $query): void
     {
-        preg_match_all('/(?:(\S+?):("[^"]*"|\S+))|("[^"]+")|(\S+)/u', $query, $m, PREG_SET_ORDER);
+        // Значение можно писать и вплотную к двоеточию, и через пробел: в справке примеры
+        // напечатаны с пробелом («от: иванов»), и раньше такой запрос искал буквально «от:».
+        preg_match_all('/(?:([^\s:]+):\s*("[^"]*"|[^\s"]+))|("[^"]+")|(\S+)/u', $query, $m, PREG_SET_ORDER);
         foreach ($m as $t) {
             if (($t[1] ?? '') !== '') {
-                $this->terms[] = [mb_strtolower($t[1]), trim($t[2], '"')];
+                $this->terms[] = [mb_strtolower($t[1]), self::clean($t[2])];
             } elseif (($t[3] ?? '') !== '') {
-                $this->text[] = trim($t[3], '"');
+                $this->text[] = self::clean($t[3]);
             } elseif (($t[4] ?? '') !== '') {
-                $this->text[] = $t[4];
+                $this->text[] = self::clean($t[4]);
             }
         }
     }
 
+    /**
+     * Кавычки и обратные слэши убираем: библиотека обрамляет значение кавычками сама,
+     * и запрос вроде «труба 15"» уходил на сервер незакрытой строкой — тот отвечал ошибкой.
+     */
+    private static function clean(string $v): string
+    {
+        return trim(str_replace(['"', '\\'], '', trim($v, '"')));
+    }
+
     public function apply(WhereQuery $q): WhereQuery
     {
+        $added = 0;
         foreach ($this->terms as [$key, $value]) {
+            if ($value === '') {
+                continue;
+            }
+            $added++;
             switch ($key) {
                 case 'от': case 'from':
                     $q->whereFrom($value);
@@ -67,7 +83,9 @@ class SearchQuery
                 case 'есть': case 'is': case 'has':
                     $v = mb_strtolower($value);
                     if (in_array($v, ['флажок', 'flagged', 'starred'])) {
-                        $q->whereFlagged('FLAGGED');
+                        // Именно where('FLAGGED') без значения: whereFlagged() подставляет значение
+                        // вторым словом и получается недопустимый критерий FLAGGED "FLAGGED".
+                        $q->where('FLAGGED');
                     } elseif (in_array($v, ['непрочитанное', 'непрочитанные', 'unread', 'unseen'])) {
                         $q->whereUnseen();
                     } elseif (in_array($v, ['вложение', 'вложения', 'attachment', 'attachments'])) {
@@ -77,24 +95,64 @@ class SearchQuery
                     }
                     break;
                 default:
+                    $added--; // не оператор, а обычные слова с двоеточием
                     $this->text[] = $key . ':' . $value;
             }
         }
 
         foreach ($this->text as $word) {
+            if ($word === '') {
+                continue;
+            }
             // TEXT ищет по заголовкам и телу: без полнотекстового индекса это перебор, но ящики небольшие.
             $q->whereText($word);
+            $added++;
+        }
+
+        // Ни одного условия (например, запрос из одних кавычек) — показываем всю папку,
+        // иначе на сервер уходит SEARCH без критериев и он отвечает ошибкой.
+        if ($added < 1) {
+            $q->all();
         }
 
         return $q;
     }
 
+    /**
+     * Дата запроса: «вчера», «сегодня», «позавчера», «14.09.2026», «2026-09-14».
+     * Непонятное значение — понятная ошибка, а не молча выброшенное условие:
+     * раньше «до:вчера» показывало всю папку, будто фильтр сработал.
+     */
     private function date(string $value): ?Carbon
     {
-        try {
-            return Carbon::parse($value);
-        } catch (\Throwable) {
-            return null;
+        $v = mb_strtolower(trim($value));
+        $today = Carbon::today();
+        $named = [
+            'сегодня' => 0, 'today' => 0,
+            'вчера' => 1, 'yesterday' => 1,
+            'позавчера' => 2,
+            'неделя' => 7, 'неделю' => 7, 'week' => 7,
+            'месяц' => 30, 'month' => 30,
+            'год' => 365, 'year' => 365,
+        ];
+        if (isset($named[$v])) {
+            return $today->copy()->subDays($named[$v]);
         }
+        if (preg_match('/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2,4})$/', $v, $m)) {
+            $year = (int) $m[3] < 100 ? 2000 + (int) $m[3] : (int) $m[3];
+            try {
+                return Carbon::createFromDate($year, (int) $m[2], (int) $m[1])->startOfDay();
+            } catch (\Throwable) {
+                abort(422, "Не понимаю дату «{$value}». Напишите так: 14.09.2026, или словом: сегодня, вчера.");
+            }
+        }
+        if (preg_match('/^\d{4}-\d{1,2}-\d{1,2}$/', $v)) {
+            try {
+                return Carbon::parse($v)->startOfDay();
+            } catch (\Throwable) {
+                // ниже — общая подсказка
+            }
+        }
+        abort(422, "Не понимаю дату «{$value}». Напишите так: 14.09.2026, или словом: сегодня, вчера.");
     }
 }
