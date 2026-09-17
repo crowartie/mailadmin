@@ -18,13 +18,21 @@ class GroupwareController extends Controller
         $user = $imap->user();
         $store->ensureUser($user);
         $book = $request->query('book');
+        // Группа — это не книга: раньше в адрес писалось «book=group:Отдел», и хранилище
+        // такого значения не принимало — перезагрузка страницы на выбранной группе
+        // отдавала ошибку сервера вместо контактов.
+        $group = $request->query('group');
+        if ($book !== null && str_starts_with((string) $book, 'group:')) {
+            $group = substr((string) $book, 6);
+            $book = null;
+        }
 
         return Inertia::render('Mail/Contacts', [
             'user' => $user,
             'settings' => Setting::for($user),
             'isAdmin' => $store->isAdmin($user),
             'books' => $store->books($user),
-            'book' => $book,
+            'book' => $group ? 'group:' . $group : $book,
             'contacts' => $store->cards($user, $book ?: null, (string) $request->query('q', '')),
             'query' => (string) $request->query('q', ''),
             'openUri' => $request->query('open'),

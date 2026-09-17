@@ -225,18 +225,69 @@ class DavStore
     }
 
     /** Импорт .vcf (одна или много карточек). @return int сколько добавлено */
-    public function importCards(string $user, string $bookUri, string $vcfText): int
+    /**
+     * Загрузить карточки из .vcf. Повторный импорт того же файла удваивал всю книгу —
+     * теперь уже имеющиеся карточки пропускаем: сверяем по адресу почты, а если его нет —
+     * по имени вместе с телефоном.
+     *
+     * @return array{imported:int,skipped:int}
+     */
+    public function importCards(string $user, string $bookUri, string $vcfText): array
     {
+        $known = [];
+        foreach ($this->cards($user, $bookUri, '') as $c) {
+            foreach (self::cardKeys($c) as $k) {
+                $known[$k] = true;
+            }
+        }
+
         $n = 0;
+        $skipped = 0;
         foreach (Cards::split($vcfText) as $vcf) {
-            $uri = Cards::uid() . '.vcf';
             // Чужая карточка может быть vCard 4.0 или без FN — прогоняем через свою сборку.
-            $normalized = Cards::build(Cards::parse($vcf), $vcf);
+            $parsed = Cards::parse($vcf);
+            $keys = self::cardKeys($parsed);
+            if ($keys && array_intersect_key($known, array_flip($keys))) {
+                $skipped++;
+                continue;
+            }
+            $uri = Cards::uid() . '.vcf';
+            $normalized = Cards::build($parsed, $vcf);
             $this->dav($user, 'PUT', "addressbooks/{$user}/{$bookUri}/{$uri}", $normalized, ['Content-Type' => 'text/vcard; charset=utf-8']);
+            foreach ($keys as $k) {
+                $known[$k] = true;
+            }
             $n++;
         }
 
-        return $n;
+        return ['imported' => $n, 'skipped' => $skipped];
+    }
+
+    /**
+     * Чем отличаем карточку от уже имеющейся: адресами почты, а если их нет — именем с телефоном.
+     *
+     * @return string[]
+     */
+    private static function cardKeys(array $c): array
+    {
+        $keys = [];
+        foreach ((array) ($c['emails'] ?? []) as $e) {
+            $m = mb_strtolower(trim((string) ($e['value'] ?? $e)));
+            if ($m !== '') {
+                $keys[] = 'm:' . $m;
+            }
+        }
+        if (! $keys) {
+            $name = mb_strtolower(trim((string) ($c['fn'] ?? '')));
+            foreach ((array) ($c['phones'] ?? []) as $p) {
+                $digits = preg_replace('/\D+/', '', (string) ($p['value'] ?? $p)) ?? '';
+                if ($name !== '' && strlen($digits) >= 7) {
+                    $keys[] = 'np:' . $name . '|' . substr($digits, -10);
+                }
+            }
+        }
+
+        return $keys;
     }
 
     public function exportCards(string $user, ?string $bookUri): string

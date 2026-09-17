@@ -86,7 +86,7 @@ class ContactsController extends Controller
         $request->validate(['file' => ['required', 'file', 'max:10240'], 'book' => ['nullable', 'string']]);
         $text = (string) file_get_contents($request->file('file')->getRealPath());
 
-        return $this->guard(fn () => ['imported' => $this->store->importCards($imap->user(), (string) $request->input('book', DavStore::PERSONAL), $text)]);
+        return $this->guard(fn () => $this->store->importCards($imap->user(), (string) $request->input('book', DavStore::PERSONAL), $text));
     }
 
     public function export(Request $request, ImapSession $imap): Response

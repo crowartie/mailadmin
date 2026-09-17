@@ -1,6 +1,6 @@
 <script setup>
 // Контакты: книги (личная, сотрудники, компания) · список · карточка / форма.
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
@@ -24,6 +24,16 @@ const props = defineProps({
 const books = ref(props.books);
 const all = ref(props.contacts);            // все карточки всех книг; фильтруем на клиенте
 const filter = ref(props.book || 'all');    // all | favorites | <book uri> | group:<name>
+// 267: страница, открытая по адресу с ?q=, получала с сервера уже отобранный набор,
+// и очистка строки поиска не возвращала остальные карточки — фильтровать было нечего.
+let serverQuery = props.query || '';
+watch(q, async (v) => {
+    if (serverQuery && !String(v).trim()) {
+        serverQuery = '';
+        window.history.replaceState({}, '', '/contacts');
+        await reload(false);
+    }
+});
 const q = ref(props.query || '');
 const open = ref(null);
 const editing = ref(null);
@@ -40,6 +50,8 @@ let toastTimer = null;
 const KINDS = { personal: 'Мои контакты', own: 'Моя книга', employees: 'Сотрудники', company: 'Контакты компании' };
 const TYPES = { work: 'рабочий', home: 'домашний', cell: 'мобильный', fax: 'факс', other: 'другой' };
 
+// 255: «Сотрудники» показывались и в «Книгах», и в «Группах» с одинаковым счётчиком —
+// это одна и та же выборка под двумя именами.
 const groups = computed(() => {
     const m = {};
     all.value.forEach((c) => (c.groups || []).forEach((g) => { m[g] = (m[g] || 0) + 1; }));
@@ -149,7 +161,10 @@ function go(f) {
     navOpen.value = false;
     mobileRead.value = false;
     const p = new URLSearchParams();
-    if (f !== 'all') p.set('book', f);
+    // 256: в адрес писалось «group:Отдел», а сервер такого значения не принимает —
+    // перезагрузка страницы на выбранной группе давала ошибку сервера вместо контактов.
+    if (f.startsWith('group:')) p.set('group', f.slice(6));
+    else if (f !== 'all') p.set('book', f);
     window.history.replaceState({}, '', `/contacts${p.toString() ? '?' + p : ''}`);
 }
 
@@ -293,7 +308,7 @@ async function importFile(e) {
         const target = writableBooks.value.find((b) => b.uri === filter.value)?.uri || writableBooks.value[0]?.uri || 'personal';
         const into = writableBooks.value.find((b) => b.uri === target);
         const r = await api.importContacts(file, target);
-        say(`Импортировано: ${r.imported}${into ? ` — в книгу «${into.name}»` : ''}`);
+        say(`Импортировано: ${r.imported}${r.skipped ? `, пропущено как уже имеющиеся: ${r.skipped}` : ''}${into ? ` — в книгу «${into.name}»` : ''}`);
         reload();
     } catch (err) { fail(err); }
 }
@@ -341,7 +356,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 <div style="flex: 1" />
                 <div class="mnav__foot">
                     <button class="ib ib--sm" type="button" title="Импорт из файла .vcf" @click="fileInput?.click()"><Icon name="upload" :size="15" />Импорт</button>
-                    <a class="ib ib--sm" :href="api.exportUrl(filter !== 'all' && !filter.startsWith('group:') && filter !== 'favorites' ? filter : '')" title="Выгрузить .vcf"><Icon name="download" :size="15" />Экспорт</a>
+                    <!-- 257: в «Истории общения» выгружать нечего — это ещё не карточки,
+                         а кнопка вела на страницу ошибки. -->
+                    <a v-if="filter !== 'history'" class="ib ib--sm" :href="api.exportUrl(filter !== 'all' && !filter.startsWith('group:') && filter !== 'favorites' ? filter : '')" title="Выгрузить .vcf"><Icon name="download" :size="15" />Экспорт</a>
                     <input ref="fileInput" type="file" accept=".vcf,text/vcard" hidden @change="importFile">
                 </div>
             </nav>
