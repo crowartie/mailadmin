@@ -34,8 +34,9 @@ final class Structure
             $r = $conn->requestAndResponse('UID FETCH', [(string) $uid, '(BODYSTRUCTURE)']);
             // Библиотека отдаёт ответ разобранным на куски, но с сохранёнными кавычками —
             // склеиваем обратно в строку протокола и разбираем сами.
+            $resp = $r->getResponse();
             $flat = [];
-            array_walk_recursive($r->getResponse(), function ($x) use (&$flat) {
+            array_walk_recursive($resp, function ($x) use (&$flat) {
                 $flat[] = (string) $x;
             });
 
