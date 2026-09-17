@@ -20,6 +20,9 @@ use Webklex\PHPIMAP\IMAP;
  */
 final class Structure
 {
+    /** Сколько писем спрашиваем одной командой (см. many). */
+    private const CHUNK = 250;
+
     /**
      * Части письма по UID. null — сервер ответил не так, как мы понимаем;
      * вызывающий в этом случае работает по-старому.
@@ -58,29 +61,34 @@ final class Structure
         if (! $uids) {
             return [];
         }
+        $out = [];
         try {
             $client->openFolder($path, true);
             $conn = $client->getConnection();
-            $r = $conn->requestAndResponse('UID FETCH', [implode(',', array_map('intval', $uids)), '(BODYSTRUCTURE)']);
-            $rows = $r->getResponse();
-            $flat = [];
-            array_walk_recursive($rows, function ($x) use (&$flat) {
-                $flat[] = (string) $x;
-            });
-            $joined = implode(' ', $flat);
+            // Частями по двести пятьдесят: на первом запросе сервер собирает структуры
+            // заново (дальше они у него в кэше), и одна команда на полторы тысячи писем
+            // занимала двадцать секунд — на грани таймаута соединения, а по таймауту
+            // поиск молча ответил бы «ничего не нашлось».
+            foreach (array_chunk(array_map('intval', $uids), self::CHUNK) as $part) {
+                $r = $conn->requestAndResponse('UID FETCH', [implode(',', $part), '(BODYSTRUCTURE)']);
+                $rows = $r->getResponse();
+                $flat = [];
+                array_walk_recursive($rows, function ($x) use (&$flat) {
+                    $flat[] = (string) $x;
+                });
+                // Ответ — несколько строк «* 37 FETCH (UID 2647 BODYSTRUCTURE (…))» подряд.
+                foreach (preg_split('/(?=\*\s+\d+\s+FETCH\s+\()/', implode(' ', $flat)) ?: [] as $chunk) {
+                    if (! preg_match('/UID\s+(\d+)/', $chunk, $m)) {
+                        continue;
+                    }
+                    $parts = self::parse($chunk);
+                    if ($parts !== null) {
+                        $out[(int) $m[1]] = $parts;
+                    }
+                }
+            }
         } catch (\Throwable) {
-            return [];
-        }
-        $out = [];
-        // Ответ — несколько строк «* 37 FETCH (UID 2647 BODYSTRUCTURE (…))» подряд.
-        foreach (preg_split('/(?=\*\s+\d+\s+FETCH\s+\()/', $joined) ?: [] as $chunk) {
-            if (! preg_match('/UID\s+(\d+)/', $chunk, $m)) {
-                continue;
-            }
-            $parts = self::parse($chunk);
-            if ($parts !== null) {
-                $out[(int) $m[1]] = $parts;
-            }
+            return $out;   // что успели разобрать — уже польза
         }
 
         return $out;
@@ -224,7 +232,13 @@ final class Structure
         $disposition = is_array($disp) ? strtolower((string) ($disp[0] ?? '')) : null;
         $dparams = is_array($disp) ? self::pairs($disp[1] ?? null) : [];
 
-        $name = self::name($dparams['filename'] ?? null) ?: self::name($params['name'] ?? null);
+        // Имя файла записывают по-разному: закодированным словом в «filename»/«name»
+        // или по RFC 2231 в «filename*» — там впереди стоит кодировка, а сам текст
+        // записан процентами («utf-8''%D0%9A…»).
+        $name = self::name($dparams['filename'] ?? null)
+            ?: self::name($params['name'] ?? null)
+            ?: self::rfc2231($dparams['filename*'] ?? null)
+            ?: self::rfc2231($params['name*'] ?? null);
 
         $out[] = [
             'no' => $prefix === '' ? '1' : $prefix,
@@ -262,10 +276,27 @@ final class Structure
         return $out;
     }
 
-    /** Имя файла из заголовка: оно приходит закодированным (=?UTF-8?B?…?=) или по RFC 2231. */
+    /** Имя файла из заголовка: оно приходит закодированным словом (=?UTF-8?B?…?=). */
     private static function name(?string $raw): string
     {
-        return $raw === null || $raw === '' ? '' : trim(Charset::header($raw));
+        return $raw === null || $raw === '' ? '' : trim((string) Charset::header($raw));
+    }
+
+    /** Имя по RFC 2231: «utf-8''%D0%9A%D0%B0…» — кодировка, язык и текст процентами. */
+    private static function rfc2231(?string $raw): string
+    {
+        if ($raw === null || $raw === '') {
+            return '';
+        }
+        $charset = 'UTF-8';
+        $value = $raw;
+        if (preg_match("/^([^']*)'[^']*'(.*)$/s", $raw, $m)) {
+            $charset = $m[1] !== '' ? $m[1] : 'UTF-8';
+            $value = $m[2];
+        }
+        $decoded = rawurldecode($value);
+
+        return trim((string) Charset::body($decoded, strcasecmp($charset, 'UTF-8') === 0 ? '' : $charset));
     }
 
     /**

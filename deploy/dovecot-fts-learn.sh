@@ -132,6 +132,10 @@ if [ -f "$REBUILD" ]; then
   fix_owner
 fi
 doveadm index -A -q '*' || true
+# Прогреваем кэш структур писем: по ним веб-почта показывает список вложений, ищет
+# по имени файла и открывает письмо, не скачивая его целиком. Без прогрева первый
+# такой запрос в большой папке занимает двадцать секунд, дальше — доли секунды.
+doveadm fetch -A 'imap.bodystructure' mailbox '*' all >/dev/null 2>&1 || true
 fix_owner
 EOF
 chmod 0755 /usr/local/sbin/mailadmin-index-nightly
