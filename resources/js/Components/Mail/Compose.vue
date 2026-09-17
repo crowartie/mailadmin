@@ -329,14 +329,14 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             <RecipientInput input-id="cmp-bcc" ref="bccInput" v-model="bcc" />
         </div>
         <div v-if="identities.length > 1" class="compose__row">
-            <label>От кого</label>
-            <select v-model="from">
+            <label for="cmp-from">От кого</label>
+            <select id="cmp-from" v-model="from">
                 <option v-for="i in identities" :key="i.mail" :value="i.mail">{{ i.shared ? `${i.mail} — общий ящик «${i.name}»` : i.mail }}</option>
             </select>
         </div>
         <div class="compose__row">
-            <label>Тема</label>
-            <input v-model="subject" placeholder="Тема письма" maxlength="998" aria-label="Тема письма" @keydown.enter.prevent="editor?.focus()">
+            <label for="cmp-subject">Тема</label>
+            <input id="cmp-subject" v-model="subject" placeholder="Тема письма" maxlength="998" @keydown.enter.prevent="editor?.focus()">
             <span v-if="priority" class="chip chip--warn">Важное</span>
                 <span v-if="receipt" class="chip">Уведомить о прочтении</span>
         </div>
@@ -374,7 +374,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                 <button class="btn btn--primary" type="button" :disabled="!canSend" :title="canSend ? 'Отправить (Ctrl+Enter)' : whyCannotSend" @click="send()">
                     <Icon name="send" :size="15" />Отправить
                 </button>
-                <button class="btn btn--primary" type="button" :title="canSend ? 'Отправить позже' : whyCannotSend" :disabled="!canSend" @click="openMenu('later', $event)">
+                <button class="btn btn--primary" type="button" aria-label="Отправить позже" :title="canSend ? 'Отправить позже' : whyCannotSend" :disabled="!canSend" @click="openMenu('later', $event)">
                     <Icon name="clock" :size="16" />
                 </button>
             </span>
