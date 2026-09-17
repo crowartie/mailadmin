@@ -22,6 +22,9 @@ class SearchQuery
     /** Имя файла из оператора «файл:» — отбор по нему делается после поиска (см. MailStore). */
     private ?string $file = null;
 
+    /** Просили «есть:вложение» — отбор тоже по структуре письма. */
+    private bool $hasFile = false;
+
     public function __construct(string $query)
     {
         $this->parse($query);
@@ -56,6 +59,12 @@ class SearchQuery
     public function fileName(): ?string
     {
         return $this->file;
+    }
+
+    /** Нужны ли только письма с вложениями («есть:вложение»). */
+    public function needsAttachment(): bool
+    {
+        return $this->hasFile || $this->file !== null;
     }
 
     public function apply(WhereQuery $q): WhereQuery
@@ -94,10 +103,10 @@ class SearchQuery
                     break;
                 case 'файл': case 'вложение': case 'file': case 'attachment':
                     // Имена файлов лежат в письме закодированными, поэтому обычный поиск
-                    // по тексту их не находит никогда. Отбор делается после поиска,
-                    // по структуре письма, — здесь только сужаем круг письмами с вложениями.
+                    // по тексту их не находит никогда. Отбор идёт после поиска — по
+                    // структуре письма (см. MailStore::keepWithFile).
                     $this->file = $value;
-                    $q->where('CUSTOM OR HEADER "Content-Type" "multipart/mixed" HEADER "Content-Disposition" "attachment"');
+                    $added--;   // сам по себе этот оператор условий серверу не добавляет
                     break;
                 case 'есть': case 'is': case 'has':
                     $v = mb_strtolower($value);
@@ -108,10 +117,11 @@ class SearchQuery
                     } elseif (in_array($v, ['непрочитанное', 'непрочитанные', 'unread', 'unseen'])) {
                         $q->whereUnseen();
                     } elseif (in_array($v, ['вложение', 'вложения', 'attachment', 'attachments'])) {
-                        // multipart/mixed видит не все письма: у Outlook вложение бывает внутри
-                        // связанной части. Ищем по признаку самого вложения.
-                        // CUSTOM — способ библиотеки пропустить критерий как есть, без проверки по списку.
-                        $q->where('CUSTOM OR HEADER "Content-Type" "multipart/mixed" HEADER "Content-Disposition" "attachment"');
+                        // Поиск по заголовкам при включённом полнотекстовом индексе не находит
+                        // ничего — проверено на боевом сервере: ноль писем в папке, где вложения
+                        // есть у сотен. Отбираем по структуре письма, как и «файл:».
+                        $this->hasFile = true;
+                        $added--;
                     } elseif (in_array($v, ['ответ', 'answered'])) {
                         $q->whereAnswered();
                     }

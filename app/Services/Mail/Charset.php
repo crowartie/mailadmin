@@ -49,8 +49,8 @@ final class Charset
         if ($charset !== '') {
             $name = self::charsetName($charset);
             if (strcasecmp($name, 'UTF-8') !== 0) {
-                $c = @mb_convert_encoding($raw, 'UTF-8', $name);
-                if (is_string($c) && $c !== '') {
+                $c = self::convert($raw, 'UTF-8', $name);
+                if ($c !== null) {
                     return (string) self::fix($c);
                 }
             }
@@ -83,7 +83,7 @@ final class Charset
                 }
                 $decoded = rawurldecode($joined);
                 if (strcasecmp($charset, 'UTF-8') !== 0) {
-                    $decoded = @mb_convert_encoding($decoded, 'UTF-8', $charset) ?: $decoded;
+                    $decoded = self::convert($decoded, 'UTF-8', $charset) ?? $decoded;
                 }
                 if (str_contains($decoded, '=?')) {
                     // РЖД и некоторые роботы режут encoded-word на куски filename*0=/filename*1= — после склейки его ещё надо раскодировать.
@@ -117,6 +117,22 @@ final class Charset
         return null;
     }
 
+    /**
+     * Перекодировать, не полагаясь на удачу: в PHP 8 mb_convert_encoding с незнакомым
+     * именем кодировки бросает ValueError, а «собака» его не гасит. Письмо из корейского
+     * Outlook («ks_c_5601-1987») роняло показ целиком.
+     */
+    private static function convert(string $s, string $to, string $from): ?string
+    {
+        try {
+            $out = mb_convert_encoding($s, $to, $from);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_string($out) && $out !== '' ? $out : null;
+    }
+
     /** Привести написание кодировки к тому, что понимают iconv и mbstring. */
     private static function charsetName(string $name): string
     {
@@ -146,9 +162,9 @@ final class Charset
             if ($raw === '') {
                 return $m[0];
             }
-            $out = @mb_convert_encoding($raw, 'UTF-8', $charset);
+            $out = self::convert($raw, 'UTF-8', $charset);
 
-            return is_string($out) && $out !== '' ? $out : (self::fix($raw) ?? $m[0]);
+            return $out ?? (self::fix($raw) ?? $m[0]);
         }, $s);
     }
 
@@ -191,7 +207,7 @@ final class Charset
             mb_substitute_character(0xFFFD);
             try {
                 foreach (['UTF-8', 'Windows-1251', 'KOI8-R', 'CP866', 'ISO-8859-5', 'Windows-1252', 'ISO-8859-1'] as $table) {
-                    $try = @mb_convert_encoding($s, 'UTF-8', $table);
+                    $try = self::convert($s, 'UTF-8', $table);
                     if (! is_string($try) || $try === '' || ! mb_check_encoding($try, 'UTF-8')) {
                         continue;
                     }
@@ -205,7 +221,7 @@ final class Charset
                 mb_substitute_character($prev);
             }
 
-            return $best ?? mb_convert_encoding($s, 'UTF-8', 'Windows-1251');
+            return $best ?? self::convert($s, 'UTF-8', 'Windows-1251') ?? $s;
         }
 
         // Строка уже правильный UTF-8, но может быть «кракозяброй»: кириллица, прочитанная
@@ -222,7 +238,7 @@ final class Charset
         $run = '/[\x{0080}-\x{024F}\x{0192}\x{02C6}\x{2013}\x{2014}\x{2018}-\x{201E}\x{2020}-\x{2022}\x{2026}\x{2030}\x{2039}\x{203A}\x{20AC}\x{2122}\x{0160}\x{0161}\x{0178}\x{017D}\x{017E}\x{0152}\x{0153}]{2,}/u';
         $fixed = preg_replace_callback($run, function ($m) {
             foreach (['Windows-1252', 'ISO-8859-1', 'ISO-8859-2', 'ISO-8859-4', 'ISO-8859-10'] as $table) {
-                $back = @mb_convert_encoding($m[0], $table, 'UTF-8');
+                $back = self::convert($m[0], $table, 'UTF-8');
                 if (is_string($back) && $back !== '' && mb_check_encoding($back, 'UTF-8')
                     && preg_match('/[\x{0400}-\x{04FF}]/u', $back)) {
                     return $back;

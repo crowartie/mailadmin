@@ -318,10 +318,12 @@ class MailStore
         $q = $this->applyFilter($q, $filter);
         $searching = $query !== null && trim($query) !== '';
         $byFile = null;
+        $needAttachment = false;
         if ($searching) {
             $sq = new SearchQuery($query);
             $q = $sq->apply($q);
             $byFile = $sq->fileName();
+            $needAttachment = $sq->needsAttachment();
         }
         if (! $searching && $filter === 'all') {
             $q->all();
@@ -331,9 +333,9 @@ class MailStore
         // Порядок писем задаёт дата письма, а не внутренний номер: письмо, перенесённое в папку
         // сегодня, получает самый большой номер и без сортировки встаёт наверх, даже если ему два года.
         $sorted = $this->sortedUids($searching || $filter !== 'all' ? $q : null, $path, $sort);
-        if ($sorted !== null && $byFile !== null) {
-            // Отбор по имени файла делается после поиска, значит и после сортировки:
-            // сервер о именах вложений ничего не знает.
+        if ($sorted !== null && $needAttachment) {
+            // Отбор по вложениям делается после поиска, значит и после сортировки:
+            // сервер о вложениях и их именах по заголовкам ничего не отвечает.
             $sorted = $this->keepWithFile($path, $sorted, $byFile);
         }
         if ($sorted !== null) {
@@ -371,7 +373,7 @@ class MailStore
             // тянула и разбирала заголовки всех найденных писем (сотни непрочитанных — секунды).
             $uids = $this->searchUids($q, $path, $searching);
             rsort($uids);
-            if ($byFile !== null) {
+            if ($needAttachment) {
                 $uids = $this->keepWithFile($path, $uids, $byFile);
             }
             $total = count($uids);
@@ -542,7 +544,7 @@ class MailStore
      * @param  int[]  $uids
      * @return int[]
      */
-    private function keepWithFile(string $path, array $uids, string $needle): array
+    private function keepWithFile(string $path, array $uids, ?string $needle): array
     {
         if (! $uids) {
             return [];
@@ -550,11 +552,16 @@ class MailStore
         // Больше полутора тысяч писем разом смотреть незачем: это уже не поиск,
         // а перебор ящика. Берём самые свежие — список и так отсортирован от новых.
         $slice = array_slice($uids, 0, 1500);
-        $need = mb_strtolower(trim($needle));
+        $need = $needle === null ? null : mb_strtolower(trim($needle));
         $out = [];
         foreach (Structure::many($this->client, $path, $slice) as $uid => $parts) {
             foreach (Structure::attachments($parts) as $a) {
-                if ($a['name'] !== '' && str_contains(mb_strtolower($a['name']), $need)) {
+                // Картинка из текста письма вложением не считается: иначе «есть:вложение»
+                // находило бы каждое письмо с логотипом в подписи.
+                if ($a['disposition'] === 'inline' && $a['id'] !== '') {
+                    continue;
+                }
+                if ($need === null || ($a['name'] !== '' && str_contains(mb_strtolower($a['name']), $need))) {
                     $out[] = (int) $uid;
                     break;
                 }
