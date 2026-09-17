@@ -51,6 +51,6 @@ class SearchQueryTest extends TestCase
     /** Запрос библиотеки нам нужен только как приёмник условий — работаем без сервера. */
     private function emptyQuery(): \Webklex\PHPIMAP\Query\WhereQuery
     {
-        return new \Webklex\PHPIMAP\Query\WhereQuery(new \Webklex\PHPIMAP\Client());
+        return new \Webklex\PHPIMAP\Query\WhereQuery(new \Webklex\PHPIMAP\Client(\Webklex\PHPIMAP\Config::make()));
     }
 }
