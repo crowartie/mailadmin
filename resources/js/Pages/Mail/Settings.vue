@@ -95,7 +95,7 @@ async function applyRules() {
 }
 const FIELDS = { from: 'Отправитель', to: 'Получатель', recipient: 'Кому или копия', subject: 'Тема', body: 'Текст письма', header: 'Заголовок', size: 'Размер, КБ' };
 const OPS = { contains: 'содержит', not_contains: 'не содержит', is: 'равно', starts: 'начинается с', ends: 'заканчивается на', over: 'больше', under: 'меньше' };
-const ACTIONS = { move: 'Переместить в папку', copy: 'Копию в папку', label: 'Поставить метку', flag: 'Флажок', seen: 'Пометить прочитанным', forward: 'Переслать на адрес', forward_copy: 'Переслать копию на адрес', discard: 'Удалить', reply: 'Ответить текстом', stop: 'Остановить обработку' };
+const ACTIONS = { move: 'Переместить в папку', copy: 'Копию в папку', label: 'Поставить метку', flag: 'Флажок', seen: 'Пометить прочитанным', forward: 'Переслать на адрес', forward_copy: 'Переслать копию на адрес', discard: 'Уничтожить письмо (без «Корзины»)', reply: 'Ответить текстом', stop: 'Остановить обработку' };
 
 function newRule() {
     editing.value = { id: Date.now(), name: '', enabled: true, match: 'all', stop: false, conditions: [{ field: 'from', op: 'contains', value: '' }], actions: [{ type: 'move', value: '' }] };
@@ -128,7 +128,10 @@ function saveRule() {
     pushRules();
 }
 function removeRule(id) {
-    rules.value = rules.value.filter((r) => r.id !== id);
+    const r = rules.value.find((x) => x.id === id);
+    const name = r?.name ? `«${r.name}»` : 'правило';
+    if (!window.confirm(`Удалить ${name}? Восстановить его будет нельзя.`)) return;
+    rules.value = rules.value.filter((x) => x.id !== id);
     pushRules();
 }
 function moveRule(i, d) {

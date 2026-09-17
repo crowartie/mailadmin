@@ -47,7 +47,7 @@ plugin {
   fts = xapian
   # lowmemory: плагин смотрит на MemFree (не MemAvailable); при заполненном страничном кэше MemFree всегда мал,
   # и с порогом по умолчанию (250 МБ) индексатор сбрасывает базу после каждых нескольких писем — в десятки раз медленнее.
-  fts_xapian = partial=3 full=20 verbose=0 lowmemory=32
+  fts_xapian = partial=2 full=20 verbose=0 lowmemory=32
   fts_autoindex = yes
   # body: полнотекстовый индекс обязателен только для поиска по телу. Иначе любой IMAP SEARCH по заголовкам
   # (цепочка ответов при открытии письма) сначала достраивает индекс всей папки — минуты на большом ящике.
@@ -75,6 +75,14 @@ grep -q "mail_always_cache_fields" "$CONF" || printf '\n# mailadmin: загол�
 grep -q "mailadmin: indexer-worker" "$CONF" || printf '\n# mailadmin: indexer-worker — по числу ядер и с памятью под xapian\nservice indexer-worker {\n  process_limit = %s\n  vsz_limit = 2G\n}\n' "$(nproc)" >> "$CONF"
 # Старые установки: дописываем lowmemory, если блок fts уже был создан раньше
 grep -q 'lowmemory=' "$CONF" || sed -i 's/^\(\s*fts_xapian = partial=3 full=20 verbose=0\)$/\1 lowmemory=32/' "$CONF"
+# Уже установленные серверы: слова короче трёх букв в индекс не попадали, и поиск «тема:БП»
+# не находил письма с такой темой. Понижаем порог и просим ночную задачу пересобрать индекс.
+if grep -q 'fts_xapian = partial=3' "$CONF"; then
+  sed -i 's/fts_xapian = partial=3/fts_xapian = partial=2/' "$CONF"
+  install -d -m 0755 /var/lib/mailadmin
+  date > /var/lib/mailadmin/fts-rebuild-requested
+  echo 'fts: порог слова снижен до 2 букв, пересборка индекса — ночью'
+fi
 # Старые установки: fts_enforced = no → body (см. выше)
 sed -i 's/^\(\s*\)fts_enforced = no$/\1fts_enforced = body/' "$CONF"
 # Папка «Рассылки» (Newsletters) у всех сразу, как Junk: общие правила кладут туда хлам-не-спам, и сотрудник должен
@@ -102,8 +110,25 @@ After=dovecot.service
 Type=oneshot
 Nice=15
 IOSchedulingClass=idle
-ExecStart=/usr/bin/doveadm index -A -q '*'
+ExecStart=/usr/local/sbin/mailadmin-index-nightly
 EOF
+# Обёртка: обычно просто доиндексация, но если запрошена пересборка (сменился порог слова) —
+# сначала сброс индексов. Полная пересборка на HDD идёт часами, поэтому только ночью и один раз.
+cat > /usr/local/sbin/mailadmin-index-nightly <<'EOF'
+#!/bin/sh
+# Ночная доиндексация почты. Запускается таймером mailadmin-index-nightly.timer.
+set -e
+REBUILD=/var/lib/mailadmin/fts-rebuild-requested
+if [ -f "$REBUILD" ]; then
+  echo "пересборка поискового индекса (сменился порог длины слова)"
+  doveadm fts rescan -A || true
+  rm -f "$REBUILD"
+fi
+doveadm index -A -q '*' || true
+# doveadm под root создаёт индексы root-ом — вернуть владельца, иначе IMAP не откроет индекс
+find /var/vmail -type d -name xapian-indexes -exec chown -R vmail:vmail {} + 2>/dev/null || true
+EOF
+chmod 0755 /usr/local/sbin/mailadmin-index-nightly
 cat > /etc/systemd/system/mailadmin-index-nightly.timer <<'EOF'
 [Unit]
 Description=mailadmin: ночная доиндексация почты в 21:00

@@ -988,6 +988,8 @@ class MailStore
             'text' => $text,
             'to' => $this->addresses($message->getTo()),
             'cc' => $this->addresses($message->getCc()),
+            // Скрытая копия нужна, чтобы черновик открывался тем же письмом, каким его сохранили.
+            'bcc' => $this->addresses($message->getBcc()),
             'replyTo' => $this->addresses($message->getReplyTo()),
             'inReplyTo' => $inReplyTo,
             'references' => $refs,
@@ -1230,6 +1232,18 @@ class MailStore
         }
 
         return ($raw !== '' ? Charset::attachmentName($raw) : null) ?: Charset::header($a->getName()) ?: $fallback;
+    }
+
+    /** Только заголовки письма, без тела: нужны, чтобы восстановить отметки черновика. */
+    public function rawHeaders(string $path, int $uid): string
+    {
+        try {
+            $message = $this->folder($path)->query()->setFetchBody(false)->getMessageByUid($uid);
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return $message ? (string) $message->getHeader()?->raw : '';
     }
 
     public function raw(string $path, int $uid): string

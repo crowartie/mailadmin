@@ -87,7 +87,9 @@ function onKey(e) {
     if (e.key === 'ArrowUp' && sugg.value.length) { e.preventDefault(); active.value = (active.value - 1 + sugg.value.length) % sugg.value.length; return; }
     if ((e.key === 'Enter' || e.key === 'Tab' || e.key === ',' || e.key === ';') && (text.value.trim() || sugg.value.length)) {
         if (e.key !== 'Tab' || text.value.trim()) e.preventDefault();
-        if (sugg.value.length && (e.key === 'Enter' || e.key === 'Tab')) pick(sugg.value[active.value]);
+        // Набран готовый адрес — берём именно его: раньше Enter подставлял подсвеченную
+        // подсказку, и письмо уходило другому человеку с похожим адресом.
+        if (sugg.value.length && (e.key === 'Enter' || e.key === 'Tab') && !EMAIL.test(text.value.trim())) pick(sugg.value[active.value]);
         else commit();
         return;
     }
@@ -126,7 +128,13 @@ function onPaste(e) {
     }
 }
 
-defineExpose({ focus: () => input.value?.focus() });
+/** Превратить набранный текст в фишку прямо сейчас: окно письма зовёт это перед отправкой,
+ *  иначе клик по «Отправить» сразу после набора адреса терял последнего получателя. */
+function flush() {
+    if (text.value.trim()) commit();
+}
+
+defineExpose({ focus: () => input.value?.focus(), flush });
 </script>
 
 <template>

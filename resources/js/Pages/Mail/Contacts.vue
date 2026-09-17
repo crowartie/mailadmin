@@ -336,7 +336,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             <span class="mrow__av" :class="{ 'mrow__av--emp': r.contact.employee }">{{ initials(r.contact.fn, r.contact.email) }}</span>
                             <span class="mrow__body">
                                 <span class="mrow__from"><b>{{ r.contact.fn }}</b><Icon v-if="r.contact.favorite" name="star" :size="13" style="color: var(--warn)" /></span>
-                                <span class="mrow__prev">{{ [r.contact.title, r.contact.org].filter(Boolean).join(' · ') || r.contact.email || (r.contact.phones && r.contact.phones[0] && r.contact.phones[0].value) || '—' }}</span>
+                                <span class="mrow__prev">{{ r.contact.email || (r.contact.phones && r.contact.phones[0] && r.contact.phones[0].value) || [r.contact.title, r.contact.org].filter(Boolean).join(' · ') || '—' }}</span>
                             </span>
                             <span class="mrow__when"><span class="crow__book">{{ r.contact.book === 'personal' ? '' : r.contact.bookName }}</span></span>
                         </div>

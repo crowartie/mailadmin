@@ -111,7 +111,9 @@ async function poll() {
         if (lastUidnext !== null && st.folder.uidnext > lastUidnext) {
             const prev = lastUidnext;
             await load(list.value.page, true);
-            const fresh = (list.value.messages || []).filter((m) => m.uid >= prev && m.unread);
+            // Сервер отдаёт признак «прочитано» (seen); поля unread в ответе нет никогда,
+            // поэтому список новых всегда получался пустым и уведомления не приходили.
+            const fresh = (list.value.messages || []).filter((m) => m.uid >= prev && !m.seen);
             fresh.slice(0, 3).forEach((m) => notify(m.from?.name || m.from?.mail || 'Новое письмо', m.subject || '(без темы)', 'mail-' + m.uid, () => openMessage(m.uid)));
             if (fresh.length > 3) notify('Новые письма', `и ещё ${fresh.length - 3}`, 'mail-more');
         }
@@ -401,6 +403,12 @@ function snooze(at) {
     act('snooze', uids, { until: at.toISOString() });
 }
 const customSnooze = ref('');
+// Нижняя граница для «Отложить до…»: раньше можно было выбрать прошедшее время,
+// и письмо возвращалось сразу же или не возвращалось вовсе.
+const nowInput = computed(() => {
+    const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+    return d.toISOString().slice(0, 16);
+});
 
 // Смена папки отложенное действие не выполняет досрочно: таймер идёт дальше, «Отменить» работает и из другой папки
 // (сервер ещё ничего не делал, папка действия запомнена в pendingAct).
@@ -526,7 +534,7 @@ async function openThen(mode) {
 async function openDraft(uid) {
     try {
         const d = await api.openDraft(uid);
-        compose.value = { mode: 'draft', ...d, to: parseList(d.to), cc: parseList(d.cc), bcc: [], keepAttachments: d.attachments?.length > 0, sourceFolder: rolePath('drafts'), sourceUid: uid };
+        compose.value = { mode: 'draft', ...d, to: parseList(d.to), cc: parseList(d.cc), bcc: parseList(d.bcc), keepAttachments: d.attachments?.length > 0, sourceFolder: rolePath('drafts'), sourceUid: uid };
         mobileRead.value = true;
     } catch (e) { fail(e); }
 }
@@ -698,7 +706,7 @@ function onKey(e) {
         case 's': if (row) act(row.flagged ? 'unflag' : 'flag', target); break;
         case 'i': if (row) act(row.seen ? 'unseen' : 'seen', target); break;
         case '!': act('spam', target); break;
-        case 'r': if (open.value) startCompose('reply', open.value); break;
+        case 'r': if (open.value) startCompose(settings.value.reply_all ? 'replyAll' : 'reply', open.value); break;
         case 'a': if (open.value) startCompose('replyAll', open.value); break;
         case 'f': if (open.value) startCompose('forward', open.value); break;
         case 'c': startCompose('new'); break;
@@ -860,7 +868,7 @@ onBeforeUnmount(() => {
             <button v-for="p in presets()" :key="p.label" class="pop__item" type="button" @click="snooze(p.at)">{{ p.label }}<span class="k">{{ p.sub }}</span></button>
             <div class="pop__sep" />
             <div class="pop__form">
-                <input v-model="customSnooze" class="input" type="datetime-local" style="height: 34px">
+                <input v-model="customSnooze" class="input" type="datetime-local" :min="nowInput" style="height: 34px">
                 <button class="btn btn--sm" type="button" :disabled="!customSnooze" @click="snooze(new Date(customSnooze))">Ок</button>
             </div>
         </Popover>

@@ -101,10 +101,22 @@ class ComposeController extends Controller
         $store = new MailStore($imap->client());
         $m = $store->message($store->rolePath('drafts'), $uid, false);
 
+        // Отметки письма лежат в заголовках: без них черновик открывался обычным письмом
+        // с личного адреса, и сотрудник каждый раз выставлял всё заново.
+        $head = '';
+        try {
+            $head = (string) $store->rawHeaders($store->rolePath('drafts'), $uid);
+        } catch (\Throwable) {
+        }
+
         return response()->json([
             'draftUid' => $uid,
+            'from' => $m['from']['mail'] ?? null,
             'to' => $this->join($m['to']),
             'cc' => $this->join($m['cc']),
+            'bcc' => $this->join($m['bcc'] ?? []),
+            'priority' => (bool) preg_match('/^X-Priority:\s*[12]\b/mi', $head),
+            'receipt' => (bool) preg_match('/^Disposition-Notification-To:/mi', $head),
             'subject' => $m['subject'] === '(без темы)' ? '' : $m['subject'],
             'html' => $m['html'] ?? nl2br(e((string) $m['text'])),
             'inReplyTo' => $m['inReplyTo'],

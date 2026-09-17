@@ -31,8 +31,8 @@ const files = ref([]);
 const existing = ref(c.attachments || []);
 const keepAttachments = ref(c.keepAttachments ?? (c.mode === 'forward'));
 const draftUid = ref(c.draftUid || null);
-const priority = ref(false);
-const receipt = ref(false);
+const priority = ref(!!c.priority);
+const receipt = ref(!!c.receipt);
 const remindDays = ref(0);
 const menu = ref(null); // 'later' | 'more' | 'remind'
 const menuAt = ref({ x: 0, y: 0 });
@@ -42,6 +42,14 @@ const status = ref('');
 const drop = ref(false);
 const editor = ref(null);
 const toInput = ref(null);
+const ccInput = ref(null);
+const bccInput = ref(null);
+/** Дописать в фишки то, что набрано, но ещё не подтверждено Enter. */
+function flushRecipients() {
+    toInput.value?.flush();
+    ccInput.value?.flush();
+    bccInput.value?.flush();
+}
 const fileInput = ref(null);
 let autosave = null;
 
@@ -61,7 +69,10 @@ const viaCloud = ref(new Set());   // индексы файлов, которы�
 const cloudCount = computed(() => viaCloud.value.size);
 function toggleCloud(i) { const s = new Set(viaCloud.value); s.has(i) ? s.delete(i) : s.add(i); viaCloud.value = s; dirty.value = true; }
 const totalSize = computed(() => files.value.reduce((s, f) => s + f.size, 0));
-const canSend = computed(() => (to.value.length + cc.value.length + bcc.value.length) > 0 && !to.value.some((a) => a.bad));
+// Проверяем все три поля: опечатка в «Копии» проходила клиентскую проверку и падала на сервере
+// уже после нажатия «Отправить».
+const canSend = computed(() => (to.value.length + cc.value.length + bcc.value.length) > 0
+    && ![...to.value, ...cc.value, ...bcc.value].some((a) => a.bad));
 
 function payload(extra = {}) {
     return {
@@ -88,6 +99,7 @@ function payload(extra = {}) {
 }
 
 function send(sendAt = null) {
+    flushRecipients();
     if (!canSend.value) {
         emit('toast', { text: 'Укажите получателя', error: true });
         toInput.value?.focus();
@@ -130,6 +142,14 @@ function worthSaving() {
     box.querySelectorAll('div.sig, blockquote').forEach((n) => n.remove());
     if (box.querySelector('img')) return true;        // письмо из одного вставленного снимка
     return box.textContent.replace(/\u00a0/g, ' ').trim() !== '';
+}
+
+/** Удалить черновик и закрыть окно — действие необратимое, поэтому спрашиваем. */
+function discard() {
+    const something = to.value.length || subject.value.trim() || files.value.length
+        || (html.value || '').replace(/<[^>]+>/g, '').trim();
+    if (something && !window.confirm('Удалить письмо вместе с черновиком? Восстановить его будет нельзя.')) return;
+    emit('close', { discard: true, draftUid: draftUid.value });
 }
 
 function close() {
@@ -239,11 +259,11 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         </div>
         <div v-if="showCc" class="compose__row">
             <label>Копия</label>
-            <RecipientInput v-model="cc" />
+            <RecipientInput ref="ccInput" v-model="cc" />
         </div>
         <div v-if="showBcc" class="compose__row">
             <label>Скрытая</label>
-            <RecipientInput v-model="bcc" />
+            <RecipientInput ref="bccInput" v-model="bcc" />
         </div>
         <div v-if="identities.length > 1" class="compose__row">
             <label>От кого</label>
@@ -303,7 +323,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             <span class="grow" />
             <span class="status">{{ status }}</span>
             <button class="ib" type="button" title="Сохранить черновик (Ctrl+S)" @click="saveDraft()"><Icon name="edit" :size="16" /></button>
-            <button class="ib ib--danger" type="button" title="Удалить черновик и закрыть" @click="dirty = false; $emit('close', { discard: true, draftUid })"><Icon name="trash" :size="16" /></button>
+            <button class="ib ib--danger" type="button" title="Удалить черновик и закрыть" @click="discard"><Icon name="trash" :size="16" /></button>
         </div>
 
         <Popover v-if="menu === 'later'" :x="menuAt.x" :y="menuAt.y - 250" @close="menu = null">
