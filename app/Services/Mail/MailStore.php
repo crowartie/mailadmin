@@ -528,14 +528,20 @@ class MailStore
             return null;
         }
 
+        // Ответ сервера: строка «SORT 119 118 117 …» и следом завершающая строка вида «OK Sort completed».
+        // Берём только строку результата, остальные пропускаем.
         $uids = [];
         foreach ($lines as $line) {
-            $parts = is_array($line) ? $line : preg_split('/\s+/', (string) $line, -1, PREG_SPLIT_NO_EMPTY);
-            foreach ((array) $parts as $p) {
+            $parts = array_values(array_filter(
+                is_array($line) ? $line : preg_split('/\s+/', (string) $line, -1, PREG_SPLIT_NO_EMPTY),
+                'is_scalar'
+            ));
+            if (! $parts || (! is_numeric($parts[0]) && strcasecmp((string) $parts[0], 'SORT') !== 0)) {
+                continue;
+            }
+            foreach ($parts as $p) {
                 if (is_numeric($p)) {
                     $uids[] = (int) $p;
-                } elseif (is_string($p) && strcasecmp($p, 'SORT') !== 0) {
-                    return null; // неожиданное слово в ответе — лучше откатиться к прежнему порядку
                 }
             }
         }
