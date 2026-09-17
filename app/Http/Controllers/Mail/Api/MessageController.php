@@ -19,6 +19,7 @@ class MessageController extends Controller
             'filter' => ['nullable', 'string', 'max:64'],
             'q' => ['nullable', 'string', 'max:500'],
             'sort' => ['nullable', 'string', 'in:date,date-asc,from,subject,size'],
+            'folders' => ['nullable', 'in:0,1'],
         ]);
         $store = new MailStore($imap->client());
         $list = $store->list(
@@ -28,7 +29,11 @@ class MessageController extends Controller
             $request->query('q'),
             (string) $request->query('sort', 'date'),
         );
-        $list['folders'] = $store->folders();
+        // Каждый такой вызов делает STATUS по каждой папке ящика: на тихой перезагрузке
+        // счётчики не нужны — их приносит отдельный опрос состояния.
+        if ($request->query('folders') !== '0') {
+            $list['folders'] = $store->folders();
+        }
 
         return response()->json($list);
     }

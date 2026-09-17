@@ -182,11 +182,13 @@ async function poll() {
 async function load(page = 1, keepOpen = false, silent = false) {
     if (!silent) loading.value = true;
     try {
-        const r = await api.list(folder.value, { page, filter: filter.value, q: query.value, sort: sort.value });
+        // Тихая перезагрузка (после действия, по приходу почты) счётчики папок не запрашивает:
+        // их приносит отдельный опрос состояния.
+        const r = await api.list(folder.value, { page, filter: filter.value, q: query.value, sort: sort.value, folders: !silent });
         // Страница оказалась за концом списка (удалили всё на последней) — показать последнюю существующую.
         if (!r.messages.length && r.page > 1 && r.pages < r.page) return load(Math.max(1, r.pages), keepOpen, silent);
         list.value = { messages: r.messages, total: r.total, page: r.page, pages: r.pages };
-        folders.value = r.folders;
+        if (r.folders) folders.value = r.folders;
         if (!silent) selected.value = [];
         if (!keepOpen) { open.value = null; cursor.value = null; }
         syncUrl();
