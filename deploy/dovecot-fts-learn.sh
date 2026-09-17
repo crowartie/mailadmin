@@ -118,15 +118,21 @@ cat > /usr/local/sbin/mailadmin-index-nightly <<'EOF'
 #!/bin/sh
 # Ночная доиндексация почты. Запускается таймером mailadmin-index-nightly.timer.
 set -e
+# doveadm под root создаёт файлы индекса от root, и Dovecot (он работает от vmail) потом
+# не может их открыть: «Can not open RO index … Permission denied». А при fts_enforced=body
+# поиск в такой папке не просто не находит — он падает целиком, и человек видит пустой
+# результат. Возвращаем владельца и до работы, и после неё.
+fix_owner() { find /var/vmail -type d -name xapian-indexes -exec chown -R vmail:vmail {} + 2>/dev/null || true; }
+fix_owner
 REBUILD=/var/lib/mailadmin/fts-rebuild-requested
 if [ -f "$REBUILD" ]; then
   echo "пересборка поискового индекса (сменился порог длины слова)"
   doveadm fts rescan -A || true
   rm -f "$REBUILD"
+  fix_owner
 fi
 doveadm index -A -q '*' || true
-# doveadm под root создаёт индексы root-ом — вернуть владельца, иначе IMAP не откроет индекс
-find /var/vmail -type d -name xapian-indexes -exec chown -R vmail:vmail {} + 2>/dev/null || true
+fix_owner
 EOF
 chmod 0755 /usr/local/sbin/mailadmin-index-nightly
 cat > /etc/systemd/system/mailadmin-index-nightly.timer <<'EOF'
@@ -189,3 +195,11 @@ if [ ! -f /var/vmail/sieve/mailadmin-global.sieve ]; then
   sievec /var/vmail/sieve/mailadmin-global.sieve; chown vmail:vmail /var/vmail/sieve/mailadmin-global.svbin
 fi
 grep -q "^\s*sieve_before2" "$CONF" || sed -i -E 's|^(\s*)sieve_before = /var/vmail/sieve/dovecot.sieve|&\n\1sieve_before2 = /var/vmail/sieve/mailadmin-global.sieve|' "$CONF"
+
+# Индексы, созданные под root, Dovecot открыть не может — поиск в такой папке падает целиком.
+# Проверяем и чиним при каждой выкатке, не дожидаясь ночного запуска.
+BAD=$(find /var/vmail -path '*/xapian-indexes/*' ! -user vmail 2>/dev/null | wc -l)
+if [ "$BAD" -gt 0 ]; then
+  echo "поисковый индекс: файлов с чужим владельцем — $BAD, исправляю"
+  find /var/vmail -type d -name xapian-indexes -exec chown -R vmail:vmail {} + 2>/dev/null || true
+fi
