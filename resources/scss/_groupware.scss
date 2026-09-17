@@ -142,9 +142,12 @@
 .cal__col { position: relative; border-left: 1px solid v.$c-border; cursor: cell; &--weekend { background: v.$c-surface-2; } &--today { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); } }
 .cal__line { position: absolute; left: 0; right: 0; height: 1px; background: v.$c-border; opacity: .7; }
 .cal__now { position: absolute; left: 0; right: 0; height: 2px; background: v.$c-no; z-index: 3; &::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: v.$c-no; } }
+// 247: высота часа задана жёстко, и при увеличенном шрифте название срезалось
+// по нижнему краю. Название прижимаем к верху и обрезаем строкой, а не по высоте блока.
 .cal__ev {
     position: absolute; z-index: 2; border: none; border-left: 3px solid; border-radius: 6px; padding: 3px 6px; text-align: left; cursor: pointer;
     font: inherit; font-size: 12px; line-height: 1.25; overflow: hidden; display: flex; flex-direction: column; gap: 1px;
+    justify-content: flex-start;
     b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     span { font-size: 11px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     &:hover { filter: brightness(.96); z-index: 4; }
@@ -168,6 +171,8 @@
 .cal__agenda { flex: 1; overflow-y: auto; padding: 16px 24px 40px; }
 .cal__agenda-day { display: grid; grid-template-columns: minmax(140px, max-content) minmax(0, 1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid v.$c-border; align-items: start; }
 .cal__agenda-head { display: flex; align-items: baseline; gap: 8px; b { font-size: 22px; font-weight: 700; } span { font-size: 12.5px; color: v.$c-muted; } &--today b { color: v.$c-accent-ink; } }
+// 245: в узкой колонке подпись «весь день» ломалась на две строки и обрезалась.
+.cal__agenda-time { white-space: nowrap; flex: 0 0 auto; }
 .cal__agenda-ev {
     display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: none; background: v.$c-surface; border-left: 3px solid var(--c); border-radius: 8px;
     padding: 8px 12px; margin-bottom: 6px; font: inherit; cursor: pointer;
@@ -223,7 +228,10 @@
     .cal__ev { padding: 2px 3px; font-size: 10.5px; }
     .cal__side .mread__scroll { padding: 12px 14px; }
     .cal__main { width: 100%; }
-    .cal__side { position: fixed; inset: 0; width: 100%; flex-basis: auto; z-index: 85; }
+    // 248: кнопки «Сохранить» и «Удалить» прижимались к самому низу и попадали
+    // под системный индикатор iPhone.
+    .cal__side { position: fixed; inset: 0; width: 100%; flex-basis: auto; z-index: 85; padding-bottom: env(safe-area-inset-bottom); }
+    .cal__form-foot { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
     .cal__heading { font-size: 14px; }
     .cform__names { grid-template-columns: 1fr; }
     .cal .fab { display: none; }

@@ -104,12 +104,31 @@ async function load() {
         events.value = list.map((e) => ({ ...e, s: e.allDay ? parseDay(e.start) : new Date(e.start), e: e.allDay ? parseDay(e.end) : new Date(e.end) }));
     } catch (e) { fail(e); } finally { loading.value = false; }
 }
+/** Обновить события и список календарей по кнопке. */
+async function refresh() {
+    await Promise.all([load(), reloadCalendars(), loadTasks()]);
+}
 async function reloadCalendars() {
     try { calendars.value = await api.calendars(); } catch (e) { fail(e); }
 }
 watch([view, anchor], () => { localStorage.setItem('cal.view', view.value); load(); });
+// Тихое обновление раз в пять минут: новые приглашения и чужие правки должны появляться
+// сами, как в списке писем. Форму и открытое событие не трогаем.
+let calTimer = null;
+onMounted(() => {
+    calTimer = setInterval(() => {
+        if (document.hidden || editing.value || dialog.value) return;
+        load();
+    }, 300000);
+});
+onBeforeUnmount(() => clearInterval(calTimer));
 
 const visibleEvents = computed(() => events.value.filter((e) => !hidden.value.has(e.calendar)));
+/** Щелчок по строке календаря: по значку «…» — меню, иначе показать или скрыть календарь. */
+function calClick(e, c) {
+    if (e.target?.closest?.('.mnav__dots')) { calMenu(e, c); return; }
+    toggleCal(c.uri);
+}
 function toggleCal(uri) {
     if (hidden.value.has(uri)) hidden.value.delete(uri); else hidden.value.add(uri);
     hidden.value = new Set(hidden.value);
@@ -171,7 +190,21 @@ function monthCell(d) {
 }
 const agendaGroups = computed(() => {
     const m = new Map();
-    visibleEvents.value.forEach((e) => { const k = ymd(e.s); if (!m.has(k)) m.set(k, []); m.get(k).push(e); });
+    const from = day0(range.value.from);
+    const to = day0(range.value.to);
+    // Раньше событие попадало только в день своего начала: командировка с понедельника
+    // по пятницу в повестке была видна один раз, в понедельник.
+    visibleEvents.value.forEach((e) => {
+        let d = day0(e.s) < from ? new Date(from) : day0(e.s);
+        const last = e.allDay ? addDays(day0(e.e), -1) : day0(e.e);
+        for (let i = 0; i < 62 && d <= last && d < to; i++) {
+            const k = ymd(d);
+            if (!m.has(k)) m.set(k, []);
+            m.get(k).push(e);
+            d = addDays(d, 1);
+        }
+    });
+
     return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, list]) => ({ day: parseDay(k), list }));
 });
 
@@ -203,11 +236,20 @@ function create(o = {}) {
 function editEvent(e) {
     const calOk = !e.readonly;
     if (!calOk) { say('Этот календарь только для чтения', true); return; }
+    // У серии правим саму серию: её собственные дату и время, а не то вхождение,
+    // по которому щёлкнули. Иначе вся серия переезжала на день открытой встречи.
+    const ms = e.recurring && e.masterStart ? new Date(e.masterStart) : e.s;
+    const me = e.recurring && e.masterEnd ? new Date(e.masterEnd) : e.e;
     editing.value = {
         ...blank(), sourceCal: e.calendar, sourceUri: e.id, calendar: e.calendar, title: e.title, allDay: e.allDay,
-        start: toLocalInput(e.s), end: toLocalInput(e.allDay ? addDays(e.e, -1) : e.e), startDay: ymd(e.s), endDay: ymd(e.allDay ? addDays(e.e, -1) : e.e),
+        start: toLocalInput(ms), end: toLocalInput(e.allDay ? addDays(me, -1) : me), startDay: ymd(ms), endDay: ymd(e.allDay ? addDays(me, -1) : me),
         location: e.location, description: e.description, attendees: (e.attendees || []).map((a) => ({ name: a.name, mail: a.mail })),
         alarm: e.alarm ?? '', repeat: e.rrule?.freq || 'NONE', until: e.rrule?.until || '', transparent: e.transparent, recurring: e.recurring,
+        // Раньше при сохранении всегда строилось «каждую неделю, один день»: «раз в две
+        // недели» и «десять раз» превращались в бесконечный еженедельный повтор.
+        interval: e.rrule?.interval || 1, count: e.rrule?.count || '', byday: e.rrule?.byday || [],
+        occurrenceStart: e.s ? toLocalInput(e.s) : '', occurrenceEnd: e.e ? toLocalInput(e.allDay ? addDays(e.e, -1) : e.e) : '',
+        onlyThis: false,
     };
     open.value = null;
 }
@@ -217,15 +259,42 @@ function payload(f) {
         attendees: f.attendees.filter((a) => a.mail), alarm: f.alarm === '' ? null : Number(f.alarm),
     };
     if (f.allDay) { p.start = f.startDay; p.end = f.endDay || f.startDay; } else { p.start = new Date(f.start).toISOString(); p.end = new Date(f.end).toISOString(); }
-    if (f.repeat !== 'NONE') p.rrule = { freq: f.repeat, interval: 1, until: f.until || null, byday: f.repeat === 'WEEKLY' ? [['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'][(new Date(f.allDay ? f.startDay : f.start).getDay() + 6) % 7]] : [] };
+    if (f.repeat !== 'NONE') {
+        p.rrule = {
+            freq: f.repeat,
+            interval: Math.max(1, Number(f.interval) || 1),
+            until: f.until || null,
+            count: f.count ? Number(f.count) : null,
+            byday: f.repeat === 'WEEKLY'
+                ? (f.byday?.length ? f.byday : [['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'][(new Date(f.allDay ? f.startDay : f.start).getDay() + 6) % 7]])
+                : [],
+        };
+    }
     return p;
 }
 async function save() {
     const f = editing.value;
+    // 229: участник, набранный и не подтверждённый Enter, молча пропадал — список
+    // читался раньше, чем поле успевало сделать из текста фишку.
+    evAttendees.value?.flush?.();
+    await nextTick();
     if (!f.allDay && new Date(f.end) <= new Date(f.start)) { say('Окончание раньше начала', true); return; }
+    // 234: у целодневных проверки не было вовсе, а сервер молча схлопывал диапазон в один день.
+    if (f.allDay && f.endDay && f.endDay < f.startDay) { say('Последний день раньше первого', true); return; }
     loading.value = true;
     try {
-        const saved = f.sourceUri ? await api.updateEvent(f.sourceCal, f.sourceUri, payload(f)) : await api.createEvent(payload(f));
+        let saved;
+        if (f.sourceUri && f.recurring && f.onlyThis) {
+            // 225: отдельной встречи в серии сервер не хранит, поэтому убираем это вхождение
+            // из серии и создаём вместо него самостоятельное событие — так это делают
+            // и почтовые программы.
+            const p = payload(f);
+            delete p.rrule;
+            await api.deleteEvent(f.sourceCal, f.sourceUri, f.occurrenceStart ? new Date(f.occurrenceStart).toISOString() : null);
+            saved = await api.createEvent(p);
+        } else {
+            saved = f.sourceUri ? await api.updateEvent(f.sourceCal, f.sourceUri, payload(f)) : await api.createEvent(payload(f));
+        }
         editing.value = null;
         await load();
         say(saved.attendees?.length ? 'Сохранено, приглашения отправлены' : 'Сохранено');
@@ -264,7 +333,10 @@ async function respond(e, status) {
     try {
         await api.respond(e.calendar, e.id, status);
         await load();
-        open.value = null;
+        // Панель закрывалась, и убедиться, что ответ записан, можно было только
+        // открыв событие заново. Оставляем её открытой и показываем свежие данные.
+        const fresh = events.value.find((x) => x.id === e.id && x.calendar === e.calendar);
+        open.value = fresh || null;
         say({ ACCEPTED: 'Вы приняли приглашение', DECLINED: 'Вы отклонили приглашение', TENTATIVE: 'Ответ «под вопросом» отправлен' }[status]);
     } catch (err) { fail(err); }
 }
@@ -312,8 +384,20 @@ async function openShares(cal) {
 }
 async function addShare() {
     const d = dialog.value;
-    const mail = d.with[0]?.mail; if (!mail) return;
-    try { shares.value = await api.share(d.cal.uri, mail, d.level); d.with = []; say('Доступ выдан'); } catch (e) { fail(e); }
+    // Набранное, но не подтверждённое Enter, тоже считается.
+    shareWith.value?.flush?.();
+    await nextTick();
+    const mails = (d.with || []).map((a) => a.mail).filter(Boolean);
+    if (!mails.length) return;
+    // Раньше брался только первый адрес: ввёл трёх коллег — доступ получал один,
+    // остальные исчезали без всякого сообщения.
+    const failed = [];
+    for (const mail of mails) {
+        try { shares.value = await api.share(d.cal.uri, mail, d.level); } catch (e) { failed.push(`${mail}: ${e.message}`); }
+    }
+    d.with = [];
+    if (failed.length) say('Не удалось открыть доступ — ' + failed.join('; '), true);
+    else say(mails.length > 1 ? `Доступ выдан: ${mails.length}` : 'Доступ выдан');
 }
 async function removeShare(mail) {
     try { shares.value = await api.unshare(dialog.value.cal.uri, mail); } catch (e) { fail(e); }
@@ -358,6 +442,10 @@ const newTask = ref('');
 const newTaskDue = ref('');
 const showDone = ref(false);
 const editTask = ref(null);
+// Ссылки на поля адресов: перед чтением списка просим их дописать набранное,
+// иначе последний участник пропадает — фишка создаётся на 150 мс позже.
+const evAttendees = ref(null);
+const shareWith = ref(null);
 const today = new Date().toISOString().slice(0, 10);
 const openTasks = computed(() => tasks.value.filter((t) => !t.done));
 // Со временем или только дата: при включении добавляем 09:00, при выключении — обрезаем.
@@ -437,15 +525,20 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     </div>
                 </div>
                 <div class="mnav__group">Мои календари <button class="ib ib--sm" type="button" title="Новый календарь" @click="dialog = { kind: 'newCal', color: '#16A05C' }" aria-label="Новый календарь"><Icon name="plus" :size="14" /></button></div>
-                <button v-for="c in own" :key="c.uri" class="mnav__item mnav__cal" type="button" @click="toggleCal(c.uri)" @contextmenu="calMenu($event, c)">
+                <!-- 240: внутри кнопки стояла вторая кнопка — недопустимая разметка, и фокус
+                     вёл себя непредсказуемо. Теперь это одна кнопка, а место щелчка решает,
+                     показать меню или переключить календарь. -->
+                <button v-for="c in own" :key="c.uri" class="mnav__item mnav__cal" type="button" @click="calClick($event, c)" @contextmenu="calMenu($event, c)">
                     <span class="mnav__check" :class="{ on: !hidden.has(c.uri) }" :style="{ '--c': c.color }"><Icon v-if="!hidden.has(c.uri)" name="check" :size="11" /></span>
                     <span class="grow">{{ c.name }}</span>
-                    <button class="ib ib--sm mnav__dots" type="button" @click.stop="calMenu($event, c)"><Icon name="dots" :size="14" /></button>
+                    <span class="mnav__dots" role="presentation" :title="'Что можно сделать с календарём «' + c.name + '»'"><Icon name="dots" :size="14" /></span>
                 </button>
-                <div class="mnav__group">Общие</div>
+                <div v-if="foreign.length" class="mnav__group">Общие</div>
                 <button v-for="c in foreign" :key="c.uri" class="mnav__item mnav__cal" type="button" :title="c.owner ? 'Календарь: ' + c.owner.name : ''" @click="toggleCal(c.uri)" @contextmenu="calMenu($event, c)">
                     <span class="mnav__check" :class="{ on: !hidden.has(c.uri) }" :style="{ '--c': c.color }"><Icon v-if="!hidden.has(c.uri)" name="check" :size="11" /></span>
-                    <span class="grow">{{ c.name }}<small v-if="c.owner" class="faint"> · {{ c.owner.name }}</small></span>
+                    <!-- 244: у общего календаря имя уже содержит владельца, и в списке
+                         выходило «Отдел «АСУ» · Отдел «…». -->
+                    <span class="grow">{{ c.name }}<small v-if="c.owner && !c.name.includes(c.owner.name)" class="faint"> · {{ c.owner.name }}</small></span>
                     <Icon v-if="c.readonly" name="eye" :size="13" style="color: var(--faint)" title="только чтение" />
                 </button>
                 <div class="mnav__group">Задачи <span v-if="openTasks.length" class="mnav__count" style="margin-left: 4px">{{ openTasks.length }}</span><button class="ib ib--sm" type="button" title="Показать выполненные" :class="{ 'ib--on': showDone }" @click="showDone = !showDone" aria-label="Показать выполненные"><Icon name="check" :size="14" /></button></div>
@@ -473,6 +566,9 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     <button class="btn btn--sm" type="button" @click="goToday">Сегодня</button>
                     <button class="ib ib--sm" type="button" title="Назад" @click="shift(-1)" aria-label="Назад"><Icon name="left" :size="18" /></button>
                     <button class="ib ib--sm" type="button" title="Вперёд" @click="shift(1)" aria-label="Вперёд"><Icon name="right" :size="18" /></button>
+                    <!-- 243: календарь не обновлялся сам и не имел кнопки обновления —
+                         чужие правки и новые приглашения не появлялись до перезагрузки. -->
+                    <button class="ib ib--sm" type="button" title="Обновить" aria-label="Обновить" :disabled="loading" @click="refresh"><Icon name="refresh" :size="17" /></button>
                     <b class="cal__heading">{{ heading }}</b>
                     <span class="grow" />
                     <span v-if="loading" class="faint">…</span>
@@ -554,7 +650,8 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                             </button>
                         </div>
                     </div>
-                    <div v-if="!agendaGroups.length" class="empty" style="padding: 60px 0">Ближайшие 30 дней свободны</div>
+                    <!-- 232: писалось «Ближайшие 30 дней свободны», даже если пролистать на месяц вперёд. -->
+                    <div v-if="!agendaGroups.length" class="empty" style="padding: 60px 0">{{ heading }} — событий нет</div>
                 </div>
             </section>
 
@@ -579,11 +676,31 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                             <div class="field"><label>Повтор</label>
                                 <select v-model="editing.repeat" class="input"><option value="NONE">не повторять</option><option value="DAILY">каждый день</option><option value="WEEKLY">каждую неделю</option><option value="MONTHLY">каждый месяц</option><option value="YEARLY">каждый год</option></select>
                             </div>
-                            <div v-if="editing.repeat !== 'NONE'" class="field"><label>До даты</label><input v-model="editing.until" class="input" type="date"></div>
+                            <div v-if="editing.repeat !== 'NONE'" class="field">
+                                <label>Как долго повторять</label>
+                                <!-- 224: «раз в две недели» и «десять раз» превращались в бесконечный
+                                     еженедельный повтор — эти поля просто не читались. -->
+                                <div class="field__row" style="gap: 6px; align-items: center">
+                                    <span class="hint" style="margin: 0">каждые</span>
+                                    <input v-model.number="editing.interval" class="input" type="number" min="1" max="99" style="width: 64px" aria-label="Через сколько повторять">
+                                    <span class="hint" style="margin: 0">{{ { DAILY: 'дн.', WEEKLY: 'нед.', MONTHLY: 'мес.', YEARLY: 'г.' }[editing.repeat] || '' }}</span>
+                                </div>
+                                <div class="field__row" style="gap: 6px; align-items: center">
+                                    <input v-model="editing.until" class="input" type="date" style="flex: 1" title="До какой даты повторять" :disabled="!!editing.count">
+                                    <span class="hint" style="margin: 0">или</span>
+                                    <input v-model.number="editing.count" class="input" type="number" min="1" max="999" placeholder="раз" style="width: 84px" title="Сколько раз повторить" :disabled="!!editing.until">
+                                </div>
+                            </div>
                             <div v-else class="field"><label>Напоминание</label>
                                 <select v-model="editing.alarm" class="input"><option v-for="[v, l] in ALARMS" :key="v" :value="v">{{ l }}</option></select>
                             </div>
                         </div>
+                        <!-- 225: выбор «только это вхождение» был только при удалении,
+                             перенести одну встречу серии на час было невозможно. -->
+                        <label v-if="editing.recurring" class="toggle" style="font-size: 12.5px">
+                            <input v-model="editing.onlyThis" type="checkbox"><span class="toggle__track" />Изменить только эту встречу, серию не трогать
+                        </label>
+                        <p v-if="editing.recurring && !editing.onlyThis" class="hint" style="margin: 0">Правки применятся ко всей серии.</p>
                         <div v-if="editing.repeat !== 'NONE'" class="field"><label>Напоминание</label>
                             <select v-model="editing.alarm" class="input"><option v-for="[v, l] in ALARMS" :key="v" :value="v">{{ l }}</option></select>
                         </div>
@@ -591,7 +708,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                         <div class="field"><label>Календарь</label>
                             <select v-model="editing.calendar" class="input"><option v-for="c in writable" :key="c.uri" :value="c.uri">{{ c.name }}</option></select>
                         </div>
-                        <div class="field"><label>Участники</label><RecipientInput v-model="editing.attendees" placeholder="Имя или адрес" /></div>
+                        <div class="field"><label>Участники</label><RecipientInput ref="evAttendees" v-model="editing.attendees" placeholder="Имя или адрес" @note="say($event, true)" /></div>
                         <div v-if="editing.attendees.some((a) => a.mail) && !editing.allDay" class="fb">
                             <div class="fb__title">Занятость {{ new Date(editing.start).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) }}<span v-if="conflict.length" class="chip chip--warn" style="margin-left: 8px">занято: {{ conflict.length }}</span></div>
                             <div v-for="mail in [...new Set([user.toLowerCase(), ...editing.attendees.filter((a) => a.mail).map((a) => a.mail)])]" :key="mail" class="fb__row" :class="{ 'fb__row--conflict': conflict.includes(mail) }">
@@ -712,7 +829,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                 <div v-if="!shares.length" class="empty">Пока никому не открыт</div>
             </div>
             <div style="display: grid; grid-template-columns: minmax(0, 1fr) 150px auto; gap: 8px; align-items: start; margin-top: 12px">
-                <RecipientInput v-model="dialog.with" placeholder="Сотрудник" />
+                <RecipientInput ref="shareWith" v-model="dialog.with" placeholder="Сотрудник" @note="say($event, true)" />
                 <select v-model="dialog.level" class="input"><option value="read">только чтение</option><option value="write">чтение и правка</option></select>
                 <button class="btn" type="button" :disabled="!dialog.with.length" @click="addShare">Открыть</button>
             </div>

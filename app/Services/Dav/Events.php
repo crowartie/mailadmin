@@ -63,6 +63,20 @@ class Events
                 continue;
             }
             $item['recurring'] = $recurring;
+            // Начало самой серии: правка серии из открытого вхождения переносила её
+            // на дату этого вхождения (встреча «каждый понедельник», открытая 29-го,
+            // уезжала на 29-е вместе со всей серией).
+            if ($recurring) {
+                try {
+                    $ms = $master->DTSTART?->getDateTime(self::tz());
+                    $me = isset($master->DTEND) ? $master->DTEND->getDateTime(self::tz()) : null;
+                    $item['masterStart'] = $ms?->format(DateTimeInterface::ATOM);
+                    $item['masterEnd'] = $me?->format(DateTimeInterface::ATOM);
+                } catch (\Throwable) {
+                    $item['masterStart'] = null;
+                    $item['masterEnd'] = null;
+                }
+            }
             $out[] = $item;
         }
 
@@ -121,7 +135,10 @@ class Events
 
         $alarm = null;
         foreach ($ev->select('VALARM') as $va) {
-            if (isset($va->TRIGGER) && preg_match('/^-P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?$/', (string) $va->TRIGGER, $m)) {
+            // Принимаем и «-PT15M», и «PT0M»/«PT0S» («в момент начала»): раньше разбор требовал
+            // строго минус в начале, поэтому «в момент начала» читалось как «без напоминания»,
+            // а следующее сохранение его удаляло.
+            if (isset($va->TRIGGER) && preg_match('/^-?P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/', (string) $va->TRIGGER, $m)) {
                 $alarm = ((int) ($m[1] ?? 0)) * 1440 + ((int) ($m[2] ?? 0)) * 60 + (int) ($m[3] ?? 0);
                 break;
             }
@@ -261,7 +278,7 @@ class Events
 
         if (isset($e['alarm']) && $e['alarm'] !== '' && $e['alarm'] !== null && (int) $e['alarm'] >= 0) {
             $min = (int) $e['alarm'];
-            $trigger = $min === 0 ? 'PT0M' : ($min % 1440 === 0 ? '-P' . intdiv($min, 1440) . 'D' : ($min % 60 === 0 ? '-PT' . intdiv($min, 60) . 'H' : '-PT' . $min . 'M'));
+            $trigger = $min === 0 ? '-PT0M' : ($min % 1440 === 0 ? '-P' . intdiv($min, 1440) . 'D' : ($min % 60 === 0 ? '-PT' . intdiv($min, 60) . 'H' : '-PT' . $min . 'M'));
             $alarm = $ev->add('VALARM', ['ACTION' => 'DISPLAY', 'DESCRIPTION' => (string) $ev->SUMMARY]);
             $alarm->add('TRIGGER', $trigger, ['VALUE' => 'DURATION']);
         }
