@@ -1013,7 +1013,7 @@ select.input { padding-right: 28px; }
     // Адрес отправителя — отдельной строкой под именем: прятать его нельзя, именно
     // отображаемое имя и подделывают в мошеннических письмах.
     .msg__from { white-space: normal; }
-    .msg__mail { display: block; margin-left: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+    .msg__mail { display: block; margin-left: 0; font-size: 12px; white-space: normal; word-break: break-all; }
     // Длинная дата («17 сентября, 14:03») забирала ширину у имени — показываем короткую.
     .msg__when-full { display: none; }
     .msg__when-short { display: inline; }
