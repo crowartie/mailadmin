@@ -120,9 +120,10 @@ final class Mime
         if ($rawHeaders === '') {
             return null;
         }
-        $h = preg_replace("/
-?
-[ 	]+/", ' ', $rawHeaders) ?? $rawHeaders;
+        // Регулярное выражение записываем escape-последовательностями: раньше здесь стояли
+        // настоящие переводы строк, из-за чего возврат каретки не убирался и склеенный
+        // заголовок получался вида «<a@x>\r <b@y>».
+        $h = preg_replace('/\r?\n[ \t]+/', ' ', $rawHeaders) ?? $rawHeaders;
 
         return preg_match('/^' . preg_quote($name, '/') . ':[ 	]*(.*)$/mi', $h, $m) ? trim($m[1]) : null;
     }

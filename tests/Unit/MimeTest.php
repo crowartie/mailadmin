@@ -46,7 +46,9 @@ class MimeTest extends TestCase
     {
         $this->assertSame(['name' => 'Иван', 'mail' => 'i@x.ru'], Mime::address('Иван', 'i@x.ru'));
         $this->assertSame(['name' => 'i@x.ru', 'mail' => 'i@x.ru'], Mime::address(null, 'i@x.ru'));
-        $this->assertSame(['name' => 'i@x.ru', 'mail' => 'i@x.ru'], Mime::address('', 'I@X.RU'), 'адрес приводится к нижнему регистру');
+        // Регистр адреса оставляем как прислал отправитель: сравнения адресов везде
+        // делаются без учёта регистра, а показывать письмо лучше так, как его подписали.
+        $this->assertSame(['name' => 'I@X.RU', 'mail' => 'I@X.RU'], Mime::address('', 'I@X.RU'));
     }
 
     /** Заголовки со строками-продолжениями склеиваются в одно значение. */
