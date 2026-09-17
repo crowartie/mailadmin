@@ -51,10 +51,13 @@ class MessageController extends Controller
         // Outlook кладёт имя как =?utf-8?B?…?= (бывает в две строки и в koi8-r) — разбираем сами, иначе файл скачается с «сырым» именем.
         $name = MailStore::attachmentName($a);
         $type = $a->getMimeType() ?: 'application/octet-stream';
-        $inline = $request->boolean('inline') && (str_starts_with($type, 'image/') || $type === 'application/pdf');
+        // SVG — это не картинка, а документ со скриптами: показанный в домене почты, он получает
+        // доступ к сеансу сотрудника. Отдаём его только файлом и обычным текстом.
+        $svg = in_array(strtolower($type), ['image/svg+xml', 'image/svg'], true) || preg_match('/\.svgz?$/i', $name);
+        $inline = $request->boolean('inline') && ! $svg && (str_starts_with($type, 'image/') || $type === 'application/pdf');
 
         return response($a->getContent(), 200, [
-            'Content-Type' => $type,
+            'Content-Type' => $svg ? 'text/plain; charset=utf-8' : $type,
             'Content-Disposition' => ($inline ? 'inline' : 'attachment') . "; filename*=UTF-8''" . rawurlencode($name),
             'X-Content-Type-Options' => 'nosniff',
         ]);
