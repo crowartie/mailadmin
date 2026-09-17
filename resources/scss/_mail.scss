@@ -1229,3 +1229,12 @@ select.input { padding-right: 28px; }
     &:hover { background: v.$c-surface; color: v.$c-text; }
 }
 @media (max-width: 860px) { .aview__frame { width: 100vw; height: calc(100vh - 48px); border-radius: 0; } .aview__arrow { width: 36px; height: 36px; } }
+
+
+// 392: откуда письмо в переписке, если оно лежит не в обычной папке.
+.msg__where {
+    margin-top: 3px;
+    font-size: 11.5px;
+    height: 20px;
+    align-self: flex-start;
+}

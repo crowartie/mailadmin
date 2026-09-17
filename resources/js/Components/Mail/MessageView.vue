@@ -197,6 +197,10 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         кому: {{ toText(m) || '—' }}<button v-if="toRest(m)" type="button" class="linklike" style="margin-left: 6px" @click.stop="allAddrs[key(m)] = true">и ещё {{ toRest(m) }}</button><button v-else-if="allAddrs[key(m)]" type="button" class="linklike" style="margin-left: 6px" @click.stop="allAddrs[key(m)] = false">свернуть</button>
                     </div>
                     <div v-else class="msg__snip">{{ (m.text || '').slice(0, 140) }}</div>
+                    <!-- 392: письма из «Корзины» и «Спама» раньше в переписку не попадали
+                         вовсе. Теперь попадают, но видно, где они лежат. -->
+                    <span v-if="m.folderRole === 'trash' || m.folderRole === 'spam'" class="chip chip--warn msg__where">в папке «{{ m.folderName || (m.folderRole === 'trash' ? 'Корзина' : 'Спам') }}»</span>
+                    <span v-else-if="m.bySubject" class="chip msg__where" title="Письмо склеено с перепиской по теме и собеседнику: отправитель не проставил ссылку на предыдущее письмо">по теме</span>
                 </div>
                 <!-- 84: на телефоне длинная дата отбирала всю ширину у имени отправителя. -->
                 <div class="msg__when" :title="when(m.date, true)"><span class="msg__when-full">{{ when(m.date, true) }}</span><span class="msg__when-short">{{ when(m.date) }}</span></div>

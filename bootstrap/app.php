@@ -48,6 +48,23 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn (Request $request) => Area::isAdmin($request) ? '/login' : '/mail/login');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // 397: до этого «нет такой записи» и «нет такого адреса» приходили в интерфейс
+        // английскими текстами фреймворка — «No query results for model …» и пустым
+        // «Not Found». Отвечаем словами и тем же способом, что и остальные ошибки почты.
+        $exceptions->render(function (\Illuminate\Database\Eloquent\ModelNotFoundException $e, Request $request) {
+            $msg = 'Не найдено: запись уже удалена или относится к другому ящику';
+
+            return $request->expectsJson() || $request->is('mail/api/*') || $request->is('api/*')
+                ? response()->json(['message' => $msg], 404)
+                : back()->with('error', $msg);
+        });
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, Request $request) {
+            if (! $request->is('mail/api/*') && ! $request->is('api/*')) {
+                return null;   // обычные страницы показывают свою страницу «такой страницы нет»
+            }
+
+            return response()->json(['message' => 'Такого адреса нет — обновите страницу'], 404);
+        });
         // Ошибки работы с почтой приходят своим типом и уже с человеческим текстом:
         // хранилищу больше не нужно знать про HTTP, чтобы сообщить о нехватке прав.
         $exceptions->render(function (\App\Exceptions\MailException $e, Request $request) {

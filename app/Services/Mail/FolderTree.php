@@ -243,6 +243,18 @@ class FolderTree
         return self::ROLES[strtoupper($path)] ?? 'custom';
     }
 
+    /** Роль папки по её пути в этом ящике: inbox, sent, trash, spam, shared, custom. */
+    public function folderRole(string $path): string
+    {
+        foreach ($this->folders() as $f) {
+            if ($f['path'] === $path) {
+                return (string) ($f['role'] ?? 'custom');
+            }
+        }
+
+        return self::roleOfPath($path);
+    }
+
     public function folderTitle(string $path): string
     {
         foreach ($this->folders() as $f) {
@@ -397,7 +409,16 @@ class FolderTree
         try {
             $this->client->createFolder($path, false, false);
         } catch (\Throwable $e) {
-            throw MailException::upstream('Сервер не создал папку: ' . $e->getMessage());
+            // Dovecot отвечает «NO [CANNOT] Mailbox can't be created», и это попадало
+            // человеку как есть. Имя «Shared» занято под общие папки коллег.
+            $why = $e->getMessage();
+            if (str_contains($why, 'CANNOT') || str_contains($why, "can't be created")) {
+                throw MailException::invalid('Такое имя занято почтовым сервером (например, «' . rtrim(self::SHARED_PREFIX, '/') . '» — это место для общих папок). Выберите другое.');
+            }
+            if (str_contains($why, 'ALREADYEXISTS') || str_contains($why, 'already exists')) {
+                throw MailException::invalid('Папка с таким именем уже есть');
+            }
+            throw MailException::upstream('Сервер не создал папку: ' . mb_substr($why, 0, 160));
         }
         $this->client->getConnection()->subscribeFolder($this->utf7($path));
         $this->folderCache = null;

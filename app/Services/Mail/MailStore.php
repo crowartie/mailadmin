@@ -113,6 +113,12 @@ class MailStore
         return $this->tree->folder($path);
     }
 
+    /** @see FolderTree::folderRole() */
+    public function folderRole(string $path): string
+    {
+        return $this->tree->folderRole($path);
+    }
+
     /** @see FolderTree::folderTitle() */
     public function folderTitle(string $path): string
     {
@@ -827,7 +833,10 @@ class MailStore
 
         $attachments = [];
         $inline = [];
-        foreach ($message->getAttachments() as $i => $a) {
+        // 157: ссылка на вложение ведёт по порядковому номеру, а здесь перебирались ключи
+        // набора — библиотека нумерует их по частям письма и пропуски возможны. Тогда
+        // «Скачать» отвечало «Not Found». Считаем номера так же, как их потом читают.
+        foreach ($message->getAttachments()->values() as $i => $a) {
             /** @var Attachment $a */
             $cid = trim((string) ($a->id ?? ''), '<>');
             $isInline = $cid !== '' && $html && str_contains($html, 'cid:' . $cid);
@@ -906,6 +915,10 @@ class MailStore
             }
             foreach ($byFolder as $p => $uids) {
                 $got = [];
+                // Письмо из «Корзины» или «Спама» в переписке показывать надо, но так,
+                // чтобы было видно, откуда оно: иначе непонятно, почему его нет в папке.
+                $role = $this->tree->folderRole($p);
+                $title = $this->folderTitle($p);
                 try {
                     // Только заголовки и превью: свёрнутому письму в цепочке больше не нужно, тело подгрузится при раскрытии.
                     $this->client->openFolder($p, true);
@@ -914,7 +927,7 @@ class MailStore
                         $uid = (int) $m->getUid();
                         $got[] = $uid;
                         $found[] = $this->summary($m, $previews[$uid] ?? null)
-                            + ['folder' => $p, 'text' => (string) ($previews[$uid] ?? ''), 'to' => [], 'cc' => [], 'attachments' => [], 'html' => null, 'light' => true, 'thread' => []];
+                            + ['folder' => $p, 'folderRole' => $role, 'folderName' => $title, 'text' => (string) ($previews[$uid] ?? ''), 'to' => [], 'cc' => [], 'attachments' => [], 'html' => null, 'light' => true, 'thread' => []];
                     }
                 } catch (\Throwable) {
                     continue;
@@ -922,6 +935,11 @@ class MailStore
                 if ($missing = array_diff($uids, $got)) {
                     ThreadIndex::forget($this->user(), $p, $missing); // письмо удалили или переложили — индекс подчистим
                 }
+            }
+            // 393: часть программ (и выгрузки из 1С) не ставят ссылку на предыдущее
+            // письмо. Если по ссылкам ничего не нашлось — пробуем по теме и собеседнику.
+            if (! $found) {
+                $found = $this->threadBySubject($message, $path);
             }
             usort($found, fn ($a, $b) => Mime::sortTime($a['date']) <=> Mime::sortTime($b['date']));
 
@@ -981,6 +999,85 @@ class MailStore
             }
         }
 
+        if (! $found) {
+            $found = $this->threadBySubject($message, $path);
+        }
+        usort($found, fn ($a, $b) => Mime::sortTime($a['date']) <=> Mime::sortTime($b['date']));
+
+        return array_values($found);
+    }
+
+    /** Тема без «Re:», «Fwd:», «Ответ:» и прочих приставок — по ней склеиваем переписку. */
+    private static function bareSubject(string $subject): string
+    {
+        $s = trim($subject);
+        // Приставки повторяются («Re: Fw: Re: …»), поэтому снимаем их по кругу.
+        while (preg_match('/^\s*(re|fw|fwd|ответ|пересылка|вх|исх)\s*(\[\d+\])?\s*:\s*/iu', $s, $m)) {
+            $s = mb_substr($s, mb_strlen($m[0]));
+        }
+
+        return trim(preg_replace('/\s+/u', ' ', $s) ?? $s);
+    }
+
+    /**
+     * Запасная склейка по теме: часть почтовых программ и выгрузки из 1С не проставляют
+     * ссылку на предыдущее письмо, и переписка рассыпалась на отдельные письма.
+     *
+     * Чтобы не склеить чужое, требуем совпадения не только темы, но и собеседника:
+     * у писем должен быть общий адрес. Ищем в текущей папке и в «Отправленных».
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function threadBySubject(Message $message, string $path): array
+    {
+        $bare = self::bareSubject((string) $message->getSubject());
+        // Слишком короткая или слишком общая тема («Счёт», «Привет») склеит что попало.
+        if (mb_strlen($bare) < 8) {
+            return [];
+        }
+        $mine = [];
+        foreach (['getFrom', 'getTo', 'getCc'] as $get) {
+            foreach ($this->addresses($message->{$get}()) as $a) {
+                $mine[strtolower($a['mail'])] = true;
+            }
+        }
+        $uid = (int) $message->getUid();
+        $found = [];
+        foreach (array_slice(array_unique([$path, $this->rolePath('sent')]), 0, 2) as $p) {
+            try {
+                $this->client->openFolder($p, true);
+                $role = $this->tree->folderRole($p);
+                $title = $this->folderTitle($p);
+                $uids = (array) $this->client->getConnection()->search(['SUBJECT', '"' . str_replace('"', '', $bare) . '"'])->validatedData();
+                $uids = array_values(array_filter(array_map('intval', $uids), fn ($u) => $u > 0 && ! ($p === $path && $u === $uid)));
+                if ($uids === []) {
+                    continue;
+                }
+                $uids = array_slice($uids, -15);
+                $previews = $this->previews($uids);
+                foreach ($this->folder($p)->query()->whereUidIn($uids)->setFetchBody(false)->setFetchFlags(true)->get() as $m) {
+                    if (self::bareSubject((string) $m->getSubject()) !== $bare) {
+                        continue;   // сервер ищет подстроку — сверяем тему целиком
+                    }
+                    $common = false;
+                    foreach (['getFrom', 'getTo', 'getCc'] as $get) {
+                        foreach ($this->addresses($m->{$get}()) as $a) {
+                            if (isset($mine[strtolower($a['mail'])])) {
+                                $common = true;
+                            }
+                        }
+                    }
+                    if (! $common) {
+                        continue;   // та же тема, но другие люди — это не наша переписка
+                    }
+                    $u = (int) $m->getUid();
+                    $found[$p . '#' . $u] = $this->summary($m, $previews[$u] ?? null)
+                        + ['folder' => $p, 'folderRole' => $role, 'folderName' => $title, 'text' => (string) ($previews[$u] ?? ''), 'to' => [], 'cc' => [], 'attachments' => [], 'html' => null, 'light' => true, 'thread' => [], 'bySubject' => true];
+                }
+            } catch (\Throwable) {
+                // поиск по теме — подспорье, а не обязанность: молчим
+            }
+        }
         usort($found, fn ($a, $b) => Mime::sortTime($a['date']) <=> Mime::sortTime($b['date']));
 
         return array_values($found);
@@ -1044,7 +1141,8 @@ class MailStore
         }
         $used = [];
         $count = 0;
-        foreach ($message->getAttachments() as $i => $a) {
+        // Нумерация та же, что в списке вложений письма (см. 157).
+        foreach ($message->getAttachments()->values() as $i => $a) {
             /** @var Attachment $a */
             $cid = trim((string) ($a->id ?? ''), '<>');
             if ($cid !== '' && $html !== '' && str_contains($html, 'cid:' . $cid)) {
