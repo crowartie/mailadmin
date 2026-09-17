@@ -19,6 +19,9 @@ class SearchQuery
 
     private array $text = [];
 
+    /** Имя файла из оператора «файл:» — отбор по нему делается после поиска (см. MailStore). */
+    private ?string $file = null;
+
     public function __construct(string $query)
     {
         $this->parse($query);
@@ -47,6 +50,12 @@ class SearchQuery
     private static function clean(string $v): string
     {
         return trim(str_replace(['"', '\\'], '', trim($v, '"')));
+    }
+
+    /** Что искали в именах вложений, если просили: «файл:счёт». */
+    public function fileName(): ?string
+    {
+        return $this->file;
     }
 
     public function apply(WhereQuery $q): WhereQuery
@@ -82,6 +91,13 @@ class SearchQuery
                     if ($d = $this->date($value)) {
                         $q->whereSince($d);
                     }
+                    break;
+                case 'файл': case 'вложение': case 'file': case 'attachment':
+                    // Имена файлов лежат в письме закодированными, поэтому обычный поиск
+                    // по тексту их не находит никогда. Отбор делается после поиска,
+                    // по структуре письма, — здесь только сужаем круг письмами с вложениями.
+                    $this->file = $value;
+                    $q->where('CUSTOM OR HEADER "Content-Type" "multipart/mixed" HEADER "Content-Disposition" "attachment"');
                     break;
                 case 'есть': case 'is': case 'has':
                     $v = mb_strtolower($value);

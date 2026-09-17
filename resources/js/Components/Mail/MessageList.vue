@@ -87,7 +87,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                      показывал неполный ответ. Лучше честно назвать, где ещё не искали. -->
                 Не искали в {{ list.skipped.length }} {{ list.skipped.length === 1 ? 'папке' : 'папках' }} ({{ list.skipped.join(', ') }}) — сервер достраивает индекс, повторите через минуту
             </span>
-            <br>операторы: <span class="mono">от:иванов кому:sales тема:счёт есть:вложение после:01.09.2026 до:30.09.2026</span>
+            <br>операторы: <span class="mono">от:иванов кому:sales тема:счёт файл:счёт.pdf есть:вложение после:01.09.2026 до:30.09.2026</span>
         </div>
 
         <div v-if="selected.length" class="mlist__bulk">

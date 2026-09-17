@@ -317,8 +317,11 @@ class MailStore
         $q = $folder->query()->setFetchBody(false)->setFetchFlags(true)->setFetchOrder('desc');
         $q = $this->applyFilter($q, $filter);
         $searching = $query !== null && trim($query) !== '';
+        $byFile = null;
         if ($searching) {
-            $q = (new SearchQuery($query))->apply($q);
+            $sq = new SearchQuery($query);
+            $q = $sq->apply($q);
+            $byFile = $sq->fileName();
         }
         if (! $searching && $filter === 'all') {
             $q->all();
@@ -363,6 +366,9 @@ class MailStore
             // тянула и разбирала заголовки всех найденных писем (сотни непрочитанных — секунды).
             $uids = $this->searchUids($q, $path, $searching);
             rsort($uids);
+            if ($byFile !== null) {
+                $uids = $this->keepWithFile($path, $uids, $byFile);
+            }
             $total = count($uids);
             $slice = array_slice($uids, ($page - 1) * self::PAGE, self::PAGE);
             $messages = $slice ? ($this->pageFastUids($slice) ?? $this->pageViaLibraryUids($q, $slice)) : [];
@@ -520,6 +526,39 @@ class MailStore
 
     /** Обычное ожидание ответа сервера — запоминаем при первой смене. */
     private ?int $timeout = null;
+
+    /**
+     * Оставить из найденных писем те, где есть вложение с таким именем.
+     *
+     * Имя файла лежит в структуре письма и приходит закодированным, поэтому поиском
+     * по тексту его не найти. Структуры запрашиваем одним обращением к серверу и
+     * сверяем имена уже раскодированными.
+     *
+     * @param  int[]  $uids
+     * @return int[]
+     */
+    private function keepWithFile(string $path, array $uids, string $needle): array
+    {
+        if (! $uids) {
+            return [];
+        }
+        // Больше полутора тысяч писем разом смотреть незачем: это уже не поиск,
+        // а перебор ящика. Берём самые свежие — список и так отсортирован от новых.
+        $slice = array_slice($uids, 0, 1500);
+        $need = mb_strtolower(trim($needle));
+        $out = [];
+        foreach (Structure::many($this->client, $path, $slice) as $uid => $parts) {
+            foreach (Structure::attachments($parts) as $a) {
+                if ($a['name'] !== '' && str_contains(mb_strtolower($a['name']), $need)) {
+                    $out[] = (int) $uid;
+                    break;
+                }
+            }
+        }
+        rsort($out);
+
+        return $out;
+    }
 
     /** Поднять соединение заново после сбойной команды (см. searchUids). */
     private function reconnect(): void

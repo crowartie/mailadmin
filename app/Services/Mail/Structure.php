@@ -47,6 +47,46 @@ final class Structure
     }
 
     /**
+     * Структуры сразу многих писем — одним запросом к серверу.
+     * Нужно для поиска по имени вложения: имена лежат в структуре, а не в тексте.
+     *
+     * @param  int[]  $uids
+     * @return array<int,array<int,array<string,mixed>>> uid → части
+     */
+    public static function many(Client $client, string $path, array $uids): array
+    {
+        if (! $uids) {
+            return [];
+        }
+        try {
+            $client->openFolder($path, true);
+            $conn = $client->getConnection();
+            $r = $conn->requestAndResponse('UID FETCH', [implode(',', array_map('intval', $uids)), '(BODYSTRUCTURE)']);
+            $rows = $r->getResponse();
+            $flat = [];
+            array_walk_recursive($rows, function ($x) use (&$flat) {
+                $flat[] = (string) $x;
+            });
+            $joined = implode(' ', $flat);
+        } catch (\Throwable) {
+            return [];
+        }
+        $out = [];
+        // Ответ — несколько строк «* 37 FETCH (UID 2647 BODYSTRUCTURE (…))» подряд.
+        foreach (preg_split('/(?=\*\s+\d+\s+FETCH\s+\()/', $joined) ?: [] as $chunk) {
+            if (! preg_match('/UID\s+(\d+)/', $chunk, $m)) {
+                continue;
+            }
+            $parts = self::parse($chunk);
+            if ($parts !== null) {
+                $out[(int) $m[1]] = $parts;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Разобрать строку «* 1 FETCH (UID 2 BODYSTRUCTURE (…))».
      *
      * @return array<int,array<string,mixed>>|null
