@@ -513,6 +513,8 @@ class MailStore
         }
         $started = microtime(true);
         try {
+            // SORT работает только по выбранной папке: без SELECT сервер отвечает отказом.
+            $this->client->openFolder($path, true);
             $conn = $this->client->getConnection();
             $criteria = 'ALL';
             if ($q !== null) {
