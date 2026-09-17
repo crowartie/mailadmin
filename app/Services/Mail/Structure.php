@@ -318,31 +318,36 @@ final class Structure
         // Первая строка ответа приходит целиком: «* 5 FETCH (UID 7 BODY[1] {1234}»,
         // дальше кусками идёт сам текст, а в конце — закрывающая скобка и «OK …».
         $start = null;
+        $length = null;
         foreach ($flat as $k => $v) {
             if (str_contains($v, 'BODY[')) {
                 $start = $k;
+                $length = preg_match('/\{(\d+)\}/', $v, $m) ? (int) $m[1] : null;
             }
         }
         if ($start === null) {
             return null;
         }
         $rest = array_slice($flat, $start + 1);
-        // Иногда длина в фигурных скобках приходит отдельным куском — она нам не нужна.
-        if (isset($rest[0]) && preg_match('/^\{\d+\}\s*$/', $rest[0])) {
+        // Иногда длина в фигурных скобках приходит отдельным куском.
+        if ($length === null && isset($rest[0]) && preg_match('/^\{(\d+)\}\s*$/', $rest[0], $m)) {
+            $length = (int) $m[1];
             array_shift($rest);
-        }
-        while ($rest) {
-            $tail = trim((string) end($rest));
-            if ($tail === ')' || preg_match('/^(TAG\d+\s+)?(OK|NO|BAD)\b/i', $tail)) {
-                array_pop($rest);
-
-                continue;
-            }
-            break;
         }
         // Куски — это строки письма вместе с их переводами строк: склеиваем как есть,
         // иначе ломается quoted-printable, где перенос строки значим.
-        return $rest ? implode('', $rest) : null;
+        $body = implode('', $rest);
+        if ($body === '') {
+            return null;
+        }
+        if ($length !== null && $length <= strlen($body)) {
+            // Сервер сам сказал, сколько байтов в части. Всё, что дальше, — хвост
+            // протокола: закрывающая скобка и «OK …». Он прилипал к последней строке
+            // письма, и в тексте появлялась лишняя скобка.
+            return substr($body, 0, $length);
+        }
+        // Длину не объявили (короткая часть в кавычках) — убираем хвост по виду.
+        return (string) preg_replace('/\)?\s*(TAG\d+\s+)?(OK|NO|BAD)\b.*$/s', '', $body);
     }
 
     /** Раскодировать часть по её Content-Transfer-Encoding. */
