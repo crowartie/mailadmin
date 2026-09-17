@@ -89,6 +89,13 @@ const busy = ref(false);
 let toastTimer = null;
 
 const custom = computed(() => folders.value.filter((f) => f.role === 'custom'));
+/** Сколько папок лежит внутри этой — чтобы сказать об этом перед удалением. */
+function childCount(f) {
+    if (!f?.path) return 0;
+    const sep = f.path.includes('/') ? '/' : '.';
+
+    return folders.value.filter((x) => x.path !== f.path && x.path.startsWith(f.path + sep)).length;
+}
 const COLORS = ['#2F6FEB', '#16A05C', '#D9791F', '#C0392B', '#7B3FE4', '#0E8A8A', '#6B7787'];
 
 /**
@@ -674,14 +681,22 @@ const shortcuts = [
             </div>
         </div>
 
-        <Dialog v-if="dialog && dialog.kind === 'newFolder'" title="Новая папка" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты' }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />
-        <Dialog v-if="dialog && dialog.kind === 'renameFolder'" title="Переименовать папку" :prompt="{ label: 'Название', value: dialog.folder.name }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
-        <Dialog v-if="dialog && dialog.kind === 'deleteFolder'" :title="'Удалить папку «' + dialog.folder.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog"><p class="hint" style="margin: 0">Письма в ней будут удалены.</p></Dialog>
-        <Dialog v-if="dialog && dialog.kind === 'label'" title="Новая метка" :prompt="{ label: 'Название' }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog">
+        <Dialog v-if="dialog && dialog.kind === 'newFolder'" title="Новая папка" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты', maxlength: 80 }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />
+        <Dialog v-if="dialog && dialog.kind === 'renameFolder'" title="Переименовать папку" :prompt="{ label: 'Название', value: dialog.folder.name, maxlength: 80 }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
+        <!-- 192, 193: диалог не называл ни число писем, ни вложенные папки, хотя точно такой же
+             диалог в списке писем число показывает, и справка это обещает. -->
+        <Dialog v-if="dialog && dialog.kind === 'deleteFolder'" :title="'Удалить папку «' + dialog.folder.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog">
+            <p class="hint" style="margin: 0">Письма в ней ({{ dialog.folder.total || 0 }}) будут удалены навсегда.</p>
+            <p v-if="childCount(dialog.folder)" class="hint" style="margin: 0; color: var(--no-ink)">Вместе с папкой удалятся вложенные: {{ childCount(dialog.folder) }} {{ plural(childCount(dialog.folder), 'папка', 'папки', 'папок') }} и все письма в них.</p>
+        </Dialog>
+        <Dialog v-if="dialog && dialog.kind === 'label'" title="Новая метка" :prompt="{ label: 'Название', maxlength: 80 }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog">
             <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: (dialog.color || COLORS[0]) === c }" :style="{ background: c }" @click="dialog.color = c" /></div>
         </Dialog>
-        <Dialog v-if="dialog && dialog.kind === 'renameLabel'" title="Переименовать метку" :prompt="{ label: 'Название', value: dialog.label.name }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
-        <Dialog v-if="dialog && dialog.kind === 'deleteLabel'" :title="'Удалить метку «' + dialog.label.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog" />
+        <Dialog v-if="dialog && dialog.kind === 'renameLabel'" title="Переименовать метку" :prompt="{ label: 'Название', value: dialog.label.name, maxlength: 80 }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
+        <!-- 194: не было сказано, что с письмами ничего не случится. -->
+        <Dialog v-if="dialog && dialog.kind === 'deleteLabel'" :title="'Удалить метку «' + dialog.label.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog">
+            <p class="hint" style="margin: 0">Метка снимется со всех писем. Сами письма останутся на месте — удаляется только пометка.</p>
+        </Dialog>
         <Dialog v-if="confirmBox" :title="confirmBox.title" :confirm-label="confirmBox.confirmLabel" :danger="confirmBox.danger" @close="closeAsk(false)" @confirm="closeAsk(true)">
             <p v-if="confirmBox.text" class="hint" style="margin: 0">{{ confirmBox.text }}</p>
         </Dialog>

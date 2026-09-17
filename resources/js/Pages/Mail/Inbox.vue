@@ -1134,8 +1134,8 @@ onBeforeUnmount(() => {
                 <div class="dialog__actions"><a v-if="dialog.what === 'folder'" href="#" class="hint" style="margin-right: auto" @click.prevent="stopAskingOnMove">Больше не спрашивать</a><button class="btn" type="button" @click="dialog = null">Только это письмо</button></div>
             </div>
         </div>
-        <Dialog v-if="dialog && dialog.kind === 'newFolder'" :title="dialog.folder ? 'Папка внутри «' + dialog.folder.name + '»' : 'Новая папка'" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты' }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />
-        <Dialog v-if="dialog && dialog.kind === 'renameFolder'" title="Переименовать папку" :prompt="{ label: 'Новое название', value: dialog.folder.name }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
+        <Dialog v-if="dialog && dialog.kind === 'newFolder'" :title="dialog.folder ? 'Папка внутри «' + dialog.folder.name + '»' : 'Новая папка'" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты', maxlength: 80 }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />
+        <Dialog v-if="dialog && dialog.kind === 'renameFolder'" title="Переименовать папку" :prompt="{ label: 'Новое название', value: dialog.folder.name, maxlength: 80 }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'deleteFolder'" :title="'Удалить папку «' + dialog.folder.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog">
             <p style="margin: 0" class="hint">Письма в ней ({{ dialog.folder.total }}) будут удалены вместе с папкой.</p>
         </Dialog>
@@ -1145,7 +1145,7 @@ onBeforeUnmount(() => {
         <Dialog v-if="dialog && dialog.kind === 'label'" title="Новая метка" :prompt="{ label: 'Название', placeholder: 'Например, Срочно' }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog">
             <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: (dialog.color || COLORS[0]) === c }" :style="{ background: c }" @click="dialog.color = c" /></div>
         </Dialog>
-        <Dialog v-if="dialog && dialog.kind === 'renameLabel'" title="Переименовать метку" :prompt="{ label: 'Название', value: dialog.label.name }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
+        <Dialog v-if="dialog && dialog.kind === 'renameLabel'" title="Переименовать метку" :prompt="{ label: 'Название', value: dialog.label.name, maxlength: 80 }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'deleteLabel'" :title="'Удалить метку «' + dialog.label.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog">
             <p style="margin: 0" class="hint">Письма останутся, метка с них снимется при следующем разборе.</p>
         </Dialog>

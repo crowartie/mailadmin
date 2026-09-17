@@ -7,7 +7,7 @@ let seq = 0;
 const props = defineProps({
     title: String,
     wide: Boolean,
-    prompt: { type: Object, default: null }, // { label, value, placeholder }
+    prompt: { type: Object, default: null }, // { label, value, placeholder, maxlength }
     confirmLabel: { type: String, default: 'Готово' },
     danger: Boolean,
 });
@@ -74,7 +74,7 @@ onBeforeUnmount(() => {
             <h2 v-if="title" :id="titleId">{{ title }}</h2>
             <div v-if="prompt" class="field">
                 <label v-if="prompt.label" :for="titleId + '-in'">{{ prompt.label }}</label>
-                <input :id="titleId + '-in'" ref="input" v-model="value" class="input" :placeholder="prompt.placeholder" required @input="touched = true">
+                <input :id="titleId + '-in'" ref="input" v-model="value" class="input" :placeholder="prompt.placeholder" :maxlength="prompt.maxlength || null" required @input="touched = true">
             </div>
             <slot />
             <div class="dialog__actions">

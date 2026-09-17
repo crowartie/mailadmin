@@ -67,7 +67,8 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             <!-- 172: подсказка была написана в третьем формате, не совпадавшем ни со справкой,
                  ни с разборщиком. Пишем ровно так, как понимает поиск. -->
             Найдено {{ list.total }}<template v-if="!everywhere"> в папке «{{ folderName }}»</template><template v-else> во всех папках</template>
-            <button type="button" class="linklike" style="margin-left: 8px" @click="$emit('everywhere', !everywhere)">{{ everywhere ? 'только в этой папке' : 'искать во всех папках' }}</button>
+            &#183;
+            <button type="button" class="linklike" @click="$emit('everywhere', !everywhere)">{{ everywhere ? 'только в этой папке' : 'искать во всех папках' }}</button>
             <br>операторы: <span class="mono">от:иванов кому:sales тема:счёт есть:вложение после:01.09.2026 до:30.09.2026</span>
         </div>
 
