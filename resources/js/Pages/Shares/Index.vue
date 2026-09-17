@@ -104,7 +104,7 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
                         <span v-for="p in f.people" :key="p.with" class="srow__person">
                             <span :title="p.with">{{ p.withName }}</span>
                             <select class="input input--sm" :value="p.level" :disabled="busy" @change="setLevel(p, $event.target.value)"><option v-for="l in levelOptions(p)" :key="l" :value="l">{{ levels[l] }}</option></select>
-                            <button class="ib ib--sm" type="button" title="Закрыть доступ" :disabled="busy" @click="remove(p)"><Icon name="x" :size="13" /></button>
+                            <button class="ib ib--sm" type="button" title="Закрыть доступ" :disabled="busy" @click="remove(p)" aria-label="Закрыть доступ"><Icon name="x" :size="13" /></button>
                         </span>
                     </span>
                 </div>
@@ -119,7 +119,7 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
                     <span class="srow__folder"><Icon name="folder" :size="14" style="color: var(--faint)" />{{ r.ownerName }} → {{ r.folderName }}</span>
                     <span class="srow__people"><span class="srow__person">
                         <select class="input input--sm" :value="r.level" :disabled="busy" @change="setLevel(r, $event.target.value)"><option v-for="l in levelOptions(r)" :key="l" :value="l">{{ levels[l] }}</option></select>
-                        <button class="ib ib--sm" type="button" title="Закрыть доступ" :disabled="busy" @click="remove(r)"><Icon name="x" :size="13" /></button>
+                        <button class="ib ib--sm" type="button" title="Закрыть доступ" :disabled="busy" @click="remove(r)" aria-label="Закрыть доступ"><Icon name="x" :size="13" /></button>
                     </span></span>
                 </div>
             </div>

@@ -358,15 +358,15 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                     <a class="att__main" :href="api.attachmentUrl(c.sourceFolder, c.sourceUid, a.index)" @click="viewable(a) && (openExisting(a), $event.preventDefault())">
                         <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                     </a>
-                    <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openExisting(a)"><Icon name="eye" :size="13" /></button>
+                    <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openExisting(a)" aria-label="Посмотреть"><Icon name="eye" :size="13" /></button>
                 </span>
             </template>
             <span v-for="(f, i) in files" :key="f.name + i" class="att" :class="{ 'att--cloud': viaCloud.has(i) }" :title="viaCloud.has(i) ? 'Уйдёт ссылкой через облако' : f.name">
                 <a v-if="localViewable(f)" class="att__main" href="#" title="Посмотреть" @click.prevent="openLocal(i)"><Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></a>
                 <template v-else><Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></template>
-                <button v-if="localViewable(f)" class="att__btn" type="button" title="Посмотреть" @click="openLocal(i)"><Icon name="eye" :size="13" /></button>
-                <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'" @click="toggleCloud(i)"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
-                <button type="button" title="Убрать" @click="removeFile(i)"><Icon name="x" :size="13" /></button>
+                <button v-if="localViewable(f)" class="att__btn" type="button" title="Посмотреть" @click="openLocal(i)" aria-label="Посмотреть"><Icon name="eye" :size="13" /></button>
+                <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'" @click="toggleCloud(i)" aria-label="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
+                <button type="button" title="Убрать" @click="removeFile(i)" aria-label="Убрать"><Icon name="x" :size="13" /></button>
             </span>
             <span v-if="cloud.enabled && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель откроет их в облаке</span>
             <span v-else-if="totalSize > 20 * 1048576" class="chip chip--warn" style="height: 28px">{{ size(totalSize) }} — большое письмо может не пройти у получателя</span>

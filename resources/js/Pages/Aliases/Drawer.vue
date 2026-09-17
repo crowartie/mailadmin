@@ -48,7 +48,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <h2>{{ alias.isNew ? 'Новый псевдоним' : alias.address }}</h2>
                     <div class="row__sub">{{ alias.isNew ? 'Адрес, который доставляется в другие ящики' : (alias.name || 'без описания') }}</div>
                 </div>
-                <button class="btn btn--sm btn--icon" type="button" title="Закрыть" @click="emit('close')"><Icon name="x" :size="18" /></button>
+                <button class="btn btn--sm btn--icon" type="button" title="Закрыть" @click="emit('close')" aria-label="Закрыть"><Icon name="x" :size="18" /></button>
             </header>
 
             <form id="alias-form" class="drawer__body" @submit.prevent="submit">
@@ -74,7 +74,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
                 <div class="group-title">Доставлять на</div>
                 <div v-for="(_, i) in form.targets" :key="i" class="field__row">
-                    <input v-model="form.targets[i]" class="input" placeholder="info@домен">
+                    <input v-model="form.targets[i]" class="input" placeholder="info@innotec.su">
                     <button class="btn" type="button" :disabled="form.targets.length === 1" @click="form.targets.splice(i, 1)">Убрать</button>
                 </div>
                 <p v-if="form.errors.targets" class="error">{{ form.errors.targets }}</p>

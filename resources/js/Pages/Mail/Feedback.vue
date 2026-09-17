@@ -224,7 +224,7 @@ function backToList() {
 
                 <div v-if="ticket" class="fbchat__body">
                     <div class="fbchat__head">
-                        <button class="ib fbchat__back" type="button" title="К списку" @click="backToList"><Icon name="back" :size="18" /></button>
+                        <button class="ib fbchat__back" type="button" title="К списку" @click="backToList" aria-label="К списку"><Icon name="back" :size="18" /></button>
                         <span class="fbchat__ava" :class="look(ticket).ava"><Icon :name="look(ticket).icon" :size="18" /></span>
                         <div style="min-width: 0; flex: 1">
                             <h2 :title="ticket.subject">{{ ticket.subject }}</h2>
@@ -262,7 +262,7 @@ function backToList() {
                     <div v-if="filePreview" class="fbchat__attach">
                         <img :src="filePreview" alt="снимок экрана">
                         <span class="hint" style="flex: 1">Снимок будет приложен к сообщению</span>
-                        <button class="ib ib--sm" type="button" title="Убрать" @click="clearFile"><Icon name="x" :size="14" /></button>
+                        <button class="ib ib--sm" type="button" title="Убрать" @click="clearFile" aria-label="Убрать"><Icon name="x" :size="14" /></button>
                     </div>
 
                     <div class="fbchat__foot" @paste="onPaste">

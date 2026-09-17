@@ -48,7 +48,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         <div class="mobile-bar">
             <button class="ib" type="button" @click="$emit('menu')"><Icon name="menu" :size="22" /></button>
             <b>{{ folderName }}</b>
-            <button class="ib" type="button" title="Обновить" @click="$emit('refresh')"><Icon name="refresh" :size="20" /></button>
+            <button class="ib" type="button" title="Обновить" @click="$emit('refresh')" aria-label="Обновить"><Icon name="refresh" :size="20" /></button>
         </div>
 
         <!-- 362: подпись внутри поля исчезала после первого же символа, и экранный диктор
@@ -57,7 +57,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             <label for="mlist-q" class="sr-only">Поиск по письмам</label>
             <Icon name="search" :size="18" />
             <input id="mlist-q" ref="searchInput" v-model="q" type="search" placeholder="Поиск по письмам" @keydown.esc="q = ''; submitSearch()">
-            <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''; submitSearch()"><Icon name="x" :size="14" /></button>
+            <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''; submitSearch()" aria-label="Очистить"><Icon name="x" :size="14" /></button>
             <span v-else class="kbd">/</span>
         </form>
         <div v-if="query" class="hint" style="padding: 0 16px 8px">
@@ -67,13 +67,13 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         <div v-if="selected.length" class="mlist__bulk">
             <span class="cb cb--on" role="checkbox" aria-checked="true" @click="$emit('clear')"><Icon name="check" :size="12" /></span>
             <b>Выбрано {{ selected.length }}</b>
-            <button class="ib ib--sm" type="button" title="Прочитано" @click="$emit('act', 'seen', selected)"><Icon name="eye" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="Непрочитано" @click="$emit('act', 'unseen', selected)"><Icon name="unread" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="В папку (v)" @click="$emit('context', $event, null, 'move')"><Icon name="folder" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="Метка (l)" @click="$emit('context', $event, null, 'label')"><Icon name="tag" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="Архив (e)" @click="$emit('act', 'archive', selected)"><Icon name="archive" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="Спам (!)" @click="$emit('act', 'spam', selected)"><Icon name="spam" :size="16" /></button>
-            <button class="ib ib--sm ib--danger" type="button" title="Удалить (#)" @click="$emit('act', 'delete', selected)"><Icon name="trash" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Прочитано" @click="$emit('act', 'seen', selected)" aria-label="Прочитано"><Icon name="eye" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Непрочитано" @click="$emit('act', 'unseen', selected)" aria-label="Непрочитано"><Icon name="unread" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="В папку (v)" @click="$emit('context', $event, null, 'move')" aria-label="В папку (v)"><Icon name="folder" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Метка (l)" @click="$emit('context', $event, null, 'label')" aria-label="Метка (l)"><Icon name="tag" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Архив (e)" @click="$emit('act', 'archive', selected)" aria-label="Архив (e)"><Icon name="archive" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Спам (!)" @click="$emit('act', 'spam', selected)" aria-label="Спам (!)"><Icon name="spam" :size="16" /></button>
+            <button class="ib ib--sm ib--danger" type="button" title="Удалить (#)" @click="$emit('act', 'delete', selected)" aria-label="Удалить (#)"><Icon name="trash" :size="16" /></button>
         </div>
         <div v-else class="mlist__meta">
             <span class="cb" :class="{ 'cb--on': allChecked }" role="checkbox" tabindex="0" :aria-checked="allChecked"
@@ -153,10 +153,10 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                 </span>
                 <span class="mrow__acts">
                     <span class="mrow__acts-when">{{ when(m.date) }}</span>
-                    <button class="ib ib--sm" type="button" title="Архив" @click.stop="$emit('act', 'archive', [m.uid])"><Icon name="archive" :size="15" /></button>
-                    <button class="ib ib--sm" type="button" title="Удалить" @click.stop="$emit('act', 'delete', [m.uid])"><Icon name="trash" :size="15" /></button>
-                    <button class="ib ib--sm" type="button" :title="m.flagged ? 'Снять флажок' : 'Флажок'" :class="{ 'ib--on': m.flagged }" @click.stop="$emit('act', m.flagged ? 'unflag' : 'flag', [m.uid])"><Icon name="flag" :size="15" /></button>
-                    <button class="ib ib--sm" type="button" title="Отложить" @click.stop="$emit('context', $event, m.uid, 'snooze')"><Icon name="clock" :size="15" /></button>
+                    <button class="ib ib--sm" type="button" title="Архив" @click.stop="$emit('act', 'archive', [m.uid])" aria-label="Архив"><Icon name="archive" :size="15" /></button>
+                    <button class="ib ib--sm" type="button" title="Удалить" @click.stop="$emit('act', 'delete', [m.uid])" aria-label="Удалить"><Icon name="trash" :size="15" /></button>
+                    <button class="ib ib--sm" type="button" :title="m.flagged ? 'Снять флажок' : 'Флажок'" :class="{ 'ib--on': m.flagged }" @click.stop="$emit('act', m.flagged ? 'unflag' : 'flag', [m.uid])" aria-label="m.flagged ? 'Снять флажок' : 'Флажок'"><Icon name="flag" :size="15" /></button>
+                    <button class="ib ib--sm" type="button" title="Отложить" @click.stop="$emit('context', $event, m.uid, 'snooze')" aria-label="Отложить"><Icon name="clock" :size="15" /></button>
                 </span>
             </div>
             <div v-if="!list.messages.length && !loading" class="empty" style="padding-top: 60px">

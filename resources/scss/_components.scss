@@ -291,11 +291,15 @@ select.input { padding-right: 32px; }
     gap: 2px;
     border-bottom: 1px solid v.$c-border;
     padding: 0 22px;
+    // Перенос и горизонтальная прокрутка вместе не работают: перенос побеждал,
+    // и прокрутка не включалась никогда. Оставляем прокрутку — строка вкладок
+    // должна оставаться одной строкой.
     overflow-x: auto;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 
     &__item {
         white-space: nowrap;
+        flex: 0 0 auto;
         padding: 12px;
         font: inherit;
         font-size: 13.5px;

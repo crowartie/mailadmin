@@ -83,7 +83,7 @@ const COLS = '80px 90px minmax(0, 1.1fr) minmax(0, 1fr)';
                     <span class="mono ellipsis" :title="e.who">{{ e.who }}</span>
                     <span class="row__sub" style="display: flex; align-items: flex-start; gap: 6px">
                         <span style="flex: 1">{{ e.what }}</span>
-                        <button v-if="e.qid || e.msgid" class="ib ib--sm" type="button" title="Путь письма" @click="doTrace(e.qid || e.msgid)"><Icon name="chevron" :size="14" /></button>
+                        <button v-if="e.qid || e.msgid" class="ib ib--sm" type="button" title="Путь письма" @click="doTrace(e.qid || e.msgid)" aria-label="Путь письма"><Icon name="chevron" :size="14" /></button>
                     </span>
                 </div>
                 <div v-if="!events.length" class="empty">Событий нет</div>

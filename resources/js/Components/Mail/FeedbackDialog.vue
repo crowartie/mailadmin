@@ -100,7 +100,7 @@ onBeforeUnmount(() => {
 
                 <div v-if="filePreview" class="fb__shot">
                     <img :src="filePreview" alt="снимок экрана">
-                    <button class="ib ib--sm" type="button" title="Убрать снимок" @click="clearFile"><Icon name="x" :size="14" /></button>
+                    <button class="ib ib--sm" type="button" title="Убрать снимок" @click="clearFile" aria-label="Убрать снимок"><Icon name="x" :size="14" /></button>
                 </div>
                 <label v-else class="fb__attach">
                     <input type="file" accept="image/*" hidden @change="pick">

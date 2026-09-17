@@ -480,10 +480,10 @@ const shortcuts = [
                                 <div><small>Если</small>{{ r.conditions?.length ? r.conditions.map(describeCond).join(r.match === 'any' ? ' или ' : ' и ') : 'любое письмо' }}</div>
                                 <div><small>То</small>{{ r.actions.map(describeAct).join(', ') }}{{ r.stop ? ', остановить' : '' }}</div>
                                 <div style="display: flex; gap: 2px">
-                                    <button class="ib ib--sm" type="button" title="Выше" :disabled="i === 0" @click="moveRule(i, -1)"><Icon name="up" :size="14" /></button>
-                                    <button class="ib ib--sm" type="button" title="Ниже" :disabled="i === rules.length - 1" @click="moveRule(i, 1)"><Icon name="down" :size="14" /></button>
-                                    <button class="ib ib--sm" type="button" title="Изменить" @click="editing = JSON.parse(JSON.stringify(r))"><Icon name="edit" :size="14" /></button>
-                                    <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="removeRule(r.id)"><Icon name="trash" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Выше" :disabled="i === 0" @click="moveRule(i, -1)" aria-label="Выше"><Icon name="up" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Ниже" :disabled="i === rules.length - 1" @click="moveRule(i, 1)" aria-label="Ниже"><Icon name="down" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Изменить" @click="editing = JSON.parse(JSON.stringify(r))" aria-label="Изменить"><Icon name="edit" :size="14" /></button>
+                                    <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="removeRule(r.id)" aria-label="Удалить"><Icon name="trash" :size="14" /></button>
                                 </div>
                             </div>
                             <p class="hint" style="margin: 0">Правила выполняются на сервере по порядку — работают и для телефона, и для почтовой программы. «Разложить Входящие» применяет их к уже полученным письмам (условия по отправителю, получателю и теме; действия — папка, метка, флажок, прочитано, удалить).</p>
@@ -503,7 +503,7 @@ const shortcuts = [
                                         <option v-for="k in opsFor(c.field)" :key="k" :value="k">{{ OPS[k] }}</option>
                                     </select>
                                     <input v-model="c.value" class="input" :inputmode="c.field === 'size' ? 'numeric' : 'text'" :placeholder="c.field === 'size' ? '10240' : 'значение'">
-                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.conditions.splice(ci, 1)"><Icon name="x" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.conditions.splice(ci, 1)" aria-label="Убрать"><Icon name="x" :size="14" /></button>
                                 </div>
                                 <button v-if="editing.conditions.length < MAX_CONDITIONS" type="button" class="linklike" style="font-size: 13px; align-self: start" @click="editing.conditions.push({ field: 'subject', op: 'contains', value: '' })">+ ещё условие</button>
                                 <span v-else class="hint" style="margin: 0">Условий в одном правиле не больше {{ MAX_CONDITIONS }}</span>
@@ -524,7 +524,7 @@ const shortcuts = [
                                     </select>
                                     <input v-else-if="a.type === 'forward' || a.type === 'forward_copy'" v-model="a.value" class="input" type="email" placeholder="кому@домен">
                                     <input v-else-if="a.type === 'reply'" v-model="a.value" class="input" placeholder="Текст ответа">
-                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.actions.splice(ai, 1)"><Icon name="x" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.actions.splice(ai, 1)" aria-label="Убрать"><Icon name="x" :size="14" /></button>
                                 </div>
                                 <a style="cursor: pointer; font-size: 13px" @click="editing.actions.push({ type: 'label', value: '' })">+ ещё действие</a>
                             </div>
@@ -542,9 +542,9 @@ const shortcuts = [
                                     <Icon :name="f.role === 'custom' ? 'folder' : 'inbox'" :size="16" style="color: var(--faint)" />
                                     <span class="grow">{{ f.name }} <span class="sub">· {{ f.total }} {{ plural(f.total, 'письмо', 'письма', 'писем') }}{{ f.unread ? ', ' + f.unread + ' не прочитано' : '' }}</span></span>
                                     <template v-if="f.role === 'custom'">
-                                        <button class="ib ib--sm" type="button" title="Вложенная папка" @click="dialog = { kind: 'newFolder', parent: f.path }"><Icon name="plus" :size="14" /></button>
-                                        <button class="ib ib--sm" type="button" title="Переименовать" @click="dialog = { kind: 'renameFolder', folder: f }"><Icon name="edit" :size="14" /></button>
-                                        <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="dialog = { kind: 'deleteFolder', folder: f }"><Icon name="trash" :size="14" /></button>
+                                        <button class="ib ib--sm" type="button" title="Вложенная папка" @click="dialog = { kind: 'newFolder', parent: f.path }" aria-label="Вложенная папка"><Icon name="plus" :size="14" /></button>
+                                        <button class="ib ib--sm" type="button" title="Переименовать" @click="dialog = { kind: 'renameFolder', folder: f }" aria-label="Переименовать"><Icon name="edit" :size="14" /></button>
+                                        <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="dialog = { kind: 'deleteFolder', folder: f }" aria-label="Удалить"><Icon name="trash" :size="14" /></button>
                                     </template>
                                     <span v-else class="chip chip--off">системная</span>
                                 </div>
@@ -557,8 +557,8 @@ const shortcuts = [
                                     <span class="mnav__swatch mnav__swatch--round" :style="{ background: l.color }" />
                                     <span class="grow">{{ l.name }}</span>
                                     <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: l.color === c }" :style="{ background: c, width: '18px', height: '18px' }" @click="recolor(l, c)" /></div>
-                                    <button class="ib ib--sm" type="button" title="Переименовать" @click="dialog = { kind: 'renameLabel', label: l }"><Icon name="edit" :size="14" /></button>
-                                    <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="dialog = { kind: 'deleteLabel', label: l }"><Icon name="trash" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Переименовать" @click="dialog = { kind: 'renameLabel', label: l }" aria-label="Переименовать"><Icon name="edit" :size="14" /></button>
+                                    <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="dialog = { kind: 'deleteLabel', label: l }" aria-label="Удалить"><Icon name="trash" :size="14" /></button>
                                 </div>
                                 <div v-if="!labels.length" class="empty">Меток пока нет</div>
                             </div>

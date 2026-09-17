@@ -58,8 +58,8 @@ const wrap = ref(true);
                         <span>{{ r.title }}<span class="row__sub" style="display: block">{{ r.kind }}/{{ r.file }}</span></span>
                         <span class="row__sub">{{ kb(r.size) }}</span>
                         <span class="row__actions" @click.stop>
-                            <a class="btn btn--sm btn--icon" :href="`/reports/${r.kind}/${r.file}/download`" title="Скачать"><Icon name="download" :size="16" /></a>
-                            <button class="btn btn--sm btn--icon btn--danger" type="button" title="Удалить" @click="del(r)"><Icon name="trash" :size="16" /></button>
+                            <a class="btn btn--sm btn--icon" :href="`/reports/${r.kind}/${r.file}/download`" title="Скачать" aria-label="Скачать"><Icon name="download" :size="16" /></a>
+                            <button class="btn btn--sm btn--icon btn--danger" type="button" title="Удалить" @click="del(r)" aria-label="Удалить"><Icon name="trash" :size="16" /></button>
                         </span>
                     </div>
                     <div v-if="!rows.length" class="empty">Отчётов пока нет. Logwatch и сводка приходят раз в сутки, копия баз — ночью.</div>

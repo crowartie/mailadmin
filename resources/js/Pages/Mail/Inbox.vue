@@ -883,7 +883,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <Head :title="folderName + (folderInfo.unread ? ` (${folderInfo.unread})` : '')" />
+    <!-- 398: заголовок вкладки собирался ещё и в updateTitle(), в другом формате,
+         и побеждал тот, кто отработал последним. Формат теперь один — там. -->
     <MailLayout :user="user" :theme="settings.theme">
         <!-- 361: экранный диктор не сообщал, какая это страница — заголовка не было вовсе.
              Показывать его незачем: название папки и так видно над списком. -->
@@ -985,7 +986,7 @@ onBeforeUnmount(() => {
                 </div>
             </section>
 
-            <button class="fab" type="button" title="Написать" @click="startCompose('new')"><Icon name="edit" :size="24" /></button>
+            <button class="fab" type="button" title="Написать" @click="startCompose('new')" aria-label="Написать"><Icon name="edit" :size="24" /></button>
         </div>
 
         <!-- Контекстное меню письма -->

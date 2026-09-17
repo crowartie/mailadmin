@@ -94,10 +94,10 @@ function logout() {
                 <Icon name="warn" />
                 <span v-if="feedbackNew" class="rail__badge">{{ feedbackNew }}</span>
             </button>
-            <button class="rail__item" type="button" title="Тёмная / светлая тема" style="border: none; background: none; cursor: pointer" @click="toggleTheme">
+            <button class="rail__item" type="button" title="Тёмная / светлая тема" style="border: none; background: none; cursor: pointer" @click="toggleTheme" aria-label="Тёмная / светлая тема">
                 <Icon :name="isDark ? 'sun' : 'moon'" />
             </button>
-            <button v-if="user" class="rail__item" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" @click="logout">
+            <button v-if="user" class="rail__item" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" @click="logout" aria-label="Выйти">
                 <Icon name="logout" />
             </button>
             <div class="rail__avatar" :title="user">{{ initials }}</div>

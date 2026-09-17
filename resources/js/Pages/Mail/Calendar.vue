@@ -64,7 +64,15 @@ function say(text, error = false) {
     toast.value = { text, error };
     toastTimer = setTimeout(() => { toast.value = null; }, error ? 6000 : 3000);
 }
-function fail(e) { say(e?.message || 'Что-то пошло не так', true); }
+/**
+ * Текст ошибки для человека. Сетевой сбой в браузере — это английское «Failed to fetch»,
+ * и оно попадало в уведомление как есть.
+ */
+function fail(e) {
+    const raw = String(e?.message || '');
+    const net = e?.status === 0 || /failed to fetch|networkerror|load failed|network request failed/i.test(raw);
+    say(net ? 'Нет связи с сервером — проверьте подключение к сети и попробуйте ещё раз' : (raw || 'Что-то пошло не так'), true);
+}
 
 // ── Диапазон и загрузка ───────────────────────────────────────
 const range = computed(() => {
@@ -407,7 +415,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                         >{{ d.getDate() }}</button>
                     </div>
                 </div>
-                <div class="mnav__group">Мои календари <button class="ib ib--sm" type="button" title="Новый календарь" @click="dialog = { kind: 'newCal', color: '#16A05C' }"><Icon name="plus" :size="14" /></button></div>
+                <div class="mnav__group">Мои календари <button class="ib ib--sm" type="button" title="Новый календарь" @click="dialog = { kind: 'newCal', color: '#16A05C' }" aria-label="Новый календарь"><Icon name="plus" :size="14" /></button></div>
                 <button v-for="c in own" :key="c.uri" class="mnav__item mnav__cal" type="button" @click="toggleCal(c.uri)" @contextmenu="calMenu($event, c)">
                     <span class="mnav__check" :class="{ on: !hidden.has(c.uri) }" :style="{ '--c': c.color }"><Icon v-if="!hidden.has(c.uri)" name="check" :size="11" /></span>
                     <span class="grow">{{ c.name }}</span>
@@ -419,7 +427,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     <span class="grow">{{ c.name }}<small v-if="c.owner" class="faint"> · {{ c.owner.name }}</small></span>
                     <Icon v-if="c.readonly" name="eye" :size="13" style="color: var(--faint)" title="только чтение" />
                 </button>
-                <div class="mnav__group">Задачи <span v-if="openTasks.length" class="mnav__count" style="margin-left: 4px">{{ openTasks.length }}</span><button class="ib ib--sm" type="button" title="Показать выполненные" :class="{ 'ib--on': showDone }" @click="showDone = !showDone"><Icon name="check" :size="14" /></button></div>
+                <div class="mnav__group">Задачи <span v-if="openTasks.length" class="mnav__count" style="margin-left: 4px">{{ openTasks.length }}</span><button class="ib ib--sm" type="button" title="Показать выполненные" :class="{ 'ib--on': showDone }" @click="showDone = !showDone" aria-label="Показать выполненные"><Icon name="check" :size="14" /></button></div>
                 <form class="task__add" @submit.prevent="addTask"><input v-model="newTask" class="input" placeholder="Новая задача…" style="height: 32px"><input v-model="newTaskDue" class="input" type="date" title="Срок" style="height: 32px; width: 40px; padding: 0 4px"></form>
                 <div v-for="t in visibleTasks" :key="t.calendar + t.id" class="task" :class="{ 'task--done': t.done, 'task--late': !t.done && t.due && t.due < today }">
                     <input type="checkbox" class="check" :checked="t.done" @change="toggleTask(t)">
@@ -427,7 +435,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                         <span class="task__title">{{ t.title }}</span>
                         <span v-if="t.due" class="task__due">{{ dueLabel(t.due) }}</span>
                     </span>
-                    <button class="ib ib--sm task__x" type="button" title="Удалить" @click="removeTask(t)"><Icon name="x" :size="13" /></button>
+                    <button class="ib ib--sm task__x" type="button" title="Удалить" @click="removeTask(t)" aria-label="Удалить"><Icon name="x" :size="13" /></button>
                 </div>
                 <div v-if="!visibleTasks.length" class="hint" style="padding: 2px 12px 6px">Задач нет — введите текст выше и нажмите Enter.</div>
                 <div style="flex: 1" />
@@ -439,8 +447,8 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                 <div class="mread__bar cal__bar">
                     <button class="ib mobile-only" type="button" @click="navOpen = true"><Icon name="menu" :size="22" /></button>
                     <button class="btn btn--sm" type="button" @click="goToday">Сегодня</button>
-                    <button class="ib ib--sm" type="button" title="Назад" @click="shift(-1)"><Icon name="left" :size="18" /></button>
-                    <button class="ib ib--sm" type="button" title="Вперёд" @click="shift(1)"><Icon name="right" :size="18" /></button>
+                    <button class="ib ib--sm" type="button" title="Назад" @click="shift(-1)" aria-label="Назад"><Icon name="left" :size="18" /></button>
+                    <button class="ib ib--sm" type="button" title="Вперёд" @click="shift(1)" aria-label="Вперёд"><Icon name="right" :size="18" /></button>
                     <b class="cal__heading">{{ heading }}</b>
                     <span class="grow" />
                     <span v-if="loading" class="faint">…</span>
@@ -532,7 +540,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     <div class="mread__bar">
                         <b style="font-size: 15px">{{ editing.sourceUri ? 'Событие' : 'Новое событие' }}</b>
                         <span class="grow" />
-                        <button class="ib ib--sm" type="button" title="Закрыть" @click="editing = null"><Icon name="x" :size="16" /></button>
+                        <button class="ib ib--sm" type="button" title="Закрыть" @click="editing = null" aria-label="Закрыть"><Icon name="x" :size="16" /></button>
                     </div>
                     <div class="mread__scroll" style="padding: 16px 18px">
                         <input v-model="editing.title" class="input cal__title" placeholder="Название" autofocus required>
@@ -579,7 +587,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                         <button class="btn btn--primary" type="submit" :disabled="loading">{{ editing.attendees.some((a) => a.mail) ? 'Сохранить и пригласить' : 'Сохранить' }}</button>
                         <button class="btn" type="button" @click="editing = null">Отмена</button>
                         <span class="grow" />
-                        <button v-if="editing.sourceUri" class="ib ib--danger" type="button" title="Удалить" @click="askDelete({ calendar: editing.sourceCal, id: editing.sourceUri, recurring: editing.recurring, start: editing.start, title: editing.title })"><Icon name="trash" :size="16" /></button>
+                        <button v-if="editing.sourceUri" class="ib ib--danger" type="button" title="Удалить" @click="askDelete({ calendar: editing.sourceCal, id: editing.sourceUri, recurring: editing.recurring, start: editing.start, title: editing.title })" aria-label="Удалить"><Icon name="trash" :size="16" /></button>
                     </div>
                 </form>
 
@@ -587,9 +595,9 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     <div class="mread__bar">
                         <span class="dot" :style="{ background: open.color }" /><span class="hint">{{ open.calendarName }}</span>
                         <span class="grow" />
-                        <button v-if="!open.readonly" class="ib ib--sm" type="button" title="Изменить" @click="editEvent(open)"><Icon name="edit" :size="16" /></button>
-                        <button v-if="!open.readonly" class="ib ib--sm ib--danger" type="button" title="Удалить" @click="askDelete(open)"><Icon name="trash" :size="16" /></button>
-                        <button class="ib ib--sm" type="button" title="Закрыть" @click="open = null"><Icon name="x" :size="16" /></button>
+                        <button v-if="!open.readonly" class="ib ib--sm" type="button" title="Изменить" @click="editEvent(open)" aria-label="Изменить"><Icon name="edit" :size="16" /></button>
+                        <button v-if="!open.readonly" class="ib ib--sm ib--danger" type="button" title="Удалить" @click="askDelete(open)" aria-label="Удалить"><Icon name="trash" :size="16" /></button>
+                        <button class="ib ib--sm" type="button" title="Закрыть" @click="open = null" aria-label="Закрыть"><Icon name="x" :size="16" /></button>
                     </div>
                     <div class="mread__scroll" style="padding: 16px 18px">
                         <h1 class="cal__h1" :class="{ 'cal__h1--cancelled': open.status === 'CANCELLED' }">{{ open.title }}</h1>
@@ -622,7 +630,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                 </div>
             </aside>
 
-            <button class="fab" type="button" title="Событие" @click="create()"><Icon name="plus" :size="24" /></button>
+            <button class="fab" type="button" title="Событие" @click="create()" aria-label="Событие"><Icon name="plus" :size="24" /></button>
         </div>
 
         <Popover v-if="menu && menu.kind === 'ev'" :x="menu.x" :y="menu.y" @close="menu = null">
@@ -669,7 +677,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                 <div v-for="s in shares" :key="s.mail" class="mset__li">
                     <span class="mrow__av" style="width: 28px; height: 28px; font-size: 11px">{{ initials(s.name, s.mail) }}</span>
                     <div class="grow"><div>{{ s.name }}</div><div class="sub">{{ s.mail }} · {{ s.level === 'write' ? 'чтение и правка' : 'только чтение' }}</div></div>
-                    <button class="ib ib--sm" type="button" title="Закрыть доступ" @click="removeShare(s.mail)"><Icon name="x" :size="14" /></button>
+                    <button class="ib ib--sm" type="button" title="Закрыть доступ" @click="removeShare(s.mail)" aria-label="Закрыть доступ"><Icon name="x" :size="14" /></button>
                 </div>
                 <div v-if="!shares.length" class="empty">Пока никому не открыт</div>
             </div>

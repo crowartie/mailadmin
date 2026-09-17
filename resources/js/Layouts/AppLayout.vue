@@ -76,12 +76,12 @@ function logout() {
     <div class="app">
         <aside class="rail" aria-label="Сервисы">
             <div class="rail__logo">П</div>
-            <a class="rail__item" :href="mailUrl + '/mail'" title="Почта"><Icon name="mail" /></a>
-            <a class="rail__item" :href="mailUrl + '/calendar'" title="Календарь"><Icon name="cal" /></a>
-            <a class="rail__item" :href="mailUrl + '/contacts'" title="Контакты"><Icon name="users" /></a>
+            <a class="rail__item" :href="mailUrl + '/mail'" title="Почта" aria-label="Почта"><Icon name="mail" /></a>
+            <a class="rail__item" :href="mailUrl + '/calendar'" title="Календарь" aria-label="Календарь"><Icon name="cal" /></a>
+            <a class="rail__item" :href="mailUrl + '/contacts'" title="Контакты" aria-label="Контакты"><Icon name="users" /></a>
             <Link class="rail__item rail__item--on" href="/" title="Администрирование"><Icon name="gear" /></Link>
             <div class="rail__spacer" />
-            <button class="rail__item" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" @click="logout"><Icon name="x" /></button>
+            <button class="rail__item" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" @click="logout" aria-label="Выйти"><Icon name="x" /></button>
             <Link class="rail__avatar" href="/security/2fa" :title="me ? `${me.email} · двухфакторная защита` : ''" style="text-decoration: none">{{ meInitials }}</Link>
         </aside>
 

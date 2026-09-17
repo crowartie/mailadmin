@@ -301,7 +301,7 @@ const errors = computed(() => ticket.value?.context?.errors || []);
                 <div v-if="filePreview" class="fbchat__attach">
                     <img :src="filePreview" alt="снимок экрана">
                     <span class="hint" style="flex: 1">Снимок будет приложен к ответу</span>
-                    <button class="ib ib--sm" type="button" title="Убрать" @click="clearFile"><Icon name="x" :size="14" /></button>
+                    <button class="ib ib--sm" type="button" title="Убрать" @click="clearFile" aria-label="Убрать"><Icon name="x" :size="14" /></button>
                 </div>
 
                 <div class="fbchat__foot" style="flex-direction: column; align-items: stretch; gap: 10px" @paste="onPaste">
@@ -344,7 +344,7 @@ const errors = computed(() => ticket.value?.context?.errors || []);
                     <div class="seg">
                         <button v-for="(label, key) in dict.priorities" :key="key" type="button" class="seg__item" :class="{ 'seg__item--on': ticket.priority === key }" @click="priority(key)">{{ label }}</button>
                     </div>
-                    <button class="btn btn--sm btn--danger" type="button" title="Удалить обращение" @click="del"><Icon name="trash" :size="15" /></button>
+                    <button class="btn btn--sm btn--danger" type="button" title="Удалить обращение" @click="del" aria-label="Удалить обращение"><Icon name="trash" :size="15" /></button>
                 </div>
 
                 <div v-if="closing" class="fbadmin__bar" style="flex-direction: column; align-items: stretch">

@@ -102,7 +102,15 @@ function say(text, error = false) {
     toast.value = { text, error };
     toastTimer = setTimeout(() => { toast.value = null; }, error ? 6000 : 3000);
 }
-function fail(e) { say(e?.message || 'Что-то пошло не так', true); }
+/**
+ * Текст ошибки для человека. Сетевой сбой в браузере — это английское «Failed to fetch»,
+ * и оно попадало в уведомление как есть.
+ */
+function fail(e) {
+    const raw = String(e?.message || '');
+    const net = e?.status === 0 || /failed to fetch|networkerror|load failed|network request failed/i.test(raw);
+    say(net ? 'Нет связи с сервером — проверьте подключение к сети и попробуйте ещё раз' : (raw || 'Что-то пошло не так'), true);
+}
 
 async function reload(keepOpen = true) {
     loading.value = true;
@@ -301,18 +309,18 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 <div class="mobile-bar">
                     <button class="ib" type="button" @click="navOpen = true"><Icon name="menu" :size="22" /></button>
                     <b>{{ title }}</b>
-                    <button class="ib" type="button" title="Новый контакт" @click="create"><Icon name="plus" :size="20" /></button>
+                    <button class="ib" type="button" title="Новый контакт" @click="create" aria-label="Новый контакт"><Icon name="plus" :size="20" /></button>
                 </div>
                 <form class="mlist__search" @submit.prevent>
                     <Icon name="search" :size="18" />
                     <input ref="searchInput" v-model="q" type="search" placeholder="Имя, телефон, компания" @keydown.esc="q = ''">
-                    <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''"><Icon name="x" :size="14" /></button>
+                    <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''" aria-label="Очистить"><Icon name="x" :size="14" /></button>
                     <span v-else class="kbd">/</span>
                 </form>
                 <div class="mlist__meta">
                     <span v-if="filter === 'history'">{{ historyVisible.length }} {{ plural(historyVisible.length, 'адрес', 'адреса', 'адресов') }} · ещё не в книгах</span>
                     <span v-else>{{ visible.length }} {{ plural(visible.length, 'контакт', 'контакта', 'контактов') }}</span>
-                    <button class="ib ib--sm" type="button" title="Обновить" @click="reload()"><Icon name="refresh" :size="14" /></button>
+                    <button class="ib ib--sm" type="button" title="Обновить" @click="reload()" aria-label="Обновить"><Icon name="refresh" :size="14" /></button>
                 </div>
                 <div class="mlist__rows" :style="loading ? 'opacity:.6' : ''">
                     <template v-for="r in rows" :key="r.letter ? 'L' + r.letter : r.hist ? 'H' + r.hist.email : r.contact.book + r.contact.uri">
@@ -324,8 +332,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                 <span class="mrow__prev">{{ r.hist.name ? r.hist.email + ' · ' : '' }}{{ r.hist.uses }} {{ plural(r.hist.uses, 'письмо', 'письма', 'писем') }}{{ r.hist.last_at ? ', последнее ' + when(r.hist.last_at) : '' }}</span>
                             </span>
                             <span class="mrow__when" style="display: flex; gap: 4px">
-                                <button class="ib ib--sm" type="button" title="Добавить в мои контакты" @click.stop="addFromHistory(r.hist)"><Icon name="plus" :size="15" /></button>
-                                <button class="ib ib--sm" type="button" title="Убрать из истории" @click.stop="forgetHistory(r.hist)"><Icon name="x" :size="14" /></button>
+                                <button class="ib ib--sm" type="button" title="Добавить в мои контакты" @click.stop="addFromHistory(r.hist)" aria-label="Добавить в мои контакты"><Icon name="plus" :size="15" /></button>
+                                <button class="ib ib--sm" type="button" title="Убрать из истории" @click.stop="forgetHistory(r.hist)" aria-label="Убрать из истории"><Icon name="x" :size="14" /></button>
                             </span>
                         </div>
                         <div
@@ -386,7 +394,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                 <div v-for="(e, i) in editing.emails" :key="'e' + i" class="cform__multi">
                                     <input v-model="e.value" class="input" type="email" placeholder="адрес@домен.ru">
                                     <select v-model="e.type" class="input cform__type"><option value="work">рабочая</option><option value="home">личная</option><option value="other">другая</option></select>
-                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.emails.splice(i, 1)"><Icon name="x" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.emails.splice(i, 1)" aria-label="Убрать"><Icon name="x" :size="14" /></button>
                                 </div>
                                 <button class="ib ib--sm" type="button" @click="editing.emails.push({ value: '', type: 'work' })"><Icon name="plus" :size="14" />ещё адрес</button>
                             </div>
@@ -395,7 +403,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                 <div v-for="(p, i) in editing.phones" :key="'p' + i" class="cform__multi">
                                     <input v-model="p.value" class="input" type="tel" placeholder="+7 …">
                                     <select v-model="p.type" class="input cform__type"><option value="cell">мобильный</option><option value="work">рабочий</option><option value="home">домашний</option><option value="fax">факс</option></select>
-                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.phones.splice(i, 1)"><Icon name="x" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.phones.splice(i, 1)" aria-label="Убрать"><Icon name="x" :size="14" /></button>
                                 </div>
                                 <button class="ib ib--sm" type="button" @click="editing.phones.push({ value: '', type: 'work' })"><Icon name="plus" :size="14" />ещё телефон</button>
                             </div>
@@ -406,7 +414,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                     <input v-model="a.city" class="input" placeholder="Город">
                                     <input v-model="a.postal" class="input" placeholder="Индекс">
                                     <input v-model="a.country" class="input" placeholder="Страна">
-                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.addresses.splice(i, 1)"><Icon name="x" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.addresses.splice(i, 1)" aria-label="Убрать"><Icon name="x" :size="14" /></button>
                                 </div>
                                 <button v-if="!editing.addresses.length" class="ib ib--sm" type="button" @click="editing.addresses.push({ type: 'work', street: '', city: '', region: '', postal: '', country: '' })"><Icon name="plus" :size="14" />добавить адрес</button>
                             </div>
@@ -432,8 +440,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                         <button v-else class="ib" type="button" title="Скопировать в «Мои контакты»" @click="copyToMine(open)"><Icon name="copy" :size="16" />К себе</button>
                         <button v-if="open.book !== 'company' && open.book !== 'employees'" class="ib" type="button" title="Предложить в общую книгу компании" @click="suggest(open)"><Icon name="share" :size="16" />В общую</button>
                         <span class="grow" />
-                        <button class="ib" type="button" :title="open.favorite ? 'Убрать из избранного' : 'В избранное'" :class="{ 'ib--on': open.favorite }" @click="toggleFavorite(open)"><Icon name="star" :size="16" /></button>
-                        <button v-if="!open.readonly" class="ib ib--danger" type="button" title="Удалить" @click="askDelete(open)"><Icon name="trash" :size="16" /></button>
+                        <button class="ib" type="button" :title="open.favorite ? 'Убрать из избранного' : 'В избранное'" :class="{ 'ib--on': open.favorite }" @click="toggleFavorite(open)" aria-label="open.favorite ? 'Убрать из избранного' : 'В избранное'"><Icon name="star" :size="16" /></button>
+                        <button v-if="!open.readonly" class="ib ib--danger" type="button" title="Удалить" @click="askDelete(open)" aria-label="Удалить"><Icon name="trash" :size="16" /></button>
                     </div>
                     <div class="mread__scroll">
                         <div class="msg ccard__head">
@@ -471,7 +479,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 </div>
             </section>
 
-            <button class="fab" type="button" title="Новый контакт" @click="create"><Icon name="plus" :size="24" /></button>
+            <button class="fab" type="button" title="Новый контакт" @click="create" aria-label="Новый контакт"><Icon name="plus" :size="24" /></button>
         </div>
 
         <Popover v-if="menu" :x="menu.x" :y="menu.y" @close="menu = null">

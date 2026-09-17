@@ -100,10 +100,10 @@ const pendingCount = computed(() => rows.value.filter((r) => r.status !== 'runni
                             </span>
                             <span><span class="chip" :class="chip[r.status]">{{ r.statusTitle }}</span></span>
                             <span class="row__actions">
-                                <button class="btn btn--sm btn--icon" type="button" :disabled="testing[r.id] || r.status === 'running'" title="Проверить вход на оба сервера" @click="test(r)"><Icon :name="testing[r.id] ? 'refresh' : 'check'" :size="16" /></button>
-                                <button class="btn btn--sm btn--icon btn--primary" type="button" :disabled="r.status === 'running' || r.status === 'queued'" title="Запустить перенос" @click="post(`/settings/migrate/${r.id}/run`, { what })"><Icon name="play" :size="16" /></button>
-                                <button v-if="r.hasLog" class="btn btn--sm btn--icon" type="button" title="Журнал imapsync" @click="showLog(r)"><Icon name="log" :size="16" /></button>
-                                <button class="btn btn--sm btn--icon btn--danger" type="button" :disabled="r.status === 'running'" title="Убрать из списка" @click="confirm(`Убрать ${r.login} из списка? Уже перенесённые письма останутся.`) && router.delete(`/settings/migrate/${r.id}`, { preserveScroll: true })"><Icon name="trash" :size="16" /></button>
+                                <button class="btn btn--sm btn--icon" type="button" :disabled="testing[r.id] || r.status === 'running'" title="Проверить вход на оба сервера" @click="test(r)" aria-label="Проверить вход на оба сервера"><Icon :name="testing[r.id] ? 'refresh' : 'check'" :size="16" /></button>
+                                <button class="btn btn--sm btn--icon btn--primary" type="button" :disabled="r.status === 'running' || r.status === 'queued'" title="Запустить перенос" @click="post(`/settings/migrate/${r.id}/run`, { what })" aria-label="Запустить перенос"><Icon name="play" :size="16" /></button>
+                                <button v-if="r.hasLog" class="btn btn--sm btn--icon" type="button" title="Журнал imapsync" @click="showLog(r)" aria-label="Журнал imapsync"><Icon name="log" :size="16" /></button>
+                                <button class="btn btn--sm btn--icon btn--danger" type="button" :disabled="r.status === 'running'" title="Убрать из списка" @click="confirm(`Убрать ${r.login} из списка? Уже перенесённые письма останутся.`) && router.delete(`/settings/migrate/${r.id}`, { preserveScroll: true })" aria-label="Убрать из списка"><Icon name="trash" :size="16" /></button>
                             </span>
                         </div>
                         <div v-if="logOf === r.id" class="row__expand" style="grid-template-columns: 1fr"><pre class="log" style="max-height: 320px; overflow: auto; margin: 0; font-size: 12px; white-space: pre-wrap">{{ logText }}</pre></div>

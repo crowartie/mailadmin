@@ -156,7 +156,7 @@ function sharedTitle(f) {
 
         <div class="mnav__group">
             Мои папки
-            <button class="ib ib--sm" type="button" title="Новая папка" @click="$emit('new-folder', null)"><Icon name="plus" :size="14" /></button>
+            <button class="ib ib--sm" type="button" title="Новая папка" @click="$emit('new-folder', null)" aria-label="Новая папка"><Icon name="plus" :size="14" /></button>
         </div>
         <button
             v-for="f in custom"
@@ -207,7 +207,7 @@ function sharedTitle(f) {
 
         <div class="mnav__group">
             Метки
-            <button class="ib ib--sm" type="button" title="Новая метка" @click="$emit('label', 'new')"><Icon name="plus" :size="14" /></button>
+            <button class="ib ib--sm" type="button" title="Новая метка" @click="$emit('label', 'new')" aria-label="Новая метка"><Icon name="plus" :size="14" /></button>
         </div>
         <button
             v-for="l in labels"

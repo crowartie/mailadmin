@@ -198,9 +198,9 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                 <!-- 84: на телефоне длинная дата отбирала всю ширину у имени отправителя. -->
                 <div class="msg__when" :title="when(m.date, true)"><span class="msg__when-full">{{ when(m.date, true) }}</span><span class="msg__when-short">{{ when(m.date) }}</span></div>
                 <div v-if="isOpen(m) && !isDraft" class="msg__acts" @click.stop>
-                    <button class="ib ib--sm" type="button" title="Ответить" @click="$emit('reply', 'reply', m)"><Icon name="reply" :size="16" /></button>
-                    <button class="ib ib--sm" type="button" title="Переслать" @click="$emit('reply', 'forward', m)"><Icon name="fwd" :size="16" /></button>
-                    <a class="ib ib--sm" :href="api.rawUrl(m.folder, m.uid)" title="Скачать .eml"><Icon name="download" :size="16" /></a>
+                    <button class="ib ib--sm" type="button" title="Ответить" @click="$emit('reply', 'reply', m)" aria-label="Ответить"><Icon name="reply" :size="16" /></button>
+                    <button class="ib ib--sm" type="button" title="Переслать" @click="$emit('reply', 'forward', m)" aria-label="Переслать"><Icon name="fwd" :size="16" /></button>
+                    <a class="ib ib--sm" :href="api.rawUrl(m.folder, m.uid)" title="Скачать .eml" aria-label="Скачать .eml"><Icon name="download" :size="16" /></a>
                 </div>
             </div>
 
@@ -216,8 +216,8 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         <a class="att__main" :href="api.attachmentUrl(m.folder, m.uid, a.index)" :title="a.name + ' · ' + a.type" @click="viewable(a) && (openAttachment(m, a), $event.preventDefault())">
                             <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                         </a>
-                        <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openAttachment(m, a)"><Icon name="eye" :size="14" /></button>
-                        <a class="att__btn" :href="api.attachmentUrl(m.folder, m.uid, a.index)" title="Скачать"><Icon name="download" :size="14" /></a>
+                        <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openAttachment(m, a)" aria-label="Посмотреть"><Icon name="eye" :size="14" /></button>
+                        <a class="att__btn" :href="api.attachmentUrl(m.folder, m.uid, a.index)" title="Скачать" aria-label="Скачать"><Icon name="download" :size="14" /></a>
                     </span>
                     <!-- Несколько вложений — одним архивом (обращение №11) -->
                     <a

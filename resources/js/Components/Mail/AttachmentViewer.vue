@@ -58,13 +58,13 @@ onBeforeUnmount(() => {
             <span class="aview__name" :title="item.name">{{ item.name }}</span>
             <span class="aview__meta"><template v-if="item.size">{{ size(item.size) }} · </template>{{ cur + 1 }} / {{ items.length }}<template v-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>
             <span class="grow" />
-            <a class="ib aview__ib" :href="item.downloadUrl" title="Скачать"><Icon name="download" :size="17" /></a>
-            <a class="ib aview__ib" :href="item.url" target="_blank" rel="noopener" title="Открыть в новой вкладке"><Icon name="share" :size="17" /></a>
-            <button class="ib aview__ib" type="button" title="Закрыть (Esc)" @click="$emit('close')"><Icon name="x" :size="18" /></button>
+            <a class="ib aview__ib" :href="item.downloadUrl" title="Скачать" aria-label="Скачать"><Icon name="download" :size="17" /></a>
+            <a class="ib aview__ib" :href="item.url" target="_blank" rel="noopener" title="Открыть в новой вкладке" aria-label="Открыть в новой вкладке"><Icon name="share" :size="17" /></a>
+            <button class="ib aview__ib" type="button" title="Закрыть (Esc)" @click="$emit('close')" aria-label="Закрыть (Esc)"><Icon name="x" :size="18" /></button>
         </div>
 
-        <button v-if="hasPrev" class="aview__arrow aview__arrow--l" type="button" title="Предыдущее (←)" @click="prev"><Icon name="left" :size="22" /></button>
-        <button v-if="hasNext" class="aview__arrow aview__arrow--r" type="button" title="Следующее (→)" @click="next"><Icon name="right" :size="22" /></button>
+        <button v-if="hasPrev" class="aview__arrow aview__arrow--l" type="button" title="Предыдущее (←)" @click="prev" aria-label="Предыдущее (←)"><Icon name="left" :size="22" /></button>
+        <button v-if="hasNext" class="aview__arrow aview__arrow--r" type="button" title="Следующее (→)" @click="next" aria-label="Следующее (→)"><Icon name="right" :size="22" /></button>
 
         <!-- Картинка: библиотека рисует свою подложку и панель (зум, поворот, отражение); свои кнопки и стрелки у неё отключены -->
         <VueEasyLightbox

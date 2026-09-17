@@ -138,7 +138,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     :title="mailbox.profile?.login_blocked ? 'Снова разрешить вход в веб-почту, Outlook и с телефонов' : 'Закрыть вход в веб-почту, Outlook и с телефонов; почта продолжит приходить'"
                     @click="router.post(`/mailboxes/${mailbox.username}/block`, { blocked: !mailbox.profile?.login_blocked }, { preserveScroll: true })"
                 >{{ mailbox.profile?.login_blocked ? 'Открыть вход' : 'Закрыть вход' }}</button>
-                <button class="btn btn--sm btn--icon" type="button" title="Закрыть" @click="emit('close')"><Icon name="x" :size="18" /></button>
+                <button class="btn btn--sm btn--icon" type="button" title="Закрыть" @click="emit('close')" aria-label="Закрыть"><Icon name="x" :size="18" /></button>
             </header>
 
             <div class="tabs">
@@ -171,7 +171,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                         <div class="field__row">
                             <input v-model="form.password" class="input" :type="showPassword ? 'text' : 'password'" placeholder="оставьте пустым, чтобы не менять" autocomplete="new-password">
                             <button class="btn" type="button" @click="generatePassword">Сгенерировать</button>
-                            <button class="btn btn--icon" type="button" :title="showPassword ? 'Скрыть' : 'Показать'" @click="showPassword = !showPassword"><Icon name="check" :size="16" /></button>
+                            <button class="btn btn--icon" type="button" :title="showPassword ? 'Скрыть' : 'Показать'" @click="showPassword = !showPassword" aria-label="showPassword ? 'Скрыть' : 'Показать'"><Icon name="check" :size="16" /></button>
                         </div>
                         <p v-if="form.errors.password" class="error">{{ form.errors.password }}</p>
                         <p v-if="mailbox.passwordChanged" class="hint">Пароль менялся {{ mailbox.passwordChanged }}</p>

@@ -47,7 +47,7 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
                     <b style="font-size: 16px; margin-left: 8px">Карантин</b>
                     <span class="grow" />
                     <span>{{ items.length }} {{ plural(items.length, 'письмо', 'письма', 'писем') }}</span>
-                    <button class="ib ib--sm" type="button" title="Обновить" @click="reload"><Icon name="refresh" :size="14" /></button>
+                    <button class="ib ib--sm" type="button" title="Обновить" @click="reload" aria-label="Обновить"><Icon name="refresh" :size="14" /></button>
                 </div>
                 <p class="hint" style="padding: 0 18px 10px; margin: 0">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а вы сможете добавить отправителя в исключения, чтобы фильтр больше его не трогал. Через 14 дней карантин чистится сам.</p>
                 <div v-if="ask" class="attn" style="margin: 0 18px 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">

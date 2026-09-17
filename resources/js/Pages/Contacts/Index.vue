@@ -117,7 +117,7 @@ const COLS = '36px minmax(0, 1fr) minmax(0, 1fr) 200px 90px';
                 <div class="tags"><span v-for="g in c.groups" :key="g" class="tag">{{ g }}</span></div>
                 <div style="display: flex; gap: 4px; justify-content: flex-end">
                     <Link class="btn btn--sm" :href="`/company-contacts?edit=${encodeURIComponent(c.uri)}`" preserve-state title="Изменить"><Icon name="edit" :size="14" /></Link>
-                    <button class="btn btn--sm" type="button" title="Удалить" @click="destroy(c)"><Icon name="trash" :size="14" /></button>
+                    <button class="btn btn--sm" type="button" title="Удалить" @click="destroy(c)" aria-label="Удалить"><Icon name="trash" :size="14" /></button>
                 </div>
             </div>
             <div v-if="!cards.length" class="empty">В общей книге пока пусто. Книга «Сотрудники» ({{ employees }}) заполняется сама при создании ящиков.</div>
