@@ -2,6 +2,7 @@
 
 namespace App\Services\Mail;
 
+use App\Exceptions\MailException;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 use Webklex\PHPIMAP\Attachment;
@@ -352,7 +353,7 @@ class MailStore
                 return $f['path'];
             }
         }
-        abort(422, 'Папка «' . (self::TITLES[$role] ?? $role) . '» ящика ' . $owner . ' вам не открыта — попросите владельца или администратора');
+        throw MailException::denied('Папка «' . (self::TITLES[$role] ?? $role) . '» ящика ' . $owner . ' вам не открыта — попросите владельца или администратора');
     }
 
     /**
@@ -412,20 +413,28 @@ class MailStore
         $sep = $this->separator();
         $clean = trim(str_replace([$sep, '/', "\r", "\n", "\t"], ' ', $name));
         $clean = trim(preg_replace('/\s{2,}/u', ' ', $clean) ?? $clean);
-        abort_if(trim($name) === '', 422, 'Введите название папки');
-        abort_if($clean === '', 422, 'В названии остались только символы, которые нельзя использовать в имени папки (например, «' . $sep . '»)');
-        abort_if(mb_strlen($clean) > 80, 422, 'Название длиннее 80 символов — сократите');
+        if (trim($name) === '') {
+            throw MailException::invalid('Введите название папки');
+        }
+        if ($clean === '') {
+            throw MailException::invalid('В названии остались только символы, которые нельзя использовать в имени папки (например, «' . $sep . '»)');
+        }
+        if (mb_strlen($clean) > 80) {
+            throw MailException::invalid('Название длиннее 80 символов — сократите');
+        }
         $name = $clean;
         // Родитель приходит в виде IMAP-пути (UTF-7), имя — в UTF-8; собираем в UTF-8, кодирует библиотека.
         $parentName = $parent ? mb_convert_encoding($parent, 'UTF-8', 'UTF7-IMAP') : null;
         $path = $parentName ? $parentName . '/' . $name : $name;
         foreach ($this->folders() as $f) {
-            abort_if(strcasecmp($f['path'], $this->utf7($path)) === 0, 422, 'Папка с таким именем уже есть');
+            if (strcasecmp($f['path'], $this->utf7($path)) === 0) {
+                throw MailException::invalid('Папка с таким именем уже есть');
+            }
         }
         try {
             $this->client->createFolder($path, false, false);
         } catch (\Throwable $e) {
-            abort(422, 'Сервер не создал папку: ' . $e->getMessage());
+            throw MailException::upstream('Сервер не создал папку: ' . $e->getMessage());
         }
         $this->client->getConnection()->subscribeFolder($this->utf7($path));
         $this->folderCache = null;
@@ -457,7 +466,9 @@ class MailStore
     {
         // Пути папок в интерфейсе уже в UTF-7 (как отдаёт сервер) — библиотеке об этом надо сказать явно.
         $folder = $this->client->getFolderByPath($path, true, true);
-        abort_unless($folder, 404, 'Папка не найдена');
+        if (! $folder) {
+            throw MailException::notFound('Папка не найдена');
+        }
 
         return $folder;
     }
@@ -596,12 +607,12 @@ class MailStore
                 // и получал то же самое. Разбираем, что именно ответил сервер.
                 $why = mb_strtolower($e->getMessage());
                 if (str_contains($why, 'timed out') || str_contains($why, 'timeout') || str_contains($why, 'indexing')) {
-                    abort(503, $searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
+                    throw MailException::busy($searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
                 }
                 if (str_contains($why, 'bad') || str_contains($why, 'parse') || str_contains($why, 'syntax')) {
-                    abort(422, 'Почтовый сервер не понял запрос. Уберите кавычки и спецсимволы или упростите его.');
+                    throw MailException::invalid('Почтовый сервер не понял запрос. Уберите кавычки и спецсимволы или упростите его.');
                 }
-                abort(502, 'Почтовый сервер не смог выполнить поиск: ' . mb_substr($e->getMessage(), 0, 160));
+                throw MailException::upstream('Почтовый сервер не смог выполнить поиск: ' . mb_substr($e->getMessage(), 0, 160));
             }
             rsort($uids);
             $total = count($uids);
@@ -1038,7 +1049,9 @@ class MailStore
             // webklex на несуществующий UID бросает «no headers found», а не возвращает null
             $message = null;
         }
-        abort_unless($message, 404, 'Письмо не найдено');
+        if (! $message) {
+            throw MailException::notFound('Письмо не найдено');
+        }
 
         $data = $this->full($message, $path);
 
@@ -1065,7 +1078,9 @@ class MailStore
         } catch (\Webklex\PHPIMAP\Exceptions\MessageHeaderFetchingException) {
             $message = null;
         }
-        abort_unless($message, 404, 'Письмо не найдено');
+        if (! $message) {
+            throw MailException::notFound('Письмо не найдено');
+        }
 
         return $this->thread($message, $path);
     }
@@ -1269,9 +1284,13 @@ class MailStore
     public function attachment(string $path, int $uid, int $index): Attachment
     {
         $message = $this->folder($path)->query()->getMessageByUid($uid);
-        abort_unless($message, 404);
+        if (! $message) {
+            throw MailException::notFound('Письмо не найдено');
+        }
         $list = $message->getAttachments()->values();
-        abort_unless(isset($list[$index]), 404, 'Вложение не найдено');
+        if (! isset($list[$index])) {
+            throw MailException::notFound('Вложение не найдено');
+        }
 
         return $list[$index];
     }
@@ -1309,11 +1328,15 @@ class MailStore
     public function attachmentsZip(string $path, int $uid): array
     {
         $message = $this->messageOrNull($path, $uid);
-        abort_unless($message, 404, 'Письмо не найдено — возможно, его удалили или переложили в другой вкладке');
+        if (! $message) {
+            throw MailException::notFound('Письмо не найдено — возможно, его удалили или переложили в другой вкладке');
+        }
         $html = (string) ($message->getHTMLBody() ?? '');
         $tmp = tempnam(sys_get_temp_dir(), 'att');
         $zip = new \ZipArchive();
-        abort_unless($zip->open($tmp, \ZipArchive::OVERWRITE) === true, 500, 'Не удалось создать архив');
+        if ($zip->open($tmp, \ZipArchive::OVERWRITE) !== true) {
+            throw MailException::upstream('Не удалось создать архив');
+        }
         $used = [];
         $count = 0;
         foreach ($message->getAttachments() as $i => $a) {
@@ -1360,11 +1383,17 @@ class MailStore
     {
         $a = $this->attachment($path, $uid, $index);
         $content = (string) $a->getContent();
-        abort_if($content === '', 404, 'Вложение пустое');
-        abort_if(strlen($content) > 25 * 1024 * 1024, 413, 'Документ слишком большой для предпросмотра — скачайте его');
+        if ($content === '') {
+            throw MailException::notFound('Вложение пустое');
+        }
+        if (strlen($content) > 25 * 1024 * 1024) {
+            throw MailException::tooLarge('Документ слишком большой для предпросмотра — скачайте его');
+        }
         $name = self::attachmentName($a, 'document');
         $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-        abort_unless(in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'], true), 415, 'Этот тип файла не показываем — скачайте его');
+        if (! in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'], true)) {
+            throw MailException::unsupported('Этот тип файла не показываем — скачайте его');
+        }
         $dir = storage_path('app/private/preview');
         if (! is_dir($dir)) {
             mkdir($dir, 0750, true);
@@ -1376,7 +1405,9 @@ class MailStore
             return $pdf;
         }
         $lock = \Illuminate\Support\Facades\Cache::lock('office-preview', 90);
-        abort_unless($lock->block(60), 503, 'Конвертер занят — попробуйте через минуту');
+        if (! $lock->block(60)) {
+            throw MailException::busy('Конвертер занят — попробуйте через минуту');
+        }
         try {
             if (is_file($pdf) && filesize($pdf) > 0) {   // пока ждали, сделал кто-то другой
                 return $pdf;
@@ -1393,7 +1424,7 @@ class MailStore
             if (! $p->isSuccessful() || ! is_file($out)) {
                 \Illuminate\Support\Facades\Log::warning('office-preview: ' . $name . ': ' . trim($p->getErrorOutput() . ' ' . $p->getOutput()));
                 \Illuminate\Support\Facades\File::deleteDirectory($work);
-                abort(502, 'Не удалось подготовить предпросмотр — скачайте документ');
+                throw MailException::upstream('Не удалось подготовить предпросмотр — скачайте документ');
             }
             rename($out, $pdf);
             \Illuminate\Support\Facades\File::deleteDirectory($work);
@@ -1447,7 +1478,9 @@ class MailStore
     public function raw(string $path, int $uid): string
     {
         $message = $this->messageOrNull($path, $uid);
-        abort_unless($message, 404, 'Письмо не найдено — возможно, его удалили или переложили в другой вкладке');
+        if (! $message) {
+            throw MailException::notFound('Письмо не найдено — возможно, его удалили или переложили в другой вкладке');
+        }
 
         return (string) $message->getHeader()?->raw . "\r\n\r\n" . $message->getRawBody();
     }
@@ -1497,7 +1530,7 @@ class MailStore
         };
         $rights = $this->rights($path);
         if ($rights !== '' && ! str_contains(strtolower($rights), $need)) {
-            abort(409, match ($need) {
+            throw MailException::denied(match ($need) {
                 's' => 'Отметить прочитанным нельзя: владелец открыл эту папку только для просмотра.',
                 't' => 'Удалить письмо отсюда нельзя: владелец открыл эту папку только для просмотра.',
                 default => 'Поставить пометку или метку здесь нельзя: владелец открыл эту папку только для просмотра.',
@@ -1532,7 +1565,7 @@ class MailStore
         }
         if (preg_match('/(?:^|\s)(NO|BAD)\s+(.*)$/i', $flat, $m)) {
             $reason = trim($m[2]);
-            abort(409, $what . ($reason !== '' ? ': ' . self::imapReason($reason) : ''));
+            throw MailException::denied($what . ($reason !== '' ? ': ' . self::imapReason($reason) : ''));
         }
     }
 
@@ -1589,7 +1622,7 @@ class MailStore
     {
         $rights = strtolower($this->rights($path));
         if ($rights !== '' && (! str_contains($rights, 't') || ! str_contains($rights, 'e'))) {
-            abort(409, 'Очистить эту папку нельзя: владелец открыл её только для просмотра.');
+            throw MailException::denied('Очистить эту папку нельзя: владелец открыл её только для просмотра.');
         }
         $this->client->openFolder($path, true);
         $conn = $this->client->getConnection();

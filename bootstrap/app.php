@@ -41,15 +41,29 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn (Request $request) => Area::isAdmin($request) ? '/login' : '/mail/login');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Ошибки работы с почтой приходят своим типом и уже с человеческим текстом:
+        // хранилищу больше не нужно знать про HTTP, чтобы сообщить о нехватке прав.
+        $exceptions->render(function (\App\Exceptions\MailException $e, Request $request) {
+            return $request->expectsJson() || $request->is('mail/api/*') || $request->is('api/*')
+                ? response()->json(['message' => $e->getMessage()], $e->status())
+                : back()->with('error', $e->getMessage());
+        });
         // Dovecot отказал по ACL (чужая папка только для чтения) — это не ошибка сервера.
+        // Ловим именно почтовые исключения: раньше проверялся текст любого исключения,
+        // и недоступный служебный каталог показывал сотруднику «владелец открыл эту папку
+        // только для просмотра».
         $exceptions->render(function (\Throwable $e, Request $request) {
-            if (str_contains($e->getMessage(), 'NOPERM') || str_contains($e->getMessage(), 'Permission denied')) {
-                $msg = 'Нет прав: владелец открыл эту папку только для просмотра';
-
-                return $request->expectsJson() || $request->is('mail/api/*') ? response()->json(['message' => $msg], 403) : back()->with('error', $msg);
+            // У php-imap все исключения наследуют \Exception напрямую, общего предка нет —
+            // поэтому отличаем их по пространству имён.
+            if (! str_starts_with($e::class, 'Webklex\\PHPIMAP\\Exceptions\\')) {
+                return null;
             }
+            if (! str_contains($e->getMessage(), 'NOPERM') && ! str_contains($e->getMessage(), 'Permission denied')) {
+                return null;
+            }
+            $msg = 'Нет прав: владелец открыл эту папку только для просмотра';
 
-            return null;
+            return $request->expectsJson() || $request->is('mail/api/*') ? response()->json(['message' => $msg], 403) : back()->with('error', $msg);
         });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
