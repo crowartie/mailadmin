@@ -783,8 +783,10 @@ class MailStore
 
     public function message(string $path, int $uid, bool $markSeen = true): array
     {
+        // Сначала только заголовки: их хватает и для шапки письма, и для решения,
+        // можно ли показать письмо, не скачивая вложения (см. fullLight).
         try {
-            $message = $this->folder($path)->query()->getMessageByUid($uid);
+            $message = $this->folder($path)->query()->setFetchBody(false)->setFetchFlags(true)->getMessageByUid($uid);
         } catch (\Webklex\PHPIMAP\Exceptions\MessageHeaderFetchingException) {
             // webklex на несуществующий UID бросает «no headers found», а не возвращает null
             $message = null;
@@ -793,7 +795,16 @@ class MailStore
             throw MailException::notFound('Письмо не найдено');
         }
 
-        $data = $this->full($message, $path);
+        $data = $this->fullLight($message, $path, $uid);
+        if ($data === null) {
+            // Структура письма не разобралась (редкий случай) — работаем по-старому:
+            // качаем письмо целиком и разбираем библиотекой.
+            $heavy = $this->folder($path)->query()->getMessageByUid($uid);
+            if (! $heavy) {
+                throw MailException::notFound('Письмо не найдено');
+            }
+            $data = $this->full($heavy, $path);
+        }
 
         if ($markSeen && ! $message->getFlags()->has('seen')) {
             $this->flag($path, [$uid], '\\Seen', true);
@@ -823,6 +834,96 @@ class MailStore
         }
 
         return $this->thread($message, $path);
+    }
+
+    /**
+     * Письмо без скачивания вложений: тело берём отдельными частями, список вложений —
+     * из структуры письма. Возвращает null, если сервер описал письмо не так, как мы
+     * понимаем, — тогда вызывающий читает письмо целиком, как раньше.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function fullLight(Message $message, string $path, int $uid): ?array
+    {
+        $parts = Structure::of($this->client, $path, $uid);
+        if ($parts === null) {
+            return null;
+        }
+        $bodies = Structure::bodyParts($parts);
+        if (! $bodies) {
+            return null;   // текста не нашлось — пусть библиотека попробует по-своему
+        }
+        $raw = Structure::fetchParts($this->client, $path, $uid, $bodies);
+        $html = null;
+        $text = null;
+        foreach ($bodies as $b) {
+            if (! isset($raw[$b['no']])) {
+                return null;   // часть не пришла: показывать письмо без текста нельзя
+            }
+            $content = Charset::body($raw[$b['no']], (string) $b['charset']);
+            if ($b['subtype'] === 'html') {
+                $html = $content;
+            } else {
+                $text = $content;
+            }
+        }
+
+        // Вложения: имена, типы и размеры уже известны из структуры — качать нечего.
+        $list = Structure::attachments($parts);
+        $attachments = [];
+        $heavyInline = [];
+        $lightInline = [];
+        foreach ($list as $i => $a) {
+            $cid = (string) $a['id'];
+            $isInline = $cid !== '' && $html !== null && str_contains($html, 'cid:' . $cid);
+            // Картинку до двух мегабайт вшиваем в письмо строкой data:, тяжёлую — ссылкой.
+            $heavy = $isInline && $a['size'] >= 2_000_000;
+            if ($isInline && ! $heavy) {
+                $lightInline[$cid] = $a;
+            } elseif ($heavy) {
+                $heavyInline['cid:' . $cid] = '/mail/api/message/' . rawurlencode($path) . '/' . $uid . '/attachment/' . $i . '?inline=1';
+            }
+            $attachments[] = [
+                'index' => $i,
+                'name' => $a['name'] !== '' ? $a['name'] : 'вложение-' . ($i + 1),
+                'size' => $a['size'],
+                'type' => $a['mime'],
+                'inline' => $isInline && ! $heavy,
+            ];
+        }
+        if ($lightInline) {
+            // Встроенные картинки — единственное, что дочитываем помимо текста.
+            $got = Structure::fetchParts($this->client, $path, $uid, array_values($lightInline));
+            foreach ($lightInline as $cid => $a) {
+                if (isset($got[$a['no']])) {
+                    $heavyInline['cid:' . $cid] = 'data:' . $a['mime'] . ';base64,' . base64_encode($got[$a['no']]);
+                }
+            }
+        }
+        if ($html !== null && $heavyInline) {
+            $html = strtr($html, $heavyInline);
+        }
+
+        $rawHeader = (string) ($message->getHeader()?->raw ?? '');
+        $refIds = Mime::messageIds(Mime::headerValue($rawHeader, 'References') ?? $message->getReferences()->toArray());
+        $refs = implode(' ', array_map(fn ($id) => '<' . $id . '>', $refIds));
+        $inReplyTo = Mime::messageIds(Mime::headerValue($rawHeader, 'In-Reply-To') ?? $message->getInReplyTo()->toArray())[0] ?? '';
+
+        return $this->summary($message) + [
+            'folder' => $path,
+            'html' => $html !== null && $html !== '' ? MailHtml::sanitize($html) : null,
+            'text' => $text,
+            'to' => $this->addresses($message->getTo()),
+            'cc' => $this->addresses($message->getCc()),
+            'bcc' => $this->addresses($message->getBcc()),
+            'replyTo' => $this->addresses($message->getReplyTo()),
+            'inReplyTo' => $inReplyTo,
+            'references' => $refs,
+            'attachments' => $attachments,
+            // Признак вложений в шапке считался по заголовку Content-Type, а теперь известен точно.
+            'hasAttachments' => (bool) array_filter($attachments, fn ($a) => empty($a['inline'])),
+            'listUnsubscribe' => (string) ($message->getHeader()?->get('list_unsubscribe')?->first() ?? ''),
+        ];
     }
 
     /** Полное письмо: тело, адреса, вложения. */

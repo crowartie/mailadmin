@@ -40,6 +40,26 @@ final class Charset
     }
 
     /**
+     * Текст части письма: перевести из объявленной кодировки в UTF-8.
+     * Кодировку часть объявляет сама (charset=windows-1251); если не объявила
+     * или объявила неизвестную — полагаемся на общую починку.
+     */
+    public static function body(string $raw, string $charset = ''): string
+    {
+        if ($charset !== '') {
+            $name = self::charsetName($charset);
+            if (strcasecmp($name, 'UTF-8') !== 0) {
+                $c = @mb_convert_encoding($raw, 'UTF-8', $name);
+                if (is_string($c) && $c !== '') {
+                    return (string) self::fix($c);
+                }
+            }
+        }
+
+        return (string) self::fix($raw);
+    }
+
+    /**
      * Имя вложения из сырых заголовков части письма. Библиотека IMAP ломается на именах из нескольких
      * encoded-word (Outlook: «=?koi8-r?B?…?= =?koi8-r?Q?.XLSX?=») и на RFC 2231 (filename*0*=…), поэтому разбираем сами.
      */
