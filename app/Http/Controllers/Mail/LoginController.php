@@ -27,6 +27,8 @@ use Symfony\Component\Mime\Email;
 class LoginController extends Controller
 {
     private const MAX_FAILURES = 8;
+    /** С одного адреса: порог на весь офис, а не на сотрудника (см. recentUserFailures). */
+    private const MAX_IP_FAILURES = 60;
 
     public function create(Request $request): Response|RedirectResponse
     {
@@ -45,10 +47,12 @@ class LoginController extends Controller
             $login .= '@' . config('areas.default_domain', 'innotec.su');
         }
 
-        if (MailLogin::recentFailures($request->ip()) >= self::MAX_FAILURES) {
+        // Счёт по учётной записи. По адресу тоже считаем, но порог кратно выше: офис выходит
+        // в интернет с одного адреса, и восьми чужих промахов хватало, чтобы закрыть вход всем.
+        if (MailLogin::recentUserFailures($login) >= self::MAX_FAILURES || MailLogin::recentFailures($request->ip()) >= self::MAX_IP_FAILURES) {
             MailLogin::record($request, $login, 'blocked');
 
-            return redirect('/mail/login')->withErrors(['login' => 'Слишком много попыток. Подождите 15 минут.'])->onlyInput('login');
+            return redirect('/mail/login')->withErrors(['login' => 'Слишком много попыток входа в этот ящик. Подождите 15 минут.'])->onlyInput('login');
         }
 
         $profile = EmployeeProfile::for($login);
@@ -63,7 +67,11 @@ class LoginController extends Controller
         } catch (\Throwable) {
             MailLogin::record($request, $login, 'bad_password');
 
-            return redirect('/mail/login')->withErrors(['login' => 'Не удалось войти: неверный адрес или пароль.'])->onlyInput('login');
+            // Ошибка относится к паре «логин + пароль», поэтому помечаем оба поля:
+            // раньше подпись стояла только под адресом, хотя чаще ошибаются в пароле.
+            return redirect('/mail/login')
+                ->withErrors(['login' => 'Не удалось войти: неверный адрес или пароль. Проверьте раскладку и Caps Lock.'])
+                ->onlyInput('login');
         }
 
         $settings = Setting::for($login, true);
@@ -92,6 +100,13 @@ class LoginController extends Controller
         $pending = $request->session()->get('mail.pending');
         if (! $pending) {
             return redirect('/mail/login');
+        }
+        // Код из шести цифр подбирается быстрее пароля, а предела на попытки не было вовсе.
+        if (MailLogin::recentCodeFailures($pending['user']) >= self::MAX_FAILURES) {
+            $request->session()->forget('mail.pending');
+            MailLogin::record($request, $pending['user'], 'blocked');
+
+            return redirect('/mail/login')->withErrors(['login' => 'Слишком много неверных кодов. Войдите заново через 15 минут.']);
         }
         $settings = Setting::for($pending['user'], true);
         $secret = ! empty($settings['totp_secret']) ? Crypt::decryptString($settings['totp_secret']) : null;

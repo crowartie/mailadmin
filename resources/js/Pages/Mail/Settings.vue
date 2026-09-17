@@ -44,6 +44,19 @@ const twofaCode = ref('');
 const twofaPassword = ref('');
 const newAppPassword = ref(null);
 const createdPassword = ref(null);
+/**
+ * 13: пароль висел на экране открытым текстом до перезагрузки страницы, а скопировать его
+ * можно было только выделением мышью.
+ */
+async function copyPassword() {
+    const text = createdPassword.value?.plain || '';
+    try {
+        await navigator.clipboard.writeText(text);
+        say('Пароль скопирован — вставьте его в почтовую программу');
+    } catch {
+        say('Браузер не дал скопировать — выделите пароль и нажмите Ctrl+C', true);
+    }
+}
 // 205: до ответа сервера раздел рисовал пустые карточки и выглядел сломанным —
 // теперь видно, что данные грузятся, и видно, если они не пришли.
 const secError = ref('');
@@ -601,7 +614,11 @@ const shortcuts = [
                             </form>
                             <div v-if="createdPassword" class="card" style="padding: 14px 16px; background: var(--ok-soft); border-color: var(--ok)">
                                 <div>Пароль для <b>{{ createdPassword.name }}</b> — скопируйте сейчас, второй раз он не покажется:</div>
-                                <div class="mono" style="font-size: 20px; letter-spacing: .1em; margin: 8px 0">{{ createdPassword.plain }}</div>
+                                <div class="field__row" style="align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap">
+                                    <span class="mono" style="font-size: 20px; letter-spacing: .1em">{{ createdPassword.plain }}</span>
+                                    <button class="btn btn--sm btn--primary" type="button" @click="copyPassword">Скопировать</button>
+                                    <button class="btn btn--sm" type="button" title="Убрать пароль с экрана" @click="createdPassword = null">Убрать с экрана</button>
+                                </div>
                                 <div class="hint">В программе укажите логин {{ user }} и этот пароль вместо основного.</div>
                             </div>
                             <div class="mset__list">
@@ -619,7 +636,7 @@ const shortcuts = [
                             <div class="mset__list">
                                 <div v-for="s in (sec ? sec.sessions : [])" :key="s.id" class="mset__li">
                                     <Icon :name="s.kind === 'web' ? 'laptop' : 'phone'" :size="16" style="color: var(--faint)" />
-                                    <div class="grow"><div>{{ s.device }}<span v-if="s.me" class="chip chip--acc" style="margin-left: 8px">это вы</span></div><div class="sub mono">{{ s.ip }}<template v-if="s.seen"> · {{ when(s.seen) }}</template></div></div>
+                                    <div class="grow"><div>{{ s.device }}<span v-if="s.me" class="chip chip--acc" style="margin-left: 8px">это вы</span><span v-if="s.count > 1" class="chip chip--off" style="margin-left: 8px" title="Одинаковые сеансы с этого браузера и адреса; «Завершить» закроет все">{{ s.count }} {{ plural(s.count, 'сеанс', 'сеанса', 'сеансов') }}</span></div><div class="sub mono">{{ s.ip }}<template v-if="s.seen"> · {{ when(s.seen) }}</template></div></div>
                                     <button v-if="!s.me" class="btn btn--sm" type="button" @click="kickSession(s)">Завершить</button>
                                 </div>
                             </div>

@@ -6,6 +6,9 @@ function xsrf() {
     return m ? decodeURIComponent(m[1]) : '';
 }
 
+// Спрашиваем про окончившийся сеанс один раз: параллельных запросов бывает несколько.
+let sessionEnded = false;
+
 export class ApiError extends Error {
     constructor(message, status, payload) {
         super(message);
@@ -41,8 +44,15 @@ async function request(method, url, body, opts = {}) {
     if (r.status === 401 || (r.redirected && r.url.includes('/mail/login'))) {
         // Причину (пароль сменили, вход закрыли) показываем на странице входа — через адрес, flash до неё не доживает.
         const why = r.status === 401 && data?.message ? '?m=' + encodeURIComponent(data.message) : '';
-        window.location.href = '/mail/login' + why;
-        throw new ApiError(data?.message || 'Сессия закончилась', 401);
+        // Раньше уводило мгновенно — в том числе автосохранением черновика посреди набора письма,
+        // и написанное пропадало. Спрашиваем; пока человек не ответил, страница остаётся на месте.
+        if (!sessionEnded) {
+            sessionEnded = true;
+            const text = (data?.message || 'Сеанс закончился') + '.\n\nНужно войти заново. Если вы писали письмо, нажмите «Отмена»: текст останется на экране, его можно скопировать.';
+            if (window.confirm(text + '\n\nПерейти к входу?')) window.location.href = '/mail/login' + why;
+            else setTimeout(() => { sessionEnded = false; }, 60000);
+        }
+        throw new ApiError(data?.message || 'Сеанс закончился — войдите заново', 401);
     }
     if (!r.ok) {
         // Показываем все ошибки формы сразу: раньше бралась только первая, и поля

@@ -22,8 +22,27 @@ class MailLogin extends Model
         }
     }
 
+    /**
+     * Неудачные попытки пароля с одного адреса. Считаем только пароль: неверный код
+     * двухфакторной защиты — это не подбор, и раньше он копился в тот же счётчик.
+     */
     public static function recentFailures(string $ip, int $minutes = 15): int
     {
-        return self::query()->where('ip', $ip)->where('result', 'like', 'bad_%')->where('created_at', '>=', now()->subMinutes($minutes))->count();
+        return self::query()->where('ip', $ip)->where('result', 'bad_password')->where('created_at', '>=', now()->subMinutes($minutes))->count();
+    }
+
+    /**
+     * Неудачные попытки по конкретной учётной записи. Весь офис выходит в интернет
+     * с одного адреса, поэтому счёт по адресу закрывал вход всем сразу из-за чужих промахов.
+     */
+    public static function recentUserFailures(string $user, int $minutes = 15): int
+    {
+        return self::query()->where('user', strtolower($user))->where('result', 'bad_password')->where('created_at', '>=', now()->subMinutes($minutes))->count();
+    }
+
+    /** Неверные коды двухфакторной защиты по учётной записи — отдельный счётчик. */
+    public static function recentCodeFailures(string $user, int $minutes = 15): int
+    {
+        return self::query()->where('user', strtolower($user))->where('result', 'bad_code')->where('created_at', '>=', now()->subMinutes($minutes))->count();
     }
 }

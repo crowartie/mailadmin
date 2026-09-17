@@ -18,21 +18,35 @@ class Sessions
         $live = \App\Models\Vmail\Mailbox::query()->pluck('username')->map('strtolower')->flip();
         MailSession::query()->whereNotIn('user', $live->keys())->delete();
         $web = MailSession::query()->when($onlyUser, fn ($q) => $q->where('user', $onlyUser))->orderByDesc('last_seen_at')->get();
+        // Одинаковые сеансы (тот же браузер, тот же адрес) сворачиваем в одну строку:
+        // список нужен, чтобы заметить чужой вход, а из десятка «Веб-почта · Windows · Edge»
+        // заметить уже ничего нельзя. Завершение такой строки закрывает всю группу.
+        $groups = [];
         foreach ($web as $s) {
             if (! isset($alive[$s->id])) {
                 $s->delete();
                 continue;
             }
-            $out[] = [
-                'id' => 'web:' . $s->id,
-                'user' => $s->user,
-                'device' => 'Веб-почта · ' . ($s->device ?: 'браузер') . ($s->impersonated ? ' · вход администратора' : ''),
-                'ip' => $s->ip,
-                'seen' => $s->last_seen_at?->toIso8601String(),
-                'kind' => 'web',
-                'me' => $s->id === $currentSessionId,
-            ];
+            $device = 'Веб-почта · ' . ($s->device ?: 'браузер') . ($s->impersonated ? ' · вход администратора' : '');
+            $key = $s->user . '|' . $device . '|' . $s->ip;
+            if (! isset($groups[$key])) {
+                $groups[$key] = [
+                    'id' => 'web:' . $s->id,
+                    'user' => $s->user,
+                    'device' => $device,
+                    'ip' => $s->ip,
+                    'seen' => $s->last_seen_at?->toIso8601String(),
+                    'kind' => 'web',
+                    'me' => $s->id === $currentSessionId,
+                    'count' => 1,
+                ];
+                continue;
+            }
+            $groups[$key]['id'] .= ',' . $s->id;
+            $groups[$key]['count']++;
+            $groups[$key]['me'] = $groups[$key]['me'] || $s->id === $currentSessionId;
         }
+        $out = array_values($groups);
         foreach ($this->imap() as $row) {
             if ($onlyUser && $row['user'] !== $onlyUser) {
                 continue;
@@ -40,7 +54,8 @@ class Sessions
             $out[] = $row + ['me' => false];
         }
 
-        return $out;
+        // Список не должен превращаться в бесконечную ленту у давно работающего сотрудника.
+        return array_slice($out, 0, 50);
     }
 
     /** @return array<int,array{id:string,user:string,device:string,ip:string,seen:?string,kind:string}> */
@@ -68,9 +83,10 @@ class Sessions
     public function kick(string $id): void
     {
         if (str_starts_with($id, 'web:')) {
-            $sid = substr($id, 4);
-            DB::table('sessions')->where('id', $sid)->delete();
-            MailSession::query()->where('id', $sid)->delete();
+            // В свёрнутой строке идентификаторы перечислены через запятую.
+            $sids = array_filter(explode(',', substr($id, 4)));
+            DB::table('sessions')->whereIn('id', $sids)->delete();
+            MailSession::query()->whereIn('id', $sids)->delete();
         } elseif (str_starts_with($id, 'imap:')) {
             [, $user] = explode(':', $id, 3) + [null, null];
             if ($user) {
