@@ -712,7 +712,9 @@
         overflow-y: auto;
 
         blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid v.$c-border; color: v.$c-muted; }
-        &:empty::before { content: attr(data-placeholder); color: v.$c-faint; }
+        // Пустое тело определяет сам редактор: в ответе шаблон начинается с пустого абзаца,
+        // поэтому правило :empty никогда не срабатывало и подсказки не было видно.
+        &--blank::before { content: attr(data-placeholder); color: v.$c-faint; pointer-events: none; }
         img { max-width: 100%; }
     }
 

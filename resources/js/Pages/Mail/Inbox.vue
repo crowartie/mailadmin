@@ -485,10 +485,13 @@ function replyTargets(m) {
     if (folderInfo.value.role === 'sent') return m.to;
     return m.replyTo?.length ? m.replyTo : [m.from];
 }
+// Своя метка у каждого окна письма: раньше два «Написать» подряд давали один и тот же ключ,
+// Vue переиспользовал компонент, и во второй форме оставался текст первой.
+let composeSeq = 0;
 function startCompose(mode = 'new', m = null, text = '') {
     menu.value = null;
     if (mode === 'draft') { openDraft(m.uid); return; }
-    const c = { mode, to: [], cc: [], bcc: [], subject: '', html: '', from: sharedFrom(m) || '' };
+    const c = { token: ++composeSeq, mode, to: [], cc: [], bcc: [], subject: '', html: '', from: sharedFrom(m) || '' };
     if (mode === 'new') {
         c.html = `<p>${escapeHtml(text)}</p>${signature(false, c.from)}`;
     } else if (mode === 'reply' || mode === 'replyAll') {
@@ -534,7 +537,7 @@ async function openThen(mode) {
 async function openDraft(uid) {
     try {
         const d = await api.openDraft(uid);
-        compose.value = { mode: 'draft', ...d, to: parseList(d.to), cc: parseList(d.cc), bcc: parseList(d.bcc), keepAttachments: d.attachments?.length > 0, sourceFolder: rolePath('drafts'), sourceUid: uid };
+        compose.value = { token: ++composeSeq, mode: 'draft', ...d, to: parseList(d.to), cc: parseList(d.cc), bcc: parseList(d.bcc), keepAttachments: d.attachments?.length > 0, sourceFolder: rolePath('drafts'), sourceUid: uid };
         mobileRead.value = true;
     } catch (e) { fail(e); }
 }
@@ -601,7 +604,7 @@ function undoSend() {
     showToast({ text: 'Отправка отменена' }, 2000);
 }
 function formToCompose(f) {
-    return { mode: 'new', ...f, to: parseList(f.to), cc: parseList(f.cc), bcc: parseList(f.bcc), attachments: [] };
+    return { token: ++composeSeq, mode: 'new', ...f, to: parseList(f.to), cc: parseList(f.cc), bcc: parseList(f.bcc), attachments: [] };
 }
 function flushPending() {
     flushPendingAct(true);
@@ -803,7 +806,7 @@ onBeforeUnmount(() => {
             <section class="mread">
                 <Compose
                     v-if="compose"
-                    :key="compose.draftUid || compose.mode + (compose.answeredUid || '') + (compose.sourceUid || '')"
+                    :key="compose.token"
                     :compose="compose"
                     :identities="identities"
                     :settings="settings"

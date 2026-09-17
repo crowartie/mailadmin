@@ -193,7 +193,30 @@ function addFiles(list) {
     dirty.value = true;
 }
 function onFiles(e) { addFiles(e.target.files); e.target.value = ''; }
-function onDrop(e) { drop.value = false; if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files); }
+// Рамка «отпустите, чтобы вложить» — только для файлов из проводника. Перетаскивание текста
+// внутри письма раньше отменялось обработчиком на всём окне, и фрагмент не переносился.
+let dragDepth = 0;
+function hasFiles(e) {
+    return [...(e.dataTransfer?.types || [])].includes('Files');
+}
+function onDragOver(e) {
+    if (!hasFiles(e)) return;            // текст внутри письма — пусть браузер делает своё
+    e.preventDefault();
+    drop.value = true;
+}
+function onDragLeave(e) {
+    if (!hasFiles(e)) return;
+    // dragleave срабатывает на каждом вложенном элементе — считаем вход и выход, иначе рамка мигает
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) drop.value = false;
+}
+function onDrop(e) {
+    dragDepth = 0;
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    drop.value = false;
+    if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
+}
 function removeFile(i) { files.value.splice(i, 1); const s = new Set(); viaCloud.value.forEach((k) => { if (k < i) s.add(k); else if (k > i) s.add(k - 1); }); viaCloud.value = s; dirty.value = true; }
 
 function openMenu(kind, e) {
@@ -209,7 +232,12 @@ function laterCustom() {
 }
 
 function onKey(e) {
-    if (e.key === 'Escape' && !menu.value) { e.stopPropagation(); close(); }
+    if (e.key === 'Escape' && !menu.value) { e.stopPropagation(); close(); return; }
+    // Ctrl+Enter и Ctrl+S раньше работали только из тела письма: в полях «Кому» и «Тема»
+    // нажатие ничего не делало, хотя подсказка обещала обратное.
+    if (!(e.ctrlKey || e.metaKey) || e.defaultPrevented) return;
+    if (e.key === 'Enter') { e.preventDefault(); send(); return; }
+    if (e.code === 'KeyS') { e.preventDefault(); saveDraft(false); }
 }
 
 watch([to, cc, bcc, subject, html, from, keepAttachments], () => { dirty.value = true; }, { deep: true });
@@ -274,31 +302,31 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         class="compose"
         :class="{ 'compose--drop': drop }"
         @keydown="onKey"
-        @dragover.prevent="drop = true"
-        @dragleave="drop = false"
-        @drop.prevent="onDrop"
+        @dragover="onDragOver"
+        @dragleave="onDragLeave"
+        @drop="onDrop"
     >
         <div class="compose__row" style="border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: 12px 12px 0 0">
             <b style="font-size: 15px">{{ title }}</b>
             <span style="flex: 1" />
-            <button class="ib ib--sm" type="button" title="Закрыть — написанное сохранится в черновиках" @click="close"><Icon name="x" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Закрыть — написанное сохранится в черновиках" aria-label="Закрыть окно письма" @click="close"><Icon name="x" :size="16" /></button>
         </div>
 
         <div class="compose__row">
-            <label>Кому</label>
-            <RecipientInput ref="toInput" v-model="to" placeholder="Имя или адрес" />
+            <label for="cmp-to">Кому</label>
+            <RecipientInput input-id="cmp-to" ref="toInput" v-model="to" placeholder="Имя или адрес" />
             <span class="links">
                 <button v-if="!showCc" type="button" class="linklike" @click="showCc = true">Копия</button>
                 <button v-if="!showBcc" type="button" class="linklike" @click="showBcc = true">Скрытая</button>
             </span>
         </div>
         <div v-if="showCc" class="compose__row">
-            <label>Копия</label>
-            <RecipientInput ref="ccInput" v-model="cc" />
+            <label for="cmp-cc">Копия</label>
+            <RecipientInput input-id="cmp-cc" ref="ccInput" v-model="cc" />
         </div>
         <div v-if="showBcc" class="compose__row">
-            <label>Скрытая</label>
-            <RecipientInput ref="bccInput" v-model="bcc" />
+            <label for="cmp-bcc">Скрытая</label>
+            <RecipientInput input-id="cmp-bcc" ref="bccInput" v-model="bcc" />
         </div>
         <div v-if="identities.length > 1" class="compose__row">
             <label>От кого</label>
@@ -350,16 +378,16 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                     <Icon name="clock" :size="16" />
                 </button>
             </span>
-            <button class="ib" type="button" title="Вложить файл" @click="fileInput?.click()"><Icon name="clip" :size="17" /></button>
+            <button class="ib" type="button" title="Вложить файл" aria-label="Вложить файл" @click="fileInput?.click()"><Icon name="clip" :size="17" /></button>
             <input ref="fileInput" type="file" multiple hidden @change="onFiles">
-            <button class="ib" type="button" :class="{ 'ib--on': remindDays }" title="Напомнить, если не ответят" @click="openMenu('remind', $event)">
+            <button class="ib" type="button" :class="{ 'ib--on': remindDays }" title="Напомнить, если не ответят" aria-label="Напомнить, если не ответят" @click="openMenu('remind', $event)">
                 <Icon name="bell" :size="17" /><span v-if="remindDays">{{ remindDays }} дн.</span>
             </button>
-            <button class="ib" type="button" title="Ещё" @click="openMenu('more', $event)"><Icon name="dots" :size="17" /></button>
+            <button class="ib" type="button" title="Ещё" aria-label="Ещё" @click="openMenu('more', $event)"><Icon name="dots" :size="17" /></button>
             <span class="grow" />
             <span class="status">{{ status }}</span>
-            <button class="ib" type="button" title="Сохранить черновик (Ctrl+S)" @click="saveDraft()"><Icon name="edit" :size="16" /></button>
-            <button class="ib ib--danger" type="button" title="Удалить черновик и закрыть" @click="discard"><Icon name="trash" :size="16" /></button>
+            <button class="ib" type="button" title="Сохранить черновик (Ctrl+S)" aria-label="Сохранить черновик" @click="saveDraft()"><Icon name="edit" :size="16" /></button>
+            <button class="ib ib--danger" type="button" title="Удалить черновик и закрыть" aria-label="Удалить черновик и закрыть" @click="discard"><Icon name="trash" :size="16" /></button>
         </div>
 
         <Popover v-if="menu === 'later'" :x="menuAt.x" :y="menuAt.y - 250" @close="menu = null">

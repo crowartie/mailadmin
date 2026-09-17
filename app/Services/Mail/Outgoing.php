@@ -55,13 +55,21 @@ class Outgoing
         // Картинки, встроенные редактором как data: (логотип в подписи, снимок из буфера) — во вложения с cid:
         // Gmail и часть клиентов data:-картинки в письмах не показывают, cid показывают все.
         $n = 0;
-        $html = preg_replace_callback('#src=(["\'])data:(image/(?:png|jpeg|jpg|gif|webp));base64,([A-Za-z0-9+/=\s]+)\1#i', function ($m) use ($email, &$n) {
+        // Раньше список форматов был короче, чем принимает кнопка «Картинка»: bmp, tiff, heic и другие
+        // оставались в письме как data: и у получателя не показывались вовсе.
+        $html = preg_replace_callback('#src=(["\'])data:(image/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)\1#i', function ($m) use ($email, &$n) {
             $data = base64_decode(preg_replace('/\s+/', '', $m[3]), true);
             if ($data === false || $data === '') {
                 return $m[0];
             }
             $n++;
-            $name = 'image' . $n . '.' . (in_array($m[2], ['image/jpeg', 'image/jpg'], true) ? 'jpg' : substr($m[2], 6));
+            $ext = match (strtolower($m[2])) {
+                'image/jpeg', 'image/jpg' => 'jpg',
+                'image/svg+xml' => 'svg',
+                'image/x-icon', 'image/vnd.microsoft.icon' => 'ico',
+                default => preg_replace('/[^a-z0-9]/', '', substr(strtolower($m[2]), 6)) ?: 'img',
+            };
+            $name = 'image' . $n . '.' . $ext;
             $email->embed($data, $name, $m[2]);
 
             return 'src=' . $m[1] . 'cid:' . $name . $m[1];

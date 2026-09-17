@@ -6,6 +6,9 @@ import { initials, parseAddr, splitAddrs } from '../../mail/format';
 
 const props = defineProps({
     modelValue: { type: Array, default: () => [] }, // [{name, mail}]
+    // id самого поля ввода: <label for> должен указывать на него, а не на обёртку,
+    // иначе клик по подписи не ставит курсор и экранный диктор поле не называет.
+    inputId: { type: String, default: '' },
     placeholder: { type: String, default: '' },
     autofocus: Boolean,
 });
@@ -147,6 +150,7 @@ defineExpose({ focus: () => input.value?.focus(), flush });
             <button type="button" title="Убрать" @click.stop="remove(i)">✕</button>
         </span>
         <input
+            :id="inputId || undefined"
             ref="input"
             v-model="text"
             :placeholder="modelValue.length ? '' : placeholder"

@@ -14,6 +14,8 @@ const props = defineProps({
 });
 const emit = defineEmits(['close']);
 
+const box = ref(null);
+let returnTo = null;   // куда вернуть фокус после закрытия
 const cur = ref(Math.min(Math.max(0, props.start), props.items.length - 1));
 const item = computed(() => props.items[cur.value]);
 const isImage = computed(() => (item.value?.type || '').startsWith('image/'));
@@ -24,16 +26,34 @@ function prev() { if (hasPrev.value) cur.value--; }
 function next() { if (hasNext.value) cur.value++; }
 function onKey(e) {
     // stopPropagation: иначе Escape закрывал и просмотрщик, и окно письма под ним.
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); emit('close'); }
-    else if (e.key === 'ArrowLeft') prev();
-    else if (e.key === 'ArrowRight') next();
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); emit('close'); return; }
+    if (e.key === 'ArrowLeft') { prev(); return; }
+    if (e.key === 'ArrowRight') { next(); return; }
+    if (e.key !== 'Tab' || !box.value) return;
+    // Держим фокус внутри окна просмотра: иначе Tab уводил в форму письма под затемнением,
+    // где не видно, что выбрано.
+    const items = [...box.value.querySelectorAll('a[href], button:not([disabled])')]
+        .filter((n) => n.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 }
-onMounted(() => window.addEventListener('keydown', onKey));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
+onMounted(() => {
+    window.addEventListener('keydown', onKey);
+    returnTo = document.activeElement;
+    // Фокус сразу в окно просмотра, иначе клавиши листания не работают до первого щелчка
+    box.value?.querySelector('button')?.focus();
+});
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onKey);
+    if (returnTo && document.contains(returnTo)) returnTo.focus();
+});
 </script>
 
 <template>
-    <div class="aview" @click.self="$emit('close')">
+    <div ref="box" class="aview" role="dialog" aria-modal="true" :aria-label="'Просмотр вложения: ' + item.name" @click.self="$emit('close')">
         <div class="aview__bar">
             <span class="aview__name" :title="item.name">{{ item.name }}</span>
             <span class="aview__meta"><template v-if="item.size">{{ size(item.size) }} · </template>{{ cur + 1 }} / {{ items.length }}<template v-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>

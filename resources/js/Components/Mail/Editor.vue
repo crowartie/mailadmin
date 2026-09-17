@@ -11,9 +11,19 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'submit', 'save', 'toast']);
 const el = ref(null);
 const state = ref({ bold: false, italic: false, underline: false });
+// Пустое тело письма определяем по содержимому, а не правилом :empty: шаблон ответа
+// начинается с пустого абзаца, элемент формально не пуст, и подсказка не показывалась.
+const blank = ref(true);
+function checkBlank() {
+    const node = el.value;
+    if (!node) { blank.value = true; return; }
+    if (node.querySelector('img, blockquote, table, div.sig, div.quote, div.fwd')) { blank.value = false; return; }
+    blank.value = node.textContent.replace(/\u00a0/g, ' ').trim() === '';
+}
 
 function sync() {
     emit('update:modelValue', el.value.innerHTML);
+    checkBlank();
 }
 
 function cmd(name, value = null) {
@@ -88,9 +98,11 @@ function insertImage(file) {
 
 onMounted(() => {
     el.value.innerHTML = props.modelValue || '';
+    checkBlank();
 });
 watch(() => props.modelValue, (v) => {
     if (el.value && el.value.innerHTML !== v) el.value.innerHTML = v || '';
+    checkBlank();
 });
 
 defineExpose({
@@ -105,19 +117,19 @@ defineExpose({
 
 <template>
     <div class="compose__tools">
-        <div class="fmt">
-            <button type="button" :class="{ on: state.bold }" title="Жирный (Ctrl+B)" @click="cmd('bold')"><Icon name="bold" :size="15" /></button>
-            <button type="button" :class="{ on: state.italic }" title="Курсив (Ctrl+I)" @click="cmd('italic')"><Icon name="italic" :size="15" /></button>
-            <button type="button" :class="{ on: state.underline }" title="Подчёркнутый (Ctrl+U)" @click="cmd('underline')"><Icon name="underline" :size="15" /></button>
+        <div class="fmt" role="toolbar" aria-label="Форматирование текста">
+            <button type="button" :class="{ on: state.bold }" title="Жирный (Ctrl+B)" aria-label="Жирный" @click="cmd('bold')"><Icon name="bold" :size="15" /></button>
+            <button type="button" :class="{ on: state.italic }" title="Курсив (Ctrl+I)" aria-label="Курсив" @click="cmd('italic')"><Icon name="italic" :size="15" /></button>
+            <button type="button" :class="{ on: state.underline }" title="Подчёркнутый (Ctrl+U)" aria-label="Подчёркнутый" @click="cmd('underline')"><Icon name="underline" :size="15" /></button>
             <span class="v" />
-            <button type="button" title="Ссылка (Ctrl+K)" @click="link"><Icon name="link" :size="15" /></button>
-            <button type="button" title="Список" @click="cmd('insertUnorderedList')"><Icon name="ul" :size="15" /></button>
-            <button type="button" title="Нумерованный список" @click="cmd('insertOrderedList')"><Icon name="ol" :size="15" /></button>
-            <button type="button" title="Цитата" @click="cmd('formatBlock', 'blockquote')"><Icon name="quote" :size="15" /></button>
-            <button type="button" title="Картинка (файл или вставка из буфера)" @click="pickImage"><Icon name="img" :size="15" /></button>
+            <button type="button" title="Ссылка (Ctrl+K)" aria-label="Вставить ссылку" @click="link"><Icon name="link" :size="15" /></button>
+            <button type="button" title="Список" aria-label="Маркированный список" @click="cmd('insertUnorderedList')"><Icon name="ul" :size="15" /></button>
+            <button type="button" title="Нумерованный список" aria-label="Нумерованный список" @click="cmd('insertOrderedList')"><Icon name="ol" :size="15" /></button>
+            <button type="button" title="Цитата" aria-label="Цитата" @click="cmd('formatBlock', 'blockquote')"><Icon name="quote" :size="15" /></button>
+            <button type="button" title="Картинка (файл или вставка из буфера)" aria-label="Вставить картинку" @click="pickImage"><Icon name="img" :size="15" /></button>
             <input ref="fileInput" type="file" accept="image/*" style="display: none" @change="onImageFile">
             <span class="v" />
-            <button type="button" title="Убрать форматирование" @click="cmd('removeFormat')"><Icon name="eraser" :size="15" /></button>
+            <button type="button" title="Убрать форматирование" aria-label="Убрать форматирование" @click="cmd('removeFormat')"><Icon name="eraser" :size="15" /></button>
         </div>
         <span class="grow" />
         <slot name="right" />
@@ -126,6 +138,10 @@ defineExpose({
         ref="el"
         class="compose__editor"
         contenteditable="true"
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Текст письма"
+        :class="{ 'compose__editor--blank': blank }"
         :data-placeholder="placeholder"
         spellcheck="true"
         @input="sync"
