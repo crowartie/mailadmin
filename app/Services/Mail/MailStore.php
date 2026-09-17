@@ -457,6 +457,23 @@ class MailStore
             $total = count($sorted);
             $slice = array_slice($sorted, ($page - 1) * self::PAGE, self::PAGE);
             $messages = $slice ? ($this->pageFastUids($slice) ?? []) : [];
+            // FETCH отдаёт письма в своём порядке, а не в том, в каком мы запросили UID:
+            // раскладываем строки обратно по порядку сортировки.
+            if ($messages) {
+                $byUid = [];
+                foreach ($messages as $row) {
+                    $byUid[(int) ($row['uid'] ?? 0)] = $row;
+                }
+                $ordered = [];
+                foreach ($slice as $uid) {
+                    if (isset($byUid[(int) $uid])) {
+                        $ordered[] = $byUid[(int) $uid];
+                    }
+                }
+                if (count($ordered) === count($messages)) {
+                    $messages = $ordered;
+                }
+            }
             if ($messages || ! $slice) {
                 return [
                     'messages' => $messages,
