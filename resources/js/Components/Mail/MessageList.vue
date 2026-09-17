@@ -24,6 +24,14 @@ const props = defineProps({
 });
 const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'page', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
 
+// 333: режим выбора на телефоне — галочки показываются, тап по строке отмечает письмо,
+// а не открывает его. На большом экране галочки видны всегда, и режим не нужен.
+const selectMode = ref(false);
+function toggleSelectMode() {
+    selectMode.value = !selectMode.value;
+    if (!selectMode.value) emit('clear');
+}
+
 const q = ref(props.query || '');
 watch(() => props.query, (v) => { q.value = v || ''; });
 const searchInput = ref(null);
@@ -45,11 +53,14 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
 </script>
 
 <template>
-    <section class="mlist" :class="{ 'mlist--hl': highlightUnread }" :style="unreadColor ? { '--unread-c': unreadColor } : null">
+    <section class="mlist" :class="{ 'mlist--hl': highlightUnread, 'mlist--select': selectMode }" :style="unreadColor ? { '--unread-c': unreadColor } : null">
         <div class="mobile-bar">
-            <button class="ib" type="button" @click="$emit('menu')"><Icon name="menu" :size="22" /></button>
+            <button class="ib" type="button" @click="$emit('menu')" aria-label="Папки"><Icon name="menu" :size="22" /></button>
             <b>{{ folderName }}</b>
-            <button class="ib" type="button" title="Обновить" @click="$emit('refresh')" aria-label="Обновить"><Icon name="refresh" :size="20" /></button>
+            <!-- 333: галочки на телефоне были скрыты, долгий тап меню не открывал —
+                 выделить несколько писем было нельзя вовсе. 339: кнопка обновления
+                 стояла здесь и ещё раз рядом со счётчиком писем. -->
+            <button class="ib" type="button" :class="{ 'ib--on': selectMode }" :title="selectMode ? 'Выйти из выбора' : 'Выбрать несколько писем'" :aria-label="selectMode ? 'Выйти из выбора' : 'Выбрать несколько писем'" @click="toggleSelectMode"><Icon name="check" :size="20" /></button>
         </div>
 
         <!-- 362: подпись внутри поля исчезала после первого же символа, и экранный диктор
@@ -61,7 +72,8 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                  Теперь Escape только очищает поле; поиск запускает Enter или крестик. -->
             <input id="mlist-q" ref="searchInput" v-model="q" type="search" placeholder="Поиск по письмам" @keydown.esc.prevent="q ? (q = '') : searchInput?.blur()">
             <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''; submitSearch()" aria-label="Очистить"><Icon name="x" :size="14" /></button>
-            <span v-else class="kbd">/</span>
+            <!-- 340: подсказка про клавишу показывалась и на телефоне, где клавиши нет. -->
+            <span v-else class="kbd desktop-only">/</span>
         </form>
         <div v-if="query" class="hint" style="padding: 0 16px 8px">
             <!-- 172: подсказка была написана в третьем формате, не совпадавшем ни со справкой,
@@ -126,7 +138,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                 :aria-label="(m.seen ? '' : 'Непрочитанное. ') + m.from.name + '. ' + m.subject"
                 @keydown.enter.prevent="$emit('open', m.uid, $event)"
                 @keydown.space.prevent="$emit('toggle', m.uid, $event)"
-                @click="$emit('open', m.uid, $event)"
+                @click="selectMode ? $emit('toggle', m.uid) : $emit('open', m.uid, $event)"
                 @contextmenu.prevent="$emit('context', $event, m.uid)"
                 @dragstart="onDragStart($event, m)"
             >

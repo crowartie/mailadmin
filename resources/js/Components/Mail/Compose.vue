@@ -66,7 +66,12 @@ function openExisting(a) {
 }
 async function openLocal(i) {
     const list = files.value.filter(localViewable);
-    viewer.value = { start: Math.max(0, list.indexOf(files.value[i])), items: await localViewerItems(files.value) };
+    const start = Math.max(0, list.indexOf(files.value[i]));
+    try {
+        viewer.value = { start, items: await localViewerItems(files.value, start) };
+    } catch (e) {
+        emit('toast', { text: 'Не удалось открыть файл: ' + (e?.message || 'ошибка чтения'), error: true });
+    }
 }
 const MAX_FILE = (props.cloud?.maxMb || 50) * 1024 * 1024;
 const CLOUD_FROM = (props.cloud?.thresholdMb || 10) * 1024 * 1024;

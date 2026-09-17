@@ -31,10 +31,26 @@ export function readAsDataUrl(file) {
         r.readAsDataURL(file);
     });
 }
-export async function localViewerItems(files) {
+/**
+ * Элементы просмотрщика для ещё не отправленных файлов. Раньше при открытии одного файла
+ * в память читались сразу все: на нескольких крупных вкладка надолго замирала.
+ * Читаем только тот, который смотрят; остальные подгрузит сам просмотрщик при листании.
+ */
+export async function localViewerItems(files, only = null) {
     const list = files.filter(localViewable);
-    return Promise.all(list.map(async (f) => {
-        const url = await readAsDataUrl(f);
-        return { url, downloadUrl: url, name: f.name, type: String(f.type || '').startsWith('image/') ? f.type : 'application/pdf', size: f.size };
+
+    return Promise.all(list.map(async (f, i) => {
+        const base = { name: f.name, type: String(f.type || '').startsWith('image/') ? f.type : 'application/pdf', size: f.size, file: f };
+        if (only !== null && i !== only) {
+            return { ...base, url: '', downloadUrl: '' };
+        }
+        try {
+            const url = await readAsDataUrl(f);
+
+            return { ...base, url, downloadUrl: url };
+        } catch {
+            // 155: отказ чтения уходил в необработанную ошибку, а просмотрщик падал на имени файла.
+            return { ...base, url: '', downloadUrl: '', error: 'Файл не удалось прочитать — возможно, его переместили или удалили' };
+        }
     }));
 }

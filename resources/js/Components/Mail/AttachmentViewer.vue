@@ -2,11 +2,12 @@
 // Просмотр вложений без скачивания (обращение №6): картинки — через vue-easy-lightbox (зум колесом, перетаскивание,
 // поворот, отражение), PDF — встроенный просмотрщик браузера во фрейме. Стрелки и ← → листают все просматриваемые
 // вложения письма подряд, Esc / щелчок по фону закрывает. Остальные типы открываются скачиванием, сюда не попадают.
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 // Библиотека грузится отдельным файлом только при первом открытии картинки — в основную сборку почты не входит.
 const VueEasyLightbox = defineAsyncComponent(() => import('vue-easy-lightbox').then((m) => m.default || m));
 import Icon from '../Icon.vue';
 import { size } from '../../mail/format';
+import { readAsDataUrl } from '../../mail/attachments';
 
 const props = defineProps({
     items: { type: Array, required: true },   // [{ url, downloadUrl, name, type, size }]
@@ -24,6 +25,23 @@ const hasNext = computed(() => cur.value < props.items.length - 1);
 
 function prev() { if (hasPrev.value) cur.value--; }
 function next() { if (hasNext.value) cur.value++; }
+
+/**
+ * 153: при открытии одного вложения в память читались сразу все — на нескольких крупных
+ * файлах вкладка надолго замирала. Соседние дочитываем только когда до них долистали.
+ */
+async function ensureLoaded(i) {
+    const it = props.items[i];
+    if (!it || it.url || it.error || !it.file) return;
+    try {
+        it.url = await readAsDataUrl(it.file);
+        it.downloadUrl = it.url;
+    } catch {
+        // 155: отказ чтения уходил в необработанную ошибку.
+        it.error = 'Файл не удалось прочитать — возможно, его переместили или удалили';
+    }
+}
+watch(cur, (i) => ensureLoaded(i), { immediate: true });
 function onKey(e) {
     // stopPropagation: иначе Escape закрывал и просмотрщик, и окно письма под ним.
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); emit('close'); return; }
@@ -58,17 +76,23 @@ onBeforeUnmount(() => {
             <span class="aview__name" :title="item.name">{{ item.name }}</span>
             <span class="aview__meta"><template v-if="item.size">{{ size(item.size) }} · </template>{{ cur + 1 }} / {{ items.length }}<template v-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>
             <span class="grow" />
-            <a class="ib aview__ib" :href="item.downloadUrl" title="Скачать" aria-label="Скачать"><Icon name="download" :size="17" /></a>
-            <a class="ib aview__ib" :href="item.url" target="_blank" rel="noopener" title="Открыть в новой вкладке" aria-label="Открыть в новой вкладке"><Icon name="share" :size="17" /></a>
+            <!-- 154: у только что приложенного файла адрес — строка data:, и браузеры
+                 блокируют переход по ней в новой вкладке, а без атрибута download
+                 «Скачать» тоже не работало. -->
+            <a v-if="item.downloadUrl" class="ib aview__ib" :href="item.downloadUrl" :download="item.name" title="Скачать" aria-label="Скачать"><Icon name="download" :size="17" /></a>
+            <a v-if="item.url && !item.url.startsWith('data:')" class="ib aview__ib" :href="item.url" target="_blank" rel="noopener" title="Открыть в новой вкладке" aria-label="Открыть в новой вкладке"><Icon name="share" :size="17" /></a>
             <button class="ib aview__ib" type="button" title="Закрыть (Esc)" @click="$emit('close')" aria-label="Закрыть (Esc)"><Icon name="x" :size="18" /></button>
         </div>
 
         <button v-if="hasPrev" class="aview__arrow aview__arrow--l" type="button" title="Предыдущее (←)" @click="prev" aria-label="Предыдущее (←)"><Icon name="left" :size="22" /></button>
         <button v-if="hasNext" class="aview__arrow aview__arrow--r" type="button" title="Следующее (→)" @click="next" aria-label="Следующее (→)"><Icon name="right" :size="22" /></button>
 
+        <!-- 155: при сбое чтения окно открывалось пустым кадром и падало на имени файла. -->
+        <div v-if="item.error || !item.url" class="aview__msg">{{ item.error || 'Читаем файл…' }}</div>
+
         <!-- Картинка: библиотека рисует свою подложку и панель (зум, поворот, отражение); свои кнопки и стрелки у неё отключены -->
         <VueEasyLightbox
-            v-if="isImage"
+            v-else-if="isImage"
             :key="item.url"
             :visible="true"
             :imgs="[{ src: item.url, title: item.name }]"
