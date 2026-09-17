@@ -3,6 +3,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
+// Размер и склонение считаются общими функциями веб-почты: две копии одного расчёта
+// расходились по краям (у очереди «1.0 МБ» против «1 МБ» в письме).
+import { plural, size } from '../../mail/format';
 
 const props = defineProps({
     rows: Array,
@@ -26,7 +29,6 @@ const totalSize = computed(() => rows.value.reduce((s, r) => s + r.size, 0));
 const visible = computed(() => rows.value.filter((r) => (state.value === 'all' || r.state === state.value) && (!q.value || `${r.id} ${r.sender} ${r.recipients.map((x) => x.address).join(' ')} ${r.reason}`.toLowerCase().includes(q.value.toLowerCase()))));
 const allChecked = computed(() => visible.value.length > 0 && visible.value.every((r) => selected.value.has(r.id)));
 
-function size(b) { return b < 1024 ? b + ' Б' : b < 1048576 ? Math.round(b / 1024) + ' КБ' : (b / 1048576).toFixed(1) + ' МБ'; }
 function age(s) { if (s == null) return ''; return s < 60 ? 'только что' : s < 3600 ? Math.round(s / 60) + ' мин' : s < 86400 ? Math.round(s / 3600) + ' ч' : Math.round(s / 86400) + ' дн'; }
 function hm(iso) { return iso ? new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''; }
 function xsrf() { const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/); return m ? decodeURIComponent(m[1]) : ''; }
@@ -65,7 +67,7 @@ const COLS = '22px 100px 60px minmax(0, 1fr) minmax(0, 1fr) 80px 120px minmax(0,
 </script>
 
 <template>
-    <AppLayout title="Очередь" :count="`${rows.length} ${rows.length % 10 === 1 && rows.length % 100 !== 11 ? 'письмо' : rows.length % 10 >= 2 && rows.length % 10 <= 4 && (rows.length % 100 < 10 || rows.length % 100 >= 20) ? 'письма' : 'писем'} · ${size(totalSize)}`" search-placeholder="Адрес или message-id…">
+    <AppLayout title="Очередь" :count="`${rows.length} ${plural(rows.length, 'письмо', 'письма', 'писем')} · ${size(totalSize)}`" search-placeholder="Адрес или message-id…">
         <template #actions>
             <div class="seg">
                 <button type="button" class="seg__item" :class="{ 'seg__item--on': state === 'all' }" @click="state = 'all'">Все</button>

@@ -184,7 +184,10 @@ defineExpose({
 
 <template>
     <div class="compose__tools">
-        <div class="fmt" role="toolbar" aria-label="Форматирование текста">
+        <!-- Нажатие мышью по кнопке уводит фокус из поля ввода, и выделение схлопывается:
+             команда применялась к месту курсора, а не к выделенному тексту. Гасим перевод
+             фокуса — выделение остаётся, клавиатурный обход по Tab не меняется. -->
+        <div class="fmt" role="toolbar" aria-label="Форматирование текста" @mousedown.prevent>
             <button type="button" :class="{ on: state.bold }" title="Жирный (Ctrl+B)" aria-label="Жирный" @click="cmd('bold')"><Icon name="bold" :size="15" /></button>
             <button type="button" :class="{ on: state.italic }" title="Курсив (Ctrl+I)" aria-label="Курсив" @click="cmd('italic')"><Icon name="italic" :size="15" /></button>
             <button type="button" :class="{ on: state.underline }" title="Подчёркнутый (Ctrl+U)" aria-label="Подчёркнутый" @click="cmd('underline')"><Icon name="underline" :size="15" /></button>

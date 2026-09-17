@@ -3,7 +3,13 @@
 import { api } from './api';
 
 export const OFFICE = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
-export const ext = (a) => String(a.name || '').toLowerCase().split('.').pop();
+// Без точки в имени расширения нет: раньше файл, названный «doc» или «rtf», сам себя
+// объявлял офисным документом, уходил на преобразование и показывался пустым кадром.
+export const ext = (a) => {
+    const n = String(a.name || '').toLowerCase();
+    const i = n.lastIndexOf('.');
+    return i > 0 && i < n.length - 1 ? n.slice(i + 1) : '';
+};
 export const isImg = (a) => String(a.type || '').startsWith('image/');
 export const isPdf = (a) => a.type === 'application/pdf' || ext(a) === 'pdf';
 export const isOffice = (a) => OFFICE.includes(ext(a));

@@ -692,3 +692,38 @@ select.input { padding-right: 32px; }
 @media (max-width: 860px) {
     .fbchat__back { display: inline-flex; }
 }
+
+
+// ── Классы, оставшиеся без описания ──────────────────────────────────────
+// Их разметка использует на четырёх страницах, а стили лежали в _forms.scss,
+// который ни к чему не подключён: полоса кнопок не выстраивалась в ряд,
+// подпись раздела ничем не отличалась от текста, а «список пуст» выглядел
+// как обычная строка. Переписаны на переменные темы — в тёмной работают так же.
+.toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.form-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 14px;
+}
+
+.pane__title {
+    margin: 4px 0 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: v.$c-muted;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.empty-inline {
+    color: v.$c-muted;
+    padding: 14px 0;
+}
+
+.card--form { max-width: 780px; }

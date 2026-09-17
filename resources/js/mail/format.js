@@ -55,10 +55,14 @@ export function size(bytes) {
 }
 
 export function initials(name, mail) {
-    const src = (name && name !== mail ? name : (mail || '')).replace(/["<>]/g, '').trim();
+    const named = !!(name && name !== mail);
+    const src = (named ? name : (mail || '')).replace(/["<>]/g, '').trim();
     if (!src) return '·';
-    const parts = src.split(/[\s@._-]+/).filter(Boolean);
-    const s = parts.length >= 2 ? parts[0][0] + parts[1][0] : src.slice(0, 2);
+    // У адреса без имени берём только часть до «собаки»: домен общий, и вторая буква
+    // выходила одинаковой у всех коллег — «ИИ» и у ivanov@innotec.su, и у petrov@innotec.su.
+    const base = named ? src : (src.split('@')[0] || src);
+    const parts = base.split(/[\s._-]+/).filter(Boolean);
+    const s = parts.length >= 2 ? parts[0][0] + parts[1][0] : base.slice(0, 2);
     return s.toUpperCase();
 }
 

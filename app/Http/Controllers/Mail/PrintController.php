@@ -13,6 +13,9 @@ use Illuminate\Contracts\View\View;
  */
 class PrintController extends Controller
 {
+    /** Сколько предыдущих писем печатаем целиком. */
+    private const THREAD_LIMIT = 10;
+
     public function show(ImapSession $imap, string $folder, int $uid): View
     {
         $store = new MailStore($imap->client());
@@ -35,11 +38,27 @@ class PrintController extends Controller
         // 321: сравнение строк давало другой порядок, чем на экране, — у писем разные
         // часовые пояса в ISO-дате. Сортируем по времени, как список цепочки.
         usort($thread, fn ($a, $b) => $ts($b['date'] ?? null) <=> $ts($a['date'] ?? null));
+        // 319: печатались только заголовки предыдущих писем — тексты пропадали целиком,
+        // и распечатка переписки не годилась ни для дела, ни для суда. Дочитываем тела;
+        // больше десяти писем не берём, чтобы печать не превращалась в выгрузку ящика,
+        // а о непечатаемом остатке говорим прямо в документе.
+        $full = [];
+        foreach (array_slice($thread, 0, self::THREAD_LIMIT) as $t) {
+            $tp = (string) ($t['folder'] ?? $folder);
+            $tu = (int) ($t['uid'] ?? 0);
+            try {
+                $full[] = $tu > 0 ? $store->message($tp, $tu, false) + ['folder' => $tp] : $t;
+            } catch (\Throwable) {
+                $full[] = $t;   // письмо успели убрать или папка закрыта — печатаем что знаем
+            }
+        }
+        $rest = max(0, count($thread) - count($full));
         $attachments = array_values(array_filter($m['attachments'] ?? [], fn ($a) => empty($a['inline'])));
 
         return view('mail.print', [
             'm' => $m,
-            'thread' => $thread,
+            'thread' => $full,
+            'threadRest' => $rest,
             'attachments' => $attachments,
             'user' => $imap->user(),
             'printedAt' => now()->format('d.m.Y, H:i'),

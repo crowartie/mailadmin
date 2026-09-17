@@ -552,11 +552,12 @@ async function confirmDialog(value) {
     try {
         if (d.kind === 'newFolder') { const r = await api.createFolder(value, d.folder?.path || null); folders.value = r.folders; showToast({ text: 'Папка создана' }); }
         if (d.kind === 'renameFolder') { const r = await api.renameFolder(d.folder.path, value); folders.value = r.folders; if (folder.value === d.folder.path) folder.value = r.path; }
-        if (d.kind === 'deleteFolder') { const r = await api.deleteFolder(d.folder.path); folders.value = r.folders; if (folder.value === d.folder.path) go('INBOX'); }
+        // Панель папок рисуется из этого списка: пустой ответ сервера её бы уронил.
+        if (d.kind === 'deleteFolder') { const r = await api.deleteFolder(d.folder.path); if (Array.isArray(r?.folders)) folders.value = r.folders; if (folder.value === d.folder.path) go('INBOX'); }
         if (d.kind === 'emptyFolder') { const r = await api.emptyFolder(d.folder.path); folders.value = r.folders; if (folder.value === d.folder.path) load(1); }
         if (d.kind === 'label') { labels.value = await api.createLabel(value, d.color || '#2F6FEB'); }
         if (d.kind === 'renameLabel') { labels.value = await api.updateLabel(d.label.id, value, d.label.color); }
-        if (d.kind === 'deleteLabel') { labels.value = await api.deleteLabel(d.label.id); if (filter.value === 'label:' + d.label.id) go('INBOX'); }
+        if (d.kind === 'deleteLabel') { const r = await api.deleteLabel(d.label.id); if (Array.isArray(r)) labels.value = r; if (filter.value === 'label:' + d.label.id) go('INBOX'); }
         if (d.kind === 'outbox' && value?.cancel) { await api.cancelOutbox(value.cancel); }
         dialog.value = null;
     } catch (e) {

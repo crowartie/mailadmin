@@ -17,6 +17,10 @@ function place() {
     let left = props.x; let top = props.y;
     if (left + box.width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - box.width - 8);
     if (top + box.height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - box.height - 8);
+    // Точку могли посчитать «над» кнопкой: в невысоком окне она уходит в минус,
+    // и меню наполовину оказывалось за верхним краем без возможности его увидеть.
+    left = Math.max(8, left);
+    top = Math.max(8, top);
     style.value = { left: left + 'px', top: top + 'px', visibility: 'visible', ...(props.width ? { minWidth: props.width + 'px' } : {}) };
 }
 

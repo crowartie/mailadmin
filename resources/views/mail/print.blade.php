@@ -14,13 +14,11 @@
         return e($mail !== '' ? $mail : $name);
     };
     $list = fn (array $xs) => implode(', ', array_map($addr, $xs));
-    $size = function (int $n): string {
-        if ($n >= 1048576) { return number_format($n / 1048576, 1, ',', ' ') . ' МБ'; }
-        if ($n >= 1024) { return number_format($n / 1024, 0, ',', ' ') . ' КБ'; }
-        return $n . ' Б';
-    };
-    $shown = array_slice($thread, 0, 6);
-    $rest = count($thread) - count($shown);
+    // Размер и склонение — общие для всего приложения (App\Support\Format), чтобы один
+    // и тот же файл не показывался «1.0 МБ» в очереди и «1 МБ» в письме.
+    $size = fn (int $n): string => \App\Support\Format::size($n);
+    $shown = $thread;
+    $rest = $threadRest ?? 0;
 @endphp
 <!doctype html>
 <html lang="ru">
@@ -62,6 +60,15 @@
         .thread { margin-top: 26px; padding-top: 12px; border-top: 1px solid #E3E8EF; font-size: 12.5px; color: #6B7787; display: flex; flex-direction: column; gap: 4px; break-inside: avoid; }
         .thread .t { font-weight: 600; color: #1B2430; }
         .thread .s { color: #1B2430; }
+        /* 319: раньше от предыдущих писем печаталась одна строка заголовка, а текст пропадал.
+           Печатаем их целиком, отделяя от основного письма и друг от друга. */
+        .prev { break-inside: avoid; padding: 10px 0 2px; border-top: 1px dashed #E3E8EF; }
+        .prev:first-of-type { border-top: 0; }
+        .prev__head { font-weight: 600; color: #1B2430; }
+        .prev__att { margin-top: 2px; }
+        .prev__body { margin-top: 6px; color: #1B2430; font-size: 12.5px; }
+        .prev__body pre { white-space: pre-wrap; word-wrap: break-word; font: inherit; margin: 0; }
+        .prev__body img { max-width: 100%; height: auto; }
         .foot-screen { padding: 14mm 16mm 10mm; display: flex; justify-content: space-between; font-size: 11px; color: #98A3B3; }
         .bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 10px 16px; background: rgba(233, 236, 241, .92); backdrop-filter: blur(6px); font-size: 13px; color: #6B7787; }
         .bar button { font: inherit; font-weight: 500; padding: 7px 14px; border-radius: 8px; border: 1px solid #C9D1DC; background: #fff; color: #1B2430; cursor: pointer; }
@@ -129,11 +136,22 @@
                                 $td = null;
                                 try { $td = ! empty($t['date']) ? Carbon::parse($t['date'])->timezone(config('app.timezone')) : null; } catch (\Throwable) { $td = null; }
                                 $tf = trim((string) ($t['from']['name'] ?? '')) ?: (string) ($t['from']['mail'] ?? '');
+                                $tatt = array_values(array_filter($t['attachments'] ?? [], fn ($a) => empty($a['inline'])));
                             @endphp
-                            <span>{{ $td ? $td->format('d.m.Y, H:i') : '—' }} — {{ $tf }}: <span class="s">«{{ $t['subject'] ?? '(без темы)' }}»</span></span>
+                            <div class="prev">
+                                <div class="prev__head">{{ $td ? $td->format('d.m.Y, H:i') : '—' }} — {{ $tf }}: <span class="s">«{{ $t['subject'] ?? '(без темы)' }}»</span></div>
+                                @if ($tatt)
+                                    <div class="prev__att">Вложения: {{ implode('; ', array_map(fn ($a) => $a['name'] . ' (' . $size((int) ($a['size'] ?? 0)) . ')', $tatt)) }}</div>
+                                @endif
+                                @if (! empty($t['html']))
+                                    <div class="prev__body">{!! $t['html'] !!}</div>
+                                @elseif (! empty($t['text']))
+                                    <div class="prev__body"><pre>{{ $t['text'] }}</pre></div>
+                                @endif
+                            </div>
                         @endforeach
                         @if ($rest > 0)
-                            <span>и ещё {{ $rest }} {{ $rest % 10 === 1 && $rest % 100 !== 11 ? 'письмо' : ($rest % 10 >= 2 && $rest % 10 <= 4 && ($rest % 100 < 10 || $rest % 100 >= 20) ? 'письма' : 'писем') }} — не напечатаны</span>
+                            <span>и ещё {{ \App\Support\Format::count($rest, 'письмо', 'письма', 'писем') }} — не напечатаны: откройте их в почте</span>
                         @endif
                     </div>
                 @endif

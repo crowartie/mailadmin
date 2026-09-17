@@ -376,7 +376,7 @@ class MailLog
 
     private function size(int $b): string
     {
-        return $b < 1024 ? $b . ' Б' : ($b < 1048576 ? round($b / 1024) . ' КБ' : round($b / 1048576, 1) . ' МБ');
+        return \App\Support\Format::size($b);
     }
 
     public function readable(): bool

@@ -150,9 +150,7 @@ class Outgoing
 
     private function cloudBlockHtml(array $links): string
     {
-        $fmt = function (int $b): string {
-            return $b >= 1073741824 ? round($b / 1073741824, 1) . ' ГБ' : ($b >= 1048576 ? round($b / 1048576, 1) . ' МБ' : max(1, (int) round($b / 1024)) . ' КБ');
-        };
+        $fmt = fn (int $b): string => \App\Support\Format::size($b);
         $rows = '';
         foreach ($links as $l) {
             $rows .= '<div style="margin:4px 0"><a href="' . htmlspecialchars($l['url']) . '" style="color:#1a56db">' . htmlspecialchars($l['name']) . '</a> <span style="color:#777">(' . $fmt($l['size']) . ')</span></div>';
