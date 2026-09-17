@@ -21,16 +21,16 @@ class ExampleTest extends TestCase
     public function test_админка_уводит_неавторизованного_на_вход(): void
     {
         $this->ports();
-        $this->withServerVariables(['SERVER_PORT' => 8080]);
 
-        $this->get('/')->assertRedirectContains('/login');
+        // Порт указываем прямо в адресе: за доверенным прокси Symfony берёт его
+        // из Host, а не из SERVER_PORT, и подменять одну эту переменную бесполезно.
+        $this->get('http://localhost:8080/')->assertRedirectContains('/login');
     }
 
     public function test_через_порт_вебпочты_админки_не_существует(): void
     {
         $this->ports();
-        $this->withServerVariables(['SERVER_PORT' => 80]);
 
-        $this->get('/')->assertNotFound();
+        $this->get('http://localhost/')->assertNotFound();
     }
 }
