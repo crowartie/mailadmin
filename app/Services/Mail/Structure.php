@@ -193,9 +193,10 @@ final class Structure
             'mime' => $type . '/' . $subtype,
             'charset' => strtolower((string) ($params['charset'] ?? '')),
             'encoding' => $encoding,
-            // Размер от сервера — это размер закодированной части. У base64 полезных
-            // данных примерно на четверть меньше; человеку показываем именно их.
-            'size' => $encoding === 'base64' ? (int) floor($size * 3 / 4) : $size,
+            // Размер от сервера — это размер закодированной части. В base64 полезных
+            // данных на четверть меньше, и к тому же каждые 76 знаков стоит перевод
+            // строки: без его учёта размер выходил завышенным почти на три процента.
+            'size' => $encoding === 'base64' ? (int) floor(($size - 2 * intdiv($size, 78)) * 3 / 4) : $size,
             'rawSize' => $size,
             'id' => $id,
             'disposition' => $disposition,

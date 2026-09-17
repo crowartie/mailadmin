@@ -860,7 +860,9 @@ class MailStore
             if (! isset($raw[$b['no']])) {
                 return null;   // часть не пришла: показывать письмо без текста нельзя
             }
-            $content = Charset::body($raw[$b['no']], (string) $b['charset']);
+            // Завершающий перевод строки к письму не относится — библиотека его тоже убирает.
+            $content = rtrim(Charset::body($raw[$b['no']], (string) $b['charset']), "
+");
             if ($b['subtype'] === 'html') {
                 $html = $content;
             } else {
