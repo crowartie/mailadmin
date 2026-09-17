@@ -90,6 +90,29 @@ class MailStore
         return $out;
     }
 
+    // ── Делегаты для вызывающих снаружи ───────────────────────────────────
+    // Разбор писем живёт в Mime, чистка HTML — в MailHtml. Эти три метода зовут
+    // контроллеры и службы, поэтому оставляем их здесь тонкими обёртками:
+    // так разделение не потребовало трогать вызывающий код.
+
+    /** @see Mime::attachmentName() */
+    public static function attachmentName(Attachment $a, string $fallback): string
+    {
+        return Mime::attachmentName($a, $fallback);
+    }
+
+    /** @see Mime::messageIds() */
+    public static function messageIds(mixed $raw): array
+    {
+        return Mime::messageIds($raw);
+    }
+
+    /** @see Mime::address() */
+    public static function address(?string $name, ?string $mail): array
+    {
+        return Mime::address($name, $mail);
+    }
+
     // ── Папки ────────────────────────────────────────────────────────────
 
     /** @return array<int,array{path:string,name:string,role:string,depth:int,unread:int,total:int,parent:?string}> */
@@ -119,7 +142,7 @@ class MailStore
                     if (count($parts) >= 3 && ! (count($parts) === 3 && strtoupper($parts[2]) === 'INBOX')) {
                         $owner = strtolower($parts[1]);
                         $rel = array_slice($parts, 2);
-                        $leaf = self::utf8Name(end($rel));
+                        $leaf = Mime::utf8Name(end($rel));
                         $role = count($rel) === 1 ? (self::ROLES[strtoupper($leaf)] ?? null) : null;
                         $status = $this->safeStatus($f);
                         $owners[$owner] = true;
@@ -179,7 +202,7 @@ class MailStore
         $coll = class_exists('\Collator') ? new \Collator('ru_RU') : null;
         $keys = [];
         foreach ($out as $i => $row) {
-            $keys[$i] = self::utf8Name($row['path']);
+            $keys[$i] = Mime::utf8Name($row['path']);
         }
         $idx = array_keys($out);
         usort($idx, function ($ia, $ib) use ($out, $keys, $coll) {
@@ -266,14 +289,6 @@ class MailStore
         }
     }
 
-    /** Имя папки из IMAP (modified UTF-7) → UTF-8. */
-    public static function utf8Name(string $name): string
-    {
-        $d = @mb_convert_encoding($name, 'UTF-8', 'UTF7-IMAP');
-
-        return $d !== false && $d !== '' ? $d : $name;
-    }
-
     /** Роль папки по её имени (без обращения к серверу). */
     public static function roleOfPath(string $path): string
     {
@@ -321,7 +336,7 @@ class MailStore
             foreach ($idx as $i) {
                 if ($i !== $keep) {
                     $out[$i]['role'] = 'custom';
-                    $out[$i]['name'] = self::utf8Name((string) basename($out[$i]['path']));
+                    $out[$i]['name'] = Mime::utf8Name((string) basename($out[$i]['path']));
                 }
             }
         }
@@ -530,7 +545,7 @@ class MailStore
                     $row = $this->summary($m, $previews[(int) $m->getUid()] ?? null);
                     // Строка знает свою папку: иначе щелчок открывал бы письмо из текущей.
                     $row['folder'] = $p;
-                    $row['folderName'] = self::utf8Name(basename(str_replace('.', '/', $p))) ?: $p;
+                    $row['folderName'] = Mime::utf8Name(basename(str_replace('.', '/', $p))) ?: $p;
                     $messages[] = $row;
                 }
             } catch (\Throwable) {
@@ -831,7 +846,7 @@ class MailStore
                 $headers = is_array($value) ? (string) (end($value) ?: '') : (string) $value;
             }
         }
-        $h = self::parseHeaderFields($headers);
+        $h = Mime::parseHeaderFields($headers);
         $flags = array_map('strtolower', array_map('strval', (array) ($row['FLAGS'] ?? [])));
         $labels = [];
         foreach ($flags as $flag) {
@@ -840,8 +855,8 @@ class MailStore
             }
         }
         $subject = trim((string) Charset::header($h['subject'] ?? ''));
-        $from = self::firstAddress($h['from'] ?? '');
-        $to = self::firstAddress($h['to'] ?? '');
+        $from = Mime::firstAddress($h['from'] ?? '');
+        $to = Mime::firstAddress($h['to'] ?? '');
         $date = null;
         foreach ([$h['date'] ?? null, $row['INTERNALDATE'] ?? null] as $raw) {
             if ($raw === null || trim((string) $raw) === '') {
@@ -875,84 +890,6 @@ class MailStore
             'messageId' => trim((string) ($h['message-id'] ?? ''), " \t<>"),
             'preview' => $preview,
         ];
-    }
-
-    /**
-     * Message-ID из заголовка References/In-Reply-To в любом виде: «<a> <b>», «<a><b>», «a b», массив таких строк.
-     * Возвращает голые идентификаторы без скобок и дублей.
-     *
-     * @return array<int,string>
-     */
-    public static function messageIds(array|string|null $raw): array
-    {
-        $joined = is_array($raw) ? implode(' ', array_map('strval', $raw)) : (string) $raw;
-        $ids = [];
-        if (preg_match_all('/<([^<>\s]+)>/', $joined, $m)) {
-            $ids = $m[1];
-        } else {
-            $ids = preg_split('/\s+/', trim($joined), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        }
-        $ids = array_map(fn ($id) => trim($id, " \t<>"), $ids);
-
-        return array_values(array_unique(array_filter($ids, fn ($id) => $id !== '' && str_contains($id, '@'))));
-    }
-
-    /** Значение одного заголовка из сырого текста заголовков (строки-продолжения склеены); null, если заголовка нет. */
-    public static function headerValue(string $rawHeaders, string $name): ?string
-    {
-        if ($rawHeaders === '') {
-            return null;
-        }
-        $h = preg_replace("/
-?
-[ 	]+/", ' ', $rawHeaders) ?? $rawHeaders;
-
-        return preg_match('/^' . preg_quote($name, '/') . ':[ 	]*(.*)$/mi', $h, $m) ? trim($m[1]) : null;
-    }
-
-    /** Заголовки → [имя в нижнем регистре => значение] (первое вхождение, строки-продолжения склеены). */
-    private static function parseHeaderFields(string $raw): array
-    {
-        $out = [];
-        $raw = preg_replace("/\r?\n[ \t]+/", ' ', $raw) ?? $raw;
-        foreach (preg_split("/\r?\n/", $raw) as $line) {
-            if (preg_match('/^([A-Za-z0-9-]+):\s*(.*)$/s', $line, $m)) {
-                $name = strtolower($m[1]);
-                $out[$name] ??= trim($m[2]);
-            }
-        }
-
-        return $out;
-    }
-
-    /** Первый адрес из заголовка From/To: «Имя <адрес>», «"Имя" <адрес>», «=?…?= <адрес>» или просто адрес. */
-    private static function firstAddress(string $header): ?array
-    {
-        $header = trim($header);
-        if ($header === '') {
-            return null;
-        }
-        // Первый адрес: до запятой, которая не внутри кавычек и не внутри <…>.
-        $depth = 0; $quoted = false; $first = '';
-        for ($i = 0, $n = strlen($header); $i < $n; $i++) {
-            $c = $header[$i];
-            if ($c === '"' && ($i === 0 || $header[$i - 1] !== '\\')) {
-                $quoted = ! $quoted;
-            } elseif (! $quoted && $c === '<') {
-                $depth++;
-            } elseif (! $quoted && $c === '>') {
-                $depth = max(0, $depth - 1);
-            } elseif (! $quoted && $depth === 0 && $c === ',') {
-                break;
-            }
-            $first .= $c;
-        }
-        $first = trim($first);
-        if (preg_match('/^(.*?)\s*<([^<>]*)>\s*$/s', $first, $m)) {
-            return self::address(trim($m[1], " \t\"'"), trim($m[2]));
-        }
-
-        return self::address('', trim($first, " \t\"'"));
     }
 
     private function previews(array $uids): array
@@ -1025,8 +962,8 @@ class MailStore
         return [
             'uid' => $message->getUid(),
             'subject' => $subject !== '' ? $subject : '(без темы)',
-            'from' => $from ? self::address($from->personal, $from->mail) : ['name' => '—', 'mail' => ''],
-            'toName' => $to ? self::address($to->personal, $to->mail)['name'] : null,
+            'from' => $from ? Mime::address($from->personal, $from->mail) : ['name' => '—', 'mail' => ''],
+            'toName' => $to ? Mime::address($to->personal, $to->mail)['name'] : null,
             'date' => $date ? $date->toIso8601String() : null,
             'seen' => $flags->has('seen'),
             'flagged' => $flags->has('flagged'),
@@ -1108,7 +1045,7 @@ class MailStore
             }
             $attachments[] = [
                 'index' => $i,
-                'name' => self::attachmentName($a, 'вложение-' . ($i + 1)),
+                'name' => Mime::attachmentName($a, 'вложение-' . ($i + 1)),
                 // getSize() — размер в base64 из структуры письма; получателю нужен размер самого файла.
                 'size' => strlen((string) $a->getContent()) ?: $a->getSize(),
                 'type' => $a->getMimeType(),
@@ -1123,13 +1060,13 @@ class MailStore
         // отдаёт по-разному — без нормализации при ответе получался склеенный «a@xb@y», и письмо не уходило.
         // Библиотека при разборе склеивает id без пробела в один («a@xb@y»), поэтому берём сырой заголовок.
         $rawHeader = (string) ($message->getHeader()?->raw ?? '');
-        $refIds = self::messageIds(self::headerValue($rawHeader, 'References') ?? $message->getReferences()->toArray());
+        $refIds = Mime::messageIds(Mime::headerValue($rawHeader, 'References') ?? $message->getReferences()->toArray());
         $refs = implode(' ', array_map(fn ($id) => '<' . $id . '>', $refIds));
-        $inReplyTo = self::messageIds(self::headerValue($rawHeader, 'In-Reply-To') ?? $message->getInReplyTo()->toArray())[0] ?? '';
+        $inReplyTo = Mime::messageIds(Mime::headerValue($rawHeader, 'In-Reply-To') ?? $message->getInReplyTo()->toArray())[0] ?? '';
 
         return $this->summary($message) + [
             'folder' => $path,
-            'html' => $html ? $this->sanitize($html) : null,
+            'html' => $html ? MailHtml::sanitize($html) : null,
             'text' => $text,
             'to' => $this->addresses($message->getTo()),
             'cc' => $this->addresses($message->getCc()),
@@ -1189,7 +1126,7 @@ class MailStore
                     ThreadIndex::forget($this->user(), $p, $missing); // письмо удалили или переложили — индекс подчистим
                 }
             }
-            usort($found, fn ($a, $b) => self::sortTime($a['date']) <=> self::sortTime($b['date']));
+            usort($found, fn ($a, $b) => Mime::sortTime($a['date']) <=> Mime::sortTime($b['date']));
 
             return $found;
         }
@@ -1205,7 +1142,7 @@ class MailStore
             $terms[] = ['Message-ID', $ref];
             $terms[] = ['References', $ref];
         }
-        $criteria = self::orCriteria($terms);
+        $criteria = Mime::orCriteria($terms);
 
         $found = [];
         // Раньше искали только в текущей папке, «Отправленных» и «Входящих»: ответы,
@@ -1247,38 +1184,9 @@ class MailStore
             }
         }
 
-        usort($found, fn ($a, $b) => self::sortTime($a['date']) <=> self::sortTime($b['date']));
+        usort($found, fn ($a, $b) => Mime::sortTime($a['date']) <=> Mime::sortTime($b['date']));
 
         return array_values($found);
-    }
-
-    /**
-     * Время для сортировки цепочки. strtotime на непонятной дате возвращает false,
-     * то есть ноль, и такое письмо всплывало в самое начало переписки.
-     */
-    private static function sortTime(?string $date): int
-    {
-        $t = $date ? strtotime($date) : false;
-
-        return $t === false ? PHP_INT_MAX : $t;
-    }
-
-    /**
-     * Критерии IMAP SEARCH «любое из»: OR в IMAP бинарный, поэтому N условий = N-1 вложенных OR.
-     *
-     * @param  array<int,array{0:string,1:string}>  $terms  [заголовок, значение]
-     * @return string[]
-     */
-    private static function orCriteria(array $terms): array
-    {
-        $quote = fn (string $v) => '"' . addcslashes($v, '"\\') . '"';
-        $parts = array_map(fn ($t) => ['HEADER', $t[0], $quote($t[1])], $terms);
-        $out = array_pop($parts) ?? [];
-        while ($parts) {
-            $out = array_merge(['OR'], array_pop($parts), $out);
-        }
-
-        return $out;
     }
 
     public function attachment(string $path, int $uid, int $index): Attachment
@@ -1345,7 +1253,7 @@ class MailStore
             if ($cid !== '' && $html !== '' && str_contains($html, 'cid:' . $cid)) {
                 continue;   // картинка из тела письма
             }
-            $name = self::attachmentName($a, 'вложение-' . ($i + 1));
+            $name = Mime::attachmentName($a, 'вложение-' . ($i + 1));
             $name = preg_replace('#[\\\\/:*?"<>|\x00-\x1f]+#', '_', $name) ?: 'вложение-' . ($i + 1);
             // Часть без имени (библиотека подставляет кусок Content-ID) — добавим расширение по типу, чтобы файл открывался
             if (! str_contains($name, '.')) {
@@ -1389,7 +1297,7 @@ class MailStore
         if (strlen($content) > 25 * 1024 * 1024) {
             throw MailException::tooLarge('Документ слишком большой для предпросмотра — скачайте его');
         }
-        $name = self::attachmentName($a, 'document');
+        $name = Mime::attachmentName($a, 'document');
         $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
         if (! in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'], true)) {
             throw MailException::unsupported('Этот тип файла не показываем — скачайте его');
@@ -1433,19 +1341,6 @@ class MailStore
         } finally {
             $lock->release();
         }
-    }
-
-    /** Имя вложения: сначала из сырых заголовков части (библиотека ломается на koi8-r в две строки и RFC 2231), потом её версия. */
-    public static function attachmentName(Attachment $a, string $fallback = 'attachment'): string
-    {
-        $raw = '';
-        try {
-            $part = (fn () => $this->part)->call($a);
-            $raw = (string) ($part->getHeader()->raw ?? '');
-        } catch (\Throwable) {
-        }
-
-        return ($raw !== '' ? Charset::attachmentName($raw) : null) ?: Charset::header($a->getName()) ?: $fallback;
     }
 
     /** Заголовки одного письма как текст: нужны, чтобы восстановить отметки черновика. */
@@ -1543,47 +1438,8 @@ class MailStore
             $r = $conn->requestAndResponse('UID STORE', [implode(',', $chunk), ($on ? '+' : '-') . 'FLAGS.SILENT', $conn->escapeList([$flag])]);
             // Ответ сервера не проверялся: в общей папке «только для просмотра» отметка
             // «прочитано» возвращала успех, а через секунду письмо снова было непрочитанным.
-            self::assertOk($r, 'Не удалось изменить пометку письма');
+            Mime::assertOk($r, 'Не удалось изменить пометку письма');
         }
-    }
-
-    /**
-     * Проверить ответ IMAP. Библиотека возвращает ответ и при NO/BAD, поэтому без этой проверки
-     * отказ сервера («нет прав», «только для просмотра») выглядел как успешное действие.
-     */
-    private static function assertOk(mixed $response, string $what): void
-    {
-        $lines = [];
-        try {
-            $lines = is_object($response) && method_exists($response, 'getResponse') ? (array) $response->getResponse() : (array) $response;
-        } catch (\Throwable) {
-            return;
-        }
-        $flat = trim(implode(' ', array_map(fn ($x) => is_array($x) ? implode(' ', array_map('strval', $x)) : (string) $x, $lines)));
-        if ($flat === '') {
-            return;
-        }
-        if (preg_match('/(?:^|\s)(NO|BAD)\s+(.*)$/i', $flat, $m)) {
-            $reason = trim($m[2]);
-            throw MailException::denied($what . ($reason !== '' ? ': ' . self::imapReason($reason) : ''));
-        }
-    }
-
-    /** Английский отказ почтового сервера — человеческим текстом. */
-    private static function imapReason(string $reason): string
-    {
-        $r = strtolower($reason);
-        if (str_contains($r, 'permission denied') || str_contains($r, 'read-only') || str_contains($r, 'readonly')) {
-            return 'папка открыта только для просмотра';
-        }
-        if (str_contains($r, 'quota')) {
-            return 'закончилось место в ящике';
-        }
-        if (str_contains($r, 'not found') || str_contains($r, 'nonexistent')) {
-            return 'папки или письма больше нет';
-        }
-
-        return mb_substr($reason, 0, 120);
     }
 
     public function move(string $path, array $uids, string $target): void
@@ -1628,7 +1484,7 @@ class MailStore
         $conn = $this->client->getConnection();
         $r = $conn->requestAndResponse('STORE', ['1:*', '+FLAGS.SILENT', $conn->escapeList(['\\Deleted'])]);
         // Результат не проверялся, и при отказе сервера человек получал сообщение об успехе.
-        self::assertOk($r, 'Не удалось очистить папку');
+        Mime::assertOk($r, 'Не удалось очистить папку');
         $conn->expunge();
         $this->folderCache = null;
     }
@@ -1699,81 +1555,10 @@ class MailStore
         $out = [];
         // Attribute — только ArrayAccess, не итератор: перебираем через toArray().
         foreach (($attribute ? $attribute->toArray() : []) as $a) {
-            $out[] = self::address($a->personal, $a->mail);
+            $out[] = Mime::address($a->personal, $a->mail);
         }
 
         return $out;
-    }
-
-    /**
-     * Имя и адрес из разобранного библиотекой адреса. Outlook пишет «=?utf-8?B?…?=<user@host>» без пробела —
-     * библиотека тогда считает адресом всю строку; вытаскиваем адрес и имя сами.
-     *
-     * @return array{name:string,mail:string}
-     */
-    public static function address(?string $personal, ?string $mail): array
-    {
-        $mail = trim((string) $mail);
-        $name = trim((string) $personal);
-        if ($mail !== '' && (str_contains($mail, '<') || str_contains($mail, '=?') || str_contains($mail, ' ') || ! str_contains($mail, '@'))) {
-            $addr = preg_match('/<([^<>\s]+@[^<>\s]+)>/', $mail, $m) ? $m[1] : (preg_match('/[^\s<>"]+@[^\s<>"]+/', $mail, $m) ? $m[0] : $mail);
-            $rest = trim(preg_replace('/<[^<>]*>/', '', str_replace($addr, '', $mail)), " \t\"'");
-            if ($name === '' || $name === $mail) {
-                $name = $rest;
-            }
-            $mail = $addr;
-        }
-        $name = trim((string) Charset::header($name), " \t\"'<>");
-
-        return ['name' => $name !== '' ? $name : $mail, 'mail' => $mail];
-    }
-
-    /**
-     * Письмо — чужой HTML. Режем скрипты, формы, внешние ресурсы и стили,
-     * которые могут вылезти за пределы окна чтения. Картинки data: (встроенные) оставляем.
-     */
-    private function sanitize(string $html): string
-    {
-        $config = \HTMLPurifier_Config::createDefault();
-        $config->set('Cache.SerializerPath', storage_path('app/purifier'));
-        $config->set('HTML.ForbiddenElements', ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'style', 'link', 'meta']);
-        $config->set('HTML.ForbiddenAttributes', ['*@onclick', '*@onload', '*@onerror']);
-        $config->set('CSS.AllowedProperties', ['color', 'background-color', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'font-size', 'font-family', 'padding', 'margin', 'border', 'width', 'max-width', 'line-height', 'vertical-align']);
-        $config->set('URI.AllowedSchemes', ['http' => true, 'https' => true, 'mailto' => true, 'data' => true, 'tel' => true]);
-        // Внешние ссылки на картинки оставляем в разметке, но прячем в data-blocked-* (blockRemote).
-        // Раньше здесь стояло true: Purifier вырезал их совсем, поэтому обещанная кнопка
-        // «показать картинки» ничего показать не могла, а рассылки и подписи выглядели пустыми.
-        $config->set('URI.DisableExternalResources', false);
-        $config->set('HTML.TargetBlank', true);
-        $config->set('AutoFormat.RemoveEmpty', true);
-
-        if (! is_dir(storage_path('app/purifier'))) {
-            @mkdir(storage_path('app/purifier'), 0775, true);
-        }
-
-        return self::blockRemote((new \HTMLPurifier($config))->purify($html));
-    }
-
-    /**
-     * Спрятать всё, что тянется из интернета при открытии письма: это следящие пиксели.
-     * Имя атрибута меняем, значение оставляем — «Показать картинки» возвращает его одной заменой.
-     * Клиентская проверка ловила только src у img, поэтому srcset и background грузились молча.
-     */
-    private static function blockRemote(string $html): string
-    {
-        $html = (string) preg_replace(
-            '/\s(src|background)\s*=\s*(["\'])\s*((?:https?:)?\/\/)/i',
-            ' data-blocked-$1=$2$3',
-            $html
-        );
-        // srcset — список адресов через запятую, первый может быть и относительным.
-        return (string) preg_replace_callback(
-            '/\ssrcset\s*=\s*(["\'])(.*?)\1/is',
-            fn ($m) => preg_match('/(^|[\s,])(https?:)?\/\//i', $m[2])
-                ? ' data-blocked-srcset=' . $m[1] . $m[2] . $m[1]
-                : $m[0],
-            $html
-        );
     }
 
     /**
