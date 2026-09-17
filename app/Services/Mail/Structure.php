@@ -313,10 +313,11 @@ final class Structure
         array_walk_recursive((array) $response, function ($x) use (&$flat) {
             $flat[] = (string) $x;
         });
-        // Ответ выглядит как «* 5 FETCH (UID 7 BODY[1] {1234}» и следом сам текст.
+        // Первая строка ответа приходит целиком: «* 5 FETCH (UID 7 BODY[1] {1234}»,
+        // дальше кусками идёт сам текст, а в конце — закрывающая скобка и «OK …».
         $start = null;
         foreach ($flat as $k => $v) {
-            if (str_starts_with($v, 'BODY[')) {
+            if (str_contains($v, 'BODY[')) {
                 $start = $k;
             }
         }
@@ -324,16 +325,22 @@ final class Structure
             return null;
         }
         $rest = array_slice($flat, $start + 1);
-        // Первым куском может идти длина в фигурных скобках — она нам не нужна.
-        if (isset($rest[0]) && preg_match('/^\{\d+\}$/', $rest[0])) {
+        // Иногда длина в фигурных скобках приходит отдельным куском — она нам не нужна.
+        if (isset($rest[0]) && preg_match('/^\{\d+\}\s*$/', $rest[0])) {
             array_shift($rest);
         }
-        // Хвост ответа — закрывающая скобка и «OK …»: убираем его.
-        while ($rest && in_array(strtoupper((string) end($rest)), [')', 'OK', 'COMPLETED'], true)) {
-            array_pop($rest);
-        }
+        while ($rest) {
+            $tail = trim((string) end($rest));
+            if ($tail === ')' || preg_match('/^(TAG\d+\s+)?(OK|NO|BAD)\b/i', $tail)) {
+                array_pop($rest);
 
-        return $rest ? implode("\n", $rest) : null;
+                continue;
+            }
+            break;
+        }
+        // Куски — это строки письма вместе с их переводами строк: склеиваем как есть,
+        // иначе ломается quoted-printable, где перенос строки значим.
+        return $rest ? implode('', $rest) : null;
     }
 
     /** Раскодировать часть по её Content-Transfer-Encoding. */
