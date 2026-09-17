@@ -10,6 +10,7 @@ const props = defineProps({
     folderName: String,
     folderRole: String,
     filter: { type: String, default: 'all' },
+    sort: { type: String, default: 'date' },
     query: { type: String, default: '' },
     selected: { type: Array, default: () => [] },
     cursor: { type: Number, default: null },
@@ -20,7 +21,7 @@ const props = defineProps({
     labels: { type: Array, default: () => [] },
     loading: Boolean,
 });
-const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'page', 'filter', 'search', 'refresh', 'menu']);
+const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'page', 'filter', 'sort', 'search', 'refresh', 'menu']);
 
 const q = ref(props.query || '');
 watch(() => props.query, (v) => { q.value = v || ''; });
@@ -77,8 +78,19 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                 <Icon v-if="allChecked" name="check" :size="12" />
             </span>
             <span>{{ list.total }} {{ plural(list.total, 'письмо', 'письма', 'писем') }}</span>
-            <button class="ib ib--sm" type="button" title="Обновить" @click="$emit('refresh')"><Icon name="refresh" :size="14" /></button>
+            <button class="ib ib--sm" type="button" title="Обновить" aria-label="Обновить список" @click="$emit('refresh')"><Icon name="refresh" :size="14" /></button>
             <span class="grow" />
+            <!-- Порядок списка: раньше его нельзя было изменить вообще. -->
+            <span class="mlist__sort">
+                <label class="sr-only" for="mlist-sort">Порядок писем</label>
+                <select id="mlist-sort" :value="sort" title="Порядок писем" @change="$emit('sort', $event.target.value)">
+                    <option value="date">Сначала новые</option>
+                    <option value="date-asc">Сначала старые</option>
+                    <option value="from">По отправителю</option>
+                    <option value="subject">По теме</option>
+                    <option value="size">Сначала тяжёлые</option>
+                </select>
+            </span>
             <span class="seg seg--sm">
                 <button type="button" class="seg__item" :class="{ 'seg__item--on': filter === 'all' }" @click="$emit('filter', 'all')">Все</button>
                 <button type="button" class="seg__item" :class="{ 'seg__item--on': filter === 'unread' }" @click="$emit('filter', 'unread')">Непрочитанные</button>

@@ -34,7 +34,9 @@ class InboxController extends Controller
             'folder' => $folder,
             'filter' => $filter,
             'query' => $q,
-            'list' => $store->list($folder, (int) $request->query('page', 1), $filter, $q),
+            // Порядок берём из адреса: страница, открытая по ссылке или после обновления,
+            // должна показывать список в том же порядке.
+            'list' => $store->list($folder, (int) $request->query('page', 1), $filter, $q, (string) $request->query('sort', 'date')),
             'outbox' => Outbox::where('user', $imap->user())->where('status', 'scheduled')->count(),
             'quarantine' => \App\Http\Controllers\Mail\QuarantineController::count($imap->user()),
             'cloud' => ['enabled' => \App\Services\Cloud\Nextcloud::enabled(), 'thresholdMb' => (int) (\App\Services\Cloud\Nextcloud::settings()['threshold_mb'] ?? 10), 'maxMb' => \App\Services\Cloud\Nextcloud::enabled() ? 256 : 50],

@@ -18,6 +18,7 @@ class MessageController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'filter' => ['nullable', 'string', 'max:64'],
             'q' => ['nullable', 'string', 'max:500'],
+            'sort' => ['nullable', 'string', 'in:date,date-asc,from,subject,size'],
         ]);
         $store = new MailStore($imap->client());
         $list = $store->list(
@@ -25,6 +26,7 @@ class MessageController extends Controller
             (int) $request->query('page', 1),
             (string) $request->query('filter', 'all'),
             $request->query('q'),
+            (string) $request->query('sort', 'date'),
         );
         $list['folders'] = $store->folders();
 

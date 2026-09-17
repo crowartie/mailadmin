@@ -48,6 +48,17 @@ const loading = ref(false);
 // Какое письмо сейчас открывается: подсвечиваем строку сразу, не дожидаясь ответа,
 // и отбрасываем ответ, если человек успел кликнуть другое письмо.
 const opening = ref(null);
+// Порядок списка: по дате (как раньше), по отправителю, по теме, по размеру.
+const sort = ref((() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('sort');
+    if (fromUrl) return fromUrl;
+    try { return localStorage.getItem('mail.sort') || 'date'; } catch { return 'date'; }
+})());
+function setSort(v) {
+    sort.value = v;
+    try { localStorage.setItem('mail.sort', v); } catch { /* приватное окно */ }
+    load(1);
+}
 let openSeq = 0;
 const compose = ref(null);
 const menu = ref(null);      // { kind, x, y, uids, folder, label }
@@ -75,12 +86,41 @@ function fail(e) {
     showToast({ text: e?.message || 'Что-то пошло не так', error: true }, 6000);
 }
 
-function syncUrl() {
+/** Адрес страницы = папка + отбор + поиск + номер страницы. */
+function currentUrl() {
     const p = new URLSearchParams();
     if (filter.value !== 'all') p.set('filter', filter.value);
     if (query.value) p.set('q', query.value);
+    // Номер страницы в адресе: без него обновление на седьмой странице возвращало на первую.
+    if ((list.value.page || 1) > 1) p.set('page', String(list.value.page));
+    if (sort.value !== 'date') p.set('sort', sort.value);
     const qs = p.toString();
-    window.history.replaceState({}, '', `/mail/folder/${encodeURIComponent(folder.value)}${qs ? '?' + qs : ''}`);
+    return `/mail/folder/${encodeURIComponent(folder.value)}${qs ? '?' + qs : ''}`;
+}
+function syncUrl() {
+    const url = currentUrl();
+    if (url !== window.location.pathname + window.location.search) {
+        window.history.replaceState({ mail: true }, '', url);
+    }
+}
+// Переход в другую папку добавляет запись в историю: раньше всё писалось поверх одной,
+// и кнопка «Назад» уводила из почты целиком вместо возврата в предыдущую папку.
+function pushUrl() {
+    const url = currentUrl();
+    if (url !== window.location.pathname + window.location.search) {
+        window.history.pushState({ mail: true }, '', url);
+    }
+}
+function onPopState() {
+    const m = window.location.pathname.match(/^\/mail\/folder\/(.+)$/);
+    const sp = new URLSearchParams(window.location.search);
+    folder.value = m ? decodeURIComponent(m[1]) : (rolePath('inbox') || 'INBOX');
+    filter.value = sp.get('filter') || 'all';
+    query.value = sp.get('q') || '';
+    sort.value = sp.get('sort') || 'date';
+    open.value = null;
+    mobileRead.value = false;
+    load(Number(sp.get('page')) || 1);
 }
 
 // ── Списки ────────────────────────────────────────────────────
@@ -142,7 +182,7 @@ async function poll() {
 async function load(page = 1, keepOpen = false, silent = false) {
     if (!silent) loading.value = true;
     try {
-        const r = await api.list(folder.value, { page, filter: filter.value, q: query.value });
+        const r = await api.list(folder.value, { page, filter: filter.value, q: query.value, sort: sort.value });
         // Страница оказалась за концом списка (удалили всё на последней) — показать последнюю существующую.
         if (!r.messages.length && r.page > 1 && r.pages < r.page) return load(Math.max(1, r.pages), keepOpen, silent);
         list.value = { messages: r.messages, total: r.total, page: r.page, pages: r.pages };
@@ -164,6 +204,8 @@ function go(path, f = 'all') {
     query.value = '';
     navOpen.value = false;
     mobileRead.value = false;
+    list.value.page = 1;
+    pushUrl();
     load(1);
 }
 function setFilter(f) { filter.value = f; load(1); }
@@ -195,9 +237,13 @@ async function openMessage(uid, e) {
     } catch (e) { if (want === openSeq) fail(e); } finally { if (want === openSeq) opening.value = null; }
 }
 
-function bump(path, delta) {
+function bump(path, delta, totalDelta = 0) {
     const f = folders.value.find((x) => x.path === path);
-    if (f) f.unread = Math.max(0, (f.unread || 0) + delta);
+    if (!f) return;
+    f.unread = Math.max(0, (f.unread || 0) + delta);
+    // Общее число писем тоже: раньше в шапке списка было «194 письма», а у папки «4 / 195»,
+    // пока не придёт ответ сервера.
+    if (totalDelta) f.total = Math.max(0, (f.total || 0) + totalDelta);
 }
 
 // ── Выбор ─────────────────────────────────────────────────────
@@ -226,7 +272,7 @@ function removeRows(uids) {
     let unreadGone = 0;
     list.value.messages = list.value.messages.filter((m) => { if (set.has(m.uid)) { if (!m.seen) unreadGone++; return false; } return true; });
     list.value.total = Math.max(0, list.value.total - uids.length);
-    bump(folder.value, -unreadGone);
+    bump(folder.value, -unreadGone, -uids.length);
     selected.value = selected.value.filter((u) => !set.has(u));
     if (open.value && set.has(open.value.uid)) { open.value = null; mobileRead.value = false; }
 }
@@ -785,6 +831,7 @@ function onKey(e) {
 onMounted(() => {
     document.addEventListener('keydown', onKey);
     window.addEventListener('beforeunload', flushPending);
+    window.addEventListener('popstate', onPopState);
     // Опрос «есть ли новое» каждые 20 с (60 с в фоне): дёшево (один STATUS), список перечитываем только когда изменился.
     refreshTimer = setInterval(() => poll(), 20000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poll(); });
@@ -798,6 +845,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
     document.removeEventListener('keydown', onKey);
+    window.removeEventListener('popstate', onPopState);
     window.removeEventListener('beforeunload', flushPending);
     clearInterval(refreshTimer);
     flushPending();
@@ -836,6 +884,8 @@ onBeforeUnmount(() => {
                 :highlight-unread="settings.unread_highlight !== false"
                 :unread-color="settings.unread_color || ''"
                 :filter="filter"
+                :sort="sort"
+                @sort="setSort"
                 :query="query"
                 :selected="selected"
                 :cursor="cursor"

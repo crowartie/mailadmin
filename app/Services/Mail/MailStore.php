@@ -434,7 +434,7 @@ class MailStore
      *
      * @return array{messages:array,total:int,page:int,pages:int}
      */
-    public function list(string $path, int $page = 1, string $filter = 'all', ?string $query = null): array
+    public function list(string $path, int $page = 1, string $filter = 'all', ?string $query = null, string $sort = 'date'): array
     {
         $folder = $this->folder($path);
         $page = max(1, $page);
@@ -452,7 +452,7 @@ class MailStore
         $messages = [];
         // Порядок писем задаёт дата письма, а не внутренний номер: письмо, перенесённое в папку
         // сегодня, получает самый большой номер и без сортировки встаёт наверх, даже если ему два года.
-        $sorted = $this->sortedUids($searching || $filter !== 'all' ? $q : null, $path);
+        $sorted = $this->sortedUids($searching || $filter !== 'all' ? $q : null, $path, $sort);
         if ($sorted !== null) {
             $total = count($sorted);
             $slice = array_slice($sorted, ($page - 1) * self::PAGE, self::PAGE);
@@ -526,11 +526,22 @@ class MailStore
      *
      * @return array<int,int>|null
      */
-    private function sortedUids(?WhereQuery $q, string $path): ?array
+    /** Ключи IMAP SORT (RFC 5256) для порядков, которые может выбрать человек. */
+    private const SORT_KEYS = [
+        'date' => '(REVERSE ARRIVAL)',
+        'date-asc' => '(ARRIVAL)',
+        'from' => '(FROM ARRIVAL)',
+        'subject' => '(SUBJECT ARRIVAL)',
+        'size' => '(REVERSE SIZE)',
+    ];
+
+    private function sortedUids(?WhereQuery $q, string $path, string $sort = 'date'): ?array
     {
         // Если на этой папке SORT уже оказывался медленным — не трогаем его снова.
-        $slowKey = 'sort-slow.' . md5($this->user() . '|' . $path);
-        if (\Illuminate\Support\Facades\Cache::get($slowKey)) {
+        $key = self::SORT_KEYS[$sort] ?? self::SORT_KEYS['date'];
+        // Порядок, отличный от обычного, человек выбрал сам — тогда ждём сервер, даже если он небыстрый.
+        $slowKey = $sort === 'date' ? 'sort-slow.' . md5($this->user() . '|' . $path) : null;
+        if ($slowKey && \Illuminate\Support\Facades\Cache::get($slowKey)) {
             return null;
         }
         $started = microtime(true);
@@ -546,7 +557,7 @@ class MailStore
                 }
                 $criteria = $generated;
             }
-            $r = $conn->requestAndResponse('UID SORT', ['(REVERSE ARRIVAL)', 'UTF-8', $criteria]);
+            $r = $conn->requestAndResponse('UID SORT', [$key, 'UTF-8', $criteria]);
             $lines = (array) $r->data();
         } catch (\Throwable) {
             return null;
@@ -570,7 +581,7 @@ class MailStore
             }
         }
 
-        if ((microtime(true) - $started) > 2.0) {
+        if ($slowKey && (microtime(true) - $started) > 2.0) {
             // Большая папка без кэша сортировки: один раз отдали правильный порядок,
             // дальше не тормозим список — вернёмся к этому через полчаса.
             \Illuminate\Support\Facades\Cache::put($slowKey, 1, now()->addMinutes(30));
