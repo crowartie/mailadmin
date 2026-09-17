@@ -545,6 +545,12 @@ function parseList(s) {
     });
 }
 
+// Черновик сохранён: обновляем счётчик папки и сам список, если открыты «Черновики».
+function onDraftSaved() {
+    api.folders().then((r) => { if (Array.isArray(r)) folders.value = r; }).catch(() => {});
+    if (folderInfo.value.role === 'drafts') load(list.value.page, true);
+}
+
 function onComposeClose(opts) {
     if (opts?.discard && opts.draftUid) {
         api.action(rolePath('drafts'), [opts.draftUid], 'delete').then(refresh).catch(() => {});
@@ -589,7 +595,8 @@ function undoSend() {
     if (!pending) { toast.value = null; return; }
     clearTimeout(pending.timer);
     const p = pending; pending = null; toast.value = null;
-    compose.value = formToCompose(p.payload.form);
+    // Вместе с формой возвращаем и приложенные файлы: раньше «Отменить» открывало письмо без них.
+    compose.value = { ...formToCompose(p.payload.form), files: p.payload.files || [] };
     mobileRead.value = true;
     showToast({ text: 'Отправка отменена' }, 2000);
 }
@@ -804,6 +811,7 @@ onBeforeUnmount(() => {
                     @close="onComposeClose"
                     @send="send"
                     @toast="showToast"
+                    @draft="onDraftSaved"
                 />
                 <MessageView
                     v-else-if="open"

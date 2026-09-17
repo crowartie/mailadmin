@@ -97,7 +97,14 @@ class Outgoing
 
         // Вложения исходного письма при пересылке и «оставить вложения» при ответе.
         if (! empty($form['keepAttachments']) && ! empty($form['sourceFolder']) && ! empty($form['sourceUid'])) {
-            $src = $this->store->folder($form['sourceFolder'])->query()->getMessageByUid((int) $form['sourceUid']);
+            try {
+                $src = $this->store->folder($form['sourceFolder'])->query()->getMessageByUid((int) $form['sourceUid']);
+            } catch (\Throwable) {
+                $src = null;
+            }
+            // Исходное письмо удалили или переложили, пока письмо писали. Раньше вложения просто
+            // не прикладывались, и получатель получал пересылку без файлов.
+            abort_unless($src, 409, 'Исходное письмо больше не в той папке, поэтому его вложения не приложить. Снимите галочку «Вложения исходного письма» или откройте письмо заново.');
             if ($src) {
                 foreach ($src->getAttachments() as $a) {
                     // Имя — как показываем в веб-почте: библиотека отдаёт «=?utf-8?B?…?=» сырым, и при пересылке
@@ -155,6 +162,19 @@ class Outgoing
         return trim((string) $email->getHeaders()->get('Message-ID')?->getBodyAsString(), '<>');
     }
 
+    /**
+     * Выполнить уборку после успешной отправки. Письмо уже у получателя, поэтому любая ошибка здесь
+     * попадает в журнал, но не возвращается пользователю: иначе он видит «не отправлено» и шлёт повторно.
+     */
+    private function tidyUp(callable $fn): void
+    {
+        try {
+            $fn();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('после отправки письма: ' . $e->getMessage());
+        }
+    }
+
     /** Отправить сейчас, положить копию в «Отправленные», отметить исходное отвеченным, убрать черновик. */
     public function send(Email $email, array $form): string
     {
@@ -164,16 +184,20 @@ class Outgoing
             // Письмо от имени общего ящика: SMTP-авторизация под своим логином не пропустит чужой адрес,
             // поэтому шлём через локальный relay (как сам сервер), а копию кладём в «Отправленные» общего ящика.
             (new Mailer(ImapSession::smtpLocal()))->send($email);
-            try {
-                $ownerStore = new MailStore(ImapSession::master($from));
-                $ownerStore->append($ownerStore->rolePath('sent'), $email->toString(), ['\\Seen']);
-            } catch (\Throwable) {
-                $this->store->append($this->store->rolePath('sent'), $email->toString(), ['\\Seen']);
-            }
-            $this->afterSend($this->store, $email, $form, $this->session->user(), false);
+            // Дальше — только уборка: копия в «Отправленные», отметка исходного, удаление черновика.
+            // Её сбой раньше приходил в интерфейс как «письмо не отправлено», и сотрудник слал второй раз.
+            $this->tidyUp(function () use ($from, $email, $form) {
+                try {
+                    $ownerStore = new MailStore(ImapSession::master($from));
+                    $ownerStore->append($ownerStore->rolePath('sent'), $email->toString(), ['\\Seen']);
+                } catch (\Throwable) {
+                    $this->store->append($this->store->rolePath('sent'), $email->toString(), ['\\Seen']);
+                }
+                $this->afterSend($this->store, $email, $form, $this->session->user(), false);
+            });
         } else {
             (new Mailer($this->session->smtp()))->send($email);
-            $this->afterSend($this->store, $email, $form, $this->session->user());
+            $this->tidyUp(fn () => $this->afterSend($this->store, $email, $form, $this->session->user()));
         }
 
         return self::messageId($email);
@@ -244,10 +268,19 @@ class Outgoing
                 $mail = trim($piece, " \t\"'<>");
                 $name = '';
             }
-            if (! filter_var($mail, FILTER_VALIDATE_EMAIL)) {
+            // Домен на кириллице («почта.рф») записываем в почтовый формат: фишка в окне письма
+            // такой адрес принимала, а отправка потом отказывала непонятной ошибкой.
+            $ascii = $mail;
+            if (function_exists('idn_to_ascii') && preg_match('/^(.+)@([^@]+)$/u', $mail, $mm)) {
+                $host = @idn_to_ascii($mm[2], IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+                if (is_string($host) && $host !== '') {
+                    $ascii = $mm[1] . '@' . $host;
+                }
+            }
+            if (! filter_var($ascii, FILTER_VALIDATE_EMAIL)) {
                 abort(422, "Неверный адрес: {$piece}");
             }
-            $out[] = new Address($mail, $name);
+            $out[] = new Address($ascii, $name);
         }
 
         return $out;

@@ -27,7 +27,9 @@ const showBcc = ref(bcc.value.length > 0);
 const from = ref((c.from && props.identities.some((i) => i.mail === c.from) ? c.from : '') || props.identities[0]?.mail || '');
 const subject = ref(c.subject || '');
 const html = ref(c.html || '');
-const files = ref([]);
+// Файлы могут прийти извне: при «Отменить» у отправленного письма и при повторе после ошибки.
+// Раньше список всегда создавался пустым, и вложения молча пропадали.
+const files = ref(Array.isArray(c.files) ? [...c.files] : []);
 const existing = ref(c.attachments || []);
 const keepAttachments = ref(c.keepAttachments ?? (c.mode === 'forward'));
 const draftUid = ref(c.draftUid || null);
@@ -52,6 +54,8 @@ function flushRecipients() {
 }
 const fileInput = ref(null);
 let autosave = null;
+let saving = false;      // черновик уже сохраняется — второй запрос дал бы дубль
+let closed = false;      // окно закрыто штатно, при размонтировании сохранять не нужно
 
 // Просмотр вложений прямо из окна письма: унаследованные от пересылаемого письма — с сервера, свои — из файла (data:).
 const viewer = ref(null);
@@ -73,6 +77,12 @@ const totalSize = computed(() => files.value.reduce((s, f) => s + f.size, 0));
 // уже после нажатия «Отправить».
 const canSend = computed(() => (to.value.length + cc.value.length + bcc.value.length) > 0
     && ![...to.value, ...cc.value, ...bcc.value].some((a) => a.bad));
+// Кнопка «Отправить» выключена — объясняем чем именно: раньше нажатие просто не давало реакции.
+const whyCannotSend = computed(() => {
+    if (canSend.value) return 'Отправить письмо';
+    if (!(to.value.length + cc.value.length + bcc.value.length)) return 'Укажите хотя бы одного получателя';
+    return 'Исправьте адрес, подсвеченный красным';
+});
 
 function payload(extra = {}) {
     return {
@@ -110,11 +120,15 @@ function send(sendAt = null) {
     if (warns.length && !window.confirm(warns.join('\n') + '\n\nПисьмо, скорее всего, не дойдёт. Отправить всё равно?')) return;
     menu.value = null;
     dirty.value = false;
+    closed = true;
+    clearInterval(autosave);   // иначе автосохранение успевает создать копию уже отправленного
     emit('send', { form: payload({ sendAt: sendAt ? sendAt.toISOString() : null }), files: files.value, sendAt });
 }
 
 async function saveDraft(silent = false) {
     if (!dirty.value && silent) return;
+    if (saving) return;   // предыдущее сохранение ещё идёт
+    saving = true;
     status.value = 'Сохраняю…';
     try {
         const r = await api.draft(composeForm(payload(), files.value));
@@ -123,8 +137,12 @@ async function saveDraft(silent = false) {
         status.value = 'Черновик сохранён ' + when(new Date().toISOString());
         emit('draft', r);
     } catch (e) {
-        status.value = 'Не удалось сохранить черновик';
+        // Раньше здесь была безличная строка, и человек не знал, что черновик не сохраняется
+        // из-за опечатки в адресе — и продолжал писать письмо в никуда.
+        status.value = 'Черновик не сохранён: ' + (e.message || 'ошибка сети');
         if (!silent) emit('toast', { text: e.message, error: true });
+    } finally {
+        saving = false;
     }
 }
 
@@ -146,6 +164,7 @@ function worthSaving() {
 
 /** Удалить черновик и закрыть окно — действие необратимое, поэтому спрашиваем. */
 function discard() {
+    closed = true;
     const something = to.value.length || subject.value.trim() || files.value.length
         || (html.value || '').replace(/<[^>]+>/g, '').trim();
     if (something && !window.confirm('Удалить письмо вместе с черновиком? Восстановить его будет нельзя.')) return;
@@ -153,6 +172,7 @@ function discard() {
 }
 
 function close() {
+    closed = true;
     if (dirty.value && worthSaving()) {
         saveDraft(true);
         // Окно закрывается, и надпись «Черновик сохранён» внутри него пропадает вместе с ним —
@@ -202,7 +222,10 @@ function signatureFor(mail) {
 }
 watch(from, (nv, ov) => {
     if (!ov || nv === ov) return;
-    if (c.mode !== 'new' && c.mode !== 'draft' && !props.settings.signature_reply) return;
+    // В ответе подпись добавляется только если это разрешено настройкой, но уже вставленную
+    // подпись меняем всегда: иначе письмо от общего ящика уходило с личной подписью.
+    const hasSig = /class="sig"/.test(html.value || '');
+    if (c.mode !== 'new' && c.mode !== 'draft' && !props.settings.signature_reply && !hasSig) return;
     const s = signatureFor(nv);
     const box = document.createElement('div');
     box.innerHTML = html.value;
@@ -220,15 +243,27 @@ watch(from, (nv, ov) => {
     html.value = box.innerHTML;
 });
 
+// Вкладку закрыли или свернули — сохраняем сразу, не дожидаясь очередного автосохранения.
+function saveOnHide() {
+    if (document.visibilityState === 'hidden' && dirty.value && worthSaving()) saveDraft(true);
+}
+
 onMounted(() => {
     dirty.value = false;
     autosave = setInterval(() => saveDraft(true), 30000);
+    document.addEventListener('visibilitychange', saveOnHide);
     setTimeout(() => {
         if (to.value.length) editor.value?.focusStart();
         else toInput.value?.focus();
     }, 50);
 });
-onBeforeUnmount(() => clearInterval(autosave));
+onBeforeUnmount(() => {
+    clearInterval(autosave);
+    document.removeEventListener('visibilitychange', saveOnHide);
+    // Окно закрыли не кнопкой, а переключением на другое письмо («Ответить» поверх черновика):
+    // раньше набранный текст пропадал без следа.
+    if (!closed && dirty.value && worthSaving()) saveDraft(true);
+});
 
 const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ всем', forward: 'Пересылка', draft: 'Черновик' }[c.mode] || 'Новое письмо'));
 </script>
@@ -253,8 +288,8 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             <label>Кому</label>
             <RecipientInput ref="toInput" v-model="to" placeholder="Имя или адрес" />
             <span class="links">
-                <a v-if="!showCc" @click="showCc = true">Копия</a>
-                <a v-if="!showBcc" @click="showBcc = true">Скрытая</a>
+                <button v-if="!showCc" type="button" class="linklike" @click="showCc = true">Копия</button>
+                <button v-if="!showBcc" type="button" class="linklike" @click="showBcc = true">Скрытая</button>
             </span>
         </div>
         <div v-if="showCc" class="compose__row">
@@ -273,11 +308,12 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         </div>
         <div class="compose__row">
             <label>Тема</label>
-            <input v-model="subject" placeholder="Тема письма" @keydown.enter.prevent="editor?.focus()">
+            <input v-model="subject" placeholder="Тема письма" maxlength="998" aria-label="Тема письма" @keydown.enter.prevent="editor?.focus()">
             <span v-if="priority" class="chip chip--warn">Важное</span>
+                <span v-if="receipt" class="chip">Уведомить о прочтении</span>
         </div>
 
-        <Editor ref="editor" v-model="html" @submit="send()" @save="saveDraft()">
+        <Editor ref="editor" v-model="html" @submit="send()" @save="saveDraft()" @toast="$emit('toast', $event)">
             <template #right>
                 <label v-if="existing.length" class="toggle" style="font-size: 12.5px">
                     <input v-model="keepAttachments" type="checkbox"><span class="toggle__track" />Вложения исходного письма ({{ existing.length }})
@@ -307,10 +343,10 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
 
         <div class="compose__foot">
             <span class="split">
-                <button class="btn btn--primary" type="button" :disabled="!canSend" title="Ctrl+Enter" @click="send()">
+                <button class="btn btn--primary" type="button" :disabled="!canSend" :title="canSend ? 'Отправить (Ctrl+Enter)' : whyCannotSend" @click="send()">
                     <Icon name="send" :size="15" />Отправить
                 </button>
-                <button class="btn btn--primary" type="button" title="Отправить позже" :disabled="!canSend" @click="openMenu('later', $event)">
+                <button class="btn btn--primary" type="button" :title="canSend ? 'Отправить позже' : whyCannotSend" :disabled="!canSend" @click="openMenu('later', $event)">
                     <Icon name="clock" :size="16" />
                 </button>
             </span>

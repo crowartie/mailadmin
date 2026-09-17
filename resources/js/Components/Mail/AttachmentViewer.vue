@@ -23,7 +23,8 @@ const hasNext = computed(() => cur.value < props.items.length - 1);
 function prev() { if (hasPrev.value) cur.value--; }
 function next() { if (hasNext.value) cur.value++; }
 function onKey(e) {
-    if (e.key === 'Escape') { e.preventDefault(); emit('close'); }
+    // stopPropagation: иначе Escape закрывал и просмотрщик, и окно письма под ним.
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); emit('close'); }
     else if (e.key === 'ArrowLeft') prev();
     else if (e.key === 'ArrowRight') next();
 }

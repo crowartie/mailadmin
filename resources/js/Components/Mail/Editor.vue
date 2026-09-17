@@ -8,7 +8,7 @@ const props = defineProps({
     placeholder: { type: String, default: 'Текст письма…' },
     compact: Boolean,
 });
-const emit = defineEmits(['update:modelValue', 'submit', 'save']);
+const emit = defineEmits(['update:modelValue', 'submit', 'save', 'toast']);
 const el = ref(null);
 const state = ref({ bold: false, italic: false, underline: false });
 
@@ -24,8 +24,21 @@ function cmd(name, value = null) {
 }
 
 function link() {
-    const url = window.prompt('Адрес ссылки', 'https://');
-    if (url && url !== 'https://') cmd('createLink', url);
+    let url = window.prompt('Адрес ссылки', 'https://');
+    if (!url || url === 'https://') return;
+    url = url.trim();
+    // «www.site.ru» без схемы браузер считает относительной ссылкой — она ведёт внутрь почты.
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url.replace(/^\/+/, '');
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) {
+        // Ничего не выделено: раньше команда просто ничего не делала. Вставляем саму ссылку текстом.
+        el.value.focus();
+        const safe = url.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        document.execCommand('insertHTML', false, `<a href="${safe}">${safe}</a>&nbsp;`);
+        sync();
+        return;
+    }
+    cmd('createLink', url);
 }
 
 function refresh() {
@@ -64,7 +77,10 @@ function pickImage() { fileInput.value?.click(); }
 function onImageFile(e) { const f = e.target.files?.[0]; e.target.value = ''; if (f) insertImage(f); }
 function insertImage(file) {
     if (!file.type.startsWith('image/')) return;
-    if (file.size > 400 * 1024) { window.alert('Картинка больше 400 КБ — уменьшите её (для подписи достаточно ширины 300–400 px).'); return; }
+    if (file.size > 400 * 1024) {
+        emit('toast', { text: 'Картинка больше 400 КБ — уменьшите её: для подписи хватает ширины 300–400 точек', error: true });
+        return;
+    }
     const r = new FileReader();
     r.onload = () => { el.value.focus(); document.execCommand('insertHTML', false, `<img src="${r.result}" alt="" style="max-width: 100%; height: auto">`); sync(); };
     r.readAsDataURL(file);

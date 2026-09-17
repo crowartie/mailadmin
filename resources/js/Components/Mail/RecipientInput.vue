@@ -96,7 +96,9 @@ function onKey(e) {
     if (e.key === 'Backspace' && !text.value && latest.length) {
         remove(latest.length - 1);
     }
-    if (e.key === 'Escape') { sugg.value = []; }
+    // Останавливаем событие, только если было что закрывать: иначе Escape доходил до окна письма
+    // и закрывал его целиком вместе со списком подсказок.
+    if (e.key === 'Escape' && sugg.value.length) { sugg.value = []; e.stopPropagation(); }
 }
 
 watch(text, (v) => {
