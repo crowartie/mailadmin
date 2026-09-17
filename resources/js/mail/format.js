@@ -79,7 +79,8 @@ export function hue(mail) {
     return n >= 70 && n < 110 ? n + 60 : n;
 }
 
-const MONTHS_OF = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+// Для подписи группы нужен именительный падеж: «Сентябрь», а не «Сентября».
+const MONTHS_NAME = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
 /**
  * Название группы для разделителя в списке: «Сегодня», «Вчера», «На этой неделе»,
@@ -103,8 +104,7 @@ export function dayGroup(iso) {
     const prev = new Date(monday); prev.setDate(monday.getDate() - 7);
     if (that >= prev) return 'На прошлой неделе';
     const now = new Date();
-    const month = MONTHS_OF[d.getMonth()];
-    const name = month.charAt(0).toUpperCase() + month.slice(1);
+    const name = MONTHS_NAME[d.getMonth()];
     return d.getFullYear() === now.getFullYear() ? name : name + ' ' + d.getFullYear();
 }
 
