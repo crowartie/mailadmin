@@ -72,8 +72,8 @@ class MessageController extends Controller
     public function attachment(Request $request, ImapSession $imap, string $folder, int $uid, int $index): Response
     {
         $a = (new MailStore($imap->client()))->attachment($folder, $uid, $index);
-        // Outlook кладёт имя как =?utf-8?B?…?= (бывает в две строки и в koi8-r) — разбираем сами, иначе файл скачается с «сырым» именем.
-        $name = MailStore::attachmentName($a);
+        // Имя уже разобрано: Outlook кладёт его как =?utf-8?B?…?= (бывает в две строки и в koi8-r).
+        $name = $a->getName();
         $type = $a->getMimeType() ?: 'application/octet-stream';
         // SVG — это не картинка, а документ со скриптами: показанный в домене почты, он получает
         // доступ к сеансу сотрудника. Отдаём его только файлом и обычным текстом.

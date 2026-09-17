@@ -877,43 +877,31 @@ class MailStore
         // Вложения: имена, типы и размеры уже известны из структуры — качать нечего.
         $list = Structure::attachments($parts);
         $attachments = [];
-        $heavyInline = [];
-        $lightInline = [];
+        $inline = [];
         foreach ($list as $i => $a) {
             $cid = (string) $a['id'];
             $isInline = $cid !== '' && $html !== null && str_contains($html, 'cid:' . $cid);
-            // Картинку до двух мегабайт вшиваем в письмо строкой data:, тяжёлую — ссылкой.
-            $heavy = $isInline && $a['size'] >= 2_000_000;
-            if ($isInline && ! $heavy) {
-                $lightInline[$cid] = $a + ['type' => $a['mime']];
-            } elseif ($heavy) {
-                $heavyInline['cid:' . $cid] = '/mail/api/message/' . rawurlencode($path) . '/' . $uid . '/attachment/' . $i . '?inline=1';
+            if ($isInline) {
+                // Картинку из текста письма не вшиваем в разметку строкой data:, а даём
+                // ссылкой на себя же. Письмо с двумя десятками картинок иначе разрасталось
+                // до шести мегабайт разметки, и одна только чистка занимала три секунды;
+                // теперь картинки тянет браузер — параллельно и с кэшем.
+                $inline['cid:' . $cid] = '/mail/api/message/' . rawurlencode($path) . '/' . $uid . '/attachment/' . $i . '?inline=1';
             }
             $attachments[] = [
                 'index' => $i,
                 'name' => $a['name'] !== '' ? $a['name'] : 'вложение-' . ($i + 1),
                 'size' => $a['size'],
                 'type' => $a['mime'],
-                'inline' => $isInline && ! $heavy,
+                'inline' => $isInline,
             ];
         }
-        if ($lightInline) {
-            // Встроенные картинки — единственное, что дочитываем помимо текста.
-            $got = Structure::fetchParts($this->client, $path, $uid, array_values($lightInline));
-            foreach ($lightInline as $cid => $a) {
-                // Подставляем только картинки: data: с любым другим типом — это уже
-                // не иллюстрация, а способ провести в письмо чужой документ.
-                if (isset($got[$a['no']]) && str_starts_with((string) $a['type'] ?? '', 'image/')) {
-                    $heavyInline['cid:' . $cid] = 'data:' . $a['mime'] . ';base64,' . base64_encode($got[$a['no']]);
-                }
-            }
+        // Подставляем до чистки: схему cid: чистка не пропускает, и картинки пропали бы.
+        // Ссылка короткая, поэтому разметка остаётся маленькой.
+        if ($html !== null && $inline) {
+            $html = strtr($html, $inline);
         }
-        // Сначала чистка (документ ещё маленький), потом картинки: наоборот Purifier
-        // разбирал бы их вместе с разметкой, а это секунды на каждое письмо.
         $clean = $html !== null && $html !== '' ? MailHtml::sanitize($html) : null;
-        if ($clean !== null && $heavyInline) {
-            $clean = strtr($clean, $heavyInline);
-        }
 
         $rawHeader = (string) ($message->getHeader()?->raw ?? '');
         $refIds = Mime::messageIds(Mime::headerValue($rawHeader, 'References') ?? $message->getReferences()->toArray());
@@ -970,9 +958,6 @@ class MailStore
                 'inline' => $isInline && ! $heavy,
             ];
         }
-        // Чистим до подстановки картинок: с ними документ раздувается в разы,
-        // и Purifier тратит на письмо секунды (см. fullLight).
-        $html = $html ? MailHtml::sanitize($html) : null;
         if ($html && $inline) {
             $html = strtr($html, $inline);
         }
@@ -987,7 +972,7 @@ class MailStore
 
         return $this->summary($message) + [
             'folder' => $path,
-            'html' => $html ?: null,
+            'html' => $html ? MailHtml::sanitize($html) : null,
             'text' => $text,
             'to' => $this->addresses($message->getTo()),
             'cc' => $this->addresses($message->getCc()),
@@ -1200,8 +1185,31 @@ class MailStore
         return array_values($found);
     }
 
-    public function attachment(string $path, int $uid, int $index): Attachment
+    /**
+     * Одно вложение письма по его номеру.
+     *
+     * Сначала пробуем взять его одной частью: содержимое каждой картинки из текста
+     * письма браузер запрашивает отдельно, и выкачивать ради неё письмо целиком (а с ним
+     * и все прочие вложения) — это секунды и десятки мегабайт памяти на каждый запрос.
+     */
+    public function attachment(string $path, int $uid, int $index): MailPart
     {
+        $parts = Structure::of($this->client, $path, $uid);
+        if ($parts !== null) {
+            $list = Structure::attachments($parts);
+            if (! isset($list[$index])) {
+                throw MailException::notFound('Вложение не найдено');
+            }
+            $a = $list[$index];
+            $got = Structure::fetchParts($this->client, $path, $uid, [$a]);
+            if (isset($got[$a['no']])) {
+                $name = $a['name'] !== '' ? $a['name'] : 'вложение-' . ($index + 1);
+
+                return new MailPart($name, (string) $a['mime'], $got[$a['no']]);
+            }
+        }
+
+        // Структура не разобралась или часть не пришла — читаем письмо целиком, как раньше.
         $message = $this->folder($path)->query()->getMessageByUid($uid);
         if (! $message) {
             throw MailException::notFound('Письмо не найдено');
@@ -1211,7 +1219,7 @@ class MailStore
             throw MailException::notFound('Вложение не найдено');
         }
 
-        return $list[$index];
+        return MailPart::fromAttachment($list[$index], 'вложение-' . ($index + 1));
     }
 
     /**
@@ -1309,7 +1317,7 @@ class MailStore
         if (strlen($content) > 25 * 1024 * 1024) {
             throw MailException::tooLarge('Документ слишком большой для предпросмотра — скачайте его');
         }
-        $name = Mime::attachmentName($a, 'document');
+        $name = $a->getName();
         $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
         if (! in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'], true)) {
             throw MailException::unsupported('Этот тип файла не показываем — скачайте его');
