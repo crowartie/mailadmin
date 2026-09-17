@@ -449,7 +449,12 @@ class MailStore
             return array_map('intval', $q->search()->all());
         } catch (\Throwable $e) {
             $this->reconnect();
-            $why = mb_strtolower($e->getMessage());
+            // Библиотека заворачивает настоящую причину в своё «failed to fetch messages»,
+            // поэтому смотрим всю цепочку: там и таймаут, и разбор ответа.
+            $why = '';
+            for ($x = $e; $x !== null; $x = $x->getPrevious()) {
+                $why .= ' ' . mb_strtolower($x->getMessage());
+            }
             // «empty response» — библиотека не дождалась ответа: для сервера это та же индексация.
             if (str_contains($why, 'timed out') || str_contains($why, 'timeout') || str_contains($why, 'indexing') || str_contains($why, 'empty response')) {
                 throw MailException::busy($searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
