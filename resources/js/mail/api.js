@@ -21,7 +21,20 @@ async function request(method, url, body, opts = {}) {
         headers['Content-Type'] = 'application/json';
         payload = JSON.stringify(body);
     }
-    const r = await fetch(url, { method, headers, body: payload, credentials: 'same-origin', keepalive: opts.keepalive || false });
+    // Без ограничения по времени зависший почтовый сервер оставлял список полупрозрачным
+    // сколь угодно долго — без ошибки и без возможности отменить.
+    const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const limit = opts.timeout ?? (opts.keepalive ? 0 : 60000);
+    const timer = ac && limit ? setTimeout(() => ac.abort(), limit) : null;
+    let r;
+    try {
+        r = await fetch(url, { method, headers, body: payload, credentials: 'same-origin', keepalive: opts.keepalive || false, signal: ac?.signal });
+    } catch (e) {
+        if (e?.name === 'AbortError') throw new ApiError('Сервер не ответил за минуту — попробуйте ещё раз', 0);
+        throw new ApiError('Нет связи с почтой — проверьте подключение к сети', 0);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
     const text = await r.text();
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = { message: text }; }
@@ -32,7 +45,10 @@ async function request(method, url, body, opts = {}) {
         throw new ApiError(data?.message || 'Сессия закончилась', 401);
     }
     if (!r.ok) {
-        const msg = data?.message || (data?.errors && Object.values(data.errors).flat()[0]) || `Ошибка ${r.status}`;
+        // Показываем все ошибки формы сразу: раньше бралась только первая, и поля
+        // приходилось чинить по одному, каждый раз отправляя форму заново.
+        const all = data?.errors ? Object.values(data.errors).flat() : [];
+        const msg = data?.message || (all.length ? all.join(' ') : '') || `Ошибка ${r.status}`;
         recordApiError(method, url, r.status, msg);   // пригодится, если сотрудник напишет «не работает»
         throw new ApiError(msg, r.status, data);
     }

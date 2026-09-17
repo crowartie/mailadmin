@@ -13,6 +13,12 @@ class MessageController extends Controller
 {
     public function list(Request $request, ImapSession $imap, string $folder): JsonResponse
     {
+        // ?filter[]=x и ?q[]=a приходили массивом и роняли запрос ошибкой сервера.
+        $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'filter' => ['nullable', 'string', 'max:64'],
+            'q' => ['nullable', 'string', 'max:500'],
+        ]);
         $store = new MailStore($imap->client());
         $list = $store->list(
             $folder,

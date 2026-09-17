@@ -367,8 +367,10 @@ async function markSender(match) {
     const values = match === 'domain' ? d.domains : d.mails;
     let moved = 0; let global = false; let votes = null; let personalOnly = false;
     try {
-        for (const v of values) {
-            const r = await api.markSender(d.what, match, v, d.resort, d.folder?.path || null);
+        // Раньше запросы шли строго по одному, и ошибка на середине оставляла часть правил
+        // созданной: повтор плодил дубли. Шлём разом и ждём все ответы.
+        const results = await Promise.all(values.map((v) => api.markSender(d.what, match, v, d.resort, d.folder?.path || null)));
+        for (const r of results) {
             moved += r.moved || 0; global = global || r.global; personalOnly = personalOnly || !!r.personalOnly; if (r.threshold > 1 && !r.personalOnly) votes = `${r.votes} из ${r.threshold}`;
             if (r.folders) folders.value = r.folders;
         }
@@ -455,7 +457,10 @@ async function folderDialog(kind, f = null) {
 }
 async function confirmDialog(value) {
     const d = dialog.value;
-    dialog.value = null;
+    if (!d || d.busy) return;   // второй клик по «Ок», пока запрос в пути
+    // Окно закрываем после ответа сервера: раньше при отказе («папка с таким именем уже есть»)
+    // форма была уже закрыта, и набранное название приходилось вводить заново.
+    dialog.value = { ...d, busy: true };
     try {
         if (d.kind === 'newFolder') { const r = await api.createFolder(value, d.folder?.path || null); folders.value = r.folders; showToast({ text: 'Папка создана' }); }
         if (d.kind === 'renameFolder') { const r = await api.renameFolder(d.folder.path, value); folders.value = r.folders; if (folder.value === d.folder.path) folder.value = r.path; }
@@ -465,7 +470,11 @@ async function confirmDialog(value) {
         if (d.kind === 'renameLabel') { labels.value = await api.updateLabel(d.label.id, value, d.label.color); }
         if (d.kind === 'deleteLabel') { labels.value = await api.deleteLabel(d.label.id); if (filter.value === 'label:' + d.label.id) go('INBOX'); }
         if (d.kind === 'outbox' && value?.cancel) { await api.cancelOutbox(value.cancel); }
-    } catch (e) { fail(e); }
+        dialog.value = null;
+    } catch (e) {
+        dialog.value = { ...d, busy: false };   // оставляем окно с введённым текстом
+        fail(e);
+    }
 }
 // ── Общий доступ к папке ──────────────────────────────────────
 async function openShare(f) {
@@ -671,11 +680,20 @@ function unsubscribe(m) {
     const h = m.listUnsubscribe || '';
     const mailto = h.match(/<mailto:([^>]+)>/i);
     const http = h.match(/<(https?:[^>]+)>/i);
-    if (http) { window.open(http[1], '_blank', 'noopener'); return; }
+    if (http) {
+        // Ссылка ведёт на чужой сайт из письма, которое человек уже счёл лишним: показываем адрес
+        // и спрашиваем. Раньше один клик открывал произвольную страницу без предупреждения.
+        let host = http[1];
+        try { host = new URL(http[1]).host; } catch { /* оставим как есть */ }
+        if (!window.confirm(`Открыть страницу отписки на сайте ${host}?`)) return;
+        window.open(http[1], '_blank', 'noopener');
+        return;
+    }
     if (mailto) {
         const [addr, qs] = mailto[1].split('?');
         const subj = new URLSearchParams(qs || '').get('subject') || 'Unsubscribe';
-        compose.value = { mode: 'new', to: [{ name: '', mail: addr }], cc: [], bcc: [], subject: subj, html: '<p>Unsubscribe</p>' };
+        compose.value = { token: ++composeSeq, mode: 'new', to: [{ name: '', mail: addr }], cc: [], bcc: [], subject: subj, html: '<p>Unsubscribe</p>' };
+        mobileRead.value = true;   // на телефоне окно письма иначе остаётся за кадром
     }
 }
 
@@ -740,14 +758,22 @@ function onKey(e) {
         case 'x': if (cur != null) toggle(cur); break;
         case 'e': act('archive', target); break;
         case '#': case 'Delete': act('delete', target); break;
-        case 's': if (row) act(row.flagged ? 'unflag' : 'flag', target); break;
-        case 'i': if (row) act(row.seen ? 'unseen' : 'seen', target); break;
+        // Ориентир — письмо под курсором, а если его нет (после «выбрать все»), первое выделенное:
+        // раньше эти две клавиши в таком случае просто ничего не делали.
+        case 's': { const r = row || list.value.messages.find((m) => target.includes(m.uid)); if (r) act(r.flagged ? 'unflag' : 'flag', target); break; }
+        case 'i': { const r = row || list.value.messages.find((m) => target.includes(m.uid)); if (r) act(r.seen ? 'unseen' : 'seen', target); break; }
         case '!': act('spam', target); break;
         case 'r': if (open.value) startCompose(settings.value.reply_all ? 'replyAll' : 'reply', open.value); break;
         case 'a': if (open.value) startCompose('replyAll', open.value); break;
         case 'f': if (open.value) startCompose('forward', open.value); break;
         case 'c': startCompose('new'); break;
-        case 'z': case 'v': case 'l': if (target.length) { menu.value = { kind: { z: 'snooze', v: 'move', l: 'label' }[e.key], x: 420, y: 160, uids: target }; } break;
+        // Меню появляется у строки под курсором, а не в жёстко заданной точке 420×160,
+        // которая после изменения ширины колонок попадала в чужую колонку.
+        case 'z': case 'v': case 'l': if (target.length) {
+            const el = document.querySelector('.mrow--cursor') || document.querySelector('.mlist');
+            const r = el ? el.getBoundingClientRect() : { left: 320, bottom: 160 };
+            menu.value = { kind: { z: 'snooze', v: 'move', l: 'label' }[key], x: Math.round(r.left + 40), y: Math.round(Math.min(r.bottom, window.innerHeight - 120)), uids: target };
+        } break;
         case '/': e.preventDefault(); listRef.value?.focusSearch(); break;
         case '?': help.value = true; break;
         case '*': starPrefix = true; clearTimeout(starTimer); starTimer = setTimeout(() => { starPrefix = false; }, 1200); e.preventDefault(); break;
@@ -887,7 +913,13 @@ onBeforeUnmount(() => {
                 <button class="pop__item" type="button" title="Открыть как новое письмо: те же получатели, тема, текст и вложения" @click="openThen('again')"><Icon name="edit" :size="16" />Изменить как новое</button>
                 <div class="pop__sep" />
             </template>
-            <button class="pop__item" type="button" @click="act(menuRow && !menuRow.seen ? 'seen' : 'unseen', menu.uids)"><Icon name="eye" :size="16" />{{ menuRow && !menuRow.seen ? 'Прочитано' : 'Непрочитано' }}<span class="k">i</span></button>
+            <!-- Для пачки писем показываем оба действия: раньше предлагался единственный пункт
+                 «Непрочитано», то есть ровно противоположный ожидаемому. -->
+            <template v-if="menu.uids.length > 1">
+                <button class="pop__item" type="button" @click="act('seen', menu.uids)"><Icon name="eye" :size="16" />Прочитано</button>
+                <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Непрочитано</button>
+            </template>
+            <button v-else class="pop__item" type="button" @click="act(menuRow && !menuRow.seen ? 'seen' : 'unseen', menu.uids)"><Icon name="eye" :size="16" />{{ menuRow && !menuRow.seen ? 'Прочитано' : 'Непрочитано' }}<span class="k">i</span></button>
             <button class="pop__item" type="button" @click="act(menuRow?.flagged ? 'unflag' : 'flag', menu.uids)"><Icon name="flag" :size="16" />{{ menuRow?.flagged ? 'Снять флажок' : 'Флажок' }}<span class="k">s</span></button>
             <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'snooze' }"><Icon name="clock" :size="16" />Отложить до…<span class="k">z</span></button>
             <div class="pop__sep" />
@@ -948,8 +980,9 @@ onBeforeUnmount(() => {
         <Popover v-if="menu && menu.kind === 'more'" :x="menu.x" :y="menu.y" @close="menu = null">
             <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Пометить непрочитанным</button>
             <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'remind' }"><Icon name="bell" :size="16" />Напомнить, если не ответят…</button>
-            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])"><Icon name="download" :size="16" />Скачать .eml</a>
-            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])" target="_blank" rel="noopener"><Icon name="code" :size="16" />Показать оригинал</a>
+            <!-- Оба пункта работают с одним письмом: при выделенной пачке честно говорим, с каким именно. -->
+            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])"><Icon name="download" :size="16" />Скачать .eml<span v-if="menu.uids.length > 1" class="k">только первое</span></a>
+            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])" target="_blank" rel="noopener"><Icon name="code" :size="16" />Показать оригинал<span v-if="menu.uids.length > 1" class="k">только первое</span></a>
         </Popover>
 
         <Popover v-if="menu && menu.kind === 'remind'" :x="menu.x" :y="menu.y" @close="menu = null">

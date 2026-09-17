@@ -1291,6 +1291,9 @@ class MailStore
             $this->flag($path, $uids, '\\Deleted', true);
             $this->client->openFolder($path, true);
             $this->client->getConnection()->expunge();
+            // Иначе панель папок ещё минуту показывает старое «Корзина (12)»: кэш списка папок
+            // сбрасывают move() и emptyFolder(), а эта ветка — нет.
+            $this->folderCache = null;
 
             return;
         }

@@ -1,6 +1,7 @@
 <script setup>
 // Колонка папок и меток. Письма можно перетаскивать на папки.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { Link } from '@inertiajs/vue3';
 import Icon from '../Icon.vue';
 
 const props = defineProps({
@@ -69,6 +70,7 @@ watch(() => props.folder, (path) => {
 }, { immediate: true });
 
 const inbox = computed(() => props.folders.find((f) => f.role === 'inbox'));
+const quarantineOpen = computed(() => typeof window !== 'undefined' && window.location.pathname === '/mail/quarantine');
 const dropTarget = ref(null);
 
 function isOn(f) {
@@ -136,7 +138,9 @@ function sharedTitle(f) {
         >
             <span>Важное</span>
         </button>
-        <a class="mnav__item" href="/mail/quarantine" title="Письма, задержанные антиспамом"><span>Карантин</span><span v-if="quarantine" class="mnav__count">{{ quarantine }}</span></a>
+        <!-- Link, а не обычная ссылка: остальные строки списка папок переключаются без перезагрузки,
+             и только «Карантин» перезагружал всё приложение целиком. -->
+        <Link class="mnav__item" :class="{ 'mnav__item--on': quarantineOpen }" href="/mail/quarantine" title="Письма, задержанные антиспамом"><span>Карантин</span><span v-if="quarantine" class="mnav__count">{{ quarantine }}</span></Link>
         <button v-if="outbox" type="button" class="mnav__item" @click="$emit('outbox')">
             <span>Ждут отправки</span><span class="mnav__count">{{ outbox }}</span>
         </button>
@@ -202,7 +206,8 @@ function sharedTitle(f) {
             type="button"
             class="mnav__item"
             :class="{ 'mnav__item--on': filter === 'label:' + l.id }"
-            @click="$emit('go', inbox?.path || 'INBOX', 'label:' + l.id)"
+            :title="'Письма с меткой «' + l.name + '» в текущей папке'"
+            @click="$emit('go', folder || inbox?.path || 'INBOX', 'label:' + l.id)"
             @contextmenu.prevent="$emit('label', 'context', $event, l)"
         >
             <span class="mnav__swatch mnav__swatch--round" :style="{ background: l.color }" />
