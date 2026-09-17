@@ -331,6 +331,11 @@ class MailStore
         // Порядок писем задаёт дата письма, а не внутренний номер: письмо, перенесённое в папку
         // сегодня, получает самый большой номер и без сортировки встаёт наверх, даже если ему два года.
         $sorted = $this->sortedUids($searching || $filter !== 'all' ? $q : null, $path, $sort);
+        if ($sorted !== null && $byFile !== null) {
+            // Отбор по имени файла делается после поиска, значит и после сортировки:
+            // сервер о именах вложений ничего не знает.
+            $sorted = $this->keepWithFile($path, $sorted, $byFile);
+        }
         if ($sorted !== null) {
             $total = count($sorted);
             $slice = array_slice($sorted, ($page - 1) * self::PAGE, self::PAGE);
