@@ -318,6 +318,13 @@
         &__bar .ib--wide { font-size: 0; gap: 0; }
     }
 
+    // Ноутбуки 1280–1400: места хватает только на значки. Подпись остаётся у «Ответить» —
+    // это основное действие; у остальных кнопок текст всплывает подсказкой при наведении.
+    @media (max-width: 1400px) {
+        &__bar .ib:not(.ib--keep) { font-size: 0; gap: 0; min-width: 30px; padding: 0 5px; }
+        &__bar { gap: 1px; }
+    }
+
     &__title {
         display: flex;
         align-items: center;
