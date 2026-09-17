@@ -26,6 +26,8 @@ class QuarantineController extends Controller
             'user' => $imap->user(),
             'settings' => Setting::for($imap->user()),
             'items' => $this->items($imap->user()),
+            // 284: на странице было зашито «14 дней» независимо от настройки сервера.
+            'keepDays' => (int) (\App\Models\AppSetting::group('quarantine')['keep_days'] ?? 14),
         ]);
     }
 
@@ -73,9 +75,16 @@ class QuarantineController extends Controller
     /** Выпуск по подписанной ссылке из письма-сводки (без входа). */
     public function releaseSigned(Request $request, string $id, string $secret): Response
     {
-        $row = DB::connection('amavisd')->table('msgs')->where('mail_id', $id)->where('secret_id', $secret)->first(['mail_id']);
+        $row = DB::connection('amavisd')->table('msgs')->where('mail_id', $id)->where('secret_id', $secret)->first(['mail_id', 'time_num']);
         $ok = false;
         $msg = 'Ссылка устарела или письмо уже удалено из карантина.';
+        // 285: справка обещает, что ссылка из сводки живёт неделю, а проверялись только
+        // идентификаторы: письмо годичной давности выпускалось по старой сводке.
+        $days = 7;
+        if ($row && (int) ($row->time_num ?? 0) > 0 && (int) $row->time_num < time() - $days * 86400) {
+            $row = null;
+            $msg = 'Ссылке больше недели — она уже не работает. Откройте «Карантин» в веб-почте.';
+        }
         if ($row) {
             try {
                 $this->quarantine->release($id, $secret);
@@ -85,10 +94,32 @@ class QuarantineController extends Controller
                 $msg = 'Не удалось доставить: ' . mb_substr($e->getMessage(), 0, 200);
             }
         }
-        Cache::flush();
+        // 286: здесь стоял Cache::flush() — он стирал кэш всего приложения для всех
+        // пользователей сразу. Сбрасываем только счётчик карантина тех, кому письмо шло.
+        foreach ($this->recipientsOf($id) as $mail) {
+            Cache::forget('quarantine.count.' . $mail);
+        }
         $title = $ok ? 'Доставлено' : 'Не получилось';
 
         return response('<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . $title . '</title></head><body style="font-family:sans-serif;background:#f4f6f8;margin:0;display:flex;align-items:center;justify-content:center;height:100vh"><div style="background:#fff;padding:32px 40px;border-radius:12px;max-width:460px;box-shadow:0 8px 30px -12px rgba(0,0,0,.25)"><h1 style="margin:0 0 10px;font-size:20px">' . $title . '</h1><p style="margin:0 0 18px;color:#444">' . htmlspecialchars($msg) . '</p><a href="/mail" style="color:#1a56db">Открыть веб-почту</a></div></body></html>', $ok ? 200 : 410);
+    }
+
+    /**
+     * Кому адресовано письмо из карантина — чтобы сбросить счётчик именно им.
+     *
+     * @return string[]
+     */
+    private function recipientsOf(string $mailId): array
+    {
+        try {
+            return DB::connection('amavisd')->table('msgrcpt')
+                ->join('maddr', 'maddr.id', '=', 'msgrcpt.rid')
+                ->where('msgrcpt.mail_id', $mailId)
+                ->pluck('maddr.email')
+                ->map(fn ($m) => strtolower((string) $m))->filter()->unique()->values()->all();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /** @return array<int,array<string,mixed>> */

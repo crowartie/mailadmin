@@ -103,7 +103,7 @@ onBeforeUnmount(() => {
                     <button class="ib ib--sm" type="button" title="Убрать снимок" @click="clearFile" aria-label="Убрать снимок"><Icon name="x" :size="14" /></button>
                 </div>
                 <label v-else class="fb__attach">
-                    <input type="file" accept="image/*" hidden @change="pick">
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="pick">
                     <Icon name="img" :size="16" />Приложить снимок экрана<span class="hint" style="margin-left: auto">или вставьте из буфера, Ctrl+V</span>
                 </label>
 

@@ -360,6 +360,15 @@ const showDone = ref(false);
 const editTask = ref(null);
 const today = new Date().toISOString().slice(0, 10);
 const openTasks = computed(() => tasks.value.filter((t) => !t.done));
+// Со временем или только дата: при включении добавляем 09:00, при выключении — обрезаем.
+const taskWithTime = ref(false);
+watch(taskWithTime, (on) => {
+    const t = editTask.value;
+    if (!t) return;
+    if (on && t.due && t.due.length <= 10) t.due = t.due + 'T09:00';
+    if (!on && t.due && t.due.length > 10) t.due = t.due.slice(0, 10);
+});
+watch(editTask, (t) => { taskWithTime.value = !!(t && t.due && t.due.length > 10); });
 const visibleTasks = computed(() => showDone.value ? tasks.value : openTasks.value);
 async function loadTasks() { try { tasks.value = await api.tasks(); } catch (e) { fail(e); } }
 async function addTask() {
@@ -367,13 +376,25 @@ async function addTask() {
     try { const t = await api.createTask({ calendar: 'personal', title: newTask.value.trim(), due: newTaskDue.value || null, done: false }); tasks.value = [t, ...tasks.value]; newTask.value = ''; newTaskDue.value = ''; } catch (e) { fail(e); }
 }
 async function toggleTask(t) {
-    try { const u = await api.updateTask(t.calendar, t.id, { done: !t.done }); tasks.value = tasks.value.map((x) => (x.id === t.id && x.calendar === t.calendar ? u : x)); } catch (e) { fail(e); }
+    // Галочка рисуется по :checked, а не по модели, поэтому при неудачном сохранении
+    // задача оставалась на экране выполненной. Возвращаем состояние сами.
+    const was = t.done;
+    try {
+        const u = await api.updateTask(t.calendar, t.id, { done: !t.done });
+        tasks.value = tasks.value.map((x) => (x.id === t.id && x.calendar === t.calendar ? u : x));
+    } catch (e) {
+        t.done = was;
+        tasks.value = [...tasks.value];
+        fail(e);
+    }
 }
 async function saveTask() {
     const t = editTask.value;
     try { const u = await api.updateTask(t.calendar, t.id, { title: t.title, due: t.due || null, description: t.description || '', priority: t.priority || 0 }); tasks.value = tasks.value.map((x) => (x.id === t.id && x.calendar === t.calendar ? u : x)); editTask.value = null; } catch (e) { fail(e); }
 }
 async function removeTask(t) {
+    // У события и контакта подтверждение есть, а задача удалялась одним кликом и без отмены.
+    if (!window.confirm(`Удалить задачу «${t.title}»? Восстановить её будет нельзя.`)) return;
     try { await api.deleteTask(t.calendar, t.id); tasks.value = tasks.value.filter((x) => !(x.id === t.id && x.calendar === t.calendar)); } catch (e) { fail(e); }
 }
 function dueLabel(due) {
@@ -428,11 +449,14 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     <Icon v-if="c.readonly" name="eye" :size="13" style="color: var(--faint)" title="только чтение" />
                 </button>
                 <div class="mnav__group">Задачи <span v-if="openTasks.length" class="mnav__count" style="margin-left: 4px">{{ openTasks.length }}</span><button class="ib ib--sm" type="button" title="Показать выполненные" :class="{ 'ib--on': showDone }" @click="showDone = !showDone" aria-label="Показать выполненные"><Icon name="check" :size="14" /></button></div>
-                <form class="task__add" @submit.prevent="addTask"><input v-model="newTask" class="input" placeholder="Новая задача…" style="height: 32px"><input v-model="newTaskDue" class="input" type="date" title="Срок" style="height: 32px; width: 40px; padding: 0 4px"></form>
+                <form class="task__add" @submit.prevent="addTask"><input v-model="newTask" class="input" placeholder="Новая задача…" style="height: 32px"><input v-model="newTaskDue" class="input" type="date" title="Срок" aria-label="Срок задачи" style="height: 32px; width: 9.5em; min-width: 130px; padding: 0 6px"></form>
                 <div v-for="t in visibleTasks" :key="t.calendar + t.id" class="task" :class="{ 'task--done': t.done, 'task--late': !t.done && t.due && t.due < today }">
                     <input type="checkbox" class="check" :checked="t.done" @change="toggleTask(t)">
                     <span class="task__body" @click="editTask = { ...t }" title="Изменить">
+                        <!-- 252: важность задавали, но нигде не показывали. -->
+                        <span v-if="t.priority === 1" class="task__prio" title="Высокая важность">!</span>
                         <span class="task__title">{{ t.title }}</span>
+                        <span v-if="t.priority === 9" class="task__due" title="Низкая важность">не срочно</span>
                         <span v-if="t.due" class="task__due">{{ dueLabel(t.due) }}</span>
                     </span>
                     <button class="ib ib--sm task__x" type="button" title="Удалить" @click="removeTask(t)" aria-label="Удалить"><Icon name="x" :size="13" /></button>
@@ -659,7 +683,13 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
         <Dialog v-if="editTask" title="Задача" confirm-label="Сохранить" @close="editTask = null" @confirm="saveTask">
             <div class="field"><label>Название</label><input v-model="editTask.title" class="input" required></div>
             <div class="grid-2">
-                <div class="field"><label>Срок</label><input v-model="editTask.due" class="input" :type="editTask.due && editTask.due.length > 10 ? 'datetime-local' : 'date'"></div>
+                <!-- 253: тип поля выбирался по длине значения и навсегда оставался «дата» —
+                     задать время у уже созданной задачи было нельзя. -->
+                <div class="field">
+                    <label>Срок</label>
+                    <input v-model="editTask.due" class="input" :type="taskWithTime ? 'datetime-local' : 'date'">
+                    <label class="toggle" style="font-size: 12.5px"><input v-model="taskWithTime" type="checkbox"><span class="toggle__track" />указать время</label>
+                </div>
                 <div class="field"><label>Важность</label><select v-model.number="editTask.priority" class="input"><option :value="0">обычная</option><option :value="1">высокая</option><option :value="9">низкая</option></select></div>
             </div>
             <div class="field"><label>Заметка</label><textarea v-model="editTask.description" class="input" rows="3" style="height: auto"></textarea></div>

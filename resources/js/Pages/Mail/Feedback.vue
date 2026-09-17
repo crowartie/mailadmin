@@ -101,9 +101,10 @@ async function send() {
     toBottom();
     sending.value = true;
     error.value = '';
+    const keptFile = file.value;
     const fd = new FormData();
     fd.append('text', text || 'Снимок экрана');
-    if (file.value) fd.append('file', file.value, file.value.name || 'screen.png');
+    if (keptFile) fd.append('file', keptFile, keptFile.name || 'screen.png');
     reply.value = '';
     file.value = null;
     filePreview.value = '';
@@ -116,10 +117,25 @@ async function send() {
     } catch (e) {
         draft.pending = false;
         draft.failed = true;
+        // Всё, что нужно для повтора, держим прямо в сообщении: раньше единственным
+        // выходом было перенабрать текст и заново приложить снимок.
+        draft.retryText = text;
+        draft.retryFile = keptFile;
         error.value = e.message || 'Не удалось отправить';
     } finally {
         sending.value = false;
     }
+}
+
+/** Отправить ещё раз то же самое сообщение. */
+function retry(m) {
+    if (sending.value) return;
+    reply.value = m.retryText || m.text || '';
+    file.value = m.retryFile || null;
+    filePreview.value = m.preview || '';
+    const i = messages.value.indexOf(m);
+    if (i >= 0) messages.value.splice(i, 1);
+    send();
 }
 
 /** Обновить открытое обращение и его строку в списке, не перерисовывая страницу. */
@@ -177,7 +193,7 @@ function backToList() {
 </script>
 
 <template>
-    <Head title="Обращения" />
+    <Head title="Мои обращения" />
     <MailLayout :user="user" :theme="settings?.theme">
         <div class="fbpage">
           <div class="fbpage__inner">
@@ -253,7 +269,7 @@ function backToList() {
                             <div v-else-if="m.preview" class="fbchat__shot"><img :src="m.preview" alt="снимок экрана"></div>
                             <div class="fbchat__at">
                                 <span v-if="m.pending">отправляется…</span>
-                                <span v-else-if="m.failed">не отправлено</span>
+                                <span v-else-if="m.failed">не отправлено <button type="button" class="linklike" style="font-weight: 600" @click="retry(m)">повторить</button></span>
                                 <span v-else>{{ when(m.at) }}</span>
                             </div>
                         </div>

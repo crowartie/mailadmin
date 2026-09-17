@@ -70,6 +70,7 @@
     .check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; }
 }
 .mobile-only { display: none; }
+.desktop-only { display: inline; }
 
 // ── Задачи (левая колонка календаря)
 .task__add { display: flex; gap: 4px; padding: 2px 8px 6px; }
@@ -79,6 +80,8 @@
 .task__body { flex: 1; min-width: 0; cursor: pointer; display: flex; flex-direction: column; }
 .task__title { overflow-wrap: anywhere; }
 .task__due { font-size: 11.5px; color: var(--faint); }
+// Важность задачи: её задавали в форме, но в списке она никак не отражалась.
+.task__prio { color: var(--no); font-weight: 700; flex: 0 0 auto; }
 .task--done .task__title { text-decoration: line-through; color: var(--faint); }
 .task--late .task__due { color: var(--no); }
 .task__x { opacity: 0; }
@@ -213,6 +216,7 @@
 
 @media (max-width: 860px) {
     .mobile-only { display: inline-flex; }
+    .desktop-only { display: none; }
     .cal__agenda-day { grid-template-columns: 1fr; gap: 4px; }
     .cal__bar { flex-wrap: wrap; row-gap: 6px; }
     .cal__bar .grow { flex-basis: 100%; height: 0; }

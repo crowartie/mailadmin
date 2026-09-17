@@ -7,7 +7,7 @@ import Icon from '../../Components/Icon.vue';
 import { api } from '../../mail/api';
 import { plural, size, when } from '../../mail/format';
 
-const props = defineProps({ user: String, settings: Object, items: Array });
+const props = defineProps({ user: String, settings: Object, items: Array, keepDays: { type: Number, default: 14 } });
 const items = ref(props.items || []);
 const busy = ref('');
 const ask = ref(null); // { from, domain, busy }
@@ -31,8 +31,15 @@ async function notSpam(match) {
     } catch (e) { ask.value.busy = false; say(e.message, true); }
 }
 async function remove(i) {
+    // 283: кнопка стоит вплотную к «Доставить», а действие необратимо — и ни вопроса,
+    // ни сообщения об успехе не было.
+    if (!window.confirm(`Удалить письмо «${i.subject || 'без темы'}» из карантина навсегда? Восстановить его будет нельзя.`)) return;
     busy.value = i.id;
-    try { const r = await api.quarantineDelete(i.id); items.value = r.items; } catch (e) { say(e.message, true); } finally { busy.value = ''; }
+    try {
+        const r = await api.quarantineDelete(i.id);
+        items.value = r.items;
+        say('Письмо удалено из карантина');
+    } catch (e) { say(e.message, true); } finally { busy.value = ''; }
 }
 async function reload() { try { items.value = await api.quarantineList(); } catch (e) { say(e.message, true); } }
 </script>
@@ -44,12 +51,15 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
             <section class="mlist" style="max-width: 1100px; margin: 0 auto; width: 100%; border: 0">
                 <div class="mlist__meta" style="padding: 14px 18px 6px">
                     <a href="/mail" class="ib ib--sm"><Icon name="back" :size="16" />Почта</a>
-                    <b style="font-size: 16px; margin-left: 8px">Карантин</b>
+                    <!-- 279: заголовок страницы был бледнее соседней ссылки «Почта» — порядок
+                         важности на экране получался обратный. -->
+                    <h1 style="font-size: 18px; font-weight: 700; margin: 0 0 0 8px; color: var(--text)">Карантин</h1>
                     <span class="grow" />
                     <span>{{ items.length }} {{ plural(items.length, 'письмо', 'письма', 'писем') }}</span>
                     <button class="ib ib--sm" type="button" title="Обновить" @click="reload" aria-label="Обновить"><Icon name="refresh" :size="14" /></button>
                 </div>
-                <p class="hint" style="padding: 0 18px 10px; margin: 0">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а вы сможете добавить отправителя в исключения, чтобы фильтр больше его не трогал. Через 14 дней карантин чистится сам.</p>
+                <!-- 280: текст шёл во всю ширину экрана мелким бледным шрифтом. -->
+                <p class="hint" style="padding: 0 18px 10px; margin: 0; max-width: 70ch; font-size: 13px; color: var(--muted)">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а вы сможете добавить отправителя в исключения, чтобы фильтр больше его не трогал. Через {{ keepDays }} {{ plural(keepDays, 'день', 'дня', 'дней') }} карантин чистится сам.</p>
                 <div v-if="ask" class="attn" style="margin: 0 18px 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
                     <Icon name="check" :size="16" /><span>Это не спам? Больше не задерживать письма</span>
                     <button class="btn btn--sm btn--primary" type="button" :disabled="ask.busy" @click="notSpam('address')">с адреса {{ ask.from }}</button>
@@ -69,7 +79,16 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
                             <button class="btn btn--sm" type="button" :disabled="busy === i.id" @click="remove(i)">Удалить</button>
                         </span>
                     </div>
-                    <div v-if="!items.length" class="empty" style="padding-top: 60px">Карантин пуст — ничего подозрительного за последние две недели</div>
+                    <!-- 281, 282: пустая страница выглядела незавершённой, а вернуться
+                         можно было только ссылкой «Почта» вверху. -->
+                    <div v-if="!items.length" class="empty" style="padding: 60px 18px 40px">
+                        Карантин пуст — ничего подозрительного за последние {{ keepDays }} {{ plural(keepDays, 'день', 'дня', 'дней') }}.
+                        <div style="margin-top: 14px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap">
+                            <a class="btn btn--sm btn--primary" href="/mail">Во «Входящие»</a>
+                            <a class="btn btn--sm" href="/mail/folder/Junk">Открыть «Спам»</a>
+                            <a class="btn btn--sm" href="/mail/help#spam">Как это работает</a>
+                        </div>
+                    </div>
                 </div>
             </section>
         </div>

@@ -113,6 +113,13 @@ function logout() {
             <Link class="tabbar__item" :class="{ 'tabbar__item--on': current.startsWith('/mail/settings') || current.startsWith('/mail/help') }" href="/mail/settings">
                 <Icon name="sliders" :size="22" /><span>Настройки</span>
             </Link>
+            <!-- 270, 271: левая полоса значков на телефоне скрыта, и «Сообщить о проблеме»
+                 вместе со счётчиком ответов пропадали совсем — хотя справка обещает,
+                 что кнопка есть на любой странице. -->
+            <button class="tabbar__item" type="button" style="position: relative" @click="feedback = true">
+                <Icon name="warn" :size="22" /><span>Проблема</span>
+                <span v-if="feedbackNew" class="rail__badge" style="top: 4px; right: 18px">{{ feedbackNew }}</span>
+            </button>
             <button class="tabbar__item" type="button" @click="logout">
                 <Icon name="logout" :size="22" /><span>Выйти</span>
             </button>

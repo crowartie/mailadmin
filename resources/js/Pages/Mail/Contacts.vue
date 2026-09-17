@@ -8,7 +8,7 @@ import Popover from '../../Components/Mail/Popover.vue';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import { api } from '../../mail/api';
-import { hotkey, initials, plural, when } from '../../mail/format';
+import { hotkey, initials, plural, quoteName, when } from '../../mail/format';
 
 const props = defineProps({
     user: String,
@@ -71,14 +71,34 @@ const historyVisible = computed(() => {
 });
 function addFromHistory(h) {
     open.value = null;
+    // В переписке имя пишут как «Иван Петров»: первое слово — имя, последнее — фамилия.
+    // Раньше раскладывалось наоборот, и в книге появлялась фамилия «Иван».
     const parts = (h.name || '').split(/\s+/).filter(Boolean);
-    editing.value = { ...blank('personal'), first: parts[1] || parts[0] || '', last: parts.length > 1 ? parts[0] : '', emails: [{ value: h.email, type: 'work' }], fromHistory: h.email };
+    const first = parts[0] || '';
+    const last = parts.length > 1 ? parts[parts.length - 1] : '';
+    const middle = parts.length > 2 ? parts.slice(1, -1).join(' ') : '';
+    editing.value = { ...blank('personal'), first, last, middle, emails: [{ value: h.email, type: 'work' }], fromHistory: h.email };
     mobileRead.value = true;
 }
 async function forgetHistory(h) {
     try { history.value = await api.forgetHistory(h.email); } catch (e) { fail(e); }
 }
 // Буквенные заголовки в списке.
+// 265: в «Всех контактах» один и тот же сотрудник стоял двумя соседними строками,
+// и было непонятно, чем они отличаются. Помечаем такие строки названием книги.
+const dupEmails = computed(() => {
+    const seen = new Map();
+    visible.value.forEach((c) => {
+        const m = String(c.email || '').toLowerCase();
+        if (m) seen.set(m, (seen.get(m) || 0) + 1);
+    });
+
+    return new Set([...seen.entries()].filter(([, n]) => n > 1).map(([m]) => m));
+});
+function isDup(c) {
+    return dupEmails.value.has(String(c.email || '').toLowerCase());
+}
+
 const rows = computed(() => {
     if (filter.value === 'history') return historyVisible.value.map((h) => ({ hist: h }));
     const out = []; let last = null;
@@ -165,6 +185,15 @@ function edit(c) {
 }
 async function save() {
     const f = editing.value;
+    // Ни одно поле не было обязательным, и в списке появлялось «Без имени».
+    const hasName = [f.first, f.last, f.middle, f.nick, f.org].some((x) => String(x || '').trim());
+    const hasContact = (f.emails || []).some((e) => String(e.value || '').trim())
+        || (f.phones || []).some((p) => String(p.value || '').trim());
+    if (!hasName && !hasContact) {
+        say('Заполните хотя бы имя, организацию, адрес почты или телефон', true);
+
+        return;
+    }
     const payload = {
         book: f.book, first: f.first, last: f.last, middle: f.middle, nick: f.nick, org: f.org, department: f.department, title: f.title,
         emails: f.emails.filter((e) => e.value.trim()), phones: f.phones.filter((p) => p.value.trim()), addresses: f.addresses,
@@ -180,6 +209,10 @@ async function save() {
         open.value = await api.contact(saved.book, saved.uri);
         say('Сохранено');
     } catch (e) { fail(e); } finally { loading.value = false; }
+}
+/** Убрать фото: раньше был только выбор файла, снять его было нечем. */
+function dropPhoto() {
+    if (editing.value) editing.value.photo = '';
 }
 function onPhoto(e) {
     const file = e.target.files?.[0];
@@ -199,7 +232,10 @@ function menuFor(e, c) {
 function write(c) {
     const mail = c.email || c.emails?.[0]?.value;
     if (!mail) { say('У контакта нет адреса почты', true); return; }
-    router.visit(`/mail?compose=1&to=${encodeURIComponent(c.fn && c.fn !== mail ? `${c.fn} <${mail}>` : mail)}`);
+    // Имя с запятой или кавычками («ООО "Ромашка", Иванов») разъезжалось на двух
+    // получателей — берём ту же функцию экранирования, что и в самом письме.
+    const to = c.fn && c.fn !== mail ? `${quoteName(c.fn)} <${mail}>` : mail;
+    router.visit(`/mail?compose=1&to=${encodeURIComponent(to)}`);
 }
 function meeting(c) {
     const mail = c.email || c.emails?.[0]?.value;
@@ -250,8 +286,11 @@ async function importFile(e) {
     e.target.value = '';
     if (!file) return;
     try {
-        const r = await api.importContacts(file, writableBooks.value[0]?.uri || 'personal');
-        say(`Импортировано: ${r.imported}`);
+        // Раньше импорт всегда попадал в первую доступную книгу, даже если открыта другая.
+        const target = writableBooks.value.find((b) => b.uri === filter.value)?.uri || writableBooks.value[0]?.uri || 'personal';
+        const into = writableBooks.value.find((b) => b.uri === target);
+        const r = await api.importContacts(file, target);
+        say(`Импортировано: ${r.imported}${into ? ` — в книгу «${into.name}»` : ''}`);
         reload();
     } catch (err) { fail(err); }
 }
@@ -348,7 +387,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                 <span class="mrow__from"><b>{{ r.contact.fn }}</b><Icon v-if="r.contact.favorite" name="star" :size="13" style="color: var(--warn)" /></span>
                                 <span class="mrow__prev">{{ r.contact.email || (r.contact.phones && r.contact.phones[0] && r.contact.phones[0].value) || [r.contact.title, r.contact.org].filter(Boolean).join(' · ') || '—' }}</span>
                             </span>
-                            <span class="mrow__when"><span class="crow__book">{{ r.contact.book === 'personal' ? '' : r.contact.bookName }}</span></span>
+                            <span class="mrow__when"><span class="crow__book" :title="isDup(r.contact) ? 'Этот человек есть в нескольких книгах' : null">{{ isDup(r.contact) ? (r.contact.bookName || 'Мои контакты') : (r.contact.book === 'personal' ? '' : r.contact.bookName) }}</span></span>
                         </div>
                     </template>
                     <div v-if="!rows.length && !loading" class="empty" style="padding-top: 60px">{{ q ? 'Ничего не найдено' : filter === 'history' ? 'Все, с кем вы переписывались, уже есть в ваших книгах' : 'Здесь пока пусто' }}</div>
@@ -360,18 +399,22 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 <form v-if="editing" class="ccard ccard--form" @submit.prevent="save">
                     <div class="mread__bar">
                         <button class="ib" type="button" @click="editing = null; if (!open) mobileRead = false"><Icon name="back" :size="18" />Назад</button>
-                        <b style="font-size: 15px">{{ editing.sourceUri ? 'Правка контакта' : 'Новый контакт' }}</b>
+                        <b style="font-size: 15px">{{ editing.sourceUri ? 'Изменить контакт' : 'Новый контакт' }}</b>
                         <span class="grow" />
                         <button class="btn btn--primary" type="submit" :disabled="loading">Сохранить</button>
                     </div>
                     <div class="mread__scroll">
                         <div class="cform">
                             <div class="cform__top">
-                                <label class="cform__photo" title="Фото">
-                                    <img v-if="editing.photo" :src="editing.photo" alt="">
-                                    <span v-else>{{ initials([editing.last, editing.first].filter(Boolean).join(' '), editing.emails[0]?.value) }}</span>
-                                    <input type="file" accept="image/*" hidden @change="onPhoto">
-                                </label>
+                                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px">
+                                    <label class="cform__photo" title="Выбрать фото">
+                                        <img v-if="editing.photo" :src="editing.photo" alt="">
+                                        <span v-else>{{ initials([editing.last, editing.first].filter(Boolean).join(' '), editing.emails[0]?.value) }}</span>
+                                        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden @change="onPhoto">
+                                    </label>
+                                    <!-- 263: фото можно было только выбрать, снять его было нечем. -->
+                                    <button v-if="editing.photo" type="button" class="linklike" style="font-size: 12px" @click="dropPhoto">Убрать фото</button>
+                                </div>
                                 <div class="cform__names">
                                     <input v-model="editing.last" class="input" placeholder="Фамилия">
                                     <input v-model="editing.first" class="input" placeholder="Имя">
@@ -474,7 +517,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 </div>
 
                 <div v-else class="mread__empty">
-                    <span>Выберите контакт слева</span>
+                    <span class="desktop-only">Выберите контакт слева</span><span class="mobile-only">Выберите контакт из списка</span>
                     <span class="hint"><span class="kbd">n</span> — новый контакт, <span class="kbd">/</span> — поиск</span>
                 </div>
             </section>
