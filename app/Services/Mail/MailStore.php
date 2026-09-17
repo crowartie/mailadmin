@@ -437,6 +437,73 @@ class MailStore
      *
      * @return array{messages:array,total:int,page:int,pages:int}
      */
+    /**
+     * Поиск по всем своим папкам. Справка обещает «искать по всем папкам», а поиск работал
+     * только по текущей: письмо, разложенное правилом, найти было нельзя.
+     * Корзину, спам и чужие папки не трогаем — если человек ищет там, он открывает их сам.
+     *
+     * @return array{messages:array,total:int,page:int,pages:int}
+     */
+    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date'): array
+    {
+        $page = max(1, $page);
+        $paths = [];
+        foreach ($this->folders() as $f) {
+            if (! in_array($f['role'] ?? '', ['spam', 'trash', 'shared'], true)) {
+                $paths[] = $f['path'];
+            }
+        }
+        // Ограничение на число папок: иначе на большом дереве это десятки поисков подряд.
+        $paths = array_slice(array_values(array_unique($paths)), 0, 15);
+
+        $hits = [];
+        foreach ($paths as $p) {
+            try {
+                $q = $this->folder($p)->query()->setFetchBody(false)->setFetchFlags(true);
+                (new SearchQuery($query))->apply($q);
+                $uids = array_map('intval', $q->search()->all());
+            } catch (\Throwable) {
+                continue;   // папка занята индексацией или недоступна — не роняем весь поиск
+            }
+            rsort($uids);
+            foreach (array_slice($uids, 0, 200) as $uid) {
+                $hits[] = [$p, $uid];
+            }
+        }
+        $total = count($hits);
+        $slice = array_slice($hits, ($page - 1) * self::PAGE, self::PAGE);
+
+        $messages = [];
+        $byFolder = [];
+        foreach ($slice as [$p, $uid]) {
+            $byFolder[$p][] = $uid;
+        }
+        foreach ($byFolder as $p => $uids) {
+            try {
+                $this->client->openFolder($p, true);
+                $previews = $this->previews($uids);
+                foreach ($this->folder($p)->query()->whereUidIn($uids)->setFetchBody(false)->setFetchFlags(true)->get() as $m) {
+                    $row = $this->summary($m, $previews[(int) $m->getUid()] ?? null);
+                    // Строка знает свою папку: иначе щелчок открывал бы письмо из текущей.
+                    $row['folder'] = $p;
+                    $row['folderName'] = self::utf8Name(basename(str_replace('.', '/', $p))) ?: $p;
+                    $messages[] = $row;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+        usort($messages, fn ($a, $b) => strtotime((string) $b['date']) <=> strtotime((string) $a['date']));
+
+        return [
+            'messages' => $messages,
+            'total' => $total,
+            'page' => $page,
+            'pages' => max(1, (int) ceil($total / self::PAGE)),
+            'everywhere' => true,
+        ];
+    }
+
     public function list(string $path, int $page = 1, string $filter = 'all', ?string $query = null, string $sort = 'date'): array
     {
         $folder = $this->folder($path);

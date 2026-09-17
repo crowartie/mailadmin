@@ -40,6 +40,13 @@ const settings = ref(props.settings);
 const folder = ref(props.folder);
 const filter = ref(props.filter);
 const query = ref(props.query || '');
+// 170: поиск шёл только по текущей папке, хотя справка обещает «по всем папкам»:
+// письмо, разложенное правилом в проектную папку, найти было нельзя.
+const everywhere = ref(false);
+function setEverywhere(on) {
+    everywhere.value = !!on;
+    load(1);
+}
 const list = ref(props.list);
 const selected = ref([]);
 const cursor = ref(null);
@@ -186,10 +193,10 @@ async function load(page = 1, keepOpen = false, silent = false) {
     try {
         // Тихая перезагрузка (после действия, по приходу почты) счётчики папок не запрашивает:
         // их приносит отдельный опрос состояния.
-        const r = await api.list(folder.value, { page, filter: filter.value, q: query.value, sort: sort.value, folders: !silent });
+        const r = await api.list(folder.value, { page, filter: filter.value, q: query.value, sort: sort.value, folders: !silent, scope: everywhere.value ? 'all' : 'folder' });
         // Страница оказалась за концом списка (удалили всё на последней) — показать последнюю существующую.
         if (!r.messages.length && r.page > 1 && r.pages < r.page) return load(Math.max(1, r.pages), keepOpen, silent);
-        list.value = { messages: r.messages, total: r.total, page: r.page, pages: r.pages };
+        list.value = { messages: r.messages, total: r.total, page: r.page, pages: r.pages, everywhere: !!r.everywhere };
         if (r.folders) folders.value = r.folders;
         if (!silent) selected.value = [];
         if (!keepOpen) { open.value = null; cursor.value = null; }
@@ -228,7 +235,9 @@ async function openMessage(uid, e) {
     const want = ++openSeq;
     opening.value = uid;
     try {
-        const m = await api.message(folder.value, uid);
+        // При поиске по всем папкам строка знает свою папку — иначе письмо открывалось бы
+        // из текущей и не находилось.
+        const m = await api.message(row?.folder || folder.value, uid);
         // Пока ответ шёл, человек мог кликнуть другое письмо — устаревший ответ не показываем.
         if (want !== openSeq) return;
         open.value = m;
@@ -926,6 +935,8 @@ onBeforeUnmount(() => {
                 :sort="sort"
                 @sort="setSort"
                 :query="query"
+                :everywhere="everywhere"
+                @everywhere="setEverywhere"
                 :selected="selected"
                 :cursor="cursor"
                 :open-uid="open?.uid ?? null"

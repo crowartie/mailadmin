@@ -85,9 +85,10 @@ export const api = {
     unshareFolder: (path, withMail) => request('DELETE', `/mail/api/folders/${enc(path)}/shares`, { with: withMail }),
     emptyFolder: (path) => request('POST', `/mail/api/folders/${enc(path)}/empty`),
 
-    list: (folder, { page = 1, filter = 'all', q = '', sort = 'date', folders = true } = {}) => {
+    list: (folder, { page = 1, filter = 'all', q = '', sort = 'date', folders = true, scope = 'folder' } = {}) => {
         const p = new URLSearchParams({ page, filter });
         if (q) p.set('q', q);
+        if (scope === 'all') p.set('scope', 'all');
         if (sort && sort !== 'date') p.set('sort', sort);
         // Состояние всех папок нужно не всегда: каждый такой ответ — отдельный запрос STATUS
         // на каждую папку, и на большом дереве это заметно замедляет список.

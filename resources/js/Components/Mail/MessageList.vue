@@ -12,6 +12,7 @@ const props = defineProps({
     filter: { type: String, default: 'all' },
     sort: { type: String, default: 'date' },
     query: { type: String, default: '' },
+    everywhere: { type: Boolean, default: false },
     selected: { type: Array, default: () => [] },
     cursor: { type: Number, default: null },
     opening: { type: Number, default: null },   // письмо, которое сейчас открывается
@@ -21,7 +22,7 @@ const props = defineProps({
     labels: { type: Array, default: () => [] },
     loading: Boolean,
 });
-const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'page', 'filter', 'sort', 'search', 'refresh', 'menu']);
+const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'page', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
 
 const q = ref(props.query || '');
 watch(() => props.query, (v) => { q.value = v || ''; });
@@ -65,7 +66,9 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         <div v-if="query" class="hint" style="padding: 0 16px 8px">
             <!-- 172: подсказка была написана в третьем формате, не совпадавшем ни со справкой,
                  ни с разборщиком. Пишем ровно так, как понимает поиск. -->
-            Найдено {{ list.total }} · операторы: <span class="mono">от:иванов кому:sales тема:счёт есть:вложение после:01.09.2026 до:30.09.2026</span>
+            Найдено {{ list.total }}<template v-if="!everywhere"> в папке «{{ folderName }}»</template><template v-else> во всех папках</template>
+            <button type="button" class="linklike" style="margin-left: 8px" @click="$emit('everywhere', !everywhere)">{{ everywhere ? 'только в этой папке' : 'искать во всех папках' }}</button>
+            <br>операторы: <span class="mono">от:иванов кому:sales тема:счёт есть:вложение после:01.09.2026 до:30.09.2026</span>
         </div>
 
         <div v-if="selected.length" class="mlist__bulk">
@@ -144,6 +147,8 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                         <span v-for="id in m.labels" :key="id">
                             <span v-if="labelMap[id]" class="lbl" :style="{ background: labelMap[id].color + '22', color: labelMap[id].color }">{{ labelMap[id].name }}</span>
                         </span>
+                        <!-- При поиске по всем папкам видно, откуда письмо. -->
+                        <span v-if="m.folderName" class="thr" :title="'Письмо лежит в папке «' + m.folderName + '»'">{{ m.folderName }}</span>
                     </span>
                     <span class="mrow__subj">{{ m.subject }}</span>
                     <span v-if="m.preview" class="mrow__prev">{{ m.preview }}</span>

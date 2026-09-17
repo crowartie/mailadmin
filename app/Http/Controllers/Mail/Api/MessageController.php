@@ -20,15 +20,22 @@ class MessageController extends Controller
             'q' => ['nullable', 'string', 'max:500'],
             'sort' => ['nullable', 'string', 'in:date,date-asc,from,subject,size'],
             'folders' => ['nullable', 'in:0,1'],
+            'scope' => ['nullable', 'string', 'in:folder,all'],
         ]);
         $store = new MailStore($imap->client());
-        $list = $store->list(
-            $folder,
-            (int) $request->query('page', 1),
-            (string) $request->query('filter', 'all'),
-            $request->query('q'),
-            (string) $request->query('sort', 'date'),
-        );
+        $q = (string) $request->query('q', '');
+        // «Искать везде» имеет смысл только вместе с запросом: пустой поиск по всем папкам —
+        // это просто все письма ящика.
+        $everywhere = $request->query('scope') === 'all' && trim($q) !== '';
+        $list = $everywhere
+            ? $store->searchEverywhere($q, (int) $request->query('page', 1), (string) $request->query('sort', 'date'))
+            : $store->list(
+                $folder,
+                (int) $request->query('page', 1),
+                (string) $request->query('filter', 'all'),
+                $request->query('q'),
+                (string) $request->query('sort', 'date'),
+            );
         // Каждый такой вызов делает STATUS по каждой папке ящика: на тихой перезагрузке
         // счётчики не нужны — их приносит отдельный опрос состояния.
         if ($request->query('folders') !== '0') {
