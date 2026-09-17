@@ -73,7 +73,7 @@
 .desktop-only { display: inline; }
 
 // ── Задачи (левая колонка календаря)
-.task__add { display: flex; gap: 4px; padding: 2px 8px 6px; }
+.task__add { display: flex; flex-direction: column; gap: 4px; padding: 2px 8px 6px; }
 .task { display: flex; align-items: flex-start; gap: 8px; padding: 5px 12px; font-size: 13px; border-radius: 6px; }
 .task:hover { background: var(--surface-2); }
 .task:hover .task__x { opacity: 1; }

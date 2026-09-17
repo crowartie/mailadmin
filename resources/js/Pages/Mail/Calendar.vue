@@ -698,7 +698,13 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     <Icon v-if="c.readonly" name="eye" :size="13" style="color: var(--faint)" title="только чтение" />
                 </button>
                 <div class="mnav__group">Задачи <span v-if="openTasks.length" class="mnav__count" style="margin-left: 4px">{{ openTasks.length }}</span><button class="ib ib--sm" type="button" title="Показать выполненные" :class="{ 'ib--on': showDone }" @click="showDone = !showDone" aria-label="Показать выполненные"><Icon name="check" :size="14" /></button></div>
-                <form class="task__add" @submit.prevent="addTask"><input v-model="newTask" class="input" placeholder="Новая задача…" style="height: 32px"><input v-model="newTaskDue" class="input" type="date" title="Срок" aria-label="Срок задачи" style="height: 32px; width: 9.5em; min-width: 130px; padding: 0 6px"></form>
+                <!-- Поля стояли рядом в колонке шириной 280 px, и поле задачи сжималось до «Нова»:
+                     подсказку было не прочитать. Теперь поле во всю ширину, а срок появляется
+                     под ним, когда есть что записывать. -->
+                <form class="task__add" @submit.prevent="addTask">
+                    <input v-model="newTask" class="input" placeholder="Новая задача…" style="height: 32px">
+                    <input v-if="newTask.trim()" v-model="newTaskDue" class="input" type="date" title="Срок" aria-label="Срок задачи" style="height: 32px; padding: 0 6px">
+                </form>
                 <div v-for="t in visibleTasks" :key="t.calendar + t.id" class="task" :class="{ 'task--done': t.done, 'task--late': !t.done && t.due && t.due < today }">
                     <input type="checkbox" class="check" :checked="t.done" @change="toggleTask(t)">
                     <span class="task__body" @click="editTask = { ...t }" title="Изменить">
