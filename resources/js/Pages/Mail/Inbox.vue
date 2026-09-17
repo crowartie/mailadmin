@@ -335,7 +335,7 @@ async function act(op, uids, extra = {}, deferrable = true) {
                 const p = pendingAct; pendingAct = null; toast.value = null;
                 runAct(p).then(() => refillAfter(p.op)).catch((e) => { fail(e); load(list.value.page, true); });
             } else {
-                // Обновляем только свою плашку: если её уже сменила другая («Черновик сохранён»), чужую не трогаем.
+                // Обновляем только своё сообщение внизу: если его уже сменило другое («Черновик сохранён»), чужое не трогаем.
                 if (toast.value?.actionLabel === 'Отменить') toast.value = { ...toast.value, seconds: pendingAct.seconds };
                 pendingAct.timer = setTimeout(tick, 1000);
             }
