@@ -1743,6 +1743,34 @@ class MailStore
         );
     }
 
+    /**
+     * Сколько места занято в ящике. Разметка индикатора в панели папок есть с самого начала,
+     * но данные в неё не передавал ни один контроллер — справка обещала то, чего не было.
+     *
+     * @return array{usedKb:int,limitKb:int,percent:int}|null
+     */
+    public function quota(): ?array
+    {
+        try {
+            $conn = $this->client->getConnection();
+            $r = $conn->requestAndResponse('GETQUOTAROOT', [$conn->escapeString('INBOX')]);
+            $line = implode(' ', array_map(fn ($x) => is_array($x) ? implode(' ', array_map('strval', $x)) : (string) $x, (array) $r->getResponse()));
+        } catch (\Throwable) {
+            return null;
+        }
+        // * QUOTA "User quota" (STORAGE 3504940 5242880)
+        if (! preg_match('/STORAGE\s+(\d+)\s+(\d+)/i', $line, $m)) {
+            return null;
+        }
+        $used = (int) $m[1];
+        $limit = (int) $m[2];
+        if ($limit <= 0) {
+            return null;   // предела нет — показывать нечего
+        }
+
+        return ['usedKb' => $used, 'limitKb' => $limit, 'percent' => min(100, (int) round($used / $limit * 100))];
+    }
+
     /** Быстрый статус папки для опроса «есть ли новое»: без списка писем. @return array{messages:int,unseen:int,uidnext:int} */
     public function status(string $path): array
     {

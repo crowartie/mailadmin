@@ -29,6 +29,8 @@ const props = defineProps({
     outbox: { type: Number, default: 0 },
     cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50 }) },
     quarantine: { type: Number, default: 0 },
+    // Занятое место в ящике: индикатор внизу панели папок (справка обещала его с самого начала).
+    quota: { type: Object, default: null },
     openUid: { type: Number, default: null },
     composeTo: { type: String, default: null },
 });
@@ -912,6 +914,7 @@ onBeforeUnmount(() => {
                 :filter="filter"
                 :outbox="outboxCount"
                 :quarantine="quarantine"
+                :quota="quota"
                 @go="go"
                 @compose="startCompose('new')"
                 @context="folderContext"

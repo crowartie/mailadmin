@@ -39,6 +39,8 @@ class InboxController extends Controller
             'list' => $store->list($folder, (int) $request->query('page', 1), $filter, $q, (string) $request->query('sort', 'date')),
             'outbox' => Outbox::where('user', $imap->user())->where('status', 'scheduled')->count(),
             'quarantine' => \App\Http\Controllers\Mail\QuarantineController::count($imap->user()),
+            // Индикатор занятого места: разметка в панели папок была, данных не было.
+            'quota' => $store->quota(),
             'cloud' => ['enabled' => \App\Services\Cloud\Nextcloud::enabled(), 'thresholdMb' => (int) (\App\Services\Cloud\Nextcloud::settings()['threshold_mb'] ?? 10), 'maxMb' => \App\Services\Cloud\Nextcloud::enabled() ? 256 : 50],
             // Предупреждение о тяжёлом письме раньше срабатывало по зашитым 20 МБ и не было
             // связано с настоящим пределом почтового сервера. Отдаём его форме вместе

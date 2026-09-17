@@ -3,6 +3,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import Icon from '../Icon.vue';
+import { size } from '../../mail/format';
 
 const props = defineProps({
     folders: { type: Array, default: () => [] },
@@ -235,9 +236,12 @@ function sharedTitle(f) {
         </button>
 
         </div>
-        <div v-if="quota" class="mnav__quota">
-            Занято {{ quota.used }} из {{ quota.total }}
-            <div><span :style="{ width: quota.percent + '%' }" /></div>
+        <!-- 287: разметка индикатора была с самого начала, но данные в неё не передавал
+             ни один контроллер — справка обещала то, чего на экране не существовало. -->
+        <div v-if="quota" class="mnav__quota" :title="'Занято ' + quota.percent + '% места в ящике'">
+            Занято {{ size(quota.usedKb * 1024) }} из {{ size(quota.limitKb * 1024) }}
+            <div><span :class="{ 'mnav__quota--full': quota.percent >= 90 }" :style="{ width: quota.percent + '%' }" /></div>
+            <span v-if="quota.percent >= 90" class="hint" style="margin: 0; color: var(--no-ink)">Место кончается — почта скоро перестанет приходить. Очистите «Корзину» и «Спам».</span>
         </div>
     </nav>
 </template>

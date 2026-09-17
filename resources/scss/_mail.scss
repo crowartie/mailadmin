@@ -1092,7 +1092,9 @@ select.input { padding-right: 28px; }
     &__search { display: flex; align-items: center; gap: 8px; flex: 1 1 320px; max-width: 520px; background: v.$c-surface; border: 1px solid v.$c-border; border-radius: v.$r-control; padding: 0 10px; color: v.$c-muted; }
     &__search .input { border: none; background: none; box-shadow: none; flex: 1; padding-left: 0; }
     &__count { margin: -6px 0 12px; }
-    &__toc { display: flex; flex-direction: column; max-height: calc(100vh - 40px); overflow-y: auto; }
+    // 316: своя прокрутка внутри уже прокручиваемой области давала вторую полосу
+    // прокрутки. Оглавление липнет к верху и прокручивается вместе со страницей.
+    &__toc { display: flex; flex-direction: column; position: sticky; top: 12px; }
     &__toc a { font-size: 13.5px; }
     &__section { scroll-margin-top: 12px; gap: 6px; }
     &__section[hidden], &__item[hidden] { display: none !important; } // .card задаёт display:flex и перебивает атрибут hidden
@@ -1111,6 +1113,8 @@ select.input { padding-right: 28px; }
     &__table td { padding: 6px 10px 6px 0; border-bottom: 1px solid v.$c-border; vertical-align: top; }
     &__table td:first-child { width: 34%; color: v.$c-muted; }
     &__table tr:last-child td { border-bottom: none; }
+    // 314: таблицы были свёрстаны без заголовков столбцов — диктор читал их как набор ячеек.
+    &__table th { padding: 4px 10px 4px 0; text-align: left; font-size: 12px; font-weight: 600; color: v.$c-muted; border-bottom: 1px solid v.$c-border-2; }
     &__keys td:first-child { color: v.$c-text; white-space: nowrap; }
 }
 @media (max-width: 860px) {
