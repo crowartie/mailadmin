@@ -23,6 +23,12 @@ class MailStore
 {
     public const PAGE = 40;
 
+    /** Сколько всего ждём поиск по всем папкам, секунд. */
+    private const SEARCH_BUDGET = 25;
+
+    /** Сколько ждём ответа на поиск в одной папке, секунд (обычный ответ — миллисекунды). */
+    private const SEARCH_TIMEOUT = 8;
+
     /** @see FolderTree::SHARED_PREFIX */
     public const SHARED_PREFIX = FolderTree::SHARED_PREFIX;
 
@@ -221,34 +227,36 @@ class MailStore
 
         $hits = [];
         $skipped = [];
-        foreach ($paths as $i => $p) {
-            try {
-                $q = $this->folder($p)->query()->setFetchBody(false)->setFetchFlags(true);
-                (new SearchQuery($query))->apply($q);
-                $uids = $this->searchUids($q, $p);
-            } catch (MailException $e) {
-                // Папка занята индексацией или недоступна — не роняем весь поиск,
-                // но и не делаем вид, что там ничего не нашлось: назовём её в ответе.
-                $skipped[] = $this->folderTitle($p);
-                if ($e->status() === 503) {
-                    // Сервер занят индексацией: каждая следующая папка — это ещё одно
-                    // ожидание до таймаута. Семь папок складывались в шесть минут,
-                    // и страница отваливалась раньше, чем приходил ответ.
-                    foreach (array_slice($paths, $i + 1) as $rest) {
+        // Папка, которую сервер в этот момент индексирует, отвечает не сразу, а по таймауту.
+        // Пятнадцать таких папок складывались в шесть минут — страница отваливалась раньше,
+        // чем приходил ответ. Поэтому на время перебора ждём каждый ответ недолго и держим
+        // общий срок: что успели — показываем, остальные папки честно называем.
+        $deadline = microtime(true) + self::SEARCH_BUDGET;
+        $this->withTimeout(self::SEARCH_TIMEOUT);
+        try {
+            foreach ($paths as $i => $p) {
+                if (microtime(true) > $deadline) {
+                    foreach (array_slice($paths, $i) as $rest) {
                         $skipped[] = $this->folderTitle($rest);
                     }
                     break;
                 }
-
-                continue;
-            } catch (\Throwable) {
-                $skipped[] = $this->folderTitle($p);
-                continue;
+                try {
+                    $q = $this->folder($p)->query()->setFetchBody(false)->setFetchFlags(true);
+                    (new SearchQuery($query))->apply($q);
+                    $uids = $this->searchUids($q, $p);
+                } catch (\Throwable) {
+                    // Не роняем весь поиск, но и не делаем вид, что здесь ничего не нашлось.
+                    $skipped[] = $this->folderTitle($p);
+                    continue;
+                }
+                rsort($uids);
+                foreach (array_slice($uids, 0, 200) as $uid) {
+                    $hits[] = [$p, $uid];
+                }
             }
-            rsort($uids);
-            foreach (array_slice($uids, 0, 200) as $uid) {
-                $hits[] = [$p, $uid];
-            }
+        } finally {
+            $this->withTimeout(null);
         }
         $total = count($hits);
         $slice = array_slice($hits, ($page - 1) * self::PAGE, self::PAGE);
@@ -478,6 +486,24 @@ class MailStore
             throw MailException::upstream('Почтовый сервер не смог выполнить поиск: ' . mb_substr($e->getMessage(), 0, 160));
         }
     }
+
+    /**
+     * Ждать ответа сервера не дольше заданного (null — вернуть обычное ожидание).
+     * Срок задаётся сокету при подключении, поэтому соединение переустанавливаем.
+     */
+    private function withTimeout(?int $seconds): void
+    {
+        $was = $this->timeout ??= $this->client->timeout;
+        $now = $seconds ?? $was;
+        if ($now === $this->client->timeout) {
+            return;
+        }
+        $this->client->timeout = $now;
+        $this->reconnect();
+    }
+
+    /** Обычное ожидание ответа сервера — запоминаем при первой смене. */
+    private ?int $timeout = null;
 
     /** Поднять соединение заново после сбойной команды (см. searchUids). */
     private function reconnect(): void
