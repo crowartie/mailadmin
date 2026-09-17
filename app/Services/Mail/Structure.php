@@ -287,67 +287,55 @@ final class Structure
         if (! $parts) {
             return [];
         }
-        $out = [];
-        $client->openFolder($path, true);
-        $conn = $client->getConnection();
+        try {
+            $client->openFolder($path, true);
+            $conn = $client->getConnection();
+            // BODY.PEEK — «прочитать, не помечая прочитанным»: отметку ставим сами и осознанно.
+            // Все нужные части просим одним запросом: письмо с двадцатью семью картинками
+            // в тексте иначе делало двадцать семь обращений к серверу.
+            $ask = implode(' ', array_map(fn (array $p) => 'BODY.PEEK[' . $p['no'] . ']', $parts));
+            $r = $conn->requestAndResponse('UID FETCH', [(string) $uid, '(' . $ask . ')']);
+            $rows = $r->getResponse();
+            $flat = [];
+            array_walk_recursive($rows, function ($x) use (&$flat) {
+                $flat[] = (string) $x;
+            });
+            $joined = implode('', $flat);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $byNo = [];
         foreach ($parts as $p) {
-            try {
-                // BODY.PEEK — «прочитать, не помечая прочитанным»: отметку ставим сами и осознанно.
-                $r = $conn->requestAndResponse('UID FETCH', [(string) $uid, '(BODY.PEEK[' . $p['no'] . '])']);
-                $raw = self::payload($r->getResponse());
-                if ($raw === null) {
-                    continue;
-                }
-                $out[$p['no']] = self::decode($raw, (string) $p['encoding']);
-            } catch (\Throwable) {
-                // одна часть не пришла — остальные всё равно покажем
-            }
+            $byNo[(string) $p['no']] = (string) $p['encoding'];
         }
 
-        return $out;
-    }
-
-    /** Достать из ответа тело части: библиотека кладёт его отдельным куском после «BODY[…]». */
-    private static function payload(mixed $response): ?string
-    {
-        $rows = (array) $response;
-        $flat = [];
-        array_walk_recursive($rows, function ($x) use (&$flat) {
-            $flat[] = (string) $x;
-        });
-        // Первая строка ответа приходит целиком: «* 5 FETCH (UID 7 BODY[1] {1234}»,
-        // дальше кусками идёт сам текст, а в конце — закрывающая скобка и «OK …».
-        $start = null;
-        $length = null;
-        foreach ($flat as $k => $v) {
-            if (str_contains($v, 'BODY[')) {
-                $start = $k;
-                $length = preg_match('/\{(\d+)\}/', $v, $m) ? (int) $m[1] : null;
+        // Ответ идёт подряд: «BODY[1.2] {2048}», перевод строки, ровно столько байтов,
+        // потом следующая часть. Длину объявляет сам сервер — по ней и режем, не полагаясь
+        // на то, где закончилась строка: хвост протокола прилипает к последней строке.
+        $out = [];
+        $pos = 0;
+        while (preg_match('/BODY\[([\d.]+)\](?:<\d+>)?\s*\{(\d+)\}\r?\n/', $joined, $m, PREG_OFFSET_CAPTURE, $pos)) {
+            $no = (string) $m[1][0];
+            $len = (int) $m[2][0];
+            $from = (int) $m[0][1] + strlen((string) $m[0][0]);
+            if (isset($byNo[$no])) {
+                $out[$no] = self::decode(substr($joined, $from, $len), $byNo[$no]);
             }
+            $pos = $from + $len;
         }
-        if ($start === null) {
-            return null;
+        if ($out) {
+            return $out;
         }
-        $rest = array_slice($flat, $start + 1);
-        // Иногда длина в фигурных скобках приходит отдельным куском.
-        if ($length === null && isset($rest[0]) && preg_match('/^\{(\d+)\}\s*$/', $rest[0], $m)) {
-            $length = (int) $m[1];
-            array_shift($rest);
-        }
-        // Куски — это строки письма вместе с их переводами строк: склеиваем как есть,
-        // иначе ломается quoted-printable, где перенос строки значим.
-        $body = implode('', $rest);
-        if ($body === '') {
-            return null;
-        }
-        if ($length !== null && $length <= strlen($body)) {
-            // Сервер сам сказал, сколько байтов в части. Всё, что дальше, — хвост
-            // протокола: закрывающая скобка и «OK …». Он прилипал к последней строке
-            // письма, и в тексте появлялась лишняя скобка.
-            return substr($body, 0, $length);
-        }
-        // Длину не объявили (короткая часть в кавычках) — убираем хвост по виду.
-        return (string) preg_replace('/\)?\s*(TAG\d+\s+)?(OK|NO|BAD)\b.*$/s', '', $body);
+
+        // Короткую часть сервер может прислать строкой в кавычках, без объявления длины.
+        // Тогда в ответе она одна — её и возвращаем.
+        $first = $parts[0];
+        $tail = preg_replace('/^.*?BODY\[[\d.]+\](?:<\d+>)?\s*/s', '', $joined);
+        $tail = preg_replace('/\)?\s*(TAG\d+\s+)?(OK|NO|BAD)\b.*$/s', '', (string) $tail);
+        $tail = trim((string) $tail, "\"\r\n ");
+
+        return $tail !== '' ? [(string) $first['no'] => self::decode($tail, (string) $first['encoding'])] : [];
     }
 
     /** Раскодировать часть по её Content-Transfer-Encoding. */
