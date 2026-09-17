@@ -105,7 +105,7 @@ class ComposeController extends Controller
         // с личного адреса, и сотрудник каждый раз выставлял всё заново.
         $head = '';
         try {
-            $head = (string) $store->rawHeaders($store->rolePath('drafts'), $uid);
+            $head = (string) $store->headersText($store->rolePath('drafts'), $uid);
         } catch (\Throwable) {
         }
 

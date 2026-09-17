@@ -1234,8 +1234,8 @@ class MailStore
         return ($raw !== '' ? Charset::attachmentName($raw) : null) ?: Charset::header($a->getName()) ?: $fallback;
     }
 
-    /** Только заголовки письма, без тела: нужны, чтобы восстановить отметки черновика. */
-    public function rawHeaders(string $path, int $uid): string
+    /** Заголовки одного письма как текст: нужны, чтобы восстановить отметки черновика. */
+    public function headersText(string $path, int $uid): string
     {
         try {
             $message = $this->folder($path)->query()->setFetchBody(false)->getMessageByUid($uid);
