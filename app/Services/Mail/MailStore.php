@@ -221,14 +221,27 @@ class MailStore
 
         $hits = [];
         $skipped = [];
-        foreach ($paths as $p) {
+        foreach ($paths as $i => $p) {
             try {
                 $q = $this->folder($p)->query()->setFetchBody(false)->setFetchFlags(true);
                 (new SearchQuery($query))->apply($q);
                 $uids = $this->searchUids($q, $p);
-            } catch (\Throwable) {
+            } catch (MailException $e) {
                 // Папка занята индексацией или недоступна — не роняем весь поиск,
                 // но и не делаем вид, что там ничего не нашлось: назовём её в ответе.
+                $skipped[] = $this->folderTitle($p);
+                if ($e->status() === 503) {
+                    // Сервер занят индексацией: каждая следующая папка — это ещё одно
+                    // ожидание до таймаута. Семь папок складывались в шесть минут,
+                    // и страница отваливалась раньше, чем приходил ответ.
+                    foreach (array_slice($paths, $i + 1) as $rest) {
+                        $skipped[] = $this->folderTitle($rest);
+                    }
+                    break;
+                }
+
+                continue;
+            } catch (\Throwable) {
                 $skipped[] = $this->folderTitle($p);
                 continue;
             }
