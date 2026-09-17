@@ -15,7 +15,7 @@ class SearchQueryTest extends TestCase
     public function test_оператор_имени_файла(): void
     {
         $q = new SearchQuery('файл:счёт.pdf');
-        $q->apply($this->query());
+        $q->apply($this->emptyQuery());
 
         $this->assertSame('счёт.pdf', $q->fileName());
         $this->assertTrue($q->needsAttachment());
@@ -25,7 +25,7 @@ class SearchQueryTest extends TestCase
     {
         foreach (['file:smeta', 'вложение:smeta', 'attachment:smeta'] as $text) {
             $q = new SearchQuery($text);
-            $q->apply($this->query());
+            $q->apply($this->emptyQuery());
             $this->assertSame('smeta', $q->fileName(), $text);
         }
     }
@@ -33,7 +33,7 @@ class SearchQueryTest extends TestCase
     public function test_есть_вложение_без_имени(): void
     {
         $q = new SearchQuery('есть:вложение');
-        $q->apply($this->query());
+        $q->apply($this->emptyQuery());
 
         $this->assertNull($q->fileName(), 'имя не спрашивали');
         $this->assertTrue($q->needsAttachment(), 'но письма нужны только с вложениями');
@@ -42,14 +42,14 @@ class SearchQueryTest extends TestCase
     public function test_обычный_поиск_вложений_не_требует(): void
     {
         $q = new SearchQuery('счёт на оплату');
-        $q->apply($this->query());
+        $q->apply($this->emptyQuery());
 
         $this->assertNull($q->fileName());
         $this->assertFalse($q->needsAttachment());
     }
 
     /** Запрос библиотеки нам нужен только как приёмник условий — работаем без сервера. */
-    private function query(): \Webklex\PHPIMAP\Query\WhereQuery
+    private function emptyQuery(): \Webklex\PHPIMAP\Query\WhereQuery
     {
         return new \Webklex\PHPIMAP\Query\WhereQuery(new \Webklex\PHPIMAP\Client());
     }
