@@ -94,7 +94,8 @@ class SearchQuery
                     } elseif (in_array($v, ['вложение', 'вложения', 'attachment', 'attachments'])) {
                         // multipart/mixed видит не все письма: у Outlook вложение бывает внутри
                         // связанной части. Ищем по признаку самого вложения.
-                        $q->where('OR HEADER "Content-Type" "multipart/mixed" HEADER "Content-Disposition" "attachment"');
+                        // CUSTOM — способ библиотеки пропустить критерий как есть, без проверки по списку.
+                        $q->where('CUSTOM OR HEADER "Content-Type" "multipart/mixed" HEADER "Content-Disposition" "attachment"');
                     } elseif (in_array($v, ['ответ', 'answered'])) {
                         $q->whereAnswered();
                     }
