@@ -155,11 +155,14 @@ function go(f) {
 
 async function select(c) {
     editing.value = null;
-    loading.value = true;
+    // Раньше на время запроса гас весь список, и перебор контактов сопровождался миганием.
+    // Показываем то, что уже знаем о контакте, а подробности подставляем по приходу.
+    open.value = { ...c };
+    mobileRead.value = true;
     try {
-        open.value = await api.contact(c.book, c.uri);
-        mobileRead.value = true;
-    } catch (e) { fail(e); } finally { loading.value = false; }
+        const full = await api.contact(c.book, c.uri);
+        if (open.value && open.value.uri === c.uri && open.value.book === c.book) open.value = full;
+    } catch (e) { fail(e); }
 }
 
 // ── Форма ─────────────────────────────────────────────────────
@@ -375,11 +378,18 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                 <button class="ib ib--sm" type="button" title="Убрать из истории" @click.stop="forgetHistory(r.hist)" aria-label="Убрать из истории"><Icon name="x" :size="14" /></button>
                             </span>
                         </div>
+                        <!-- 266: это был div с обработчиком клика — выбрать контакт с клавиатуры
+                             было нельзя, а меню открывалось только правой кнопкой. -->
                         <div
                             v-else
                             class="mrow crow"
                             :class="{ 'mrow--on': open && open.uri === r.contact.uri && open.book === r.contact.book }"
+                            role="button"
+                            tabindex="0"
+                            :aria-label="r.contact.fn + (r.contact.email ? ', ' + r.contact.email : '')"
                             @click="select(r.contact)"
+                            @keydown.enter.prevent="select(r.contact)"
+                            @keydown.space.prevent="select(r.contact)"
                             @contextmenu.prevent="menuFor($event, r.contact)"
                         >
                             <span class="mrow__av" :class="{ 'mrow__av--emp': r.contact.employee }">{{ initials(r.contact.fn, r.contact.email) }}</span>

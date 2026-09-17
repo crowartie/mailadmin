@@ -112,7 +112,9 @@ async function send() {
     try {
         const r = await api.feedbackReply(ticket.value.id, fd);
         Object.assign(draft, r.message, { pending: false, preview: '' });
-        if (keptPreview) URL.revokeObjectURL(keptPreview);
+        // Раньше здесь освобождали ссылку через URL.revokeObjectURL, хотя предпросмотр —
+        // это строка data: от FileReader, а не объектная ссылка. Вызов ничего не делал
+        // и только вводил в заблуждение при правках.
         applyTicket(r.ticket);
     } catch (e) {
         draft.pending = false;
@@ -291,7 +293,7 @@ function backToList() {
                             v-model="reply"
                             class="input"
                             rows="1"
-                            :placeholder="ticket.status === 'closed' ? 'Проблема осталась? Напишите — обращение откроется снова' : ticket.status === 'waiting' ? 'Администратор ждёт вашего ответа' : 'Сообщение…'"
+                            :placeholder="ticket.status === 'closed' ? 'Проблема осталась? Напишите — обращение откроется снова' : ticket.status === 'waiting' ? 'Администратор ждёт вашего ответа' : 'Сообщение… (Ctrl+Enter — отправить)'"
                             @keydown="onKey"
                             @input="grow"
                         />
