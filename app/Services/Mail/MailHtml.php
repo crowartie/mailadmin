@@ -21,7 +21,11 @@ final class MailHtml
         $config->set('HTML.ForbiddenElements', ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'style', 'link', 'meta']);
         $config->set('HTML.ForbiddenAttributes', ['*@onclick', '*@onload', '*@onerror']);
         $config->set('CSS.AllowedProperties', ['color', 'background-color', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'font-size', 'font-family', 'padding', 'margin', 'border', 'width', 'max-width', 'line-height', 'vertical-align']);
-        $config->set('URI.AllowedSchemes', ['http' => true, 'https' => true, 'mailto' => true, 'data' => true, 'tel' => true]);
+        // cid: — ссылка на картинку, приложенную к этому же письму. Раньше картинки
+        // подставлялись до чистки, и Purifier разбирал документ вместе с ними: письмо с
+        // двумя десятками картинок превращалось в шесть мегабайт разметки и чистилось
+        // почти три секунды. Теперь чистим маленький документ, а картинки ставим после.
+        $config->set('URI.AllowedSchemes', ['http' => true, 'https' => true, 'mailto' => true, 'data' => true, 'tel' => true, 'cid' => true]);
         // Внешние ссылки на картинки оставляем в разметке, но прячем в data-blocked-* (blockRemote).
         // Раньше здесь стояло true: Purifier вырезал их совсем, поэтому обещанная кнопка
         // «показать картинки» ничего показать не могла, а рассылки и подписи выглядели пустыми.

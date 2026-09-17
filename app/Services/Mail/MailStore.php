@@ -79,8 +79,13 @@ class MailStore
     // контроллеры и службы, поэтому оставляем их здесь тонкими обёртками:
     // так разделение не потребовало трогать вызывающий код.
 
-    /** @see Mime::attachmentName() */
-    public static function attachmentName(Attachment $a, string $fallback): string
+    /**
+     * @see Mime::attachmentName()
+     *
+     * Запасное имя не обязательно: контроллер скачивания зовёт эту функцию с одним
+     * доводом, и без значения по умолчанию скачивание вложения падало.
+     */
+    public static function attachmentName(Attachment $a, string $fallback = 'attachment'): string
     {
         return Mime::attachmentName($a, $fallback);
     }
@@ -880,7 +885,7 @@ class MailStore
             // Картинку до двух мегабайт вшиваем в письмо строкой data:, тяжёлую — ссылкой.
             $heavy = $isInline && $a['size'] >= 2_000_000;
             if ($isInline && ! $heavy) {
-                $lightInline[$cid] = $a;
+                $lightInline[$cid] = $a + ['type' => $a['mime']];
             } elseif ($heavy) {
                 $heavyInline['cid:' . $cid] = '/mail/api/message/' . rawurlencode($path) . '/' . $uid . '/attachment/' . $i . '?inline=1';
             }
@@ -896,13 +901,18 @@ class MailStore
             // Встроенные картинки — единственное, что дочитываем помимо текста.
             $got = Structure::fetchParts($this->client, $path, $uid, array_values($lightInline));
             foreach ($lightInline as $cid => $a) {
-                if (isset($got[$a['no']])) {
+                // Подставляем только картинки: data: с любым другим типом — это уже
+                // не иллюстрация, а способ провести в письмо чужой документ.
+                if (isset($got[$a['no']]) && str_starts_with((string) $a['type'] ?? '', 'image/')) {
                     $heavyInline['cid:' . $cid] = 'data:' . $a['mime'] . ';base64,' . base64_encode($got[$a['no']]);
                 }
             }
         }
-        if ($html !== null && $heavyInline) {
-            $html = strtr($html, $heavyInline);
+        // Сначала чистка (документ ещё маленький), потом картинки: наоборот Purifier
+        // разбирал бы их вместе с разметкой, а это секунды на каждое письмо.
+        $clean = $html !== null && $html !== '' ? MailHtml::sanitize($html) : null;
+        if ($clean !== null && $heavyInline) {
+            $clean = strtr($clean, $heavyInline);
         }
 
         $rawHeader = (string) ($message->getHeader()?->raw ?? '');
@@ -912,7 +922,7 @@ class MailStore
 
         return $this->summary($message) + [
             'folder' => $path,
-            'html' => $html !== null && $html !== '' ? MailHtml::sanitize($html) : null,
+            'html' => $clean,
             'text' => $text,
             'to' => $this->addresses($message->getTo()),
             'cc' => $this->addresses($message->getCc()),
@@ -960,6 +970,9 @@ class MailStore
                 'inline' => $isInline && ! $heavy,
             ];
         }
+        // Чистим до подстановки картинок: с ними документ раздувается в разы,
+        // и Purifier тратит на письмо секунды (см. fullLight).
+        $html = $html ? MailHtml::sanitize($html) : null;
         if ($html && $inline) {
             $html = strtr($html, $inline);
         }
@@ -974,7 +987,7 @@ class MailStore
 
         return $this->summary($message) + [
             'folder' => $path,
-            'html' => $html ? MailHtml::sanitize($html) : null,
+            'html' => $html ?: null,
             'text' => $text,
             'to' => $this->addresses($message->getTo()),
             'cc' => $this->addresses($message->getCc()),
