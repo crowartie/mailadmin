@@ -40,9 +40,25 @@ class InboxController extends Controller
             'outbox' => Outbox::where('user', $imap->user())->where('status', 'scheduled')->count(),
             'quarantine' => \App\Http\Controllers\Mail\QuarantineController::count($imap->user()),
             'cloud' => ['enabled' => \App\Services\Cloud\Nextcloud::enabled(), 'thresholdMb' => (int) (\App\Services\Cloud\Nextcloud::settings()['threshold_mb'] ?? 10), 'maxMb' => \App\Services\Cloud\Nextcloud::enabled() ? 256 : 50],
+            // Предупреждение о тяжёлом письме раньше срабатывало по зашитым 20 МБ и не было
+            // связано с настоящим пределом почтового сервера. Отдаём его форме вместе
+            // с пределом на число файлов, который проверяет ComposeController.
+            'limits' => ['messageMb' => self::messageLimitMb(), 'maxFiles' => 20],
             'openUid' => $request->query('uid') ? (int) $request->query('uid') : null,
             'composeTo' => $request->query('compose') ? (string) $request->query('to', '') : null,
         ]);
+    }
+
+    /** Предел на размер письма из настроек почтового сервера (message_size_limit). */
+    private static function messageLimitMb(): int
+    {
+        try {
+            $mb = (int) (app(\App\Services\Server\AmavisConfig::class)->current()['sizeLimitMb'] ?? 0);
+        } catch (\Throwable) {
+            $mb = 0;
+        }
+
+        return $mb > 0 ? $mb : 25;
     }
 
     public function settings(Request $request, ImapSession $imap, string $section = 'general'): Response

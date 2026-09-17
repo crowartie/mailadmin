@@ -15,6 +15,7 @@ const props = defineProps({
     identities: { type: Array, default: () => [] },
     settings: { type: Object, default: () => ({}) },
     cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50 }) },
+    limits: { type: Object, default: () => ({ messageMb: 25, maxFiles: 20 }) },
 });
 const emit = defineEmits(['close', 'send', 'toast', 'draft']);
 
@@ -69,10 +70,27 @@ async function openLocal(i) {
 }
 const MAX_FILE = (props.cloud?.maxMb || 50) * 1024 * 1024;
 const CLOUD_FROM = (props.cloud?.thresholdMb || 10) * 1024 * 1024;
+// Пределы сервера: число файлов проверяет ComposeController, размер письма — почтовый сервер.
+// Раньше в форме не было ни того, ни другого: двадцать первый файл прикреплялся, а отправка
+// падала сообщением от проверяющего механизма; десять файлов по 45 МБ роняли запрос.
+const MAX_FILES = props.limits?.maxFiles || 20;
+const MAX_MESSAGE = (props.limits?.messageMb || 25) * 1024 * 1024;
 const viaCloud = ref(new Set());   // индексы файлов, которые уйдут ссылкой
 const cloudCount = computed(() => viaCloud.value.size);
 function toggleCloud(i) { const s = new Set(viaCloud.value); s.has(i) ? s.delete(i) : s.add(i); viaCloud.value = s; dirty.value = true; }
-const totalSize = computed(() => files.value.reduce((s, f) => s + f.size, 0));
+// Вес письма — свои файлы плюс унаследованные от пересылаемого. Раньше предупреждение
+// считало только свои, и пересылка с 40 МБ уходила молча.
+const keptSize = computed(() => (keepAttachments.value ? existing.value : []).reduce((s, a) => s + (a.size || 0), 0));
+const totalSize = computed(() => files.value.reduce((s, f) => s + f.size, 0) + keptSize.value);
+// Файлы, которые реально уйдут внутри письма (не ссылкой через облако).
+const inMailSize = computed(() => files.value.reduce((s, f, i) => s + (viaCloud.value.has(i) ? 0 : f.size), 0) + keptSize.value);
+function dropExisting(a) {
+    // Раньше унаследованные вложения снимались только все сразу: при пересылке письма
+    // с десятью файлами нельзя было оставить один нужный.
+    existing.value = existing.value.filter((x) => x.index !== a.index);
+    if (!existing.value.length) keepAttachments.value = false;
+    dirty.value = true;
+}
 // Проверяем все три поля: опечатка в «Копии» проходила клиентскую проверку и падала на сервере
 // уже после нажатия «Отправить».
 const canSend = computed(() => (to.value.length + cc.value.length + bcc.value.length) > 0
@@ -125,14 +143,27 @@ function send(sendAt = null) {
     emit('send', { form: payload({ sendAt: sendAt ? sendAt.toISOString() : null }), files: files.value, sendAt });
 }
 
+/** Отпечаток набора вложений: пока он не менялся, заливать файлы заново не нужно. */
+function filesKey() {
+    return files.value.map((f) => f.name + ':' + f.size).join('|')
+        + '#' + (keepAttachments.value ? existing.value.length : 0)
+        + '#' + [...viaCloud.value].sort().join(',');
+}
+let savedFilesKey = null;
+
 async function saveDraft(silent = false) {
     if (!dirty.value && silent) return;
     if (saving) return;   // предыдущее сохранение ещё идёт
     saving = true;
     status.value = 'Сохраняю…';
+    const key = filesKey();
+    // Файлы не трогали и черновик уже есть — отправляем только текст, вложения сервер
+    // возьмёт из прошлой версии черновика.
+    const keepFiles = !!draftUid.value && key === savedFilesKey;
     try {
-        const r = await api.draft(composeForm(payload(), files.value));
+        const r = await api.draft(composeForm(payload(keepFiles ? { draftKeepFiles: true } : {}), keepFiles ? [] : files.value));
         draftUid.value = r.draftUid;
+        savedFilesKey = key;
         dirty.value = false;
         status.value = 'Черновик сохранён ' + when(new Date().toISOString());
         emit('draft', r);
@@ -184,11 +215,29 @@ function close() {
 
 function addFiles(list) {
     for (const f of list) {
-        if (f.size > MAX_FILE) { emit('toast', { text: `«${f.name}» больше ${Math.round(MAX_FILE / 1048576)} МБ — не влезет ни в письмо, ни в облако`, error: true }); continue; }
-        if (!files.value.some((x) => x.name === f.name && x.size === f.size)) {
-            files.value.push(f);
-            if (props.cloud?.enabled && f.size >= CLOUD_FROM) { const s = new Set(viaCloud.value); s.add(files.value.length - 1); viaCloud.value = s; }
+        if (files.value.length >= MAX_FILES) {
+            emit('toast', { text: `К письму можно приложить не больше ${MAX_FILES} файлов — остальные не добавлены. Сложите их в архив.`, error: true });
+            break;
         }
+        const cap = props.cloud?.enabled ? MAX_FILE : MAX_MESSAGE;
+        if (f.size > cap) {
+            // Текст про облако показывался, даже когда облако выключено.
+            emit('toast', {
+                text: props.cloud?.enabled
+                    ? `«${f.name}» больше ${Math.round(MAX_FILE / 1048576)} МБ — не влезет ни в письмо, ни в облако`
+                    : `«${f.name}» больше ${Math.round(MAX_MESSAGE / 1048576)} МБ — столько почта не принимает`,
+                error: true,
+            });
+            continue;
+        }
+        // Два разных документа с одинаковым именем и размером — обычное дело (счёт из 1С
+        // за разные месяцы). Раньше второй молча не добавлялся, и человек повторял попытку.
+        if (files.value.some((x) => x.name === f.name && x.size === f.size)) {
+            emit('toast', { text: `«${f.name}» такого же размера уже приложен — второй раз не добавляю`, error: true });
+            continue;
+        }
+        files.value.push(f);
+        if (props.cloud?.enabled && f.size >= CLOUD_FROM) { const s = new Set(viaCloud.value); s.add(files.value.length - 1); viaCloud.value = s; }
     }
     dirty.value = true;
 }
@@ -359,17 +408,21 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                         <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                     </a>
                     <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openExisting(a)" aria-label="Посмотреть"><Icon name="eye" :size="13" /></button>
+                    <button class="att__btn" type="button" title="Убрать это вложение" aria-label="Убрать это вложение" @click="dropExisting(a)"><Icon name="x" :size="13" /></button>
                 </span>
             </template>
             <span v-for="(f, i) in files" :key="f.name + i" class="att" :class="{ 'att--cloud': viaCloud.has(i) }" :title="viaCloud.has(i) ? 'Уйдёт ссылкой через облако' : f.name">
                 <a v-if="localViewable(f)" class="att__main" href="#" title="Посмотреть" @click.prevent="openLocal(i)"><Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></a>
                 <template v-else><Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></template>
                 <button v-if="localViewable(f)" class="att__btn" type="button" title="Посмотреть" @click="openLocal(i)" aria-label="Посмотреть"><Icon name="eye" :size="13" /></button>
-                <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'" @click="toggleCloud(i)" aria-label="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
+                <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'" @click="toggleCloud(i)" :aria-label="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
                 <button type="button" title="Убрать" @click="removeFile(i)" aria-label="Убрать"><Icon name="x" :size="13" /></button>
             </span>
             <span v-if="cloud.enabled && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель откроет их в облаке</span>
-            <span v-else-if="totalSize > 20 * 1048576" class="chip chip--warn" style="height: 28px">{{ size(totalSize) }} — большое письмо может не пройти у получателя</span>
+            <!-- Предупреждение показываем и при включённом облаке: часть файлов всё равно
+                 уходит внутри письма, а вес считаем вместе с унаследованными. -->
+            <span v-if="inMailSize > MAX_MESSAGE" class="chip chip--no" style="height: 28px">{{ size(inMailSize) }} — больше предела почты ({{ Math.round(MAX_MESSAGE / 1048576) }} МБ), письмо не уйдёт</span>
+            <span v-else-if="inMailSize > MAX_MESSAGE * 0.6" class="chip chip--warn" style="height: 28px">{{ size(inMailSize) }} — большое письмо может не пройти у получателя</span>
         </div>
 
         <div class="compose__foot">

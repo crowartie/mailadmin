@@ -70,9 +70,12 @@ class SearchQuery
                 case 'копия': case 'cc':
                     $q->whereCc($value);
                     break;
-                case 'до': case 'before':
+                case 'до': case 'before': case 'по':
                     if ($d = $this->date($value)) {
-                        $q->whereBefore($d);
+                        // По-русски «до 1 сентября» читается как «по 1 сентября включительно»,
+                        // а BEFORE в IMAP — строго раньше даты: запрос «после:01.09 до:01.09»
+                        // давал пусто. Сдвигаем на день.
+                        $q->whereBefore($d->copy()->addDay());
                     }
                     break;
                 case 'после': case 'after': case 'с': case 'since':
@@ -89,7 +92,9 @@ class SearchQuery
                     } elseif (in_array($v, ['непрочитанное', 'непрочитанные', 'unread', 'unseen'])) {
                         $q->whereUnseen();
                     } elseif (in_array($v, ['вложение', 'вложения', 'attachment', 'attachments'])) {
-                        $q->whereHeader('Content-Type', 'multipart/mixed');
+                        // multipart/mixed видит не все письма: у Outlook вложение бывает внутри
+                        // связанной части. Ищем по признаку самого вложения.
+                        $q->where('OR HEADER "Content-Type" "multipart/mixed" HEADER "Content-Disposition" "attachment"');
                     } elseif (in_array($v, ['ответ', 'answered'])) {
                         $q->whereAnswered();
                     }
@@ -100,11 +105,15 @@ class SearchQuery
             }
         }
 
-        foreach ($this->text as $word) {
+        // Каждое слово — отдельное условие в IMAP SEARCH. На запросе из полусотни слов
+        // сервер отвечал ошибкой, а человек видел «сервер достраивает индекс».
+        $words = array_slice(array_values(array_filter($this->text, fn ($w) => $w !== '')), 0, 12);
+        foreach ($words as $word) {
             if ($word === '') {
                 continue;
             }
-            // TEXT ищет по заголовкам и телу: без полнотекстового индекса это перебор, но ящики небольшие.
+            // TEXT ищет по заголовкам и телу. На сервере включён полнотекстовый индекс
+            // (Dovecot fts_xapian, fts_enforced=body), поэтому это не перебор по всей папке.
             $q->whereText($word);
             $added++;
         }

@@ -34,6 +34,7 @@ class ComposeController extends Controller
         'receipt' => ['nullable', 'boolean'],
         'sendAt' => ['nullable', 'date'],
         'remindDays' => ['nullable', 'integer', 'min:1', 'max:60'],
+        'draftKeepFiles' => ['nullable', 'boolean'],
         'files' => ['nullable', 'array', 'max:20'],
         'files.*' => ['file', 'max:262144'],
         'cloud' => ['nullable', 'array'],
@@ -89,6 +90,14 @@ class ComposeController extends Controller
         $form = $request->validate(self::RULES);
         $store = new MailStore($imap->client());
         $out = new Outgoing($imap, $store);
+        // Автосохранение раз в полминуты заново заливало все вложения: письмо с парой
+        // десятков мегабайт подвисало на каждом сохранении. Если файлы не менялись,
+        // берём их из уже сохранённого черновика — заливать заново нечего.
+        if (! empty($form['draftKeepFiles']) && ! empty($form['draftUid'])) {
+            $form['sourceFolder'] = $store->rolePath('drafts');
+            $form['sourceUid'] = (int) $form['draftUid'];
+            $form['keepAttachments'] = true;
+        }
         $email = $out->build($form, $request->file('files', []));
         $uid = $out->saveDraft($email, ! empty($form['draftUid']) ? (int) $form['draftUid'] : null);
 

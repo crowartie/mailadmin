@@ -333,8 +333,13 @@ async function act(op, uids, extra = {}, deferrable = true) {
         return;
     }
     try {
-        await runAct({ folder: folder.value, uids, op, extra });
-        if (names[op]) showToast({ text: label }, 2500);
+        const r = await runAct({ folder: folder.value, uids, op, extra });
+        // Сервер сообщает, со сколькими письмами получилось: раньше из двадцати выделенных
+        // могло отложиться девятнадцать, и сообщение всё равно было победным.
+        const skipped = Number(r?.skipped || 0);
+        if (names[op]) {
+            showToast({ text: skipped ? `${label} · ${skipped} ${plural(skipped, 'письмо', 'письма', 'писем')} пропущено: нет Message-ID` : label }, skipped ? 6000 : 2500);
+        }
         refillAfter(op);
     } catch (e) {
         fail(e);

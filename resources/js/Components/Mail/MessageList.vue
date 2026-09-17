@@ -56,12 +56,16 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         <form class="mlist__search" role="search" @submit.prevent="submitSearch">
             <label for="mlist-q" class="sr-only">Поиск по письмам</label>
             <Icon name="search" :size="18" />
-            <input id="mlist-q" ref="searchInput" v-model="q" type="search" placeholder="Поиск по письмам" @keydown.esc="q = ''; submitSearch()">
+            <!-- 174: Escape очищал поле и сразу выполнял поиск — набранное пропадало без возврата.
+                 Теперь Escape только очищает поле; поиск запускает Enter или крестик. -->
+            <input id="mlist-q" ref="searchInput" v-model="q" type="search" placeholder="Поиск по письмам" @keydown.esc.prevent="q ? (q = '') : searchInput?.blur()">
             <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''; submitSearch()" aria-label="Очистить"><Icon name="x" :size="14" /></button>
             <span v-else class="kbd">/</span>
         </form>
         <div v-if="query" class="hint" style="padding: 0 16px 8px">
-            Найдено {{ list.total }} · операторы: <span class="mono">от:иванов кому:sales тема:счёт есть:вложение до:01.09.2026</span>
+            <!-- 172: подсказка была написана в третьем формате, не совпадавшем ни со справкой,
+                 ни с разборщиком. Пишем ровно так, как понимает поиск. -->
+            Найдено {{ list.total }} · операторы: <span class="mono">от:иванов кому:sales тема:счёт есть:вложение после:01.09.2026 до:30.09.2026</span>
         </div>
 
         <div v-if="selected.length" class="mlist__bulk">
@@ -155,7 +159,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                     <span class="mrow__acts-when">{{ when(m.date) }}</span>
                     <button class="ib ib--sm" type="button" title="Архив" @click.stop="$emit('act', 'archive', [m.uid])" aria-label="Архив"><Icon name="archive" :size="15" /></button>
                     <button class="ib ib--sm" type="button" title="Удалить" @click.stop="$emit('act', 'delete', [m.uid])" aria-label="Удалить"><Icon name="trash" :size="15" /></button>
-                    <button class="ib ib--sm" type="button" :title="m.flagged ? 'Снять флажок' : 'Флажок'" :class="{ 'ib--on': m.flagged }" @click.stop="$emit('act', m.flagged ? 'unflag' : 'flag', [m.uid])" aria-label="m.flagged ? 'Снять флажок' : 'Флажок'"><Icon name="flag" :size="15" /></button>
+                    <button class="ib ib--sm" type="button" :title="m.flagged ? 'Снять флажок' : 'Флажок'" :class="{ 'ib--on': m.flagged }" @click.stop="$emit('act', m.flagged ? 'unflag' : 'flag', [m.uid])" :aria-label="m.flagged ? 'Снять флажок' : 'Флажок'"><Icon name="flag" :size="15" /></button>
                     <button class="ib ib--sm" type="button" title="Отложить" @click.stop="$emit('context', $event, m.uid, 'snooze')" aria-label="Отложить"><Icon name="clock" :size="15" /></button>
                 </span>
             </div>

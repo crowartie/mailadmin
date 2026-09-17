@@ -71,78 +71,121 @@ class ActionController extends Controller
                 $store->flag($folder, $uids, $label->keyword(), $data['op'] === 'label');
                 break;
             case 'snooze':
-                $this->snooze($store, $imap->user(), $folder, $uids, Carbon::parse($data['until'] ?? 'tomorrow 09:00'));
+                $result = $this->snooze($store, $imap->user(), $folder, $uids, Carbon::parse($data['until'] ?? 'tomorrow 09:00'));
                 break;
             case 'unsnooze':
-                $this->unsnooze($store, $imap->user(), $folder, $uids);
+                $result = $this->unsnooze($store, $imap->user(), $folder, $uids);
                 break;
             case 'remind':
-                $this->remind($store, $imap->user(), $folder, $uids, Carbon::parse($data['until'] ?? '+3 days'));
+                $result = $this->remind($store, $imap->user(), $folder, $uids, Carbon::parse($data['until'] ?? '+3 days'));
                 break;
             default:
                 abort(422, 'Неизвестное действие');
         }
 
-        return response()->json(['ok' => true, 'folders' => $store->folders()]);
+        // Частичный успех раньше выдавался за полный: из двадцати выделенных откладывалось
+        // девятнадцать, и об этом не говорилось.
+        return response()->json(['ok' => true, 'folders' => $store->folders()] + ($result ?? []));
     }
 
-    /** Убрать из «Входящих» до срока: письмо переезжает в «Отложенные», запись — в базу. */
-    private function snooze(MailStore $store, string $user, string $folder, array $uids, Carbon $until): void
+    /**
+     * Убрать из «Входящих» до срока: письмо переезжает в «Отложенные», запись — в базу.
+     *
+     * @return array{done:int,skipped:int}
+     */
+    private function snooze(MailStore $store, string $user, string $folder, array $uids, Carbon $until): array
     {
+        // «Отложить» прячет письмо из папки. В общей папке это чужие письма: они исчезли бы
+        // у владельца и появились в вашем ящике. Раньше так и было — брали свою папку «Отложенные».
+        abort_if(MailStore::sharedOwner($folder) !== null, 422,
+            'Отложить письмо из общей папки нельзя: оно пропадёт у владельца. Перешлите его себе или поставьте напоминание.');
+
         $snoozed = $store->rolePath('snoozed');
-        $f = $store->folder($folder);
-        $movable = [];
-        foreach ($uids as $uid) {
-            $m = $f->query()->setFetchBody(false)->getMessageByUid((int) $uid);
-            if (! $m) {
-                continue;
-            }
-            $mid = trim((string) ($m->getMessageId()->first() ?? ''), '<>');
-            if ($mid === '') {
-                continue; // без Message-ID письмо не найти обратно — оставляем на месте
-            }
-            Snooze::create([
-                'user' => $user, 'message_id' => $mid, 'origin' => $folder,
-                'subject' => mb_substr((string) Charset::header((string) $m->getSubject()->first()), 0, 500), 'until' => $until,
-            ]);
-            $movable[] = (int) $uid;
-        }
+        $ids = self::messageIds($store, $folder, $uids);
+        $movable = array_keys($ids);
         abort_if(! $movable, 422, 'У письма нет Message-ID — его нельзя отложить');
+
+        // Сначала переносим, и только потом пишем в базу: при сбое переноса записи
+        // оставались, и планировщик считал письмо отложенным, хотя оно лежало во «Входящих».
         $store->move($folder, $movable, $snoozed);
-    }
-
-    private function unsnooze(MailStore $store, string $user, string $folder, array $uids): void
-    {
-        $f = $store->folder($folder);
-        foreach ($uids as $uid) {
-            $m = $f->query()->setFetchBody(false)->getMessageByUid((int) $uid);
-            $mid = $m ? trim((string) ($m->getMessageId()->first() ?? ''), '<>') : '';
-            if ($mid !== '') {
-                Snooze::where('user', $user)->where('message_id', $mid)->delete();
-            }
-        }
-        $store->move($folder, $uids, $store->rolePath('inbox'));
-        $store->flag($store->rolePath('inbox'), $uids, '\\Seen', false);
-    }
-
-    /** Напомнить, если на письмо не придёт ответ. */
-    private function remind(MailStore $store, string $user, string $folder, array $uids, Carbon $at): void
-    {
-        $f = $store->folder($folder);
-        foreach ($uids as $uid) {
-            $m = $f->query()->setFetchBody(false)->getMessageByUid((int) $uid);
-            if (! $m) {
-                continue;
-            }
-            $mid = trim((string) ($m->getMessageId()->first() ?? ''), '<>');
-            if ($mid === '') {
-                continue;
-            }
-            $to = collect($m->getTo()?->toArray() ?? [])->map(fn ($a) => $a->mail)->implode(', ');
-            Reminder::create([
-                'user' => $user, 'message_id' => $mid, 'subject' => mb_substr((string) Charset::header((string) $m->getSubject()->first()), 0, 500),
-                'to' => mb_substr($to, 0, 500), 'remind_at' => $at,
+        foreach ($ids as $uid => $row) {
+            Snooze::create([
+                'user' => $user, 'message_id' => $row['mid'], 'origin' => $folder,
+                'subject' => mb_substr($row['subject'], 0, 500), 'until' => $until,
             ]);
         }
+
+        return ['done' => count($movable), 'skipped' => count($uids) - count($movable)];
+    }
+
+    /** @return array{done:int,skipped:int} */
+    private function unsnooze(MailStore $store, string $user, string $folder, array $uids): array
+    {
+        $ids = self::messageIds($store, $folder, $uids);
+        foreach ($ids as $row) {
+            Snooze::where('user', $user)->where('message_id', $row['mid'])->delete();
+        }
+        // Пометку снимаем ДО переноса: после него номера писем меняются, и снятие отметки
+        // по старым номерам попадало в чужие письма во «Входящих».
+        $store->flag($folder, $uids, '\\Seen', false);
+        $store->move($folder, $uids, $store->rolePath('inbox'));
+
+        return ['done' => count($uids), 'skipped' => 0];
+    }
+
+    /**
+     * Message-ID и темы пачкой: раньше на каждое письмо шло отдельное обращение к почтовому
+     * серверу, и на выделении в пятьсот писем запрос подвисал.
+     *
+     * @return array<int,array{mid:string,subject:string}>
+     */
+    private static function messageIds(MailStore $store, string $folder, array $uids): array
+    {
+        $uids = array_values(array_unique(array_map('intval', $uids)));
+        if (! $uids) {
+            return [];
+        }
+        $out = [];
+        foreach (array_chunk($uids, 200) as $chunk) {
+            foreach ($store->folder($folder)->query()->whereUidIn($chunk)->setFetchBody(false)->setFetchFlags(false)->get() as $m) {
+                $mid = trim((string) ($m->getMessageId()->first() ?? ''), '<>');
+                if ($mid === '') {
+                    continue; // без Message-ID письмо не найти обратно — оставляем на месте
+                }
+                $out[(int) $m->getUid()] = ['mid' => $mid, 'subject' => (string) Charset::header((string) $m->getSubject()->first())];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Напомнить, если на письмо не придёт ответ.
+     *
+     * @return array{done:int,skipped:int}
+     */
+    private function remind(MailStore $store, string $user, string $folder, array $uids, Carbon $at): array
+    {
+        $uids = array_values(array_unique(array_map('intval', $uids)));
+        $done = 0;
+        foreach (array_chunk($uids, 200) as $chunk) {
+            foreach ($store->folder($folder)->query()->whereUidIn($chunk)->setFetchBody(false)->setFetchFlags(false)->get() as $m) {
+                $mid = trim((string) ($m->getMessageId()->first() ?? ''), '<>');
+                if ($mid === '') {
+                    continue;
+                }
+                $to = collect($m->getTo()?->toArray() ?? [])->map(fn ($a) => $a->mail)->implode(', ');
+                Reminder::create([
+                    'user' => $user, 'message_id' => $mid, 'subject' => mb_substr((string) Charset::header((string) $m->getSubject()->first()), 0, 500),
+                    'to' => mb_substr($to, 0, 500), 'remind_at' => $at,
+                ]);
+                $done++;
+            }
+        }
+        // Без Message-ID напоминание не поставить — раньше об этом не говорилось вовсе,
+        // а ответ всё равно был успешным.
+        abort_if($done === 0, 422, 'Напоминание поставить не удалось: у письма нет Message-ID');
+
+        return ['done' => $done, 'skipped' => count($uids) - $done];
     }
 }

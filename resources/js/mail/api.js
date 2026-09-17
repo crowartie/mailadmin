@@ -188,7 +188,7 @@ export function composeForm(c, files = []) {
     for (const f of fields) {
         if (c[f] !== undefined && c[f] !== null && c[f] !== '') fd.append(f, c[f]);
     }
-    for (const f of ['keepAttachments', 'priority', 'receipt']) {
+    for (const f of ['keepAttachments', 'priority', 'receipt', 'draftKeepFiles']) {
         if (c[f]) fd.append(f, '1');
     }
     files.forEach((file) => fd.append('files[]', file, file.name));

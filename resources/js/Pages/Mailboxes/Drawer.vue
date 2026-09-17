@@ -171,7 +171,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                         <div class="field__row">
                             <input v-model="form.password" class="input" :type="showPassword ? 'text' : 'password'" placeholder="оставьте пустым, чтобы не менять" autocomplete="new-password">
                             <button class="btn" type="button" @click="generatePassword">Сгенерировать</button>
-                            <button class="btn btn--icon" type="button" :title="showPassword ? 'Скрыть' : 'Показать'" @click="showPassword = !showPassword" aria-label="showPassword ? 'Скрыть' : 'Показать'"><Icon name="check" :size="16" /></button>
+                            <button class="btn btn--icon" type="button" :title="showPassword ? 'Скрыть' : 'Показать'" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Скрыть' : 'Показать'"><Icon name="check" :size="16" /></button>
                         </div>
                         <p v-if="form.errors.password" class="error">{{ form.errors.password }}</p>
                         <p v-if="mailbox.passwordChanged" class="hint">Пароль менялся {{ mailbox.passwordChanged }}</p>

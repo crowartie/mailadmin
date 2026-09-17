@@ -440,7 +440,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                         <button v-else class="ib" type="button" title="Скопировать в «Мои контакты»" @click="copyToMine(open)"><Icon name="copy" :size="16" />К себе</button>
                         <button v-if="open.book !== 'company' && open.book !== 'employees'" class="ib" type="button" title="Предложить в общую книгу компании" @click="suggest(open)"><Icon name="share" :size="16" />В общую</button>
                         <span class="grow" />
-                        <button class="ib" type="button" :title="open.favorite ? 'Убрать из избранного' : 'В избранное'" :class="{ 'ib--on': open.favorite }" @click="toggleFavorite(open)" aria-label="open.favorite ? 'Убрать из избранного' : 'В избранное'"><Icon name="star" :size="16" /></button>
+                        <button class="ib" type="button" :title="open.favorite ? 'Убрать из избранного' : 'В избранное'" :class="{ 'ib--on': open.favorite }" @click="toggleFavorite(open)" :aria-label="open.favorite ? 'Убрать из избранного' : 'В избранное'"><Icon name="star" :size="16" /></button>
                         <button v-if="!open.readonly" class="ib ib--danger" type="button" title="Удалить" @click="askDelete(open)" aria-label="Удалить"><Icon name="trash" :size="16" /></button>
                     </div>
                     <div class="mread__scroll">

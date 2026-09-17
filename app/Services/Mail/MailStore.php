@@ -160,7 +160,10 @@ class MailStore
             $names = \App\Models\Vmail\Mailbox::query()->whereIn('username', array_keys($owners))->pluck('name', 'username');
             foreach ($out as &$row) {
                 if (($row['role'] ?? '') === 'shared') {
-                    $row['ownerName'] = $names[$row['owner']] ?: $row['owner'];
+                    // Владельца могли удалить, а общая папка осталась. Раньше обращение к
+                    // отсутствующему ключу давало ошибку, и список папок отвечал 500 —
+                    // веб-почта не открывалась совсем.
+                    $row['ownerName'] = $names->get($row['owner']) ?: $row['owner'];
                 }
             }
             unset($row);
@@ -247,7 +250,7 @@ class MailStore
         foreach ($found as $i => $with) {
             $list = [];
             foreach ($with as $mail => $level) {
-                $list[] = ['mail' => $mail, 'name' => $names[$mail] ?: $mail, 'level' => $level];
+                $list[] = ['mail' => $mail, 'name' => $names->get($mail) ?: $mail, 'level' => $level];
             }
             $out[$i]['shared_with'] = $list;
         }
@@ -489,9 +492,16 @@ class MailStore
             try {
                 $uids = array_map('intval', $q->search()->all());
             } catch (\Webklex\PHPIMAP\Exceptions\GetMessagesFailedException $e) {
-                // fts_enforced=body: поиск по тексту ждёт, пока папка доиндексируется; на большой папке это дольше
-                // таймаута соединения. Пусть сотрудник увидит понятную причину, а не «Server Error».
-                abort(503, $searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
+                // Раньше любая неудача поиска объявлялась индексацией: человек ждал минуту
+                // и получал то же самое. Разбираем, что именно ответил сервер.
+                $why = mb_strtolower($e->getMessage());
+                if (str_contains($why, 'timed out') || str_contains($why, 'timeout') || str_contains($why, 'indexing')) {
+                    abort(503, $searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
+                }
+                if (str_contains($why, 'bad') || str_contains($why, 'parse') || str_contains($why, 'syntax')) {
+                    abort(422, 'Почтовый сервер не понял запрос. Уберите кавычки и спецсимволы или упростите его.');
+                }
+                abort(502, 'Почтовый сервер не смог выполнить поиск: ' . mb_substr($e->getMessage(), 0, 160));
             }
             rsort($uids);
             $total = count($uids);
@@ -1172,10 +1182,34 @@ class MailStore
      *
      * @return array{path:string,name:string,count:int}
      */
+    /** Расширение файла по типу — для вложений, у которых нет имени. */
+    private const EXT_BY_TYPE = [
+        'image/png' => 'png', 'image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/gif' => 'gif',
+        'image/webp' => 'webp', 'image/bmp' => 'bmp', 'image/tiff' => 'tif', 'image/heic' => 'heic',
+        'image/svg+xml' => 'svg', 'image/x-icon' => 'ico',
+        'application/pdf' => 'pdf', 'text/plain' => 'txt', 'text/html' => 'html', 'text/csv' => 'csv',
+        'text/xml' => 'xml', 'application/xml' => 'xml', 'application/json' => 'json', 'text/rtf' => 'rtf',
+        'application/rtf' => 'rtf',
+        'message/rfc822' => 'eml',
+        'application/msword' => 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'application/vnd.ms-excel' => 'xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+        'application/vnd.ms-powerpoint' => 'ppt',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
+        'application/vnd.oasis.opendocument.text' => 'odt',
+        'application/vnd.oasis.opendocument.spreadsheet' => 'ods',
+        'application/zip' => 'zip', 'application/x-zip-compressed' => 'zip',
+        'application/x-rar-compressed' => 'rar', 'application/vnd.rar' => 'rar',
+        'application/x-7z-compressed' => '7z', 'application/gzip' => 'gz',
+        'application/vnd.ms-outlook' => 'msg',
+        'audio/mpeg' => 'mp3', 'video/mp4' => 'mp4', 'audio/ogg' => 'ogg',
+    ];
+
     public function attachmentsZip(string $path, int $uid): array
     {
-        $message = $this->folder($path)->query()->getMessageByUid($uid);
-        abort_unless($message, 404, 'Письмо не найдено');
+        $message = $this->messageOrNull($path, $uid);
+        abort_unless($message, 404, 'Письмо не найдено — возможно, его удалили или переложили в другой вкладке');
         $html = (string) ($message->getHTMLBody() ?? '');
         $tmp = tempnam(sys_get_temp_dir(), 'att');
         $zip = new \ZipArchive();
@@ -1192,7 +1226,9 @@ class MailStore
             $name = preg_replace('#[\\\\/:*?"<>|\x00-\x1f]+#', '_', $name) ?: 'вложение-' . ($i + 1);
             // Часть без имени (библиотека подставляет кусок Content-ID) — добавим расширение по типу, чтобы файл открывался
             if (! str_contains($name, '.')) {
-                $ext = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/gif' => 'gif', 'application/pdf' => 'pdf', 'text/plain' => 'txt', 'text/html' => 'html'][strtolower((string) $a->getMimeType())] ?? null;
+                // Таблица знала шесть типов, и вложенное письмо, docx, xlsx или zip попадали
+                // в архив как «вложение-1», который Windows не открывает.
+                $ext = self::EXT_BY_TYPE[strtolower((string) $a->getMimeType())] ?? null;
                 if ($ext) {
                     $name .= '.' . $ext;
                 }
@@ -1282,6 +1318,21 @@ class MailStore
     }
 
     /** Заголовки одного письма как текст: нужны, чтобы восстановить отметки черновика. */
+    /**
+     * Письмо по номеру или null. Библиотека на отсутствующий UID бросает исключение о заголовках,
+     * и наружу это выходило ошибкой сервера вместо понятного «письма больше нет».
+     */
+    private function messageOrNull(string $path, int $uid): ?Message
+    {
+        try {
+            return $this->folder($path)->query()->getMessageByUid($uid);
+        } catch (\Webklex\PHPIMAP\Exceptions\MessageHeaderFetchingException) {
+            return null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public function headersText(string $path, int $uid): string
     {
         try {
@@ -1295,13 +1346,39 @@ class MailStore
 
     public function raw(string $path, int $uid): string
     {
-        $message = $this->folder($path)->query()->getMessageByUid($uid);
-        abort_unless($message, 404);
+        $message = $this->messageOrNull($path, $uid);
+        abort_unless($message, 404, 'Письмо не найдено — возможно, его удалили или переложили в другой вкладке');
 
         return (string) $message->getHeader()?->raw . "\r\n\r\n" . $message->getRawBody();
     }
 
     // ── Действия ─────────────────────────────────────────────────────────
+
+    /** @var array<string,string> права на папки за время запроса (MYRIGHTS) */
+    private array $rightsCache = [];
+
+    /**
+     * Права на папку по ACL. Буквы RFC 4314: s — менять «прочитано», t — «удалено»,
+     * w — остальные пометки и метки, e — очищать папку.
+     * Сервер без ACL или своя папка — считаем, что можно всё.
+     */
+    private function rights(string $path): string
+    {
+        if (isset($this->rightsCache[$path])) {
+            return $this->rightsCache[$path];
+        }
+        $all = 'acdeilprstwx';
+        try {
+            $conn = $this->client->getConnection();
+            $r = $conn->requestAndResponse('MYRIGHTS', [$conn->escapeString($path)]);
+            $line = implode(' ', array_map(fn ($x) => is_array($x) ? implode(' ', array_map('strval', $x)) : (string) $x, (array) $r->getResponse()));
+            $rights = preg_match('/MYRIGHTS\s+\S+\s+([a-zA-Z]+)/i', $line, $m) ? $m[1] : $all;
+        } catch (\Throwable) {
+            $rights = $all;
+        }
+
+        return $this->rightsCache[$path] = $rights;
+    }
 
     /** Установить или снять флаг у набора писем (\Seen, \Flagged, \Answered, Lbl_N …). */
     public function flag(string $path, array $uids, string $flag, bool $on): void
@@ -1310,12 +1387,70 @@ class MailStore
         if (! $uids) {
             return;
         }
+        // Дело не только в отказах: в общей папке «только для просмотра» Dovecot отвечает на
+        // команду OK, но пометку не сохраняет (её нет в PERMANENTFLAGS). Веб-почта показывала
+        // успех, а через секунду письмо снова было непрочитанным. Спрашиваем права заранее.
+        $need = match (strtolower($flag)) {
+            '\\seen' => 's',
+            '\\deleted' => 't',
+            default => 'w',
+        };
+        $rights = $this->rights($path);
+        if ($rights !== '' && ! str_contains(strtolower($rights), $need)) {
+            abort(409, match ($need) {
+                's' => 'Отметить прочитанным нельзя: владелец открыл эту папку только для просмотра.',
+                't' => 'Удалить письмо отсюда нельзя: владелец открыл эту папку только для просмотра.',
+                default => 'Поставить пометку или метку здесь нельзя: владелец открыл эту папку только для просмотра.',
+            });
+        }
         $this->client->openFolder($path, true);
         $conn = $this->client->getConnection();
         foreach (array_chunk($uids, 200) as $chunk) {
             // Библиотечный store() умеет только диапазоны, а нам нужен произвольный набор UID.
-            $conn->requestAndResponse('UID STORE', [implode(',', $chunk), ($on ? '+' : '-') . 'FLAGS.SILENT', $conn->escapeList([$flag])]);
+            $r = $conn->requestAndResponse('UID STORE', [implode(',', $chunk), ($on ? '+' : '-') . 'FLAGS.SILENT', $conn->escapeList([$flag])]);
+            // Ответ сервера не проверялся: в общей папке «только для просмотра» отметка
+            // «прочитано» возвращала успех, а через секунду письмо снова было непрочитанным.
+            self::assertOk($r, 'Не удалось изменить пометку письма');
         }
+    }
+
+    /**
+     * Проверить ответ IMAP. Библиотека возвращает ответ и при NO/BAD, поэтому без этой проверки
+     * отказ сервера («нет прав», «только для просмотра») выглядел как успешное действие.
+     */
+    private static function assertOk(mixed $response, string $what): void
+    {
+        $lines = [];
+        try {
+            $lines = is_object($response) && method_exists($response, 'getResponse') ? (array) $response->getResponse() : (array) $response;
+        } catch (\Throwable) {
+            return;
+        }
+        $flat = trim(implode(' ', array_map(fn ($x) => is_array($x) ? implode(' ', array_map('strval', $x)) : (string) $x, $lines)));
+        if ($flat === '') {
+            return;
+        }
+        if (preg_match('/(?:^|\s)(NO|BAD)\s+(.*)$/i', $flat, $m)) {
+            $reason = trim($m[2]);
+            abort(409, $what . ($reason !== '' ? ': ' . self::imapReason($reason) : ''));
+        }
+    }
+
+    /** Английский отказ почтового сервера — человеческим текстом. */
+    private static function imapReason(string $reason): string
+    {
+        $r = strtolower($reason);
+        if (str_contains($r, 'permission denied') || str_contains($r, 'read-only') || str_contains($r, 'readonly')) {
+            return 'папка открыта только для просмотра';
+        }
+        if (str_contains($r, 'quota')) {
+            return 'закончилось место в ящике';
+        }
+        if (str_contains($r, 'not found') || str_contains($r, 'nonexistent')) {
+            return 'папки или письма больше нет';
+        }
+
+        return mb_substr($reason, 0, 120);
     }
 
     public function move(string $path, array $uids, string $target): void
@@ -1337,7 +1472,10 @@ class MailStore
         if ($path === $trash) {
             $this->flag($path, $uids, '\\Deleted', true);
             $this->client->openFolder($path, true);
-            $this->client->getConnection()->expunge();
+            // UID EXPUNGE убирает ровно выбранные письма. Обычный EXPUNGE сносит из папки всё
+            // помеченное к удалению — в том числе то, что человек пометил в Outlook или на телефоне
+            // и там ещё видит: такие письма исчезали навсегда.
+            $this->expungeUids($this->client->getConnection(), array_values(array_unique(array_map('intval', $uids))));
             // Иначе панель папок ещё минуту показывает старое «Корзина (12)»: кэш списка папок
             // сбрасывают move() и emptyFolder(), а эта ветка — нет.
             $this->folderCache = null;
@@ -1349,11 +1487,37 @@ class MailStore
 
     public function emptyFolder(string $path): void
     {
+        $rights = strtolower($this->rights($path));
+        if ($rights !== '' && (! str_contains($rights, 't') || ! str_contains($rights, 'e'))) {
+            abort(409, 'Очистить эту папку нельзя: владелец открыл её только для просмотра.');
+        }
         $this->client->openFolder($path, true);
         $conn = $this->client->getConnection();
-        $conn->requestAndResponse('STORE', ['1:*', '+FLAGS.SILENT', $conn->escapeList(['\\Deleted'])]);
+        $r = $conn->requestAndResponse('STORE', ['1:*', '+FLAGS.SILENT', $conn->escapeList(['\\Deleted'])]);
+        // Результат не проверялся, и при отказе сервера человек получал сообщение об успехе.
+        self::assertOk($r, 'Не удалось очистить папку');
         $conn->expunge();
         $this->folderCache = null;
+    }
+
+    /**
+     * Убрать из папки именно эти письма. Если сервер не умеет UIDPLUS, откатываемся
+     * на обычный EXPUNGE — иначе письма останутся лежать помеченными к удалению.
+     */
+    private function expungeUids(mixed $conn, array $uids): void
+    {
+        if ($uids === []) {
+            return;
+        }
+        // Пробуем UID EXPUNGE (RFC 4315). Сервер без него ответит BAD — тогда обычный EXPUNGE:
+        // проверять возможности отдельной командой ради одного удаления незачем.
+        try {
+            foreach (array_chunk($uids, 200) as $chunk) {
+                $conn->requestAndResponse('UID EXPUNGE', [implode(',', $chunk)]);
+            }
+        } catch (\Throwable) {
+            $conn->expunge();
+        }
     }
 
     /** UID письма по Message-ID в папке (для отложенных и напоминаний). */
