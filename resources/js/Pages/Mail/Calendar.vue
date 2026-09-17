@@ -36,7 +36,7 @@ const hm = (d) => d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-di
 const parseDay = (s) => { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
 
 // ── Состояние ─────────────────────────────────────────────────
-const calendars = ref(props.calendars);
+const calendars = ref(props.calendars.map((c) => ({ ...c, color: hex6(c.color) })));
 const hidden = ref(new Set(JSON.parse(localStorage.getItem('cal.hidden') || '[]')));
 const view = ref(localStorage.getItem('cal.view') || (window.innerWidth < 700 ? 'day' : 'week'));
 const anchor = ref(day0(new Date()));
@@ -58,6 +58,18 @@ const writable = computed(() => calendars.value.filter((c) => !c.readonly));
 const own = computed(() => calendars.value.filter((c) => c.kind === 'personal' || c.kind === 'own'));
 const foreign = computed(() => calendars.value.filter((c) => c.kind === 'shared' || c.kind === 'company'));
 const calMap = computed(() => Object.fromEntries(calendars.value.map((c) => [c.uri, c])));
+/**
+ * Цвет календаря в виде #RRGGBB. Календарь, заведённый с iPhone, хранит восьмизначный
+ * код с прозрачностью (#RRGGBBAA): к нему дописывалась ещё пара знаков на полупрозрачный
+ * фон события, получалось десять — такой цвет браузер не понимает, и событие оставалось
+ * без фона. Заодно принимаем короткую запись (#RGB).
+ */
+function hex6(c) {
+    const v = String(c || '').trim();
+    if (/^#[0-9a-f]{3}$/i.test(v)) return '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3];
+    if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v)) return v.slice(0, 7);
+    return '#2F6FEB';
+}
 
 function say(text, error = false) {
     clearTimeout(toastTimer);
@@ -101,7 +113,7 @@ async function load() {
     loading.value = true;
     try {
         const list = await api.events(range.value.from.toISOString(), range.value.to.toISOString());
-        events.value = list.map((e) => ({ ...e, s: e.allDay ? parseDay(e.start) : new Date(e.start), e: e.allDay ? parseDay(e.end) : new Date(e.end) }));
+        events.value = list.map((e) => ({ ...e, color: hex6(e.color), s: e.allDay ? parseDay(e.start) : new Date(e.start), e: e.allDay ? parseDay(e.end) : new Date(e.end) }));
     } catch (e) { fail(e); } finally { loading.value = false; }
 }
 /** Обновить события и список календарей по кнопке. */
@@ -109,7 +121,7 @@ async function refresh() {
     await Promise.all([load(), reloadCalendars(), loadTasks()]);
 }
 async function reloadCalendars() {
-    try { calendars.value = await api.calendars(); } catch (e) { fail(e); }
+    try { calendars.value = (await api.calendars()).map((c) => ({ ...c, color: hex6(c.color) })); } catch (e) { fail(e); }
 }
 watch([view, anchor], () => { localStorage.setItem('cal.view', view.value); load(); });
 // Тихое обновление раз в пять минут: новые приглашения и чужие правки должны появляться
@@ -123,7 +135,14 @@ onMounted(() => {
 });
 onBeforeUnmount(() => clearInterval(calTimer));
 
-const visibleEvents = computed(() => events.value.filter((e) => !hidden.value.has(e.calendar)));
+const visibleEvents = computed(() => {
+    const d = drag.value;
+    return events.value
+        .filter((e) => !hidden.value.has(e.calendar))
+        // Событие под курсором показываем на новом месте, ещё не сохранив: так видно,
+        // куда оно встанет, и колонки пересчитываются обычным путём.
+        .map((e) => (d && d.moved && e.id === d.id && e.calendar === d.calendar ? { ...e, s: d.s, e: d.end } : e));
+});
 /** Щелчок по строке календаря: по значку «…» — меню, иначе показать или скрыть календарь. */
 function calClick(e, c) {
     if (e.target?.closest?.('.mnav__dots')) { calMenu(e, c); return; }
@@ -134,6 +153,10 @@ function toggleCal(uri) {
     hidden.value = new Set(hidden.value);
     localStorage.setItem('cal.hidden', JSON.stringify([...hidden.value]));
 }
+/** Дата с временем 9:00 — с него начинается событие, созданное щелчком по дню. */
+function at9(d) { const x = new Date(d); x.setHours(9, 0, 0, 0); return x; }
+/** Подпись кнопки «+» в дне: «Создать событие: 18 сентября». */
+function addLabel(d) { return 'Создать событие: ' + d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }); }
 function goToday() { anchor.value = day0(new Date()); }
 function shift(dir) {
     const a = anchor.value;
@@ -363,13 +386,35 @@ function busyBlocks(mail) {
 const conflict = computed(() => {
     const f = editing.value; if (!f || f.allDay) return [];
     const s = new Date(f.start); const e = new Date(f.end);
-    return Object.entries(freebusy.value).filter(([mail, list]) => mail !== props.user.toLowerCase() && list.some((b) => new Date(b.start) < e && new Date(b.end) > s)).map(([mail]) => mail);
+    // null — занятость неизвестна (внешний адрес): это не повод объявлять время занятым.
+    return Object.entries(freebusy.value).filter(([mail, list]) => mail !== props.user.toLowerCase() && (list || []).some((b) => new Date(b.start) < e && new Date(b.end) > s)).map(([mail]) => mail);
 });
 const eventWindow = computed(() => {
     const f = editing.value; if (!f || f.allDay) return null;
     const day = day0(new Date(f.start));
     const s = (new Date(f.start) - day) / 60000; const e = (new Date(f.end) - day) / 60000;
     return { left: (Math.max(0, s) / 1440 * 100) + '%', width: (Math.max(8, Math.min(1440, e) - Math.max(0, s)) / 1440 * 100) + '%' };
+});
+
+// Галочка «Весь день» только переключала поля, а значения в них оставались прежние:
+// изменил время начала, включил «Весь день» — событие вставало на исходную дату.
+watch(() => editing.value?.allDay, (on, was) => {
+    const f = editing.value;
+    if (!f || was === undefined || on === was) return;
+    if (on) {
+        if (f.start) f.startDay = ymd(new Date(f.start));
+        if (f.end) f.endDay = ymd(new Date(f.end));
+    } else {
+        const keepTime = (day, prev, hour) => {
+            const d = parseDay(day);
+            const p = prev ? new Date(prev) : null;
+            d.setHours(p && !isNaN(p) ? p.getHours() : hour, p && !isNaN(p) ? p.getMinutes() : 0, 0, 0);
+            return toLocalInput(d);
+        };
+        if (f.startDay) f.start = keepTime(f.startDay, f.start, 9);
+        if (f.endDay || f.startDay) f.end = keepTime(f.endDay || f.startDay, f.end, 10);
+        if (new Date(f.end) <= new Date(f.start)) f.end = toLocalInput(new Date(new Date(f.start).getTime() + 3600000));
+    }
 });
 
 // ── Календари: меню, общий доступ ─────────────────────────────
@@ -404,11 +449,122 @@ async function removeShare(mail) {
 }
 const COLORS = ['#2F6FEB', '#16A05C', '#D9791F', '#C0392B', '#7B3FE4', '#0E8A8A', '#6B7787'];
 
+// ── Перенос и растягивание событий мышью ──────────────────────
+// Курсор-крестик над сеткой обещал перетаскивание, а его не было вовсе: чтобы сдвинуть
+// встречу на час, приходилось открывать форму и править время руками. Тянем по сетке
+// с шагом в четверть часа; событие двигается за курсором, сохраняется по отпусканию.
+const drag = ref(null);
+const STEP = 15;   // минут — шаг сетки при переносе
+
+/** Тянут ли прямо сейчас именно это событие. */
+function dragging(e) {
+    const d = drag.value;
+    return !!(d && d.moved && d.id === e.id && d.calendar === e.calendar);
+}
+
+function startDrag(ev, item, mode) {
+    const e = item.e;
+    if (ev.button !== 0) return;
+    if (e.readonly) { say('Этот календарь только для чтения', true); return; }
+    if (e.recurring) { say('У повторяющегося события время меняется в правке — откройте его', true); return; }
+    ev.preventDefault();
+    drag.value = {
+        id: e.id, calendar: e.calendar, mode, moved: false,
+        x0: ev.clientX, y0: ev.clientY,
+        s0: new Date(e.s), e0: new Date(e.e),
+        s: new Date(e.s), end: new Date(e.e),
+        colW: ev.currentTarget.closest('.cal__col')?.getBoundingClientRect().width || 0,
+        src: e,
+    };
+    window.addEventListener('pointermove', onDrag);
+    window.addEventListener('pointerup', endDrag, { once: true });
+}
+
+function onDrag(ev) {
+    const d = drag.value;
+    if (!d) return;
+    const dy = ev.clientY - d.y0;
+    const dx = ev.clientX - d.x0;
+    const dmin = Math.round((dy / HOUR) * 60 / STEP) * STEP;
+    // Перенос на соседний день — по горизонтали, целыми колонками (только в виде недели).
+    const dday = d.mode === 'move' && d.colW > 0 && view.value === 'week' ? Math.round(dx / d.colW) : 0;
+    if (Math.abs(dy) > 3 || dday !== 0) d.moved = true;
+    if (d.mode === 'move') {
+        d.s = new Date(d.s0.getTime() + dmin * 60000 + dday * 86400000);
+        d.end = new Date(d.e0.getTime() + dmin * 60000 + dday * 86400000);
+    } else {
+        const end = new Date(d.e0.getTime() + dmin * 60000);
+        // Короче четверти часа встреча быть не может — иначе её не ухватить обратно.
+        d.end = end.getTime() - d.s0.getTime() < STEP * 60000 ? new Date(d.s0.getTime() + STEP * 60000) : end;
+        d.s = d.s0;
+    }
+    drag.value = { ...d };
+}
+
+async function endDrag() {
+    window.removeEventListener('pointermove', onDrag);
+    const d = drag.value;
+    drag.value = null;
+    if (!d || !d.moved) return;   // это был обычный щелчок — открыть событие
+    if (+d.s === +d.s0 && +d.end === +d.e0) return;
+    const e = d.src;
+    // Показываем новое время сразу: иначе событие прыгает на старое место и обратно.
+    events.value = events.value.map((x) => (x.id === e.id && x.calendar === e.calendar ? { ...x, s: d.s, e: d.end } : x));
+    try {
+        await api.updateEvent(e.calendar, e.id, {
+            calendar: e.calendar,
+            title: e.title,
+            allDay: false,
+            location: e.location || '',
+            description: e.description || '',
+            transparent: !!e.transparent,
+            attendees: (e.attendees || []).filter((a) => a.mail).map((a) => ({ name: a.name, mail: a.mail })),
+            alarm: e.alarm ?? null,
+            start: d.s.toISOString(),
+            end: d.end.toISOString(),
+        });
+        say((e.attendees || []).some((a) => a.mail) ? 'Время изменено, участники извещены' : 'Время изменено');
+    } catch (err) {
+        fail(err);
+    }
+    await load();
+}
+
+onBeforeUnmount(() => window.removeEventListener('pointermove', onDrag));
+
 // ── Мини-месяц ────────────────────────────────────────────────
 const miniMonth = ref(new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1));
 watch(anchor, (a) => { miniMonth.value = new Date(a.getFullYear(), a.getMonth(), 1); });
 const miniDays = computed(() => { const from = monday(miniMonth.value); return Array.from({ length: 42 }, (_, i) => addDays(from, i)); });
-const busyDays = computed(() => new Set(visibleEvents.value.map((e) => ymd(e.s))));
+// Точки под числами показывали только те дни, что попали в загруженный диапазон:
+// перелистнув мини-месяц вперёд, человек видел пустой месяц и решал, что дел нет.
+// Поэтому для мини-месяца берём его собственный диапазон. Заодно отмечаем все дни
+// многодневного события, а не только первый.
+const miniRaw = ref([]);
+async function loadMiniBusy() {
+    const from = monday(miniMonth.value);
+    const to = addDays(from, 42);
+    try {
+        miniRaw.value = await api.events(from.toISOString(), to.toISOString());
+    } catch {
+        miniRaw.value = [];   // точки — подсказка, а не работа: молчим
+    }
+}
+watch(miniMonth, loadMiniBusy, { immediate: true });
+const busyDays = computed(() => {
+    const out = new Set();
+    for (const e of miniRaw.value) {
+        if (hidden.value.has(e.calendar)) continue;
+        const s = e.allDay ? parseDay(e.start) : new Date(e.start);
+        const end = e.allDay ? parseDay(e.end) : new Date(e.end);
+        // У события «весь день» конец — уже следующий день (так устроен iCalendar),
+        // поэтому последний занятый день считаем на миллисекунду раньше конца.
+        const last = day0(new Date(Math.max(end.getTime() - 1, s.getTime())));
+        let d = day0(s);
+        for (let i = 0; i <= 62 && d <= last; i++) { out.add(ymd(d)); d = addDays(d, 1); }
+    }
+    return out;
+});
 
 function onKey(e) {
     const t = e.target;
@@ -588,6 +744,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                     <div class="cal__allday" :style="{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }">
                         <span class="cal__gutter-label">весь день</span>
                         <div v-for="d in days" :key="'a' + d.getTime()" class="cal__allday-cell" @click="create({ start: d, allDay: true })">
+                            <button type="button" class="cal__add cal__add--allday" :aria-label="'Создать событие на весь день: ' + d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })" :title="'Создать событие на весь день'" @click.stop="create({ start: d, allDay: true })"><Icon name="plus" :size="12" /></button>
                             <button v-for="e in allDayEvents(d)" :key="e.calendar + e.id + e.start" type="button" class="cal__chip" :style="{ background: e.color, color: '#fff' }" @click.stop="open = e" @contextmenu.prevent.stop="menu = { kind: 'ev', x: $event.clientX, y: $event.clientY, e }">{{ e.title }}</button>
                         </div>
                     </div>
@@ -599,19 +756,26 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                             <div v-for="d in days" :key="'c' + d.getTime()" class="cal__col" :class="{ 'cal__col--today': sameDay(d, now), 'cal__col--weekend': d.getDay() === 0 || d.getDay() === 6 }" @click="slotClick(d, $event)">
                                 <div v-for="h in hours" :key="h" class="cal__line" :style="{ top: h * HOUR + 'px' }" />
                                 <div v-if="sameDay(d, now)" class="cal__now" :style="{ top: nowTop + 'px' }" />
+                                <!-- 239: колонка — обычный div с обработчиком клика, и создать
+                                     событие с клавиатуры было нельзя. Кнопка видна при наведении
+                                     и при переходе табуляцией. -->
+                                <button type="button" class="cal__add" :aria-label="addLabel(d)" :title="addLabel(d)" @click.stop="create({ start: at9(d) })"><Icon name="plus" :size="14" /></button>
                                 <button
                                     v-for="it in layout(d)"
                                     :key="it.e.calendar + it.e.id + it.e.start"
                                     type="button"
                                     class="cal__ev"
-                                    :class="{ 'cal__ev--declined': it.e.myStatus === 'DECLINED', 'cal__ev--tentative': it.e.myStatus === 'TENTATIVE' || it.e.status === 'TENTATIVE', 'cal__ev--cancelled': it.e.status === 'CANCELLED' }"
+                                    :class="{ 'cal__ev--declined': it.e.myStatus === 'DECLINED', 'cal__ev--tentative': it.e.myStatus === 'TENTATIVE' || it.e.status === 'TENTATIVE', 'cal__ev--cancelled': it.e.status === 'CANCELLED', 'cal__ev--drag': dragging(it.e) }"
                                     :style="it.style"
                                     :title="it.e.title"
+                                    @pointerdown="startDrag($event, it, 'move')"
                                     @click.stop="open = it.e"
                                     @contextmenu.prevent.stop="menu = { kind: 'ev', x: $event.clientX, y: $event.clientY, e: it.e }"
                                 >
                                     <b>{{ it.e.title }}</b>
                                     <span v-if="it.height > 34">{{ hm(it.e.s) }}–{{ hm(it.e.e) }}<template v-if="it.e.location"> · {{ it.e.location }}</template></span>
+                                    <!-- Нижний край — ручка: тянем её, чтобы изменить длительность. -->
+                                    <span v-if="!it.e.readonly && !it.e.recurring" class="cal__ev-grip" @pointerdown.stop="startDrag($event, it, 'resize')" />
                                 </button>
                             </div>
                         </div>
@@ -627,9 +791,10 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                             :key="d.getTime()"
                             class="cal__cell"
                             :class="{ 'cal__cell--out': d.getMonth() !== anchor.getMonth(), 'cal__cell--today': sameDay(d, now), 'cal__cell--weekend': d.getDay() === 0 || d.getDay() === 6 }"
-                            @click="create({ start: (() => { const x = new Date(d); x.setHours(9, 0, 0, 0); return x; })() })"
+                            @click="create({ start: at9(d) })"
                         >
                             <button type="button" class="cal__cell-day" @click.stop="openDay(d)">{{ d.getDate() }}</button>
+                            <button type="button" class="cal__add cal__add--cell" :aria-label="addLabel(d)" :title="addLabel(d)" @click.stop="create({ start: at9(d) })"><Icon name="plus" :size="13" /></button>
                             <button v-for="e in monthCell(d).slice(0, 3)" :key="e.calendar + e.id + e.start" type="button" class="cal__chip" :class="{ 'cal__chip--timed': !e.allDay }" :style="e.allDay ? { background: e.color, color: '#fff' } : { '--c': e.color }" @click.stop="open = e" @contextmenu.prevent.stop="menu = { kind: 'ev', x: $event.clientX, y: $event.clientY, e }">
 {{ (e.allDay ? '' : hm(e.s) + ' ') + e.title }}
                             </button>

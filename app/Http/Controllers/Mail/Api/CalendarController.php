@@ -69,15 +69,13 @@ class CalendarController extends Controller
         $data = $this->validated($request);
 
         return $this->guard(function () use ($imap, $calendar, $uri, $data) {
-            $saved = $this->store->saveEvent($imap->user(), $calendar, $uri, $data);
-            // Перенос в другой календарь: создать там, удалить здесь.
+            // Перенос в другой календарь делает сам склад: событие остаётся тем же,
+            // с тем же идентификатором и ответами участников.
             if (! empty($data['calendar']) && $data['calendar'] !== $calendar) {
-                $moved = $this->store->saveEvent($imap->user(), $data['calendar'], null, $data);
-                $this->store->deleteEvent($imap->user(), $calendar, $uri);
-                $saved = $moved;
+                return $this->strip($this->store->moveEvent($imap->user(), $calendar, $data['calendar'], $uri, $data));
             }
 
-            return $this->strip($saved);
+            return $this->strip($this->store->saveEvent($imap->user(), $calendar, $uri, $data));
         });
     }
 

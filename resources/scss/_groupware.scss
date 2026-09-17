@@ -239,3 +239,65 @@
     .cform__names { grid-template-columns: 1fr; }
     .cal .fab { display: none; }
 }
+
+
+// 239: кнопка «создать событие» в дне. Появляется при наведении и при переходе
+// табуляцией — без неё создать событие с клавиатуры было нельзя вовсе.
+.cal__add {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed v.$c-border-2;
+    border-radius: 6px;
+    background: v.$c-surface;
+    color: v.$c-muted;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s, color .12s, border-color .12s;
+    z-index: 2;
+
+    &:hover { color: v.$c-accent; border-color: v.$c-accent; }
+    &:focus-visible { opacity: 1; outline: 2px solid v.$c-accent; outline-offset: 1px; }
+}
+
+// Кнопка ставится в угол дня — значит, день должен быть точкой отсчёта.
+.cal__cell, .cal__allday-cell { position: relative; }
+
+.cal__col:hover .cal__add,
+.cal__cell:hover .cal__add,
+.cal__allday-cell:hover .cal__add { opacity: 1; }
+
+.cal__add--cell { top: 3px; right: 3px; width: 20px; height: 20px; }
+.cal__add--allday { top: 1px; right: 1px; width: 18px; height: 18px; }
+
+// На телефоне наведения нет, а место дорого: кнопку не показываем — там работает
+// круглая кнопка «Событие».
+@media (max-width: 860px) {
+    .cal__add { display: none; }
+}
+
+
+// 235: событие можно перенести мышью и растянуть за нижний край.
+.cal__ev-grip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -2px;
+    height: 7px;
+    cursor: ns-resize;
+    touch-action: none;
+}
+
+.cal__ev { touch-action: none; }
+
+// Пока тянем — событие приподнято и слегка прозрачно, чтобы было видно сетку под ним.
+.cal__ev--drag {
+    opacity: .85;
+    box-shadow: 0 8px 20px -6px rgba(0, 0, 0, .35);
+    z-index: 5;
+}

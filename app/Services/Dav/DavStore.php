@@ -502,6 +502,29 @@ class DavStore
         return $this->event($user, $calUri, $objUri);
     }
 
+    /**
+     * Перенести событие в другой календарь, оставив его тем же событием.
+     *
+     * Раньше перенос делался «создать заново и удалить»: у копии был новый UID, поэтому
+     * ответы участников обнулялись, всем уходило повторное приглашение, а старое событие
+     * оставалось в их календарях навсегда. Пишем тот же файл под тем же именем в другой
+     * календарь и только потом убираем из прежнего.
+     *
+     * @param  array<string,mixed>  $data
+     * @return array<string,mixed>
+     */
+    public function moveEvent(string $user, string $fromCal, string $toCal, string $objUri, array $data): array
+    {
+        $from = $this->calendar($user, $fromCal);
+        $row = $this->cals->getCalendarObject([$from['id'], $from['instance']], $objUri);
+        $existing = $row ? (string) $row['calendardata'] : null;
+        $ics = Events::build($data, strtolower($user), $this->displayName($user), $existing);
+        $this->dav($user, 'PUT', "calendars/{$user}/{$toCal}/{$objUri}", $ics, ['Content-Type' => 'text/calendar; charset=utf-8']);
+        $this->dav($user, 'DELETE', "calendars/{$user}/{$fromCal}/{$objUri}");
+
+        return $this->event($user, $toCal, $objUri);
+    }
+
     /** Удалить событие или одно его вхождение ($occurrence — ISO-дата вхождения). */
     public function deleteEvent(string $user, string $calUri, string $objUri, ?string $occurrence = null): void
     {
@@ -664,13 +687,20 @@ class DavStore
      * Занятость сотрудников: только интервалы, без названий (политика компании — занятость видна всем).
      *
      * @param  string[]  $users
-     * @return array<string,array<int,array{start:string,end:string}>>
+     * @return array<string,array<int,array{start:string,end:string}>|null> null — адрес не наш, занятость неизвестна
      */
     public function freeBusy(array $users, DateTimeInterface $from, DateTimeInterface $to): array
     {
         $out = [];
         foreach ($users as $u) {
             $u = strtolower(trim($u));
+            // У чужого адреса календаря здесь нет и быть не может. Пустой список значил бы
+            // «весь день свободен», и внешний участник выглядел готовым к встрече в любое
+            // время. Отвечаем null — «неизвестно», интерфейс так и подписывает эту строку.
+            if (! Mailbox::query()->where('username', $u)->exists()) {
+                $out[$u] = null;
+                continue;
+            }
             $out[$u] = [];
             $instances = DB::table('dav_calendarinstances')->where('principaluri', Server::principal($u))->where('access', 1)->get(['id', 'calendarid']);
             foreach ($instances as $inst) {
