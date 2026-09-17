@@ -161,10 +161,11 @@ final class Structure
         $id = trim((string) ($node[3] ?? ''), '<>');
         $encoding = strtolower((string) ($node[5] ?? ''));
         $size = (int) ($node[6] ?? 0);
-        // У текстовых частей седьмое поле — число строк, у message/rfc822 — конверт и
-        // вложенная структура. Расположение полей после них поэтому разное.
+        // Поля до седьмого у всех частей одинаковые, дальше — по-разному: у текстовой
+        // части идёт число строк, у вложенного письма — конверт, структура и число строк,
+        // и только потом общие поля (контрольная сумма, расположение, язык).
         $shift = $type === 'text' ? 1 : ($type === 'message' && $subtype === 'rfc822' ? 3 : 0);
-        $disp = $node[7 + $shift] ?? null;
+        $disp = $node[8 + $shift] ?? null;
         $disposition = is_array($disp) ? strtolower((string) ($disp[0] ?? '')) : null;
         $dparams = is_array($disp) ? self::pairs($disp[1] ?? null) : [];
 
