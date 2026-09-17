@@ -198,7 +198,7 @@ async function load(page = 1, keepOpen = false, silent = false) {
         const r = await api.list(folder.value, { page, filter: filter.value, q: query.value, sort: sort.value, folders: !silent, scope: everywhere.value ? 'all' : 'folder' });
         // Страница оказалась за концом списка (удалили всё на последней) — показать последнюю существующую.
         if (!r.messages.length && r.page > 1 && r.pages < r.page) return load(Math.max(1, r.pages), keepOpen, silent);
-        list.value = { messages: r.messages, total: r.total, page: r.page, pages: r.pages, everywhere: !!r.everywhere };
+        list.value = { messages: r.messages, total: r.total, page: r.page, pages: r.pages, everywhere: !!r.everywhere, skipped: r.skipped || [] };
         if (r.folders) folders.value = r.folders;
         if (!silent) selected.value = [];
         if (!keepOpen) { open.value = null; cursor.value = null; }

@@ -32,5 +32,7 @@ a:hover { text-decoration: underline; }
 }
 
 .hint  { color: v.$c-muted; font-size: 12.5px; }
+// Подсказка о неполном ответе: тем же размером, но заметным цветом — её легко не увидеть.
+.hint--warn { color: v.$c-warn-ink; }
 .faint { color: v.$c-faint; font-size: 12.5px; }
 .nowrap { white-space: nowrap; }

@@ -81,6 +81,12 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             Найдено {{ list.total }}<template v-if="!everywhere"> в папке «{{ folderName }}»</template><template v-else> во всех папках</template>
             &#183;
             <button type="button" class="linklike" @click="$emit('everywhere', !everywhere)">{{ everywhere ? 'только в этой папке' : 'искать во всех папках' }}</button>
+            <br v-if="list.skipped && list.skipped.length">
+            <span v-if="list.skipped && list.skipped.length" class="hint--warn">
+                <!-- Раньше папка, занятая индексацией, просто не попадала в выдачу, и поиск молча
+                     показывал неполный ответ. Лучше честно назвать, где ещё не искали. -->
+                Не искали в {{ list.skipped.length }} {{ list.skipped.length === 1 ? 'папке' : 'папках' }} ({{ list.skipped.join(', ') }}) — сервер достраивает индекс, повторите через минуту
+            </span>
             <br>операторы: <span class="mono">от:иванов кому:sales тема:счёт есть:вложение после:01.09.2026 до:30.09.2026</span>
         </div>
 

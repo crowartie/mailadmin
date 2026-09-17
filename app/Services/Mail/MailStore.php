@@ -220,13 +220,17 @@ class MailStore
         $paths = array_slice(array_values(array_unique($paths)), 0, 15);
 
         $hits = [];
+        $skipped = [];
         foreach ($paths as $p) {
             try {
                 $q = $this->folder($p)->query()->setFetchBody(false)->setFetchFlags(true);
                 (new SearchQuery($query))->apply($q);
-                $uids = array_map('intval', $q->search()->all());
+                $uids = $this->searchUids($q, $p);
             } catch (\Throwable) {
-                continue;   // папка занята индексацией или недоступна — не роняем весь поиск
+                // Папка занята индексацией или недоступна — не роняем весь поиск,
+                // но и не делаем вид, что там ничего не нашлось: назовём её в ответе.
+                $skipped[] = $this->folderTitle($p);
+                continue;
             }
             rsort($uids);
             foreach (array_slice($uids, 0, 200) as $uid) {
@@ -264,6 +268,7 @@ class MailStore
             'page' => $page,
             'pages' => max(1, (int) ceil($total / self::PAGE)),
             'everywhere' => true,
+            'skipped' => $skipped,
         ];
     }
 
@@ -319,20 +324,7 @@ class MailStore
         if ($searching || $filter !== 'all') {
             // Поиск/фильтр: сервер отдаёт только UID, страницу берём одним FETCH — раньше библиотека
             // тянула и разбирала заголовки всех найденных писем (сотни непрочитанных — секунды).
-            try {
-                $uids = array_map('intval', $q->search()->all());
-            } catch (\Webklex\PHPIMAP\Exceptions\GetMessagesFailedException $e) {
-                // Раньше любая неудача поиска объявлялась индексацией: человек ждал минуту
-                // и получал то же самое. Разбираем, что именно ответил сервер.
-                $why = mb_strtolower($e->getMessage());
-                if (str_contains($why, 'timed out') || str_contains($why, 'timeout') || str_contains($why, 'indexing')) {
-                    throw MailException::busy($searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
-                }
-                if (str_contains($why, 'bad') || str_contains($why, 'parse') || str_contains($why, 'syntax')) {
-                    throw MailException::invalid('Почтовый сервер не понял запрос. Уберите кавычки и спецсимволы или упростите его.');
-                }
-                throw MailException::upstream('Почтовый сервер не смог выполнить поиск: ' . mb_substr($e->getMessage(), 0, 160));
-            }
+            $uids = $this->searchUids($q, $path, $searching);
             rsort($uids);
             $total = count($uids);
             $slice = array_slice($uids, ($page - 1) * self::PAGE, self::PAGE);
@@ -400,6 +392,11 @@ class MailStore
             $r = $conn->requestAndResponse('UID SORT', [$key, 'UTF-8', $criteria]);
             $lines = (array) $r->data();
         } catch (\Throwable) {
+            // Сервер не ответил на SORT — соединение осталось с недочитанным ответом,
+            // и следующая команда получила бы его вместо своего. Поднимаем заново
+            // и работаем по-старому, порядком по внутреннему номеру.
+            $this->reconnect();
+
             return null;
         }
 
@@ -428,6 +425,53 @@ class MailStore
         }
 
         return $uids ?: null;
+    }
+
+    /**
+     * UID писем папки по условиям запроса.
+     *
+     * Папку выбираем явно: поиск идёт по выбранной папке, а порядок сортировки мог
+     * не понадобиться, и тогда SELECT до этого места никто не делал.
+     *
+     * Неудачный поиск обязательно сопровождается переподключением. Когда сервер не
+     * успевает ответить (обычно папка в этот момент индексируется), ответ приходит уже
+     * после того, как библиотека перестала его ждать, и дальше по этому соединению
+     * читаются чужие ответы: «поиск везде» после первой такой папки молча пустел,
+     * а открытое письмо отвечало «BAD No mailbox selected».
+     *
+     * @return int[]
+     */
+    private function searchUids(WhereQuery $q, string $path, bool $searching = true): array
+    {
+        try {
+            $this->client->openFolder($path, true);
+
+            return array_map('intval', $q->search()->all());
+        } catch (\Throwable $e) {
+            $this->reconnect();
+            $why = mb_strtolower($e->getMessage());
+            // «empty response» — библиотека не дождалась ответа: для сервера это та же индексация.
+            if (str_contains($why, 'timed out') || str_contains($why, 'timeout') || str_contains($why, 'indexing') || str_contains($why, 'empty response')) {
+                throw MailException::busy($searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
+            }
+            if (str_contains($why, 'bad') || str_contains($why, 'parse') || str_contains($why, 'syntax')) {
+                throw MailException::invalid('Почтовый сервер не понял запрос. Уберите кавычки и спецсимволы или упростите его.');
+            }
+            throw MailException::upstream('Почтовый сервер не смог выполнить поиск: ' . mb_substr($e->getMessage(), 0, 160));
+        }
+    }
+
+    /** Поднять соединение заново после сбойной команды (см. searchUids). */
+    private function reconnect(): void
+    {
+        try {
+            $this->client->disconnect();
+        } catch (\Throwable) {
+        }
+        try {
+            $this->client->connect();
+        } catch (\Throwable) {
+        }
     }
 
     private function applyFilter(WhereQuery $q, string $filter): WhereQuery
