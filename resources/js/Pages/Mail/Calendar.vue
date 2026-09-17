@@ -384,6 +384,8 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
 <template>
     <Head title="Календарь" />
     <MailLayout :user="user" :theme="settings.theme">
+        <!-- 361: заголовок страницы для экранного диктора; на экране его не видно. -->
+        <h1 class="sr-only">Календарь</h1>
         <div class="mail cal" :class="{ 'mail--read': !!(open || editing) }">
             <nav class="mnav" :class="{ 'mnav--open': navOpen }" aria-label="Календари">
                 <button class="btn btn--primary" type="button" style="margin: 0 0 10px" @click="create()"><Icon name="plus" :size="16" />Событие</button>

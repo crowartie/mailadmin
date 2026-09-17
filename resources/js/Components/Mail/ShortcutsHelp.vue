@@ -1,5 +1,25 @@
 <script setup>
-defineEmits(['close']);
+// Единственное окно почты, которое не закрывалось по Escape: обработчик клавиш в списке
+// писем выходит раньше, если окно открыто, поэтому слушаем сами.
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+
+const emit = defineEmits(['close']);
+const box = ref(null);
+let returnTo = null;
+function onKey(e) {
+    if (e.key === 'Escape') { e.stopPropagation(); emit('close'); }
+}
+onMounted(() => {
+    returnTo = document.activeElement;
+    document.addEventListener('keydown', onKey, true);
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => box.value?.querySelector('button')?.focus(), 30);
+});
+onBeforeUnmount(() => {
+    document.removeEventListener('keydown', onKey, true);
+    document.body.style.overflow = '';
+    if (returnTo && document.contains(returnTo)) returnTo.focus();
+});
 
 const groups = [
     ['Навигация', [['j k', 'следующее / предыдущее письмо'], ['Enter', 'открыть'], ['u', 'к списку'], ['g i', 'Входящие'], ['g s', 'Отправленные'], ['g d', 'Черновики'], ['/', 'поиск']]],
@@ -11,12 +31,12 @@ const groups = [
 
 <template>
     <div class="overlay" @mousedown.self="$emit('close')">
-        <div class="dialog dialog--wide">
-            <h2 style="display: flex; align-items: center; gap: 10px">
+        <div ref="box" class="dialog dialog--wide" role="dialog" aria-modal="true" aria-labelledby="keys-help-title">
+            <h2 id="keys-help-title" style="display: flex; align-items: center; gap: 10px">
                 Горячие клавиши
                 <span class="chip chip--off" style="font-weight: 500">как в Gmail</span>
                 <span style="flex: 1" />
-                <button class="ib" type="button" @click="$emit('close')">✕</button>
+                <button class="ib" type="button" title="Закрыть" aria-label="Закрыть подсказку" @click="$emit('close')">✕</button>
             </h2>
             <div class="keys">
                 <div v-for="[title, items] in groups" :key="title">

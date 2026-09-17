@@ -270,6 +270,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 <template>
     <Head :title="title" />
     <MailLayout :user="user" :theme="settings.theme">
+        <!-- 361: заголовок страницы для экранного диктора; на экране его не видно. -->
+        <h1 class="sr-only">Контакты</h1>
         <div class="mail" :class="{ 'mail--read': mobileRead }">
             <nav class="mnav" :class="{ 'mnav--open': navOpen }" aria-label="Книги">
                 <button class="btn btn--primary" type="button" style="margin: 0 0 10px" @click="create"><Icon name="plus" :size="16" />Новый контакт</button>

@@ -51,9 +51,12 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             <button class="ib" type="button" title="Обновить" @click="$emit('refresh')"><Icon name="refresh" :size="20" /></button>
         </div>
 
-        <form class="mlist__search" @submit.prevent="submitSearch">
+        <!-- 362: подпись внутри поля исчезала после первого же символа, и экранный диктор
+             читал поле как безымянное. -->
+        <form class="mlist__search" role="search" @submit.prevent="submitSearch">
+            <label for="mlist-q" class="sr-only">Поиск по письмам</label>
             <Icon name="search" :size="18" />
-            <input ref="searchInput" v-model="q" type="search" placeholder="Поиск по письмам" @keydown.esc="q = ''; submitSearch()">
+            <input id="mlist-q" ref="searchInput" v-model="q" type="search" placeholder="Поиск по письмам" @keydown.esc="q = ''; submitSearch()">
             <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''; submitSearch()"><Icon name="x" :size="14" /></button>
             <span v-else class="kbd">/</span>
         </form>

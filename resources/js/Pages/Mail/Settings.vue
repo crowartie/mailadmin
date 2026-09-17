@@ -96,7 +96,9 @@ function closeAsk(ok) {
 function say(text, error = false) {
     clearTimeout(toastTimer);
     toast.value = { text, error };
-    toastTimer = setTimeout(() => { toast.value = null; }, error ? 6000 : 3000);
+    // Ошибку не прячем по таймеру: длинное сообщение исчезало раньше, чем его дочитывали,
+    // и вернуть его было нечем. Закрывает человек — крестиком.
+    if (!error) toastTimer = setTimeout(() => { toast.value = null; }, 3000);
 }
 
 /**

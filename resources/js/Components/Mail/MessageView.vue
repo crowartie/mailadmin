@@ -29,6 +29,9 @@ const key = (m) => m.folder + '#' + m.uid;
 // 76: подсказка обещает клавишу, только если горячие клавиши включены.
 const keysOn = computed(() => props.settings.shortcuts !== false);
 const tip = (text, k) => (keysOn.value ? `${text} (${k})` : text);
+// 381: значки помечены aria-hidden, поэтому кнопке нужно собственное имя —
+// иначе панель действий читается как набор безымянных кнопок.
+const btn = (text, k) => ({ title: tip(text, k), 'aria-label': text });
 
 // 68: автоматические адреса. Ответ на них не прочитает никто, а быстрый ответ
 // выглядит как обычный разговор — предупреждаем прямо в месте ответа.
@@ -138,31 +141,31 @@ const isDraft = computed(() => props.folderRole === 'drafts');
 
 <template>
     <div class="mread__bar">
-        <button class="ib mobile-only" type="button" title="К списку" style="display: none" @click="$emit('back')"><Icon name="back" :size="18" /></button>
+        <button class="ib mobile-only" type="button" title="К списку" aria-label="К списку писем" style="display: none" @click="$emit('back')"><Icon name="back" :size="18" /></button>
         <template v-if="isDraft">
             <button class="ib" type="button" @click="$emit('reply', 'draft', message)"><Icon name="edit" :size="16" />Продолжить черновик</button>
         </template>
         <template v-else>
             <button class="ib ib--keep" type="button" :title="noReply ? 'Отправитель — автоматический адрес, ответ, скорее всего, никто не прочитает' : tip('Ответить', 'r')" @click="$emit('reply', settings.reply_all ? 'replyAll' : 'reply', message)"><Icon name="reply" :size="16" />Ответить</button>
-            <button class="ib" type="button" :title="tip('Ответить всем', 'a')" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
-            <button class="ib" type="button" :title="tip('Переслать', 'f')" @click="$emit('reply', 'forward', message)"><Icon name="fwd" :size="16" />Переслать</button>
+            <button class="ib" type="button" v-bind="btn('Ответить всем', 'a')" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
+            <button class="ib" type="button" v-bind="btn('Переслать', 'f')" @click="$emit('reply', 'forward', message)"><Icon name="fwd" :size="16" />Переслать</button>
             <button v-if="folderRole === 'sent'" class="ib" type="button" title="Изменить как новое: открыть копию письма с теми же получателями, темой, текстом и вложениями" @click="$emit('reply', 'again', message)"><Icon name="edit" :size="16" />Как новое</button>
             <button class="ib ib--wide" type="button" title="Назначить встречу по этому письму" @click="$emit('meeting', message)"><Icon name="cal" :size="16" />Встреча</button>
         </template>
         <span class="sep" />
-        <button class="ib" type="button" :title="tip('Архив', 'e')" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" /></button>
-        <button class="ib" type="button" :title="tip('В папку', 'v')" @click="$emit('context', $event, message.uid, 'move')"><Icon name="folder" :size="17" /></button>
-        <button class="ib" type="button" :title="tip('Метка', 'l')" @click="$emit('context', $event, message.uid, 'label')"><Icon name="tag" :size="17" /></button>
-        <button class="ib" type="button" :title="tip('Отложить', 'z')" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" /></button>
-        <button class="ib" type="button" :class="{ 'ib--on': message.flagged }" :title="tip('Флажок', 's')" @click="$emit('act', message.flagged ? 'unflag' : 'flag', [message.uid])"><Icon name="flag" :size="17" /></button>
+        <button class="ib" type="button" v-bind="btn('Архив', 'e')" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" /></button>
+        <button class="ib" type="button" v-bind="btn('В папку', 'v')" @click="$emit('context', $event, message.uid, 'move')"><Icon name="folder" :size="17" /></button>
+        <button class="ib" type="button" v-bind="btn('Метка', 'l')" @click="$emit('context', $event, message.uid, 'label')"><Icon name="tag" :size="17" /></button>
+        <button class="ib" type="button" v-bind="btn('Отложить', 'z')" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" /></button>
+        <button class="ib" type="button" :class="{ 'ib--on': message.flagged }" v-bind="btn('Флажок', 's')" @click="$emit('act', message.flagged ? 'unflag' : 'flag', [message.uid])"><Icon name="flag" :size="17" /></button>
         <span class="grow" />
-        <button class="ib" type="button" title="Печать" @click="print"><Icon name="print" :size="17" /></button>
-        <button class="ib" type="button" title="Ещё" @click="$emit('context', $event, message.uid, 'more')"><Icon name="dots" :size="17" /></button>
+        <button class="ib" type="button" title="Печать" aria-label="Печать" @click="print"><Icon name="print" :size="17" /></button>
+        <button class="ib" type="button" title="Ещё" aria-label="Ещё действия" @click="$emit('context', $event, message.uid, 'more')"><Icon name="dots" :size="17" /></button>
         <!-- Опасные действия — отдельной группой у правого края, подальше от «Ответить»: иначе промахи по корзинке (обращение №12). -->
         <span class="sep" />
-        <button v-if="folderRole !== 'spam'" class="ib" type="button" :title="tip('Спам', '!')" @click="$emit('act', 'spam', [message.uid])"><Icon name="spam" :size="17" /></button>
+        <button v-if="folderRole !== 'spam'" class="ib" type="button" v-bind="btn('Спам', '!')" @click="$emit('act', 'spam', [message.uid])"><Icon name="spam" :size="17" /></button>
         <button v-else class="ib" type="button" title="Не спам" @click="$emit('act', 'notspam', [message.uid])"><Icon name="inbox" :size="17" />Не спам</button>
-        <button class="ib ib--danger" type="button" :title="tip('Удалить', '#')" @click="$emit('act', 'delete', [message.uid])"><Icon name="trash" :size="17" />Удалить</button>
+        <button class="ib ib--danger" type="button" v-bind="btn('Удалить', '#')" @click="$emit('act', 'delete', [message.uid])"><Icon name="trash" :size="17" />Удалить</button>
     </div>
 
     <div class="mread__scroll">

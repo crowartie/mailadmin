@@ -24,9 +24,9 @@
     &--primary {
         background: v.$c-accent;
         border-color: v.$c-accent;
-        color: #fff;
+        color: v.$c-accent-on;
 
-        &:hover { background: #2a63d4; }
+        &:hover { background: v.$c-accent-hover; border-color: v.$c-accent-hover; }
     }
 
     &--danger {

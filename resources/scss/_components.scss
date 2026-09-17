@@ -38,7 +38,8 @@
     &__name { font-weight: 600; }
     &__sub { font-size: 12.5px; color: v.$c-muted; }
     &__actions { display: flex; gap: 6px; justify-content: flex-end; opacity: 0; transition: opacity .1s; }
-    &--link:hover &__actions { opacity: 1; }
+    // Правило было написано только под мышь: с клавиатуры до этих кнопок было не добраться.
+    &--link:hover &__actions, &:focus-within &__actions { opacity: 1; }
 }
 
 .avatar {
@@ -55,7 +56,7 @@
     flex: 0 0 36px;
 
     &--lg { width: 44px; height: 44px; font-size: 15px; flex-basis: 44px; }
-    &--off { background: #EDF0F4; color: v.$c-faint; }
+    &--off { background: v.$c-chip-off; color: v.$c-faint; }
 }
 
 .kv {
@@ -94,17 +95,19 @@
 .chip {
     display: inline-flex;
     align-items: center;
-    height: 24px;
+    min-height: 24px;
+    padding-block: 2px;
     padding: 0 10px;
     border-radius: 999px;
     font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
 
-    &--ok   { background: v.$c-ok-soft;     color: v.$c-ok; }
-    &--off  { background: #EDF0F4;          color: v.$c-muted; }
-    &--warn { background: v.$c-warn-soft;   color: v.$c-warn; }
-    &--no   { background: v.$c-no-soft;     color: v.$c-no; }
+    // Текст на мягкой плашке — отдельным тоном: сам цвет состояния давал на ней 2.8–2.9.
+    &--ok   { background: v.$c-ok-soft;     color: v.$c-ok-ink; }
+    &--off  { background: v.$c-chip-off;    color: v.$c-muted; }
+    &--warn { background: v.$c-warn-soft;   color: v.$c-warn-ink; }
+    &--no   { background: v.$c-no-soft;     color: v.$c-no-ink; }
     &--acc  { background: v.$c-accent-soft; color: v.$c-accent-ink; font-weight: 500; }
 }
 
@@ -119,7 +122,7 @@
     background: v.$c-accent-soft;
     color: v.$c-accent-ink;
 
-    &--off { background: #EDF0F4; color: v.$c-faint; text-decoration: line-through; }
+    &--off { background: v.$c-chip-off; color: v.$c-muted; text-decoration: line-through; }
 }
 
 .tags { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -193,9 +196,9 @@
     &:hover { background: v.$c-surface-2; text-decoration: none; }
     &:disabled { opacity: .55; cursor: default; }
 
-    &--primary { background: v.$c-accent; border-color: v.$c-accent; color: #fff; }
-    &--primary:hover { background: v.$c-accent-ink; }
-    &--danger { color: v.$c-no; border-color: #F2C9C4; }
+    &--primary { background: v.$c-accent; border-color: v.$c-accent; color: v.$c-accent-on; }
+    &--primary:hover { background: v.$c-accent-hover; border-color: v.$c-accent-hover; }
+    &--danger { color: v.$c-no-ink; border-color: v.$c-no-line; }
     &--danger:hover { background: v.$c-no-soft; }
     &--sm { height: 34px; padding: 0 12px; font-size: 13px; }
     &--icon { padding: 0; width: 34px; }
@@ -436,7 +439,7 @@ select.input { padding-right: 32px; }
     padding: 10px 12px;
     font-size: 12.5px;
 
-    > div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+    > div { display: grid; grid-template-columns: minmax(130px, max-content) minmax(0, 1fr); gap: 10px; align-items: baseline; }
     span { color: v.$c-muted; }
     b { font-weight: 600; overflow-wrap: anywhere; }
 }
@@ -601,7 +604,7 @@ select.input { padding-right: 32px; }
         overflow-wrap: anywhere;
         font-size: 13.5px;
 
-        &--me { align-self: flex-end; background: v.$c-accent; color: #fff; border-bottom-right-radius: 4px; }
+        &--me { align-self: flex-end; background: v.$c-accent; color: v.$c-accent-on; border-bottom-right-radius: 4px; }
         &--them { align-self: flex-start; background: v.$c-surface; border: 1px solid v.$c-border; border-bottom-left-radius: 4px; }
         &--sys { align-self: center; max-width: 86%; background: v.$c-surface; border: 1px dashed v.$c-border-2; text-align: center; font-size: 12.5px; color: v.$c-muted; border-radius: 10px; }
     }

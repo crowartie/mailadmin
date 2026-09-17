@@ -136,6 +136,9 @@
         padding: 0 14px;
         color: v.$c-faint;
 
+        // 364: обводку сняли, но ничем не заменили — с клавиатуры не видно, где поиск.
+        &:focus-within { border-color: v.$c-accent; box-shadow: 0 0 0 3px v.$c-accent-soft; }
+
         input {
             flex: 1;
             border: none;
@@ -193,8 +196,9 @@
 
 .flash {
     background: v.$c-ok-soft;
-    border: 1px solid rgba(22, 160, 92, .3);
-    color: #128A4F;
+    border: 1px solid v.$c-ok;
+    // Зашитый светло-зелёный на тёмной теме давал 3.25.
+    color: v.$c-ok-ink;
     padding: 10px 16px;
     border-radius: v.$r-control;
     margin: 0 28px;

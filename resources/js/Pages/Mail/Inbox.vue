@@ -65,6 +65,8 @@ const menu = ref(null);      // { kind, x, y, uids, folder, label }
 const toast = ref(null);
 const dialog = ref(null);    // { kind, ... }
 const help = ref(false);
+// Фокус в окно «Это спам» и Escape для него: см. watch ниже.
+const senderBox = ref(null);
 const mobileRead = ref(false);
 const navOpen = ref(false);
 const outboxCount = ref(props.outbox);
@@ -490,6 +492,26 @@ const nowInput = computed(() => {
 // Смена папки отложенное действие не выполняет досрочно: таймер идёт дальше, «Отменить» работает и из другой папки
 // (сервер ещё ничего не делал, папка действия запомнена в pendingAct).
 watch(folder, () => { lastUidnext = null; updateTitle(); });
+
+// 368: у окна «Это спам / Это рассылка» не было ни Escape, ни автофокуса — в отличие
+// от общего диалога. Обработчик клавиш списка писем при открытом окне выходит раньше,
+// поэтому Escape ловим здесь.
+let senderReturnTo = null;
+function onSenderKey(e) {
+    if (e.key === 'Escape') { e.stopPropagation(); dialog.value = null; }
+}
+watch(() => dialog.value?.kind === 'sender', async (on) => {
+    if (on) {
+        senderReturnTo = document.activeElement;
+        document.addEventListener('keydown', onSenderKey, true);
+        await nextTick();
+        senderBox.value?.querySelector('button')?.focus();
+    } else {
+        document.removeEventListener('keydown', onSenderKey, true);
+        if (senderReturnTo && document.contains(senderReturnTo)) senderReturnTo.focus();
+        senderReturnTo = null;
+    }
+});
 function folderContext(e, f) {
     menu.value = { kind: 'folder', x: e.clientX, y: e.clientY, folder: f };
 }
@@ -861,6 +883,9 @@ onBeforeUnmount(() => {
 <template>
     <Head :title="folderName + (folderInfo.unread ? ` (${folderInfo.unread})` : '')" />
     <MailLayout :user="user" :theme="settings.theme">
+        <!-- 361: экранный диктор не сообщал, какая это страница — заголовка не было вовсе.
+             Показывать его незачем: название папки и так видно над списком. -->
+        <h1 class="sr-only">Почта — {{ folderName }}</h1>
         <div class="mail" :class="{ 'mail--read': mobileRead, 'mail--resizing': resizing }" :style="colStyle">
             <FolderNav
                 :class="{ 'mnav--open': navOpen }"
@@ -1071,9 +1096,11 @@ onBeforeUnmount(() => {
         </Popover>
 
         <!-- Диалоги -->
+        <!-- 368: своё окно вело себя не как общий диалог — не закрывалось по Escape
+             и не ставило фокус на первую кнопку. -->
         <div v-if="dialog && dialog.kind === 'sender'" class="overlay" @mousedown.self="dialog = null">
-            <div class="dialog">
-                <h2>{{ dialog.what === 'folder' ? 'В папку «' + dialog.folder.name + '»' : SENDER_TITLE[dialog.what] }}</h2>
+            <div ref="senderBox" class="dialog" role="dialog" aria-modal="true" aria-labelledby="sender-dlg-title">
+                <h2 id="sender-dlg-title">{{ dialog.what === 'folder' ? 'В папку «' + dialog.folder.name + '»' : SENDER_TITLE[dialog.what] }}</h2>
                 <p class="hint" style="margin: 0 0 12px">
                     <template v-if="dialog.what === 'folder'">Письмо перемещено. Класть в «{{ dialog.folder.name }}» все письма от этого отправителя — и те, что придут потом?</template>
                     <template v-else-if="dialog.what === 'ham'">Письмо вернулось во «Входящие». Чтобы фильтр больше не задерживал такие письма, добавьте отправителя в исключения:</template>
