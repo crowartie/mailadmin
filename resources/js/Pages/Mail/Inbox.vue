@@ -763,6 +763,11 @@ async function quickReply({ text, message: m, done }) {
 }
 
 /** «Встреча» из письма: событие с темой письма и всеми участниками переписки. */
+/** Печатная форма письма — та же, что по кнопке «Печать» в панели действий. */
+function printOpen(m) {
+    if (m) window.open(`/mail/print/${encodeURIComponent(m.folder)}/${m.uid}`, '_blank');
+}
+
 function meetingFrom(m) {
     const people = [m.from, ...(m.to || []), ...(m.cc || [])].map((a) => a.mail).filter((x) => x && !me({ mail: x }));
     const p = new URLSearchParams({ new: '1', title: m.subject === '(без темы)' ? '' : m.subject, attendees: [...new Set(people)].join(','), description: (m.text || '').slice(0, 800) });
@@ -1082,6 +1087,16 @@ onBeforeUnmount(() => {
         </Popover>
 
         <Popover v-if="menu && menu.kind === 'more'" :x="menu.x" :y="menu.y" @close="menu = null">
+            <!-- 341: на телефоне панель действий письма не вмещала все кнопки, поэтому
+                 те, что там спрятаны, добавлены сюда — на широком экране они не показываются. -->
+            <template v-if="open && menu.uids.length === 1 && menu.uids[0] === open.uid">
+                <button class="pop__item mobile-only" type="button" @click="menu = null; startCompose('replyAll', open)"><Icon name="replyall" :size="16" />Ответить всем</button>
+                <button class="pop__item mobile-only" type="button" @click="menu = null; meetingFrom(open)"><Icon name="cal" :size="16" />Назначить встречу</button>
+                <button class="pop__item mobile-only" type="button" @click="menu = { ...menu, kind: 'label' }"><Icon name="tag" :size="16" />Метка…</button>
+                <button class="pop__item mobile-only" type="button" @click="menu = { ...menu, kind: 'snooze' }"><Icon name="clock" :size="16" />Отложить…</button>
+                <button class="pop__item mobile-only" type="button" @click="menu = null; printOpen(open)"><Icon name="print" :size="16" />Печать</button>
+                <div class="pop__sep mobile-only" />
+            </template>
             <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Пометить непрочитанным</button>
             <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'remind' }"><Icon name="bell" :size="16" />Напомнить, если не ответят…</button>
             <!-- Оба пункта работают с одним письмом: при выделенной пачке честно говорим, с каким именно. -->

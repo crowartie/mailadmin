@@ -135,6 +135,19 @@ XML;
     {
         $h = $this->hosts();
         $email = $this->emailFrom($request);
+        if ($email === '') {
+            // Без адреса профиль собирался пустым: телефон его ставил, а почта не работала,
+            // и понять почему было нельзя. Отправляем туда, где адрес спрашивают.
+            $where = 'https://' . $h['web'] . '/mail/setup';
+            $text = implode("\n", [
+                'Профиль настраивается под конкретный ящик, а адрес не указан.',
+                '',
+                'Откройте на устройстве ' . $where . ', введите свой адрес и нажмите «Установить профиль».',
+                '',
+            ]);
+
+            return response($text, 400, ['Content-Type' => 'text/plain; charset=utf-8']);
+        }
         $e = htmlspecialchars($email, ENT_XML1);
         $name = htmlspecialchars($email ? (Mailbox::query()->where('username', $email)->value('name') ?: $email) : '', ENT_XML1);
         $uuid = fn (string $s) => strtoupper(substr(md5($h['domain'] . $s . $email), 0, 8) . '-' . substr(md5($s), 0, 4) . '-4' . substr(md5($s . '1'), 0, 3) . '-A' . substr(md5($s . '2'), 0, 3) . '-' . substr(md5($s . '3'), 0, 12));

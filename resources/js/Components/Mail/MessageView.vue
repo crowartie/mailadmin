@@ -147,19 +147,22 @@ const isDraft = computed(() => props.folderRole === 'drafts');
         </template>
         <template v-else>
             <button class="ib ib--keep" type="button" :title="noReply ? 'Отправитель — автоматический адрес, ответ, скорее всего, никто не прочитает' : tip('Ответить', 'r')" @click="$emit('reply', settings.reply_all ? 'replyAll' : 'reply', message)"><Icon name="reply" :size="16" />Ответить</button>
-            <button class="ib" type="button" v-bind="btn('Ответить всем', 'a')" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
+            <!-- 341: на телефоне одиннадцать кнопок не помещались в строку, панель
+                 переносилась, и флажок оказывался один на второй строке. Кнопки пореже
+                 помечены desktop-only и на узком экране живут в меню «Ещё». -->
+            <button class="ib desktop-only" type="button" v-bind="btn('Ответить всем', 'a')" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
             <button class="ib" type="button" v-bind="btn('Переслать', 'f')" @click="$emit('reply', 'forward', message)"><Icon name="fwd" :size="16" />Переслать</button>
-            <button v-if="folderRole === 'sent'" class="ib" type="button" title="Изменить как новое: открыть копию письма с теми же получателями, темой, текстом и вложениями" @click="$emit('reply', 'again', message)"><Icon name="edit" :size="16" />Как новое</button>
-            <button class="ib ib--wide" type="button" title="Назначить встречу по этому письму" @click="$emit('meeting', message)"><Icon name="cal" :size="16" />Встреча</button>
+            <button v-if="folderRole === 'sent'" class="ib desktop-only" type="button" title="Изменить как новое: открыть копию письма с теми же получателями, темой, текстом и вложениями" @click="$emit('reply', 'again', message)"><Icon name="edit" :size="16" />Как новое</button>
+            <button class="ib ib--wide desktop-only" type="button" title="Назначить встречу по этому письму" @click="$emit('meeting', message)"><Icon name="cal" :size="16" />Встреча</button>
         </template>
         <span class="sep" />
         <button class="ib" type="button" v-bind="btn('Архив', 'e')" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" /></button>
         <button class="ib" type="button" v-bind="btn('В папку', 'v')" @click="$emit('context', $event, message.uid, 'move')"><Icon name="folder" :size="17" /></button>
-        <button class="ib" type="button" v-bind="btn('Метка', 'l')" @click="$emit('context', $event, message.uid, 'label')"><Icon name="tag" :size="17" /></button>
-        <button class="ib" type="button" v-bind="btn('Отложить', 'z')" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" /></button>
+        <button class="ib desktop-only" type="button" v-bind="btn('Метка', 'l')" @click="$emit('context', $event, message.uid, 'label')"><Icon name="tag" :size="17" /></button>
+        <button class="ib desktop-only" type="button" v-bind="btn('Отложить', 'z')" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" /></button>
         <button class="ib" type="button" :class="{ 'ib--on': message.flagged }" v-bind="btn('Флажок', 's')" @click="$emit('act', message.flagged ? 'unflag' : 'flag', [message.uid])"><Icon name="flag" :size="17" /></button>
         <span class="grow" />
-        <button class="ib" type="button" title="Печать" aria-label="Печать" @click="print"><Icon name="print" :size="17" /></button>
+        <button class="ib desktop-only" type="button" title="Печать" aria-label="Печать" @click="print"><Icon name="print" :size="17" /></button>
         <button class="ib" type="button" title="Ещё" aria-label="Ещё действия" @click="$emit('context', $event, message.uid, 'more')"><Icon name="dots" :size="17" /></button>
         <!-- Опасные действия — отдельной группой у правого края, подальше от «Ответить»: иначе промахи по корзинке (обращение №12). -->
         <span class="sep" />
