@@ -74,6 +74,24 @@ class MimeTest extends TestCase
         $this->assertCount(7, $two);
     }
 
+    /**
+     * Обёртки в MailStore должны принимать ровно то же, что и сами функции разбора:
+     * однажды у attachmentName пропало значение по умолчанию, и скачивание любого
+     * вложения падало — контроллер зовёт её с одним доводом.
+     */
+    public function test_обёртки_повторяют_подписи_разбора(): void
+    {
+        foreach (['attachmentName', 'messageIds', 'address'] as $name) {
+            $wrapper = new \ReflectionMethod(\App\Services\Mail\MailStore::class, $name);
+            $real = new \ReflectionMethod(Mime::class, $name);
+            $this->assertSame(
+                $real->getNumberOfRequiredParameters(),
+                $wrapper->getNumberOfRequiredParameters(),
+                "у обёртки {$name} другое число обязательных доводов"
+            );
+        }
+    }
+
     /** Отказ почтового сервера объясняем словами, а не английским хвостом протокола. */
     public function test_причина_отказа(): void
     {
