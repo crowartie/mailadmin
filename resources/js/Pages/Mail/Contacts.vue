@@ -24,8 +24,10 @@ const props = defineProps({
 const books = ref(props.books);
 const all = ref(props.contacts);            // все карточки всех книг; фильтруем на клиенте
 const filter = ref(props.book || 'all');    // all | favorites | <book uri> | group:<name>
+const q = ref(props.query || '');
 // 267: страница, открытая по адресу с ?q=, получала с сервера уже отобранный набор,
 // и очистка строки поиска не возвращала остальные карточки — фильтровать было нечего.
+// Наблюдатель обязан стоять ПОСЛЕ объявления q, иначе страница падает на загрузке.
 let serverQuery = props.query || '';
 watch(q, async (v) => {
     if (serverQuery && !String(v).trim()) {
@@ -34,7 +36,6 @@ watch(q, async (v) => {
         await reload(false);
     }
 });
-const q = ref(props.query || '');
 const open = ref(null);
 const editing = ref(null);
 const menu = ref(null);
