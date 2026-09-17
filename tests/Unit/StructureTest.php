@@ -33,8 +33,9 @@ class StructureTest extends TestCase
 
         $this->assertSame(['1', '2'], array_column($parts, 'no'));
         $this->assertSame(['text/plain', 'text/html'], array_column($parts, 'mime'));
-        // base64 раздувает данные на треть: человеку показываем размер самого текста.
-        $this->assertSame(300, $parts[0]['size']);
+        // base64 раздувает данные на треть, да ещё ставит перевод строки каждые 76 знаков:
+        // человеку показываем размер самого текста, а не части письма.
+        $this->assertSame(292, $parts[0]['size']);
         $this->assertSame(400, $parts[0]['rawSize']);
         $this->assertCount(2, Structure::bodyParts($parts));
         $this->assertSame([], Structure::attachments($parts));
@@ -52,7 +53,7 @@ class StructureTest extends TestCase
         $this->assertSame('2', $att[0]['no']);
         $this->assertSame('Счёт.pdf', $att[0]['name'], 'имя приходит закодированным — показываем человеческое');
         $this->assertSame('application/pdf', $att[0]['mime']);
-        $this->assertSame(30000, $att[0]['size']);
+        $this->assertSame(29232, $att[0]['size'], 'из размера части вычтены переводы строк base64');
         $this->assertSame('attachment', $att[0]['disposition']);
     }
 
