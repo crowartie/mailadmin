@@ -66,6 +66,48 @@ export function initials(name, mail) {
     return s.toUpperCase();
 }
 
+/**
+ * Оттенок кружка по адресу: у человека он всегда один и тот же, так что письма
+ * от одного отправителя видно, не читая имени. Раньше все кружки были одного цвета.
+ * Берём остаток от суммы кодов — этого достаточно, чтобы соседние адреса разошлись.
+ */
+export function hue(mail) {
+    const s = String(mail || '').toLowerCase();
+    let n = 0;
+    for (let i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) % 360;
+    // Жёлто-зелёный угол (70–110°) на светлом фоне читается плохо — сдвигаем мимо него.
+    return n >= 70 && n < 110 ? n + 60 : n;
+}
+
+const MONTHS_OF = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+/**
+ * Название группы для разделителя в списке: «Сегодня», «Вчера», «На этой неделе»,
+ * «На прошлой неделе», дальше — месяц. Дата в строке остаётся, но искать её глазами
+ * по правому краю больше не нужно.
+ */
+export function dayGroup(iso) {
+    if (!iso) return 'Без даты';
+    const d = new Date(iso);
+    if (isNaN(d)) return 'Без даты';
+    const day0 = (x) => { const y = new Date(x); y.setHours(0, 0, 0, 0); return y; };
+    const today = day0(new Date());
+    const that = day0(d);
+    const days = Math.round((today - that) / 86400000);
+    if (days === 0) return 'Сегодня';
+    if (days === 1) return 'Вчера';
+    if (days < 0) return 'Позже';
+    // Неделя считается от понедельника, как её считают у нас, а не от воскресенья.
+    const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    if (that >= monday) return 'На этой неделе';
+    const prev = new Date(monday); prev.setDate(monday.getDate() - 7);
+    if (that >= prev) return 'На прошлой неделе';
+    const now = new Date();
+    const month = MONTHS_OF[d.getMonth()];
+    const name = month.charAt(0).toUpperCase() + month.slice(1);
+    return d.getFullYear() === now.getFullYear() ? name : name + ' ' + d.getFullYear();
+}
+
 export function plural(n, one, few, many) {
     const m10 = n % 10; const m100 = n % 100;
     if (m10 === 1 && m100 !== 11) return one;

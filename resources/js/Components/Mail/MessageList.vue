@@ -2,7 +2,7 @@
 // Средняя колонка: поиск, фильтры, панель массовых действий, строки писем, страницы.
 import { computed, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
-import { initials, plural, when } from '../../mail/format';
+import { dayGroup, hue, initials, plural, when } from '../../mail/format';
 
 const props = defineProps({
     list: { type: Object, required: true },
@@ -23,6 +23,18 @@ const props = defineProps({
     loading: Boolean,
 });
 const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'page', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
+
+/**
+ * Подпись группы перед строкой письма — «Сегодня», «Вчера», «Сентябрь».
+ * Показываем только когда список идёт по времени: при сортировке по отправителю
+ * или размеру разделители по датам врали бы.
+ */
+function groupLabel(i) {
+    if (props.sort !== 'date' && props.sort !== 'date-asc') return '';
+    const rows = props.list.messages || [];
+    const now = dayGroup(rows[i]?.date);
+    return i === 0 || now !== dayGroup(rows[i - 1]?.date) ? now : '';
+}
 
 // 333: режим выбора на телефоне — галочки показываются, тап по строке отмечает письмо,
 // а не открывает его. На большом экране галочки видны всегда, и режим не нужен.
@@ -128,9 +140,9 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         </div>
 
         <div class="mlist__rows" :style="loading ? 'opacity:.6' : ''">
+            <template v-for="(m, i) in list.messages" :key="m.uid">
+            <div v-if="groupLabel(i)" class="mlist__day">{{ groupLabel(i) }}</div>
             <div
-                v-for="m in list.messages"
-                :key="m.uid"
                 class="mrow"
                 :class="{
                     'mrow--unread': !m.seen,
@@ -158,7 +170,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                 <span class="mrow__dot" />
                 <!-- В «Отправленных» и «Черновиках» рядом стоит имя получателя — буквы берём оттуда же,
                      иначе кружок и подпись противоречат друг другу. -->
-                <span class="mrow__av">{{ (folderRole === 'sent' || folderRole === 'drafts') && m.toName ? initials(m.toName, '') : initials(m.from.name, m.from.mail) }}</span>
+                <span class="mrow__av" :style="{ '--av-h': hue(folderRole === 'sent' || folderRole === 'drafts' ? (m.toMail || m.from.mail) : m.from.mail) }">{{ (folderRole === 'sent' || folderRole === 'drafts') && m.toName ? initials(m.toName, '') : initials(m.from.name, m.from.mail) }}</span>
                 <span class="mrow__body">
                     <span class="mrow__from">
                         <b :title="m.from.mail">{{ folderRole === 'sent' || folderRole === 'drafts' ? (m.toName || m.from.name) : m.from.name }}</b>
@@ -173,7 +185,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                     <span v-if="m.preview" class="mrow__prev">{{ m.preview }}</span>
                 </span>
                 <span class="mrow__when">
-                    <span style="display: flex; gap: 6px; align-items: center">
+                    <span class="mrow__when-icons">
                         <Icon v-if="m.hasAttachments" name="clip" :size="13" />
                         <span v-if="m.flagged" class="mrow__star mrow__star--on"><Icon name="flag" :size="13" /></span>
                     </span>
@@ -187,6 +199,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                     <button class="ib ib--sm" type="button" title="Отложить" @click.stop="$emit('context', $event, m.uid, 'snooze')" aria-label="Отложить"><Icon name="clock" :size="15" /></button>
                 </span>
             </div>
+            </template>
             <div v-if="!list.messages.length && !loading" class="empty" style="padding-top: 60px">
                 {{ query ? 'Ничего не найдено' : filter !== 'all' ? 'Таких писем нет' : 'В этой папке пусто' }}
             </div>

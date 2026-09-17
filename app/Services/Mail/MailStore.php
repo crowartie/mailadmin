@@ -714,8 +714,10 @@ class MailStore
             }
         }
         $subject = trim((string) Charset::header($h['subject'] ?? ''));
-        $from = Mime::firstAddress($h['from'] ?? '');
-        $to = Mime::firstAddress($h['to'] ?? '');
+        // Тот же подхват имени из общей книги, что и в summary(): этот путь собирает
+        // строку списка напрямую из заголовков, минуя объект письма.
+        $from = ($f = Mime::firstAddress($h['from'] ?? '')) ? Directory::fill($f) : null;
+        $to = ($t = Mime::firstAddress($h['to'] ?? '')) ? Directory::fill($t) : null;
         $date = null;
         foreach ([$h['date'] ?? null, $row['INTERNALDATE'] ?? null] as $raw) {
             if ($raw === null || trim((string) $raw) === '') {
@@ -821,8 +823,10 @@ class MailStore
         return [
             'uid' => $message->getUid(),
             'subject' => $subject !== '' ? $subject : '(без темы)',
-            'from' => $from ? Mime::address($from->personal, $from->mail) : ['name' => '—', 'mail' => ''],
-            'toName' => $to ? Mime::address($to->personal, $to->mail)['name'] : null,
+            // Если отправитель не подписался именем, берём его из общей книги сотрудников:
+            // иначе в списке стоит «popovav@innotec.su» вместо «Попов Андрей Викторович».
+            'from' => $from ? Directory::fill(Mime::address($from->personal, $from->mail)) : ['name' => '—', 'mail' => ''],
+            'toName' => $to ? Directory::fill(Mime::address($to->personal, $to->mail))['name'] : null,
             'date' => $date ? $date->toIso8601String() : null,
             'seen' => $flags->has('seen'),
             'flagged' => $flags->has('flagged'),
@@ -1626,7 +1630,7 @@ class MailStore
         $out = [];
         // Attribute — только ArrayAccess, не итератор: перебираем через toArray().
         foreach (($attribute ? $attribute->toArray() : []) as $a) {
-            $out[] = Mime::address($a->personal, $a->mail);
+            $out[] = Directory::fill(Mime::address($a->personal, $a->mail));
         }
 
         return $out;
