@@ -309,8 +309,9 @@ final class Structure
     /** Достать из ответа тело части: библиотека кладёт его отдельным куском после «BODY[…]». */
     private static function payload(mixed $response): ?string
     {
+        $rows = (array) $response;
         $flat = [];
-        array_walk_recursive((array) $response, function ($x) use (&$flat) {
+        array_walk_recursive($rows, function ($x) use (&$flat) {
             $flat[] = (string) $x;
         });
         // Первая строка ответа приходит целиком: «* 5 FETCH (UID 7 BODY[1] {1234}»,
