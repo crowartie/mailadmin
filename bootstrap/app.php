@@ -31,6 +31,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->replace(\Illuminate\Http\Middleware\TrustProxies::class, \App\Http\Middleware\TrustProxies::class);
         // DAV-клиенты (телефон, Outlook) токенов CSRF не знают — авторизация там своя, Basic.
         $middleware->validateCsrfTokens(except: ['dav', 'dav/*', 'autodiscover/*', 'Autodiscover/*', '.well-known/*']);
+        // Зону проверяем раньше всего: Laravel сам двигает «auth» в начало цепочки,
+        // и без этого запрос админского адреса через порт веб-почты заводил сессию и уводил
+        // на страницу входа вместо честного «такого адреса здесь нет».
+        $middleware->prependToPriorityList(
+            \Illuminate\Session\Middleware\StartSession::class,
+            EnsureArea::class,
+        );
         $middleware->alias([
             'area' => EnsureArea::class,
             '2fa' => EnsureTwoFactorVerified::class,
