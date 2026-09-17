@@ -16,11 +16,14 @@ class SuggestController extends Controller
     public function __invoke(Request $request, ImapSession $imap, DavStore $store): JsonResponse
     {
         $q = mb_strtolower(trim((string) $request->query('q', '')));
+        // % и _ в LIKE — шаблоны: запрос «%» выдавал всех подряд, а «_» — любую букву.
+        // Экранируем, чтобы человек искал ровно то, что набрал.
+        $like = addcslashes($q, '%_\\');
         $out = [];
 
         if (mb_strlen($q) >= 1) {
             $employees = Mailbox::query()->where('domain', $imap->domain())->where('active', 1)
-                ->where(fn ($w) => $w->where('username', 'like', "%{$q}%")->orWhere('name', 'like', "%{$q}%"))
+                ->where(fn ($w) => $w->where('username', 'like', "%{$like}%")->orWhere('name', 'like', "%{$like}%"))
                 ->orderBy('name')->limit(8)->get(['username', 'name', 'recovery_email']);
             $personal = \App\Models\EmployeeProfile::query()->whereIn('username', $employees->pluck('username'))->pluck('personal_email', 'username');
             foreach ($employees as $e) {
@@ -41,13 +44,17 @@ class SuggestController extends Controller
             }
 
             $recents = Recent::query()->where('user', $imap->user())
-                ->where(fn ($w) => $w->where('email', 'like', "%{$q}%")->orWhere('name', 'like', "%{$q}%"))
+                ->where(fn ($w) => $w->where('email', 'like', "%{$like}%")->orWhere('name', 'like', "%{$like}%"))
                 ->orderByDesc('uses')->orderByDesc('last_at')->limit(8)->get();
+            $recentRows = [];
             foreach ($recents as $r) {
                 if (! isset($out[$r->email])) {
-                    $out[$r->email] = ['mail' => $r->email, 'name' => $r->name ?: $r->email, 'kind' => 'recent'];
+                    $recentRows[$r->email] = ['mail' => $r->email, 'name' => $r->name ?: $r->email, 'kind' => 'recent'];
                 }
             }
+            // Те, кому человек реально писал, — впереди сотрудников: раньше список
+            // резался по первым десяти, и недавние адресаты в него не попадали вовсе.
+            $out = $recentRows + $out;
         }
 
         // Себе не пишут: свой адрес и свои псевдонимы из подсказок убираем.

@@ -6,13 +6,16 @@ import { initials, parseAddr, splitAddrs } from '../../mail/format';
 
 const props = defineProps({
     modelValue: { type: Array, default: () => [] }, // [{name, mail}]
+    // Адреса из соседних полей: дубль между «Кому» и «Копией» раньше не замечался,
+    // и человек получал два экземпляра письма.
+    others: { type: Array, default: () => [] },
     // id самого поля ввода: <label for> должен указывать на него, а не на обёртку,
     // иначе клик по подписи не ставит курсор и экранный диктор поле не называет.
     inputId: { type: String, default: '' },
     placeholder: { type: String, default: '' },
     autofocus: Boolean,
 });
-const emit = defineEmits(['update:modelValue', 'blur']);
+const emit = defineEmits(['update:modelValue', 'blur', 'note']);
 
 // Последнее известное значение списка: props.modelValue обновится лишь на следующем тике, а add()/verify()
 // бывают по несколько подряд — иначе вставка «a, b, c» оставляла одну фишку.
@@ -27,7 +30,13 @@ const text = ref('');
 const sugg = ref([]);
 const active = ref(0);
 const input = ref(null);
+const listEl = ref(null);
+// 133: Backspace на пустом вводе сразу стирал последнюю фишку. Теперь первый Backspace
+// её выделяет, второй — убирает; это стандартное поведение полей с фишками.
+const armed = ref(false);
 let timer = null;
+// 137: устаревший ответ подсказок затирал свежий — считаем запросы.
+let suggestSeq = 0;
 
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
@@ -61,7 +70,16 @@ function parse(piece) { return parseAddr(piece); }
 
 function add(entry) {
     if (!entry) return;
-    if (latest.some((a) => a.mail === entry.mail)) return;
+    // 135: повтор отбрасывался молча, и человек думал, что вставка не сработала.
+    if (latest.some((a) => a.mail === entry.mail)) {
+        emit('note', `${entry.mail} уже в этом поле`);
+        return;
+    }
+    // 134: тот же адрес в соседнем поле — письмо ушло бы человеку дважды.
+    if (props.others.some((m) => String(m).toLowerCase() === entry.mail.toLowerCase())) {
+        emit('note', `${entry.mail} уже указан в другом поле — второй раз письмо не нужно`);
+        return;
+    }
     update([...latest, { ...entry, bad: !EMAIL.test(entry.mail) }]);
 }
 
@@ -86,8 +104,9 @@ function remove(i) {
 }
 
 function onKey(e) {
-    if (e.key === 'ArrowDown' && sugg.value.length) { e.preventDefault(); active.value = (active.value + 1) % sugg.value.length; return; }
-    if (e.key === 'ArrowUp' && sugg.value.length) { e.preventDefault(); active.value = (active.value - 1 + sugg.value.length) % sugg.value.length; return; }
+    // 138: стрелками можно было уйти за пределы видимого списка — подводим выбранное к виду.
+    if (e.key === 'ArrowDown' && sugg.value.length) { e.preventDefault(); active.value = (active.value + 1) % sugg.value.length; reveal(); return; }
+    if (e.key === 'ArrowUp' && sugg.value.length) { e.preventDefault(); active.value = (active.value - 1 + sugg.value.length) % sugg.value.length; reveal(); return; }
     if ((e.key === 'Enter' || e.key === 'Tab' || e.key === ',' || e.key === ';') && (text.value.trim() || sugg.value.length)) {
         if (e.key !== 'Tab' || text.value.trim()) e.preventDefault();
         // Набран готовый адрес — берём именно его: раньше Enter подставлял подсвеченную
@@ -97,23 +116,42 @@ function onKey(e) {
         return;
     }
     if (e.key === 'Backspace' && !text.value && latest.length) {
-        remove(latest.length - 1);
+        if (armed.value) {
+            armed.value = false;
+            remove(latest.length - 1);
+        } else {
+            armed.value = true;
+        }
+
+        return;
     }
+    if (e.key !== 'Backspace') armed.value = false;
     // Останавливаем событие, только если было что закрывать: иначе Escape доходил до окна письма
     // и закрывал его целиком вместе со списком подсказок.
     if (e.key === 'Escape' && sugg.value.length) { sugg.value = []; e.stopPropagation(); }
 }
 
+function reveal() {
+    const box = listEl.value;
+    const el = box?.children?.[active.value];
+    if (el?.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
+
 watch(text, (v) => {
     clearTimeout(timer);
+    armed.value = false;
     const q = v.trim();
     if (q.length < 1) { sugg.value = []; return; }
     timer = setTimeout(async () => {
+        const want = ++suggestSeq;
         try {
             const list = await api.suggest(q);
-            sugg.value = list.filter((s) => !latest.some((a) => a.mail === s.mail));
+            // Ответ на прежний, более короткий запрос приходил позже и затирал свежий список.
+            if (want !== suggestSeq) return;
+            const busy = [...latest.map((a) => a.mail), ...props.others].map((m) => String(m).toLowerCase());
+            sugg.value = list.filter((s) => !busy.includes(String(s.mail).toLowerCase()));
             active.value = 0;
-        } catch { sugg.value = []; }
+        } catch { if (want === suggestSeq) sugg.value = []; }
     }, 160);
 });
 
@@ -144,8 +182,17 @@ defineExpose({ focus: () => input.value?.focus(), flush });
 
 <template>
     <div class="rcpt" @click="input?.focus()">
-        <span v-for="(a, i) in modelValue" :key="a.mail + i" class="rcpt__chip" :class="{ 'rcpt__chip--bad': a.bad, 'rcpt__chip--warn': a.warn }" :title="a.warn || a.mail">
+        <!-- 133: последняя фишка перед удалением подсвечивается; 136: у красной фишки
+             раньше не было никакого объяснения, а отправка была заблокирована. -->
+        <span
+            v-for="(a, i) in modelValue"
+            :key="a.mail + i"
+            class="rcpt__chip"
+            :class="{ 'rcpt__chip--bad': a.bad, 'rcpt__chip--warn': a.warn, 'rcpt__chip--armed': armed && i === modelValue.length - 1 }"
+            :title="a.bad ? 'Это не похоже на адрес почты: нужен вид имя@домен.ру. Нажмите ✕ и наберите заново' : (a.warn || a.mail)"
+        >
             <span>{{ a.name || a.mail }}</span>
+            <span v-if="a.bad" class="rcpt__why">адрес не похож на почтовый</span>
             <button v-if="a.suggestion" type="button" class="rcpt__fix" :title="'Исправить на ' + a.mail.replace(/@.*$/, '@' + a.suggestion)" @click.stop="fix(i)">→ {{ a.suggestion }}?</button>
             <button type="button" title="Убрать" @click.stop="remove(i)">✕</button>
         </span>
@@ -161,7 +208,7 @@ defineExpose({ focus: () => input.value?.focus(), flush });
             @blur="onBlur"
             @paste="onPaste"
         >
-        <div v-if="sugg.length" class="rcpt__list">
+        <div v-if="sugg.length" ref="listEl" class="rcpt__list">
             <button
                 v-for="(s, i) in sugg"
                 :key="s.mail"

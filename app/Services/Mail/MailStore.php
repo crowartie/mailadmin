@@ -200,11 +200,20 @@ class MailStore
      * GETACL по всем папкам — миллисекунды, но спрашиваем только если пользователь вообще кому-то открывал папки
      * (таблицу share_folder ведёт сам Dovecot через acl_shared_dict).
      */
+    /**
+     * Забыть кэш «есть ли у пользователя общие папки». Сразу после выдачи доступа признак
+     * ещё минуту не появлялся, и казалось, что действие не сработало.
+     */
+    public static function forgetSharesCache(string $user): void
+    {
+        \Illuminate\Support\Facades\Cache::forget('shares-any.' . strtolower($user));
+    }
+
     private function markShared(array &$out): void
     {
         $user = $this->user();
         try {
-            $any = \Illuminate\Support\Facades\Cache::remember('shares-any.' . $user, 60, fn () => \Illuminate\Support\Facades\DB::connection('vmail')->table('share_folder')->where('from_user', $user)->exists());
+            $any = \Illuminate\Support\Facades\Cache::remember('shares-any.' . strtolower($user), 60, fn () => \Illuminate\Support\Facades\DB::connection('vmail')->table('share_folder')->where('from_user', $user)->exists());
         } catch (\Throwable) {
             return;
         }
@@ -379,10 +388,34 @@ class MailStore
         return $name;
     }
 
+    /** Разделитель уровней папок у этого сервера: обычно «/», у Maildir++ — «.». */
+    private function separator(): string
+    {
+        try {
+            foreach ($this->client->getFolders(false) as $f) {
+                $d = (string) ($f->delimiter ?? '');
+                if ($d !== '') {
+                    return $d;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return '/';
+    }
+
     public function createFolder(string $name, ?string $parent = null): string
     {
-        $name = trim(str_replace(['/', '.'], ' ', $name));
-        abort_if($name === '', 422, 'Пустое имя папки');
+        // Раньше вместе со слэшем молча вырезались точки: «Счета 1.2» становились «Счета 1 2»,
+        // а имя из одних точек давало «Пустое имя папки» при непустом поле.
+        // Убираем только разделитель уровней — остальное имя сервер принимает как есть.
+        $sep = $this->separator();
+        $clean = trim(str_replace([$sep, '/', "\r", "\n", "\t"], ' ', $name));
+        $clean = trim(preg_replace('/\s{2,}/u', ' ', $clean) ?? $clean);
+        abort_if(trim($name) === '', 422, 'Введите название папки');
+        abort_if($clean === '', 422, 'В названии остались только символы, которые нельзя использовать в имени папки (например, «' . $sep . '»)');
+        abort_if(mb_strlen($clean) > 80, 422, 'Название длиннее 80 символов — сократите');
+        $name = $clean;
         // Родитель приходит в виде IMAP-пути (UTF-7), имя — в UTF-8; собираем в UTF-8, кодирует библиотека.
         $parentName = $parent ? mb_convert_encoding($parent, 'UTF-8', 'UTF7-IMAP') : null;
         $path = $parentName ? $parentName . '/' . $name : $name;

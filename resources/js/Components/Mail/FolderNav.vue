@@ -104,7 +104,15 @@ function counterTitle(f) { return f.unread ? `непрочитанных ${f.unr
  * раньше внутри кнопки папки стояла вторая кнопка — недопустимая вложенность, до которой
  * к тому же было не добраться с клавиатуры. Теперь это одна кнопка, а место щелчка решает отбор.
  */
-function goFolder(e, path) {
+function goFolder(e, path, folder = null) {
+    // «…» открывает то же меню, что и правый клик: на планшете и телефоне правого клика нет,
+    // и «Очистить папку», «Общий доступ», «Прочитать все» были недостижимы вовсе.
+    if (e.target?.closest?.('.mnav__more')) {
+        const f = folder || { path, name: path, role: 'custom' };
+        emit('context', e, f);
+
+        return;
+    }
     emit('go', path, e.target?.closest?.('.mnav__unread') ? 'unread' : 'all');
 }
 
@@ -128,13 +136,14 @@ function sharedTitle(f) {
             type="button"
             class="mnav__item"
             :class="{ 'mnav__item--on': isOn(f), 'mnav__item--drop': dropTarget === f.path }"
-            @click="goFolder($event, f.path)"
+            @click="goFolder($event, f.path, f)"
             @contextmenu.prevent="$emit('context', $event, f)"
             @dragover="onDragOver($event, f)"
             @dragleave="dropTarget = null"
             @drop="onDrop($event, f)"
         >
             <span>{{ f.name }}</span>
+            <span class="mnav__more" role="presentation" :title="'Что можно сделать с папкой «' + f.name + '»'">···</span>
             <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
             <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
@@ -164,7 +173,7 @@ function sharedTitle(f) {
             type="button"
             class="mnav__item"
             :class="['mnav__item--depth-' + Math.min(f.depth, 3), { 'mnav__item--on': isOn(f), 'mnav__item--drop': dropTarget === f.path }]"
-            @click="goFolder($event, f.path)"
+            @click="goFolder($event, f.path, f)"
             @contextmenu.prevent="f.virtual ? null : $emit('context', $event, f)"
             @dragover="onDragOver($event, f)"
             @dragleave="dropTarget = null"
@@ -172,6 +181,7 @@ function sharedTitle(f) {
         >
             <Icon :name="f.virtual ? 'inbox' : 'folder'" :size="16" style="color: var(--faint); flex: 0 0 16px" />
             <span>{{ f.name }}</span>
+            <span v-if="!f.virtual" class="mnav__more" role="presentation" :title="'Что можно сделать с папкой «' + f.name + '»'">···</span>
             <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
             <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
@@ -192,7 +202,7 @@ function sharedTitle(f) {
                     type="button"
                     class="mnav__item"
                     :class="['mnav__item--depth-' + Math.min(f.depth + 1, 3), { 'mnav__item--on': isOn(f), 'mnav__item--drop': dropTarget === f.path }]"
-                    @click="goFolder($event, f.path)"
+                    @click="goFolder($event, f.path, f)"
                     @contextmenu.prevent="$emit('context', $event, f)"
                     @dragover="onDragOver($event, f)"
                     @dragleave="dropTarget = null"
@@ -200,6 +210,7 @@ function sharedTitle(f) {
                 >
                     <Icon name="folder" :size="16" style="color: var(--faint); flex: 0 0 16px" />
                     <span>{{ f.name }}</span>
+                    <span class="mnav__more" role="presentation" :title="'Что можно сделать с папкой «' + f.name + '»'">···</span>
                     <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
                 </button>
             </template>

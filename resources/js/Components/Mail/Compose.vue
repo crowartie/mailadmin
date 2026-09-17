@@ -366,7 +366,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
 
         <div class="compose__row">
             <label for="cmp-to">Кому</label>
-            <RecipientInput input-id="cmp-to" ref="toInput" v-model="to" placeholder="Имя или адрес" />
+            <RecipientInput input-id="cmp-to" ref="toInput" v-model="to" :others="[...cc, ...bcc].map((a) => a.mail)" placeholder="Имя или адрес" @note="$emit('toast', { text: $event, error: true })" />
             <span class="links">
                 <button v-if="!showCc" type="button" class="linklike" @click="showCc = true">Копия</button>
                 <button v-if="!showBcc" type="button" class="linklike" @click="showBcc = true">Скрытая</button>
@@ -374,11 +374,11 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         </div>
         <div v-if="showCc" class="compose__row">
             <label for="cmp-cc">Копия</label>
-            <RecipientInput input-id="cmp-cc" ref="ccInput" v-model="cc" />
+            <RecipientInput input-id="cmp-cc" ref="ccInput" v-model="cc" :others="[...to, ...bcc].map((a) => a.mail)" @note="$emit('toast', { text: $event, error: true })" />
         </div>
         <div v-if="showBcc" class="compose__row">
             <label for="cmp-bcc">Скрытая</label>
-            <RecipientInput input-id="cmp-bcc" ref="bccInput" v-model="bcc" />
+            <RecipientInput input-id="cmp-bcc" ref="bccInput" v-model="bcc" :others="[...to, ...cc].map((a) => a.mail)" @note="$emit('toast', { text: $event, error: true })" />
         </div>
         <div v-if="identities.length > 1" class="compose__row">
             <label for="cmp-from">От кого</label>

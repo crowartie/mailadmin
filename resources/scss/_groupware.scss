@@ -1,6 +1,22 @@
 @use 'variables' as v;
 
 // ── Контакты ─────────────────────────────────────────────────
+// Действия папки без правого клика: на планшете и телефоне его нет, и «Очистить папку»,
+// «Общий доступ», «Прочитать все» были недостижимы вовсе.
+.mnav__more {
+    margin-left: auto;
+    padding: 0 5px;
+    color: v.$c-faint;
+    font-weight: 700;
+    letter-spacing: .06em;
+    line-height: 1;
+    border-radius: 6px;
+    opacity: 0;
+    @media (hover: none) { opacity: .7; }
+    &:hover { background: v.$c-surface-2; color: v.$c-text; }
+}
+.mnav__item:hover .mnav__more, .mnav__item:focus-within .mnav__more { opacity: 1; }
+.mnav__more + .mnav__count { margin-left: 4px; }
 .mnav__count { margin-left: auto; font-size: 12px; color: v.$c-faint; font-variant-numeric: tabular-nums; }
 .mnav__item--on .mnav__count { color: v.$c-accent-ink; font-weight: 600; }
 .mnav__foot { display: flex; gap: 4px; padding: 8px 4px 0; border-top: 1px solid v.$c-border; }

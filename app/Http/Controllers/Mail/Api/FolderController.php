@@ -47,7 +47,10 @@ class FolderController extends Controller
     public function empty(ImapSession $imap, string $folder): JsonResponse
     {
         $store = new MailStore($imap->client());
-        $role = collect($store->folders())->firstWhere('path', $folder)['role'] ?? 'custom';
+        // У любой папки общего ящика роль «общая», а настоящая роль лежит в srole:
+        // из-за этого очистка корзины коллеги отвечала «Очищать можно только корзину и спам».
+        $f = collect($store->folders())->firstWhere('path', $folder) ?? [];
+        $role = ($f['role'] ?? 'custom') === 'shared' ? ($f['srole'] ?? 'custom') : ($f['role'] ?? 'custom');
         abort_unless(in_array($role, ['trash', 'spam']), 422, 'Очищать можно только корзину и спам');
         $store->emptyFolder($folder);
 
@@ -104,6 +107,8 @@ class FolderController extends Controller
         } catch (\RuntimeException $e) {
             abort(500, 'Не удалось выдать доступ: ' . mb_substr($e->getMessage(), 0, 200));
         }
+        // Иначе значок «открыта коллегам» появлялся только через минуту.
+        MailStore::forgetSharesCache($imap->user());
 
         return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder)), 'folders' => (new MailStore($imap->client()))->folders()]);
     }
@@ -119,6 +124,7 @@ class FolderController extends Controller
         } catch (\RuntimeException $e) {
             abort(500, 'Не удалось снять доступ: ' . mb_substr($e->getMessage(), 0, 200));
         }
+        MailStore::forgetSharesCache($imap->user());
 
         return response()->json(['shares' => $svc->list($imap->user(), \App\Services\Mail\FolderShares::utf8($folder)), 'folders' => (new MailStore($imap->client()))->folders()]);
     }
@@ -133,7 +139,13 @@ class FolderController extends Controller
 
     private function guardSystem(MailStore $store, string $folder): void
     {
-        $role = collect($store->folders())->firstWhere('path', $folder)['role'] ?? 'custom';
-        abort_if($role !== 'custom', 422, 'Системную папку нельзя переименовать или удалить');
+        $f = collect($store->folders())->firstWhere('path', $folder) ?? [];
+        $shared = ($f['role'] ?? 'custom') === 'shared';
+        // Своя подпапка в общем ящике — не системная: раньше переименование любой папки
+        // коллеги отвечало «Системную папку нельзя переименовать или удалить».
+        $role = $shared ? ($f['srole'] ?? 'custom') : ($f['role'] ?? 'custom');
+        abort_if($role !== 'custom', 422, $shared
+            ? 'Это системная папка чужого ящика — переименовать или удалить её может только владелец'
+            : 'Системную папку нельзя переименовать или удалить');
     }
 }
