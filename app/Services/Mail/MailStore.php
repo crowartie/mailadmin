@@ -1030,7 +1030,9 @@ class MailStore
      */
     private function threadBySubject(Message $message, string $path): array
     {
-        $bare = self::bareSubject((string) $message->getSubject());
+        // Заголовок приходит закодированным (=?windows-1251?B?…?=) — сравнивать и искать
+        // надо по человеческому тексту, иначе запрос уходит на сервер абракадаброй.
+        $bare = self::bareSubject((string) Charset::header((string) ($message->getSubject()->first() ?? '')));
         // Слишком короткая или слишком общая тема («Счёт», «Привет») склеит что попало.
         if (mb_strlen($bare) < 8) {
             return [];
@@ -1056,7 +1058,7 @@ class MailStore
                 $uids = array_slice($uids, -15);
                 $previews = $this->previews($uids);
                 foreach ($this->folder($p)->query()->whereUidIn($uids)->setFetchBody(false)->setFetchFlags(true)->get() as $m) {
-                    if (self::bareSubject((string) $m->getSubject()) !== $bare) {
+                    if (self::bareSubject((string) Charset::header((string) ($m->getSubject()->first() ?? ''))) !== $bare) {
                         continue;   // сервер ищет подстроку — сверяем тему целиком
                     }
                     $common = false;
