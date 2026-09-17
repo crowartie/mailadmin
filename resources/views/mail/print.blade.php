@@ -69,7 +69,12 @@
         .bar button:hover { filter: brightness(.97); }
         @media print {
             body { background: #fff; }
-            .bar, .foot-screen { display: none; }
+            .bar { display: none; }
+            /* 323: Firefox не рисует @bottom-left/@bottom-right, и дата печати пропадала
+               с бумаги совсем. Там, где margin-боксы поддерживаются, прячем экранный
+               подвал; где нет — он и остаётся подвалом. */
+            .foot-screen { display: flex; padding: 6mm 0 0; border-top: 1px solid #E3E8EF; }
+            @supports (page: a4) and (content: counter(page)) { .foot-screen { display: none; } }
             .sheet { width: auto; min-height: 0; margin: 0; box-shadow: none; }
             .page { padding: 0; }
         }
@@ -103,11 +108,14 @@
                     <span class="k">Отправлено</span><span class="v">{{ $when ? $when->isoFormat('dddd, D MMMM YYYY, HH:mm') : '—' }}</span>
                     @if ($attachments)
                         <span class="k">Вложения</span>
-                        <span class="v">{{ implode('; ', array_map(fn ($a) => $a['name'] . ' (' . $size((int) ($a['size'] ?? 0)) . ')', $attachments)) }}</span>
+                        <span class="v">{{ implode('; ', array_map(fn ($a) => $a['name'] . ' (' . $size((int) ($a['size'] ?? 0)) . ')', $attachments)) }}<br><i>Сами файлы не печатаются — откройте письмо в почте.</i></span>
                     @endif
                 </div>
                 <div class="body">
                     @if (! empty($m['html']))
+                        {{-- 318: на экране внешние адреса спрятаны (data-blocked-*), а печать
+                             выводила письмо как есть — отправитель рассылки узнавал об открытии
+                             письма ровно в момент печати. Оставляем их спрятанными. --}}
                         {!! $m['html'] !!}
                     @else
                         <pre>{{ $m['text'] ?? '' }}</pre>

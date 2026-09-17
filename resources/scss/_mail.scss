@@ -2,11 +2,13 @@
 
 // ── Веб-почта: папки · список · чтение ────────────────────────
 // Каркас страницы: рельс (в _shell) + колонка папок + список + чтение. Всё на высоту окна.
+// 344: высота в старых единицах — на планшете адресная строка браузера срезала низ
+// списка и постраничную навигацию. Соседние блоки уже на dvh.
 .mail {
     display: flex;
     flex: 1;
     min-width: 0;
-    height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
@@ -965,8 +967,17 @@ select.input { padding-right: 28px; }
 // ── Телефон и узкие окна ─────────────────────────────────────
 .mobile-bar { display: none; }
 
+// 342: между 861 и 1100 px на чтение письма оставалось меньше, чем на список.
+// 343: отступ тела письма в 72 px ослаблялся только ниже 861 px, и текст читался
+// в полосе около 150 px — каждое слово на своей строке.
 @media (max-width: 1100px) {
-    .mail { --nav-w: 200px; --list-w: 360px; }
+    .mail { --nav-w: 180px; --list-w: 300px; }
+    .msg__body, .msg__atts { padding-left: 24px; }
+    .msg__notice { margin-left: 24px; }
+}
+@media (max-width: 940px) {
+    .mail { --nav-w: 0px; --list-w: 280px; }
+    .mnav { display: none; }
 }
 
 // Разделитель колонок: тонкая полоса на границе, тянется мышью (см. Inbox.vue startResize)
@@ -1002,6 +1013,8 @@ select.input { padding-right: 28px; }
         font: inherit; font-size: 10.5px; color: v.$c-muted; text-decoration: none; border: none; background: none; cursor: pointer; padding: 6px 0 4px;
         &--on { color: v.$c-accent-ink; }
         &:hover { text-decoration: none; }
+        // 334: «Выйти» стояло наравне с разделами и читалось как ещё один раздел.
+        &--exit { color: v.$c-faint; border-left: 1px solid v.$c-border; }
     }
     .mset { padding-bottom: calc(56px + 32px + env(safe-area-inset-bottom)); }
 
@@ -1017,7 +1030,8 @@ select.input { padding-right: 28px; }
         &--open { transform: none; }
     }
     .mlist { width: 100%; flex: 1; border-right: none; }
-    .mread { position: fixed; inset: 0; z-index: 85; transform: translateX(100%); transition: transform .18s; }
+    // 338: панель растянута поверх нижней панели, но резервировала под неё пустую полосу.
+    .mread { position: fixed; inset: 0; z-index: 85; transform: translateX(100%); transition: transform .18s; padding-bottom: 0; }
     .mail--read .mread { transform: none; }
     .mail--read .mlist { display: none; }
     .mobile-bar {
@@ -1083,7 +1097,10 @@ select.input { padding-right: 28px; }
         cursor: pointer;
     }
 }
-@media (min-width: 861px) { .fab { display: none; } }
+// 332: кнопка описывалась до 860 px, а гасилась от 861 px — при дробной ширине
+// (масштаб Windows 125 % и 150 %) не срабатывало ни одно правило, и кнопка
+// выпадала в поток посреди списка.
+@media (min-width: 860.02px) { .fab { display: none; } }
 
 // ── Справочник сотрудника ─────────────────────────────────────────
 .help {
@@ -1129,6 +1146,20 @@ select.input { padding-right: 28px; }
     .help .mset__grid { grid-template-columns: 1fr; }
     .help__section { break-inside: avoid; box-shadow: none; border: none; padding: 0 0 12px; }
     .help__item { break-inside: avoid; }
+
+    // 324: у почты правил печати не было вовсе — высота в экран и запрет прокрутки
+    // отдавали на бумагу один экран, остальное обрезалось.
+    // 325: лист A4 — около 794 px, а телефонная контрольная точка стоит на 860 px,
+    // поэтому при печати срабатывала телефонная раскладка: нижняя панель разделов
+    // поверх текста и панель кнопок вместо содержимого.
+    // 326: гасилась только левая полоса значков, а папки и список писем печатались.
+    .tabbar, .fab, .mnav, .mlist, .mread__bar, .toast, .mtoast { display: none !important; }
+    .mail { display: block; height: auto; min-height: 0; overflow: visible; }
+    .mail--read .mread, .mread { position: static; inset: auto; width: auto; padding: 0; }
+    .mread__scroll { overflow: visible; height: auto; max-height: none; padding: 0; }
+    .msg { border: none; box-shadow: none; break-inside: avoid; }
+    .msg__body, .msg__atts { padding-left: 0; }
+    .quick, .msg__acts { display: none !important; }
 }
 
 // ── Подключить телефон ────────────────────────────────────────────

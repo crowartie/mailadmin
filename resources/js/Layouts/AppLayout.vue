@@ -85,6 +85,17 @@ function logout() {
             <Link class="rail__avatar" href="/security/2fa" :title="me ? `${me.email} · двухфакторная защита` : ''" style="text-decoration: none">{{ meInitials }}</Link>
         </aside>
 
+        <!-- 336: на телефоне левая полоса скрыта, а нижней панели в админке не было —
+             выход, двухфакторная защита и переходы в почту и календарь пропадали. -->
+        <nav class="tabbar" aria-label="Сервисы">
+            <a class="tabbar__item" :href="mailUrl + '/mail'"><Icon name="mail" :size="22" /><span>Почта</span></a>
+            <a class="tabbar__item" :href="mailUrl + '/calendar'"><Icon name="cal" :size="22" /><span>Календарь</span></a>
+            <a class="tabbar__item" :href="mailUrl + '/contacts'"><Icon name="users" :size="22" /><span>Контакты</span></a>
+            <Link class="tabbar__item tabbar__item--on" href="/"><Icon name="gear" :size="22" /><span>Админка</span></Link>
+            <Link class="tabbar__item" href="/security/2fa"><Icon name="key" :size="22" /><span>Защита</span></Link>
+            <button class="tabbar__item tabbar__item--exit" type="button" title="Выйти" @click="logout"><Icon name="logout" :size="22" /><span>Выход</span></button>
+        </nav>
+
         <nav class="nav" aria-label="Разделы">
             <template v-for="(group, gi) in groups" :key="gi">
                 <div v-if="group.title" class="nav__group">{{ group.title }}</div>

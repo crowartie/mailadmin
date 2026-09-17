@@ -124,8 +124,10 @@
     gap: 14px;
     padding: 0 28px;
 
+    // 346: фиксированные 440 px выдавливали строку с адресом пользователя за край.
     &__search {
-        flex: 0 0 440px;
+        flex: 0 1 440px;
+        min-width: 0;
         height: 40px;
         border: 1px solid v.$c-border;
         background: v.$c-surface;
@@ -206,3 +208,18 @@
 
 .flash-enter-active, .flash-leave-active { transition: opacity .25s; }
 .flash-enter-from, .flash-leave-to { opacity: 0; }
+
+// 345: у каркаса админки не было ни одной контрольной точки — при ширине окна
+// 700–1100 px страница уезжала в горизонтальную прокрутку.
+@media (max-width: 1100px) {
+    .topbar { padding: 0 16px; gap: 10px; }
+    .topbar__search { flex: 1 1 220px; }
+}
+@media (max-width: 860px) {
+    .topbar { flex-wrap: wrap; row-gap: 8px; height: auto; padding: 8px 12px; }
+    .topbar__search { order: 3; flex-basis: 100%; }
+    // 336: нижняя панель админки — вместо скрытой левой полосы значков.
+    .app .tabbar { display: flex; }
+    .app { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+    .app .nav { position: static; }
+}

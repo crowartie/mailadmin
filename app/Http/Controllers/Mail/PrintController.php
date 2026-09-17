@@ -23,7 +23,18 @@ class PrintController extends Controller
         } catch (\Throwable) {
             // цепочка не обязательна для печати
         }
-        usort($thread, fn ($a, $b) => strcmp((string) ($b['date'] ?? ''), (string) ($a['date'] ?? '')));
+        // 320: в блок «Ранее в переписке» попадали и более новые письма — распечатка
+        // старого письма утверждала, что будущие письма были раньше.
+        $ts = static function (?string $d): int {
+            $t = $d ? strtotime($d) : false;
+
+            return $t === false ? 0 : $t;
+        };
+        $mine = $ts($m['date'] ?? null);
+        $thread = array_values(array_filter($thread, fn ($t) => $ts($t['date'] ?? null) > 0 && $ts($t['date'] ?? null) < $mine));
+        // 321: сравнение строк давало другой порядок, чем на экране, — у писем разные
+        // часовые пояса в ISO-дате. Сортируем по времени, как список цепочки.
+        usort($thread, fn ($a, $b) => $ts($b['date'] ?? null) <=> $ts($a['date'] ?? null));
         $attachments = array_values(array_filter($m['attachments'] ?? [], fn ($a) => empty($a['inline'])));
 
         return view('mail.print', [

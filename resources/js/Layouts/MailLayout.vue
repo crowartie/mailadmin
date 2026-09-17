@@ -120,8 +120,15 @@ function logout() {
                 <Icon name="warn" :size="22" /><span>Проблема</span>
                 <span v-if="feedbackNew" class="rail__badge" style="top: 4px; right: 18px">{{ feedbackNew }}</span>
             </button>
-            <button class="tabbar__item" type="button" @click="logout">
-                <Icon name="logout" :size="22" /><span>Выйти</span>
+            <!-- 335: с телефона нельзя было сменить тему и открыть справку —
+                 этих кнопок в нижней панели не было вовсе. -->
+            <button class="tabbar__item" type="button" :title="isDark ? 'Светлая тема' : 'Тёмная тема'" @click="toggleTheme">
+                <Icon :name="isDark ? 'sun' : 'moon'" :size="22" /><span>Тема</span>
+            </button>
+            <!-- 334: «Выйти» стояло наравне с «Почта» и «Календарь» и читалось как раздел,
+                 в который можно зайти. Отделяем его и подписываем по-другому. -->
+            <button class="tabbar__item tabbar__item--exit" type="button" title="Выйти из почты" @click="logout">
+                <Icon name="logout" :size="22" /><span>Выход</span>
             </button>
         </nav>
 
