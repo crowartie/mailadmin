@@ -45,6 +45,10 @@ const selected = ref([]);
 const cursor = ref(null);
 const open = ref(null);
 const loading = ref(false);
+// Какое письмо сейчас открывается: подсвечиваем строку сразу, не дожидаясь ответа,
+// и отбрасываем ответ, если человек успел кликнуть другое письмо.
+const opening = ref(null);
+let openSeq = 0;
 const compose = ref(null);
 const menu = ref(null);      // { kind, x, y, uids, folder, label }
 const toast = ref(null);
@@ -83,7 +87,11 @@ function syncUrl() {
 // ── Живое обновление ──────────────────────────────────────────
 let lastUidnext = null;
 let lastPoll = 0;
-const shownReminders = new Set(JSON.parse(localStorage.getItem('mail.reminders.shown') || '[]'));
+// В приватном окне и при запрете данных сайта обращение к хранилищу бросает исключение —
+// без защиты страница почты не отрисовывалась вовсе.
+const shownReminders = new Set((() => {
+    try { return JSON.parse(localStorage.getItem('mail.reminders.shown') || '[]'); } catch { return []; }
+})());
 function updateTitle() {
     const inbox = folders.value.find((f) => f.role === 'inbox');
     const n = inbox?.unread || 0;
@@ -110,7 +118,9 @@ async function poll() {
         if (cur) { cur.unread = st.folder.unseen; cur.total = st.folder.messages; }
         if (lastUidnext !== null && st.folder.uidnext > lastUidnext) {
             const prev = lastUidnext;
-            await load(list.value.page, true);
+            // Тихая перезагрузка: обычная сбрасывала галочки и на секунду гасила список,
+            // а письмо приходит как раз тогда, когда человек отмечает пачку.
+            await load(list.value.page, true, true);
             // Сервер отдаёт признак «прочитано» (seen); поля unread в ответе нет никогда,
             // поэтому список новых всегда получался пустым и уведомления не приходили.
             const fresh = (list.value.messages || []).filter((m) => m.uid >= prev && !m.seen);
@@ -121,7 +131,7 @@ async function poll() {
         for (const r of st.reminders || []) {
             if (shownReminders.has(r.key)) continue;
             shownReminders.add(r.key);
-            localStorage.setItem('mail.reminders.shown', JSON.stringify([...shownReminders].slice(-200)));
+            try { localStorage.setItem('mail.reminders.shown', JSON.stringify([...shownReminders].slice(-200))); } catch { /* приватное окно */ }
             const t = r.allDay ? 'сегодня' : new Date(r.start).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
             notify('Напоминание: ' + r.title, (r.allDay ? 'Весь день' : 'В ' + t) + (r.location ? ' · ' + r.location : ''), 'rem-' + r.key, () => { window.location.href = '/calendar'; });
             showToast({ text: 'Напоминание: ' + r.title + ' — ' + t }, 8000);
@@ -168,9 +178,13 @@ async function openMessage(uid, e) {
     compose.value = null;
     const row = list.value.messages.find((m) => m.uid === uid);
     if (folderInfo.value.role === 'drafts') { openDraft(uid); return; }
-    loading.value = true;
+    // Гасить весь список на время загрузки письма не нужно: от этого он мигал на каждый клик.
+    const want = ++openSeq;
+    opening.value = uid;
     try {
         const m = await api.message(folder.value, uid);
+        // Пока ответ шёл, человек мог кликнуть другое письмо — устаревший ответ не показываем.
+        if (want !== openSeq) return;
         open.value = m;
         mobileRead.value = true;
         if (row && !row.seen) { row.seen = true; bump(folder.value, -1); }
@@ -178,7 +192,7 @@ async function openMessage(uid, e) {
         api.thread(folder.value, uid).then((t) => {
             if (open.value && open.value.uid === m.uid && open.value.folder === m.folder) open.value.thread = t;
         }).catch(() => {});
-    } catch (e) { fail(e); } finally { loading.value = false; }
+    } catch (e) { if (want === openSeq) fail(e); } finally { if (want === openSeq) opening.value = null; }
 }
 
 function bump(path, delta) {
@@ -232,12 +246,21 @@ async function act(op, uids, extra = {}, deferrable = true) {
         case 'delete': case 'move': case 'archive': case 'spam': case 'notspam': case 'lists': case 'snooze': case 'unsnooze': removeRows(uids); break;
         default: break;
     }
-    const names = { delete: 'Удалено', archive: 'В архиве', spam: 'Помечено как спам', move: 'Перемещено', lists: 'В рассылки', snooze: 'Отложено', notspam: 'Возвращено во Входящие', remind: 'Напомню, если не ответят' };
+    const names = { delete: 'Удалено', archive: 'В архиве', spam: 'Помечено как спам', move: 'Перемещено', lists: 'В рассылки', snooze: 'Отложено', unsnooze: 'Возвращено во «Входящие»', notspam: 'Возвращено во Входящие', remind: 'Напомню, если не ответят' };
     const label = `${names[op] || ''}${uids.length > 1 ? ` · ${uids.length} ${plural(uids.length, 'письмо', 'письма', 'писем')}` : ''}`;
     // Удаление/перенос/архив/спам — с отменой: сервер получит команду через N секунд (Настройки → Общие),
     // до этого «Отменить» просто возвращает список. Диалоги по отправителю и повторные действия — сразу.
     const secs = Number(settings.value.undo_seconds ?? 5);
-    if (deferrable && secs > 0 && ['delete', 'archive', 'spam', 'move', 'lists'].includes(op)) {
+    // Отмена выключена в настройках: удаление уходит сразу и навсегда — спрашиваем.
+    if (!secs && op === 'delete') {
+        const forever = folderInfo.value.role === 'trash';
+        const what = uids.length > 1 ? `${uids.length} ${plural(uids.length, 'письмо', 'письма', 'писем')}` : 'письмо';
+        const q = forever ? `Стереть ${what} навсегда? Восстановить будет нельзя.` : `Удалить ${what}?`;
+        if (!window.confirm(q)) return;
+    }
+    // Перетащили письмо мышью не в ту папку или ошиблись со «Спамом» — отмена нужна так же,
+    // как при удалении. Раньше эти действия уходили на сервер сразу и без отмены.
+    if (secs > 0 && ['delete', 'archive', 'spam', 'move', 'lists'].includes(op)) {
         flushPendingAct();
         pendingAct = { folder: folder.value, uids, op, extra, seconds: secs, timer: null };
         clearTimeout(toastTimer);
@@ -280,7 +303,11 @@ function flushPendingAct(keepalive = false) {
     const p = pendingAct; pendingAct = null;
     // Плашка с таймером без действия за ней зависала навсегда (обращение №4) — убираем вместе с действием.
     if (toast.value?.actionLabel === 'Отменить' && toast.value?.seconds) toast.value = null;
-    runAct(p, keepalive ? { keepalive: true } : {}).then(() => { if (!keepalive) refillAfter(p.op); }).catch(() => {});
+    runAct(p, keepalive ? { keepalive: true } : {})
+        .then(() => { if (!keepalive) refillAfter(p.op); })
+        // При уходе со страницы показывать уже нечего, в остальных случаях молчать нельзя:
+        // письмо пропадало с экрана, хотя на сервере ничего не произошло.
+        .catch((e) => { if (!keepalive) { fail(e); load(list.value.page, true); } });
 }
 function undoAct() {
     if (!pendingAct) return false;
@@ -787,6 +814,7 @@ onBeforeUnmount(() => {
                 :selected="selected"
                 :cursor="cursor"
                 :open-uid="open?.uid ?? null"
+                :opening="opening"
                 :labels="labels"
                 :loading="loading"
                 @open="openMessage"

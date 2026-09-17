@@ -1,8 +1,17 @@
 <script setup>
+import { computed } from 'vue';
 // Единый набор контурных иконок. Никаких эмодзи — только SVG на сетке 24px.
 const props = defineProps({
     name: { type: String, required: true },
     size: { type: Number, default: 20 },
+});
+
+// Неизвестное имя значка раньше молча превращалось в многоточие, и опечатка жила месяцами.
+// Рисуем то же, но в разработке говорим об этом в консоль.
+const path = computed(() => {
+    const p = paths[props.name];
+    if (!p && import.meta.env.DEV) console.warn('Значок «' + props.name + '» не найден');
+    return p ?? paths.dots;
 });
 
 const paths = {
@@ -33,7 +42,8 @@ const paths = {
     fwd: 'M14 8l6 5-6 5v-3.5c-5 0-8 1.5-10 5.5 1-5 4-8 10-8.5z',
     trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
     archive: 'M3 4h18v5H3zM5 9v10h14V9M10 13h4',
-    flag: 'M5 21V4h11l-1.5 3.5L16 11H5',
+    // Волнистое полотнище на древке: прежний контур (палка с петлёй) читался как буква «Р».
+    flag: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7',
     clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
     clip: 'M21 12l-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8',
     folder: 'M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
@@ -109,6 +119,6 @@ const paths = {
         stroke-linejoin="round"
         aria-hidden="true"
     >
-        <path :d="paths[name] ?? paths.dots" />
+        <path :d="path" />
     </svg>
 </template>

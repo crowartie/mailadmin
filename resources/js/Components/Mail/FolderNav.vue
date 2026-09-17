@@ -1,6 +1,6 @@
 <script setup>
 // Колонка папок и меток. Письма можно перетаскивать на папки.
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 
 const props = defineProps({
@@ -49,24 +49,42 @@ const shared = computed(() => {
 });
 const collapsed = ref((() => { try { return JSON.parse(localStorage.getItem('mail.sharedCollapsed') || '{}'); } catch { return {}; } })());
 function isCollapsed(g) {
-    // Открытая сейчас папка этого ящика — группу не прячем
-    if (g.items.some((f) => f.path === props.folder)) return false;
+    // Раньше группа с открытой папкой не сворачивалась вовсе: клик по заголовку не давал
+    // никакого эффекта, хотя настройка в хранилище менялась. Теперь решает только настройка,
+    // а при переходе в папку этого ящика группа раскрывается сама (см. watch ниже).
     return collapsed.value[g.owner] !== false;   // по умолчанию свёрнуто
 }
 function toggleGroup(g) {
     collapsed.value = { ...collapsed.value, [g.owner]: !isCollapsed(g) };
     try { localStorage.setItem('mail.sharedCollapsed', JSON.stringify(collapsed.value)); } catch { /* приватный режим */ }
 }
+// Перешли в папку чужого ящика (например, по ссылке или клавишами) — раскрываем его группу,
+// иначе открытая папка не видна в списке.
+watch(() => props.folder, (path) => {
+    const g = shared.value.find((x) => x.items.some((f) => f.path === path));
+    if (g && collapsed.value[g.owner] !== false) {
+        collapsed.value = { ...collapsed.value, [g.owner]: false };
+        try { localStorage.setItem('mail.sharedCollapsed', JSON.stringify(collapsed.value)); } catch { /* приватный режим */ }
+    }
+}, { immediate: true });
+
 const inbox = computed(() => props.folders.find((f) => f.role === 'inbox'));
 const dropTarget = ref(null);
 
 function isOn(f) {
+    // Виртуальная строка-заголовок не подсвечивается: иначе во «Входящих» подсвечены сразу две строки.
+    if (f.virtual) return false;
     return f.path === props.folder && props.filter !== 'flagged' && !props.filter.startsWith('label:');
 }
 
 function onDragOver(e, f) {
     if (e.dataTransfer.types.includes('text/x-mail-uids')) { e.preventDefault(); dropTarget.value = f.path; }
 }
+// Перетаскивание бросили мимо или отменили клавишей — подсветка папки-приёмника должна сняться.
+// Событие dragend приходит на исходную строку письма, а не на папку, поэтому слушаем окно.
+function onDragEnd() { dropTarget.value = null; }
+onMounted(() => window.addEventListener('dragend', onDragEnd));
+onBeforeUnmount(() => window.removeEventListener('dragend', onDragEnd));
 function onDrop(e, f) {
     dropTarget.value = null;
     try {

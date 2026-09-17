@@ -13,6 +13,7 @@ const props = defineProps({
     query: { type: String, default: '' },
     selected: { type: Array, default: () => [] },
     cursor: { type: Number, default: null },
+    opening: { type: Number, default: null },   // письмо, которое сейчас открывается
     highlightUnread: { type: Boolean, default: true },
     unreadColor: { type: String, default: '' },
     openUid: { type: Number, default: null },
@@ -56,7 +57,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             <span v-else class="kbd">/</span>
         </form>
         <div v-if="query" class="hint" style="padding: 0 16px 8px">
-            Найдено {{ list.total }} · операторы: <span class="mono">от: кому: тема: есть:вложение до:2026-09-01</span>
+            Найдено {{ list.total }} · операторы: <span class="mono">от:иванов кому:sales тема:счёт есть:вложение до:01.09.2026</span>
         </div>
 
         <div v-if="selected.length" class="mlist__bulk">
@@ -71,7 +72,10 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             <button class="ib ib--sm ib--danger" type="button" title="Удалить (#)" @click="$emit('act', 'delete', selected)"><Icon name="trash" :size="16" /></button>
         </div>
         <div v-else class="mlist__meta">
-            <span class="cb" role="checkbox" :aria-checked="allChecked" title="Выбрать все на странице" @click="$emit('select-all')" />
+            <span class="cb" :class="{ 'cb--on': allChecked }" role="checkbox" tabindex="0" :aria-checked="allChecked"
+                  title="Выбрать все на странице" @click="$emit('select-all')" @keydown.enter.prevent="$emit('select-all')" @keydown.space.prevent="$emit('select-all')">
+                <Icon v-if="allChecked" name="check" :size="12" />
+            </span>
             <span>{{ list.total }} {{ plural(list.total, 'письмо', 'письма', 'писем') }}</span>
             <button class="ib ib--sm" type="button" title="Обновить" @click="$emit('refresh')"><Icon name="refresh" :size="14" /></button>
             <span class="grow" />
@@ -89,20 +93,31 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                 class="mrow"
                 :class="{
                     'mrow--unread': !m.seen,
-                    'mrow--on': m.uid === openUid,
+                    'mrow--on': m.uid === openUid || m.uid === opening,
                     'mrow--cursor': m.uid === cursor,
                     'mrow--checked': selectedSet.has(m.uid),
                 }"
                 draggable="true"
+                tabindex="0"
+                role="button"
+                :aria-label="(m.seen ? '' : 'Непрочитанное. ') + m.from.name + '. ' + m.subject"
+                @keydown.enter.prevent="$emit('open', m.uid, $event)"
+                @keydown.space.prevent="$emit('toggle', m.uid, $event)"
                 @click="$emit('open', m.uid, $event)"
                 @contextmenu.prevent="$emit('context', $event, m.uid)"
                 @dragstart="onDragStart($event, m)"
             >
-                <span class="cb" :class="{ 'cb--on': selectedSet.has(m.uid) }" role="checkbox" @click.stop="$emit('toggle', m.uid, $event)">
+                <span class="cb" :class="{ 'cb--on': selectedSet.has(m.uid) }" role="checkbox" tabindex="0"
+                      :aria-checked="selectedSet.has(m.uid)" aria-label="Выбрать письмо"
+                      @click.stop="$emit('toggle', m.uid, $event)"
+                      @keydown.enter.stop.prevent="$emit('toggle', m.uid, $event)"
+                      @keydown.space.stop.prevent="$emit('toggle', m.uid, $event)">
                     <Icon v-if="selectedSet.has(m.uid)" name="check" :size="12" />
                 </span>
                 <span class="mrow__dot" />
-                <span class="mrow__av">{{ initials(m.from.name, m.from.mail) }}</span>
+                <!-- В «Отправленных» и «Черновиках» рядом стоит имя получателя — буквы берём оттуда же,
+                     иначе кружок и подпись противоречат друг другу. -->
+                <span class="mrow__av">{{ (folderRole === 'sent' || folderRole === 'drafts') && m.toName ? initials(m.toName, '') : initials(m.from.name, m.from.mail) }}</span>
                 <span class="mrow__body">
                     <span class="mrow__from">
                         <b :title="m.from.mail">{{ folderRole === 'sent' || folderRole === 'drafts' ? (m.toName || m.from.name) : m.from.name }}</b>
@@ -122,6 +137,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                     <span>{{ when(m.date) }}</span>
                 </span>
                 <span class="mrow__acts">
+                    <span class="mrow__acts-when">{{ when(m.date) }}</span>
                     <button class="ib ib--sm" type="button" title="Архив" @click.stop="$emit('act', 'archive', [m.uid])"><Icon name="archive" :size="15" /></button>
                     <button class="ib ib--sm" type="button" title="Удалить" @click.stop="$emit('act', 'delete', [m.uid])"><Icon name="trash" :size="15" /></button>
                     <button class="ib ib--sm" type="button" :title="m.flagged ? 'Снять флажок' : 'Флажок'" :class="{ 'ib--on': m.flagged }" @click.stop="$emit('act', m.flagged ? 'unflag' : 'flag', [m.uid])"><Icon name="flag" :size="15" /></button>
@@ -134,9 +150,9 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         </div>
 
         <footer v-if="list.pages > 1" class="mlist__foot">
-            <button class="btn btn--sm" type="button" :disabled="list.page <= 1" @click="$emit('page', list.page - 1)">Новее</button>
+            <button class="btn btn--sm" type="button" :disabled="loading || list.page <= 1" @click="$emit('page', list.page - 1)">Новее</button>
             <span class="grow" style="text-align: center">{{ list.page }} / {{ list.pages }}</span>
-            <button class="btn btn--sm" type="button" :disabled="list.page >= list.pages" @click="$emit('page', list.page + 1)">Старше</button>
+            <button class="btn btn--sm" type="button" :disabled="loading || list.page >= list.pages" @click="$emit('page', list.page + 1)">Старше</button>
         </footer>
     </section>
 </template>
