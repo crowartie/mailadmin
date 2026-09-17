@@ -1,12 +1,12 @@
 <script setup>
 // Настройки веб-почты: общие, подпись, автоответ, правила, папки и метки, безопасность, клавиши.
-import { computed, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import Editor from '../../Components/Mail/Editor.vue';
 import Toast from '../../Components/Mail/Toast.vue';
-import { plural } from '../../mail/format';
+import { plural, when as whenCommon } from '../../mail/format';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import { api } from '../../mail/api';
 
@@ -19,6 +19,9 @@ const props = defineProps({
     labels: Array,
     rules: Object,
     force2fa: Boolean,
+    // Адреса и порты почтовых программ приходят с сервера (HelpController::hosts):
+    // раньше каждый раздел писал их у себя и все три расходились.
+    hosts: { type: Object, default: () => ({}) },
 });
 
 const SECTIONS = [
@@ -41,15 +44,33 @@ const twofaCode = ref('');
 const twofaPassword = ref('');
 const newAppPassword = ref(null);
 const createdPassword = ref(null);
-async function loadSecurity() { try { sec.value = await api.security(); } catch (e) { say(e.message, true); } }
+// 205: до ответа сервера раздел рисовал пустые карточки и выглядел сломанным —
+// теперь видно, что данные грузятся, и видно, если они не пришли.
+const secError = ref('');
+async function loadSecurity() {
+    secError.value = '';
+    try { sec.value = await api.security(); } catch (e) { secError.value = e.message; say(e.message, true); }
+}
 async function startTwofa() { busy.value = true; try { twofa.value = await api.twofaSetup(); twofaCode.value = ''; } catch (e) { say(e.message, true); } finally { busy.value = false; } }
 async function enableTwofa() { busy.value = true; try { await api.twofaEnable(twofaCode.value); twofa.value = null; await loadSecurity(); say('Двухфакторная защита включена'); if (props.force2fa) window.location.href = '/mail'; } catch (e) { say(e.message, true); } finally { busy.value = false; } }
 async function disableTwofa() { busy.value = true; try { await api.twofaDisable(twofaPassword.value); twofaPassword.value = ''; await loadSecurity(); say('Защита выключена'); } catch (e) { say(e.message, true); } finally { busy.value = false; } }
 async function createAppPassword() { busy.value = true; try { createdPassword.value = await api.createAppPassword(newAppPassword.value.name, newAppPassword.value.password); newAppPassword.value = null; await loadSecurity(); } catch (e) { say(e.message, true); } finally { busy.value = false; } }
-async function revokeAppPassword(p) { if (!confirm(`Отозвать пароль «${p.name}»? Устройство перестанет получать почту.`)) return; try { await api.deleteAppPassword(p.id); await loadSecurity(); } catch (e) { say(e.message, true); } }
+async function revokeAppPassword(p) { if (!await ask(`Отозвать пароль «${p.name}»?`, 'Устройство с этим паролем перестанет получать почту. Основной пароль менять не придётся.', 'Отозвать', true)) return; try { await api.deleteAppPassword(p.id); await loadSecurity(); } catch (e) { say(e.message, true); } }
 async function kickSession(s) { try { const r = await api.kickSession(s.id); sec.value.sessions = r.sessions; } catch (e) { say(e.message, true); } }
 async function kickOthers() { try { const r = await api.kickOthers(); sec.value.sessions = r.sessions; say('Остальные сеансы завершены'); } catch (e) { say(e.message, true); } }
-function when(iso, long = false) { if (!iso) return ''; const d = new Date(iso); const diff = (Date.now() - d) / 60000; if (!long) { if (diff < 1) return 'сейчас'; if (diff < 60) return Math.round(diff) + ' мин назад'; if (diff < 1440) return Math.round(diff / 60) + ' ч назад'; } return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
+// Свежие события показываем по-своему («12 мин назад»), всё остальное — общей функцией
+// почты: местная копия давала «17 сент., 14:03» там, где весь интерфейс пишет
+// «17 сентября, 14:03».
+function when(iso, long = false) {
+    if (!iso) return '';
+    const diff = (Date.now() - new Date(iso)) / 60000;
+    if (!long && diff >= 0) {
+        if (diff < 1) return 'сейчас';
+        if (diff < 60) return Math.round(diff) + ' мин назад';
+        if (diff < 1440) return Math.round(diff / 60) + ' ч назад';
+    }
+    return whenCommon(iso, true);
+}
 if (props.section === 'security') loadSecurity();
 const busy = ref(false);
 let toastTimer = null;
@@ -57,48 +78,123 @@ let toastTimer = null;
 const custom = computed(() => folders.value.filter((f) => f.role === 'custom'));
 const COLORS = ['#2F6FEB', '#16A05C', '#D9791F', '#C0392B', '#7B3FE4', '#0E8A8A', '#6B7787'];
 
+/**
+ * Спросить подтверждение своим диалогом. На одной странице были вперемешку
+ * системное окно браузера (отзыв пароля, «Разложить Входящие») и собственный диалог
+ * (папки и метки) — теперь спрашиваем везде одинаково.
+ */
+const confirmBox = ref(null);
+function ask(title, text = '', confirmLabel = 'Продолжить', danger = false) {
+    return new Promise((resolve) => { confirmBox.value = { title, text, confirmLabel, danger, resolve }; });
+}
+function closeAsk(ok) {
+    const b = confirmBox.value;
+    confirmBox.value = null;
+    if (b) b.resolve(ok);
+}
+
 function say(text, error = false) {
     clearTimeout(toastTimer);
     toast.value = { text, error };
     toastTimer = setTimeout(() => { toast.value = null; }, error ? 6000 : 3000);
 }
 
+/**
+ * 196: поля, которые ждут кнопки «Сохранить». Раздел настроек — обычная ссылка,
+ * и набранное имя отправителя, подпись или быстрые ответы пропадали молча.
+ * Переключатели, которые сохраняются сразу (тема, клавиши, уведомления), сюда не входят.
+ */
+function snap() {
+    return JSON.stringify([s.value.display_name, s.value.signature, quickText.value, s.value.undo_seconds,
+        s.value.preview, s.value.show_images, s.value.unread_highlight, s.value.unread_color,
+        s.value.reply_all, s.value.ask_rule_on_move, autoreply.value]);
+}
+const clean = ref(snap());
+const dirty = computed(() => snap() !== clean.value || !!editing.value);
+let leaving = false;
+let offBefore = null;
+function warnLeave(e) { if (dirty.value) { e.preventDefault(); e.returnValue = ''; } }
+onMounted(() => {
+    window.addEventListener('beforeunload', warnLeave);
+    offBefore = router.on('before', (ev) => {
+        const v = ev.detail?.visit;
+        if (!dirty.value || leaving || !v || (v.method || 'get').toLowerCase() !== 'get') return;
+        const url = String(v.url || '');
+        ask('Уйти без сохранения?', 'В этом разделе есть несохранённые изменения — они пропадут.', 'Уйти', true)
+            .then((ok) => { if (ok) { leaving = true; router.visit(url); } });
+        return false;
+    });
+});
+onBeforeUnmount(() => { window.removeEventListener('beforeunload', warnLeave); if (offBefore) offBefore(); });
+
 async function saveSettings(patch) {
     busy.value = true;
     try {
         const r = await api.saveSettings(patch);
         Object.assign(s.value, r);
+        clean.value = snap();
         say('Сохранено');
     } catch (e) { say(e.message, true); } finally { busy.value = false; }
 }
+/**
+ * 197, 198, 199: тема, горячие клавиши и уведомления применяются сразу же, поэтому
+ * и на сервер уходят сразу. Раньше тема оставалась тёмной в этом браузере и светлой
+ * на телефоне, а один и тот же переключатель клавиш в двух разделах вёл себя по-разному.
+ * Ответ сервера здесь не раскладываем по форме — иначе затрёт то, что человек набрал.
+ */
+async function saveOne(patch, text = 'Сохранено') {
+    busy.value = true;
+    try { await api.saveSettings(patch); say(text); } catch (e) { say(e.message, true); } finally { busy.value = false; }
+}
+
 function saveGeneral() {
+    if (quickOver.value) { say(`Быстрых ответов не больше ${MAX_QUICK} — уберите лишние ${quickOver.value}`, true); return; }
     saveSettings({
         display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, ask_rule_on_move: !!s.value.ask_rule_on_move, undo_seconds: Number(s.value.undo_seconds),
         preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, show_images: s.value.show_images, unread_highlight: !!s.value.unread_highlight, unread_color: s.value.unread_color || '',
-        quick_replies: quickText.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8),
+        quick_replies: quickReplies.value,
     });
 }
+// 200: сервер хранит не больше восьми быстрых ответов — раньше лишние строки
+// молча исчезали при сохранении, теперь про предел написано рядом с полем.
+const MAX_QUICK = 8;
+const quickReplies = computed(() => quickText.value.split('\n').map((x) => x.trim()).filter(Boolean));
+const quickOver = computed(() => Math.max(0, quickReplies.value.length - MAX_QUICK));
 
 // ── Правила ─────────────────────────────────────────────────
 const applying = ref(false);
 async function applyRules() {
     if (applying.value) return;
-    if (!confirm('Прогнать все правила по письмам, которые уже лежат во «Входящих»? Письма разложатся по папкам согласно правилам.')) return;
+    if (!await ask('Разложить письма во «Входящих»?', 'Правила пройдут по письмам, которые уже лежат во «Входящих», и разложат их по папкам. Отменить это одним действием нельзя.', 'Разложить')) return;
     applying.value = true;
     try {
         const r = await api.applyRules();
         const done = r.results.filter((x) => !x.skipped);
         const total = done.reduce((s, x) => s + x.count, 0);
         const skipped = r.results.filter((x) => x.skipped && x.skipped !== 'выключено');
-        say(`Обработано писем: ${total}` + (done.length ? ' (' + done.map((x) => `${x.name || 'правило'}: ${x.count}`).join(', ') + ')' : '') + (skipped.length ? `. Пропущено правил: ${skipped.length} — ${skipped[0].skipped}` : ''), false);
+        // Перечисляем все пропущенные правила с причинами: раньше показывалась только первая,
+        // и человек не знал, что ещё не отработало.
+        const why = skipped.map((x) => `${x.name || 'правило'} — ${x.skipped}`).join('; ');
+        say(`Обработано писем: ${total}` + (done.length ? ' (' + done.map((x) => `${x.name || 'правило'}: ${x.count}`).join(', ') + ')' : '') + (skipped.length ? `. Пропущено правил: ${skipped.length} — ${why}` : ''), false);
     } catch (e) { say(e.message, true); } finally { applying.value = false; }
 }
 const FIELDS = { from: 'Отправитель', to: 'Получатель', recipient: 'Кому или копия', subject: 'Тема', body: 'Текст письма', header: 'Заголовок', size: 'Размер, КБ' };
 const OPS = { contains: 'содержит', not_contains: 'не содержит', is: 'равно', starts: 'начинается с', ends: 'заканчивается на', over: 'больше', under: 'меньше' };
+// Для размера подходят только «больше» и «меньше», для текста — остальные. Раньше при смене
+// типа условия оператор оставался от прежнего, и селектор показывал «больше» у темы письма.
+const TEXT_OPS = ['contains', 'not_contains', 'is', 'starts', 'ends'];
+const SIZE_OPS = ['over', 'under'];
+function opsFor(field) { return field === 'size' ? SIZE_OPS : TEXT_OPS; }
+function onFieldChange(c) {
+    const allowed = opsFor(c.field);
+    if (!allowed.includes(c.op)) c.op = allowed[0];
+    if (c.field === 'size' && !/^\d*$/.test(String(c.value ?? ''))) c.value = '';
+}
 const ACTIONS = { move: 'Переместить в папку', copy: 'Копию в папку', label: 'Поставить метку', flag: 'Флажок', seen: 'Пометить прочитанным', forward: 'Переслать на адрес', forward_copy: 'Переслать копию на адрес', discard: 'Уничтожить письмо (без «Корзины»)', reply: 'Ответить текстом', stop: 'Остановить обработку' };
 
 function newRule() {
     editing.value = { id: Date.now(), name: '', enabled: true, match: 'all', stop: false, conditions: [{ field: 'from', op: 'contains', value: '' }], actions: [{ type: 'move', value: '' }] };
+    if (rules.value.length >= MAX_RULES) { editing.value = null; say(`Правил не больше ${MAX_RULES} — удалите ненужные`, true); }
 }
 function describeCond(c) {
     if (c.field === 'size') return `Размер ${OPS[c.op] || ''} ${c.value} КБ`;
@@ -119,18 +215,43 @@ function describeAct(a) {
 function ruleName(r) {
     return r.name || (r.conditions?.length ? describeCond(r.conditions[0]) : 'Все письма');
 }
-function saveRule() {
+// Ограничения сервера (RulesController): держим их и на клиенте, чтобы человек не узнавал
+// о них только при сохранении, да ещё сообщением от проверяющего механизма.
+const MAX_RULES = 50;
+const MAX_CONDITIONS = 10;
+const MAX_ACTIONS = 6;
+const NEEDS_VALUE = ['move', 'copy', 'label', 'forward', 'forward_copy', 'reply'];
+
+async function saveRule() {
     const r = editing.value;
     if (!r.actions.length) { say('Добавьте хотя бы одно действие', true); return; }
+    // Правило без условий совпадает с каждым письмом. Вместе с «Переместить» или
+    // «Уничтожить письмо» это разом уводит всю входящую почту — спрашиваем прямо.
+    if (!r.conditions.length) {
+        const harsh = r.actions.some((a) => ['move', 'discard', 'forward'].includes(a.type));
+        const q = harsh
+            ? 'Оно сработает на каждое входящее письмо, включая нужные.'
+            : 'Оно будет срабатывать на каждое письмо.';
+        if (!await ask('Правило без условий', q, 'Сохранить', harsh)) return;
+    }
+    // Пустое условие («Отправитель содержит ») тоже совпадает со всеми письмами,
+    // но выглядит как настроенное — такое не сохраняем.
+    const empty = r.conditions.find((c) => String(c.value ?? '').trim() === '');
+    if (empty) { say(`Заполните значение условия «${FIELDS[empty.field] || empty.field}» — пустое совпадает со всеми письмами`, true); return; }
+    const blank = r.actions.find((a) => NEEDS_VALUE.includes(a.type) && String(a.value ?? '').trim() === '');
+    if (blank) { say(`Выберите, что подставить в действие «${ACTIONS[blank.type]}» — иначе правило ничего не сделает`, true); return; }
+    if (r.conditions.length > MAX_CONDITIONS) { say(`Условий в одном правиле не больше ${MAX_CONDITIONS}`, true); return; }
+    if (r.actions.length > MAX_ACTIONS) { say(`Действий в одном правиле не больше ${MAX_ACTIONS}`, true); return; }
     const i = rules.value.findIndex((x) => x.id === r.id);
+    if (i < 0 && rules.value.length >= MAX_RULES) { say(`Правил не больше ${MAX_RULES} — удалите ненужные`, true); return; }
     if (i >= 0) rules.value[i] = r; else rules.value.push(r);
     editing.value = null;
     pushRules();
 }
-function removeRule(id) {
+async function removeRule(id) {
     const r = rules.value.find((x) => x.id === id);
     const name = r?.name ? `«${r.name}»` : 'правило';
-    if (!window.confirm(`Удалить ${name}? Восстановить его будет нельзя.`)) return;
+    if (!await ask(`Удалить ${name}?`, 'Восстановить правило будет нельзя — его придётся создать заново.', 'Удалить', true)) return;
     rules.value = rules.value.filter((x) => x.id !== id);
     pushRules();
 }
@@ -140,12 +261,38 @@ function moveRule(i, d) {
     const arr = [...rules.value]; [arr[i], arr[j]] = [arr[j], arr[i]]; rules.value = arr;
     pushRules();
 }
-async function pushRules() {
+/**
+ * Сохранить правила и автоответ. Текст сообщения зависит от того, что человек менял:
+ * раньше и при сохранении автоответа, и при перестановке правил появлялось одно и то же
+ * «Правила применены на сервере», которое читается как «правила уже прогнаны по почте».
+ */
+async function pushRules(what = 'rules') {
     busy.value = true;
     try {
         await api.saveRules(rules.value, autoreply.value);
-        say('Правила применены на сервере');
+        say(what === 'autoreply' ? 'Автоответ сохранён' : 'Правила сохранены — сервер будет применять их к новым письмам');
     } catch (e) { say(e.message, true); } finally { busy.value = false; }
+}
+
+/**
+ * Сохранить автоответ. Проверяем то, что сервер не проверяет: порядок дат и пустой текст
+ * у включённого автоответа — иначе люди получали бы пустые письма, а сам автоответ
+ * с датами «с 20.09 по 01.09» молча не срабатывал бы никогда.
+ */
+async function saveAutoreply() {
+    const a = autoreply.value;
+    if (a.from && a.to && a.from > a.to) {
+        say('Дата «По» раньше даты «С» — автоответ так никогда не сработает', true);
+        return;
+    }
+    if (a.enabled && !String(a.body || '').trim()) {
+        say('Напишите текст автоответа — иначе отправителям уйдёт пустое письмо', true);
+        return;
+    }
+    if (a.enabled && a.to && a.to < new Date().toISOString().slice(0, 10)) {
+        if (!await ask('Дата «По» уже прошла', 'Автоответ включён, но отвечать не будет, пока дата не в будущем. Всё равно сохранить?', 'Сохранить')) return;
+    }
+    pushRules('autoreply');
 }
 
 // ── Папки и метки ────────────────────────────────────────────
@@ -168,10 +315,19 @@ async function recolor(l, color) {
 // ── Уведомления браузера ─────────────────────────────────────
 const notifyState = ref(typeof Notification === 'undefined' ? 'Этот браузер не поддерживает уведомления' : Notification.permission === 'denied' ? 'Уведомления запрещены в настройках браузера для этого сайта' : '');
 async function askNotify(e) {
-    if (!e.target.checked || typeof Notification === 'undefined') return;
+    if (typeof Notification === 'undefined') { s.value.notify_browser = false; return; }
+    if (!e.target.checked) { notifyState.value = ''; await saveOne({ notify_browser: false }, 'Уведомления выключены'); return; }
+    // Разрешение спрашиваем сразу — значит и настройку сохраняем сразу: раньше подпись
+    // уверяла «Разрешено, придёт при новом письме», а на сервере флаг оставался выключенным,
+    // пока человек не нажмёт «Сохранить».
     const p = await Notification.requestPermission();
-    notifyState.value = p === 'granted' ? 'Разрешено — придёт при новом письме, даже если вкладка не активна' : 'Браузер не дал разрешение';
-    if (p !== 'granted') s.value.notify_browser = false;
+    if (p === 'granted') {
+        notifyState.value = 'Разрешено — придёт при новом письме, даже если вкладка не активна';
+        await saveOne({ notify_browser: true }, 'Уведомления включены');
+    } else {
+        notifyState.value = p === 'denied' ? 'Уведомления запрещены в настройках браузера для этого сайта' : 'Браузер не дал разрешение';
+        s.value.notify_browser = false;
+    }
 }
 
 const shortcuts = [
@@ -205,10 +361,14 @@ const shortcuts = [
                             <h2>Общие</h2>
                             <div class="mset__cols">
                                 <div class="field"><label>Имя отправителя</label><input v-model="s.display_name" class="input" placeholder="Как вас видят получатели"></div>
-                                <div class="field"><label>Адрес</label><input class="input" :value="user" disabled></div>
+                                <!-- 201: адрес выглядел полем ввода, хотя менять его может только администратор. -->
+                                <div class="field"><label>Адрес</label><div class="field__row" style="align-items: baseline; gap: 10px; min-height: 38px"><b class="mono">{{ user }}</b><span class="hint" style="margin: 0">меняет администратор</span></div></div>
                                 <div class="field">
-                                    <label>Тема оформления</label>
-                                    <select v-model="s.theme" class="input"><option value="light">Светлая</option><option value="dark">Тёмная</option><option value="system">Как в системе</option></select>
+                                    <label for="set-theme">Тема оформления</label>
+                                    <!-- 197: тема применяется сразу, значит и сохраняется сразу — иначе в этом
+                                         браузере темно, а на телефоне светло. -->
+                                    <select id="set-theme" v-model="s.theme" class="input" @change="saveOne({ theme: s.theme })"><option value="light">Светлая</option><option value="dark">Тёмная</option><option value="system">Как в системе</option></select>
+                                    <span class="hint" style="margin: 0">Применяется и сохраняется сразу</span>
                                 </div>
                                 <div class="field">
                                     <label>Отмена отправки</label>
@@ -226,14 +386,17 @@ const shortcuts = [
                                 <span class="hint" style="margin: 0"><span :style="{ display: 'inline-block', width: '3px', height: '14px', verticalAlign: 'middle', marginRight: '8px', background: s.unread_color || 'var(--accent)' }" /><b :style="{ color: s.unread_color || 'var(--accent-ink)' }">Так будет выглядеть тема непрочитанного</b></span>
                                 <button v-if="s.unread_color" class="btn btn--sm" type="button" @click="s.unread_color = ''">Синий темы</button>
                             </div>
-                            <label class="toggle"><input v-model="s.shortcuts" type="checkbox"><span class="toggle__track" />Горячие клавиши</label>
+                            <!-- 198: тот же переключатель в разделе «Горячие клавиши» сохранялся сразу,
+                                 а здесь ждал кнопки «Сохранить». Теперь одинаково. -->
+                            <label class="toggle"><input v-model="s.shortcuts" type="checkbox" @change="saveOne({ shortcuts: s.shortcuts })"><span class="toggle__track" />Горячие клавиши <span class="hint" style="margin: 0">— сохраняется сразу</span></label>
                             <label class="toggle"><input v-model="s.reply_all" type="checkbox"><span class="toggle__track" />По умолчанию отвечать всем</label>
                             <label class="toggle"><input v-model="s.ask_rule_on_move" type="checkbox"><span class="toggle__track" />При переносе письма из «Входящих» в папку предлагать правило для отправителя</label>
-                            <label class="toggle"><input v-model="s.notify_browser" type="checkbox" @change="askNotify"><span class="toggle__track" />Уведомления браузера о новых письмах и напоминаниях</label>
+                            <label class="toggle"><input v-model="s.notify_browser" type="checkbox" @change="askNotify"><span class="toggle__track" />Уведомления браузера о новых письмах и напоминаниях <span class="hint" style="margin: 0">— сохраняется сразу</span></label>
                             <p v-if="notifyState" class="hint" style="margin: 0">{{ notifyState }}</p>
                             <div class="field">
-                                <label>Быстрые ответы (каждый с новой строки)</label>
-                                <textarea v-model="quickText" class="input" rows="4" />
+                                <label for="set-quick">Быстрые ответы (каждый с новой строки, не больше {{ MAX_QUICK }})</label>
+                                <textarea id="set-quick" v-model="quickText" class="input" rows="4" />
+                                <span class="hint" style="margin: 0" :style="quickOver ? { color: 'var(--no)' } : null">{{ quickOver ? `Лишних строк: ${quickOver} — сохранятся только первые ${MAX_QUICK}, уберите лишние` : `Сейчас ${quickReplies.length} из ${MAX_QUICK}` }}</span>
                             </div>
                             <div><button class="btn btn--primary" type="submit" :disabled="busy">Сохранить</button></div>
                         </form>
@@ -252,9 +415,16 @@ const shortcuts = [
                             <h2>Телефон и программы</h2>
                             <p class="hint" style="margin-top: 0">Почта, календарь и контакты на iPhone/Android, а также Outlook и другие программы. На отдельной странице — готовый профиль для iPhone с QR-кодом, сертификат сервера и параметры для ручной настройки.</p>
                             <p><a class="btn btn--primary" href="/mail/setup"><Icon name="mobile" :size="16" /> Открыть страницу подключения</a></p>
-                            <div class="hint">
-                                Для ручной настройки: входящая — IMAP <b>mail.innotec.su</b>, порт 993, SSL; исходящая — SMTP <b>mail.innotec.su</b>, порт 465, SSL; логин — ваш адрес целиком, пароль — от почты. Календарь и контакты: CalDAV/CardDAV по тому же адресу.
+                            <!-- 202, 203: те же параметры были ещё и в «Безопасности», причём с другими
+                                 хостами и другим портом SMTP, а для чужого домена показывали mail.innotec.su.
+                                 Теперь они одни на всё приложение и приходят с сервера. -->
+                            <div class="mset__cols">
+                                <div class="kv"><span>Входящие (IMAP)</span><b class="mono">{{ hosts.imap }} : {{ hosts.imapPort }}, SSL/TLS</b></div>
+                                <div class="kv"><span>Исходящие (SMTP)</span><b class="mono">{{ hosts.smtp }} : {{ hosts.smtpPort }}, SSL/TLS</b></div>
+                                <div class="kv"><span>Календарь и контакты</span><b class="mono">{{ hosts.dav }}</b></div>
+                                <div class="kv"><span>Логин</span><b class="mono">{{ user }}</b></div>
                             </div>
+                            <p class="hint" style="margin: 0">Outlook, Thunderbird и Android находят настройки почты сами по адресу. iPhone/iPad/Mac: <a :href="hosts.mobileconfig || `/mail/apple.mobileconfig?email=${encodeURIComponent(user)}`">установить профиль</a> — почта, контакты и календарь одним файлом. Outlook’у для контактов и календаря нужно бесплатное дополнение <a href="https://caldavsynchronizer.org/" target="_blank" rel="noopener">Outlook CalDav Synchronizer</a> с адресом выше, Android — приложение DAVx⁵. Пароль — от почты или пароль приложения.</p>
                         </div>
                     </template>
 
@@ -270,7 +440,7 @@ const shortcuts = [
 
                     <!-- Автоответ -->
                     <template v-if="section === 'autoreply'">
-                        <form class="card mset__section" @submit.prevent="pushRules">
+                        <form class="card mset__section" @submit.prevent="saveAutoreply">
                             <h2>Автоответ <span class="grow" /><label class="toggle"><input v-model="autoreply.enabled" type="checkbox"><span class="toggle__track" />{{ autoreply.enabled ? 'Включён' : 'Выключен' }}</label></h2>
                             <div class="mset__cols">
                                 <div class="field"><label>С (необязательно)</label><input v-model="autoreply.from" class="input" type="date"></div>
@@ -310,25 +480,33 @@ const shortcuts = [
                             <div class="field">
                                 <label>Если <select v-model="editing.match" style="font: inherit; border: none; background: none; color: var(--accent-ink)"><option value="all">выполнены все условия</option><option value="any">выполнено любое условие</option></select></label>
                                 <div v-for="(c, ci) in editing.conditions" :key="ci" class="rule__cond">
-                                    <select v-model="c.field" class="input" style="max-width: 190px"><option v-for="(t, k) in FIELDS" :key="k" :value="k">{{ t }}</option></select>
+                                    <select v-model="c.field" class="input" style="max-width: 190px" @change="onFieldChange(c)"><option v-for="(t, k) in FIELDS" :key="k" :value="k">{{ t }}</option></select>
                                     <input v-if="c.field === 'header'" v-model="c.header" class="input" placeholder="X-Priority" style="max-width: 160px">
+                                    <!-- Список операторов строим по типу условия: v-show на <option> часть браузеров
+                                         игнорирует, и у темы письма показывался оператор «больше». -->
                                     <select v-model="c.op" class="input" style="max-width: 170px">
-                                        <template v-if="c.field === 'size'"><option value="over">больше</option><option value="under">меньше</option></template>
-                                        <template v-else><option v-for="(t, k) in OPS" v-show="k !== 'over' && k !== 'under'" :key="k" :value="k">{{ t }}</option></template>
+                                        <option v-for="k in opsFor(c.field)" :key="k" :value="k">{{ OPS[k] }}</option>
                                     </select>
-                                    <input v-model="c.value" class="input" :placeholder="c.field === 'size' ? '10240' : 'значение'">
+                                    <input v-model="c.value" class="input" :inputmode="c.field === 'size' ? 'numeric' : 'text'" :placeholder="c.field === 'size' ? '10240' : 'значение'">
                                     <button class="ib ib--sm" type="button" title="Убрать" @click="editing.conditions.splice(ci, 1)"><Icon name="x" :size="14" /></button>
                                 </div>
-                                <a style="cursor: pointer; font-size: 13px" @click="editing.conditions.push({ field: 'subject', op: 'contains', value: '' })">+ ещё условие</a>
+                                <button v-if="editing.conditions.length < MAX_CONDITIONS" type="button" class="linklike" style="font-size: 13px; align-self: start" @click="editing.conditions.push({ field: 'subject', op: 'contains', value: '' })">+ ещё условие</button>
+                                <span v-else class="hint" style="margin: 0">Условий в одном правиле не больше {{ MAX_CONDITIONS }}</span>
                             </div>
                             <div class="field">
                                 <label>То</label>
                                 <div v-for="(a, ai) in editing.actions" :key="ai" class="rule__cond">
                                     <select v-model="a.type" class="input" style="max-width: 240px"><option v-for="(t, k) in ACTIONS" :key="k" :value="k">{{ t }}</option></select>
+                                    <!-- Заглушка «— выберите —»: без неё новое правило выглядело настроенным,
+                                         хотя папка не выбрана, и на сервере оно ничего не делало. -->
                                     <select v-if="a.type === 'move' || a.type === 'copy'" v-model="a.value" class="input">
+                                        <option value="">— выберите папку —</option>
                                         <option v-for="f in folders" :key="f.path" :value="f.path">{{ '— '.repeat(f.depth) + f.name }}</option>
                                     </select>
-                                    <select v-else-if="a.type === 'label'" v-model="a.value" class="input"><option v-for="l in labels" :key="l.id" :value="String(l.id)">{{ l.name }}</option></select>
+                                    <select v-else-if="a.type === 'label'" v-model="a.value" class="input">
+                                        <option value="">— выберите метку —</option>
+                                        <option v-for="l in labels" :key="l.id" :value="String(l.id)">{{ l.name }}</option>
+                                    </select>
                                     <input v-else-if="a.type === 'forward' || a.type === 'forward_copy'" v-model="a.value" class="input" type="email" placeholder="кому@домен">
                                     <input v-else-if="a.type === 'reply'" v-model="a.value" class="input" placeholder="Текст ответа">
                                     <button class="ib ib--sm" type="button" title="Убрать" @click="editing.actions.splice(ai, 1)"><Icon name="x" :size="14" /></button>
@@ -363,7 +541,7 @@ const shortcuts = [
                                 <div v-for="l in labels" :key="l.id" class="mset__li">
                                     <span class="mnav__swatch mnav__swatch--round" :style="{ background: l.color }" />
                                     <span class="grow">{{ l.name }}</span>
-                                    <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: l.color === c }" :style="{ background: c, width: 18, height: 18 }" @click="recolor(l, c)" /></div>
+                                    <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: l.color === c }" :style="{ background: c, width: '18px', height: '18px' }" @click="recolor(l, c)" /></div>
                                     <button class="ib ib--sm" type="button" title="Переименовать" @click="dialog = { kind: 'renameLabel', label: l }"><Icon name="edit" :size="14" /></button>
                                     <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="dialog = { kind: 'deleteLabel', label: l }"><Icon name="trash" :size="14" /></button>
                                 </div>
@@ -375,6 +553,15 @@ const shortcuts = [
 
                     <!-- Безопасность -->
                     <template v-if="section === 'security'">
+                        <!-- 205: до ответа сервера раздел рисовал пустые карточки и кнопку «Создать»
+                             не показывал вовсе — выглядело как сломанный раздел. -->
+                        <div v-if="!sec" class="card mset__section">
+                            <template v-if="secError">
+                                <p class="hint" style="margin: 0">Не удалось загрузить данные о защите: {{ secError }}</p>
+                                <div><button class="btn" type="button" @click="loadSecurity">Повторить</button></div>
+                            </template>
+                            <p v-else class="hint" style="margin: 0">Загружаем данные о защите…</p>
+                        </div>
                         <div v-if="force2fa" class="card mset__section" style="border-color: var(--warn)">
                             <h2>Администратор требует двухфакторную защиту</h2>
                             <p class="hint" style="margin: 0">Подключите приложение-аутентификатор ниже — после этого почта откроется как обычно.</p>
@@ -442,15 +629,11 @@ const shortcuts = [
                             <h2>Пароль</h2>
                             <p class="hint" style="margin: 0">Пароль от почты выдаёт и меняет администратор. Если пароль стал известен кому-то ещё — сообщите администратору и завершите чужие сеансы выше.</p>
                         </div>
-                        <div class="card mset__section">
-                            <h2>Подключение почтовых программ<span class="grow" /><Link href="/mail/setup" class="btn btn--sm"><Icon name="mobile" :size="14" />Подключить телефон</Link></h2>
-                            <div class="mset__cols">
-                                <div class="kv"><span>Входящие (IMAP)</span><b class="mono">imap.{{ user.split('@')[1] }} : 993, SSL</b></div>
-                                <div class="kv"><span>Исходящие (SMTP)</span><b class="mono">smtp.{{ user.split('@')[1] }} : 587, STARTTLS</b></div>
-                                <div class="kv"><span>Календарь и контакты</span><b class="mono">https://mail.{{ user.split('@')[1] }}/dav/</b></div>
-                                <div class="kv"><span>Логин</span><b class="mono">{{ user }}</b></div>
-                            </div>
-                            <p class="hint" style="margin: 0">Outlook, Thunderbird и Android находят настройки почты сами по адресу. iPhone/iPad/Mac: <a :href="`/mail/apple.mobileconfig?email=${encodeURIComponent(user)}`">установить профиль</a> — почта, контакты и календарь одним файлом. Outlook для контактов и календаря нужен бесплатный <a href="https://caldavsynchronizer.org/" target="_blank" rel="noopener">CalDAV Synchronizer</a> с адресом выше; Android — DAVx5. Пароль — от почты или пароль приложения.</p>
+                        <!-- 202: параметры подключения были продублированы здесь с другими значениями;
+                             оставляем ссылку на единственный раздел, где они живут. -->
+                        <div class="card mset__section" style="max-width: 560px">
+                            <h2>Почтовые программы и телефон<span class="grow" /><Link href="/mail/settings/devices" class="btn btn--sm"><Icon name="mobile" :size="14" />Параметры</Link></h2>
+                            <p class="hint" style="margin: 0">Адреса серверов, профиль для iPhone и сертификат — в разделе «Телефон и программы». Для отдельного устройства создайте пароль приложения выше, чтобы не давать ему основной.</p>
                         </div>
                     </template>
 
@@ -480,6 +663,9 @@ const shortcuts = [
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'renameLabel'" title="Переименовать метку" :prompt="{ label: 'Название', value: dialog.label.name }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'deleteLabel'" :title="'Удалить метку «' + dialog.label.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog" />
+        <Dialog v-if="confirmBox" :title="confirmBox.title" :confirm-label="confirmBox.confirmLabel" :danger="confirmBox.danger" @close="closeAsk(false)" @confirm="closeAsk(true)">
+            <p v-if="confirmBox.text" class="hint" style="margin: 0">{{ confirmBox.text }}</p>
+        </Dialog>
         <Toast :toast="toast" @close="toast = null" />
     </MailLayout>
 </template>

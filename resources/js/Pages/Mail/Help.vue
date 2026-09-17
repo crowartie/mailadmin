@@ -522,12 +522,12 @@ function printPage() { window.print(); }
                     <!-- ═══════════ 11. Устройства ═══════════ -->
                     <section id="devices" class="card mset__section help__section">
                         <h2>Телефон и Outlook</h2>
-                        <p class="hint">Проще всего — страница <Link href="/mail/setup">«Подключить телефон и программы»</Link>: профиль для iPhone одной кнопкой, QR-код для телефона, сертификат. Все параметры есть и в Настройках → Безопасность → «Подключение почтовых программ». Логин везде — ваш полный адрес, пароль — от почты или пароль приложения.</p>
+                        <p class="hint">Проще всего — страница <Link href="/mail/setup">«Подключить телефон и программы»</Link>: профиль для iPhone одной кнопкой, QR-код для телефона, сертификат. Все параметры есть и в Настройках → «Телефон и программы». Логин везде — ваш полный адрес, пароль — от почты или пароль приложения.</p>
                         <article class="help__item">
                             <h3>Параметры подключения</h3>
                             <table class="help__table">
-                                <tr><td>Входящие (IMAP)</td><td><code>{{ hosts.imap }}</code>, порт 993, SSL/TLS</td></tr>
-                                <tr><td>Исходящие (SMTP)</td><td><code>{{ hosts.smtp }}</code>, порт 465 (SSL) или 587 (STARTTLS), с авторизацией тем же логином и паролем</td></tr>
+                                <tr><td>Входящие (IMAP)</td><td><code>{{ hosts.imap }}</code>, порт {{ hosts.imapPort }}, SSL/TLS</td></tr>
+                                <tr><td>Исходящие (SMTP)</td><td><code>{{ hosts.smtp }}</code>, порт {{ hosts.smtpPort }}, SSL/TLS, с авторизацией тем же логином и паролем</td></tr>
                                 <tr><td>Календарь и контакты (CalDAV/CardDAV)</td><td><code>{{ hosts.dav }}</code></td></tr>
                                 <tr><td>Логин</td><td>полный адрес, например ivanov@{{ domain }}</td></tr>
                             </table>

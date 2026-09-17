@@ -58,6 +58,9 @@ class InboxController extends Controller
             'labels' => Label::where('user', $imap->user())->orderBy('sort')->orderBy('id')->get(['id', 'name', 'color']),
             'rules' => \App\Models\Webmail\RuleSet::find($imap->user())?->only(['rules', 'autoreply']) ?? ['rules' => [], 'autoreply' => null],
             'force2fa' => (bool) $request->session()->get('mail.force2fa'),
+            // Один источник адресов на всё приложение: раньше «Телефон и программы»,
+            // «Безопасность» и справка называли разные хосты и разные порты SMTP.
+            'hosts' => \App\Http\Controllers\Mail\HelpController::hosts($imap->user()),
         ]);
     }
 }

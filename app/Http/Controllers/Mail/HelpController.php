@@ -18,6 +18,31 @@ use Inertia\Response;
  */
 class HelpController extends Controller
 {
+    /**
+     * Адреса и порты для почтовых программ — единственный источник на всё приложение.
+     * Раньше их писали в трёх местах по-разному: mail.<домен> с портом 465 в одном разделе
+     * настроек, imap.<домен>/smtp.<домен> с портом 587 в другом и «465 или 587» в справке.
+     *
+     * @return array<string,string|int>
+     */
+    public static function hosts(string $user = ''): array
+    {
+        $domain = $user !== '' ? (string) (explode('@', $user)[1] ?? '') : '';
+        if ($domain === '') {
+            $domain = (string) config('areas.default_domain');
+        }
+        $base = \App\Support\Area::mailBase();
+
+        return [
+            'imap' => 'imap.' . $domain,
+            'imapPort' => 993,
+            'smtp' => 'smtp.' . $domain,
+            'smtpPort' => 465,
+            'dav' => $base . '/dav/',
+            'mobileconfig' => $base . '/mail/apple.mobileconfig' . ($user !== '' ? '?email=' . rawurlencode($user) : ''),
+        ];
+    }
+
     public function index(Request $request): Response
     {
         $user = (string) $request->session()->get('mail.user', '');
@@ -36,7 +61,7 @@ class HelpController extends Controller
             'settings' => $user !== '' ? Setting::for($user) : ['theme' => 'system'],
             'domain' => $domain,
             'base' => $base,
-            'hosts' => ['imap' => 'imap.' . $domain, 'smtp' => 'smtp.' . $domain, 'dav' => $base . '/dav/', 'mobileconfig' => $base . '/mail/apple.mobileconfig' . ($user !== '' ? '?email=' . rawurlencode($user) : '')],
+            'hosts' => self::hosts($user),
             'cloud' => ['enabled' => (bool) ($cloud['enabled'] ?? false), 'thresholdMb' => (int) ($cloud['threshold_mb'] ?? 10), 'expireDays' => (int) ($cloud['expire_days'] ?? 30)],
             'quarantine' => ['digest' => (bool) ($quarantine['digest'] ?? true), 'digestTime' => (string) ($quarantine['digest_time'] ?? '09:00'), 'keepDays' => (int) ($quarantine['keep_days'] ?? 14)],
             'senders' => ['spamVotes' => (int) ($senders['spam_votes'] ?? 2), 'listsVotes' => (int) ($senders['lists_votes'] ?? 2), 'hamGlobal' => (bool) ($senders['ham_global'] ?? true)],
