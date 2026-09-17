@@ -23,8 +23,8 @@ class MailStore
 {
     public const PAGE = 40;
 
-    /** Сколько всего ждём поиск по всем папкам, секунд. */
-    private const SEARCH_BUDGET = 25;
+    /** Сколько всего ждём поиск по всем папкам, секунд (срок проверяется между папками). */
+    private const SEARCH_BUDGET = 15;
 
     /** Сколько ждём ответа на поиск в одной папке, секунд (обычный ответ — миллисекунды). */
     private const SEARCH_TIMEOUT = 8;
