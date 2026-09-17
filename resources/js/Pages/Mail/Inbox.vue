@@ -940,6 +940,7 @@ onBeforeUnmount(() => {
                 :folder-role="folderInfo.role"
                 :highlight-unread="settings.unread_highlight !== false"
                 :unread-color="settings.unread_color || ''"
+                :density="settings.density || 'normal'"
                 :filter="filter"
                 :sort="sort"
                 @sort="setSort"

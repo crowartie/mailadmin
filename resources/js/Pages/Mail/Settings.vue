@@ -397,6 +397,12 @@ const shortcuts = [
                                     <span class="hint" style="margin: 0">Применяется и сохраняется сразу</span>
                                 </div>
                                 <div class="field">
+                                    <label for="set-density">Плотность списка писем</label>
+                                    <!-- Применяется сразу, как и тема: человек выбирает глазами. -->
+                                    <select id="set-density" v-model="s.density" class="input" @change="saveOne({ density: s.density })"><option value="roomy">Просторная</option><option value="normal">Обычная</option><option value="compact">Плотная — без первых строк письма</option></select>
+                                    <span class="hint" style="margin: 0">Применяется и сохраняется сразу</span>
+                                </div>
+                                <div class="field">
                                     <label>Отмена отправки</label>
                                     <select v-model="s.undo_seconds" class="input"><option :value="0">Выключена</option><option :value="5">5 секунд</option><option :value="10">10 секунд</option><option :value="20">20 секунд</option><option :value="30">30 секунд</option></select>
                                 </div>

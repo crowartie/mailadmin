@@ -32,6 +32,9 @@ const services = [
     { href: '/contacts', icon: 'users', label: 'Контакты' },
 ];
 
+// «Ещё» на телефоне: в нижней панели помещается только четыре пункта.
+const more = ref(false);
+
 const initials = computed(() => {
     const local = (props.user || '').split('@')[0];
     return local.slice(0, 2).toUpperCase() || '·';
@@ -105,32 +108,38 @@ function logout() {
 
         <slot />
 
-        <!-- Телефон: боковая полоса скрыта, разделы и выход — в нижней панели -->
+        <!-- Телефон: боковая полоса скрыта, разделы — в нижней панели.
+             Пунктов ровно четыре: семь не помещались по ширине, и подписи «Контакты»,
+             «Настройки», «Проблема» слипались в сплошную строку. Остальное — в «Ещё». -->
         <nav v-if="user" class="tabbar" aria-label="Разделы">
             <Link v-for="s in services" :key="s.href" class="tabbar__item" :class="{ 'tabbar__item--on': current.startsWith(s.href) && !current.startsWith('/mail/settings') && !current.startsWith('/mail/help') }" :href="s.href">
                 <Icon :name="s.icon" :size="22" /><span>{{ s.label }}</span>
             </Link>
-            <Link class="tabbar__item" :class="{ 'tabbar__item--on': current.startsWith('/mail/settings') || current.startsWith('/mail/help') }" href="/mail/settings">
-                <Icon name="sliders" :size="22" /><span>Настройки</span>
-            </Link>
-            <!-- 270, 271: левая полоса значков на телефоне скрыта, и «Сообщить о проблеме»
-                 вместе со счётчиком ответов пропадали совсем — хотя справка обещает,
-                 что кнопка есть на любой странице. -->
-            <button class="tabbar__item" type="button" style="position: relative" @click="feedback = true">
-                <Icon name="warn" :size="22" /><span>Проблема</span>
+            <button class="tabbar__item" type="button" style="position: relative" :class="{ 'tabbar__item--on': more || current.startsWith('/mail/settings') || current.startsWith('/mail/help') }" :aria-expanded="more" @click="more = true">
+                <Icon name="dots" :size="22" /><span>Ещё</span>
                 <span v-if="feedbackNew" class="rail__badge" style="top: 4px; right: 18px">{{ feedbackNew }}</span>
             </button>
-            <!-- 335: с телефона нельзя было сменить тему и открыть справку —
-                 этих кнопок в нижней панели не было вовсе. -->
-            <button class="tabbar__item" type="button" :title="isDark ? 'Светлая тема' : 'Тёмная тема'" @click="toggleTheme">
-                <Icon :name="isDark ? 'sun' : 'moon'" :size="22" /><span>Тема</span>
-            </button>
-            <!-- 334: «Выйти» стояло наравне с «Почта» и «Календарь» и читалось как раздел,
-                 в который можно зайти. Отделяем его и подписываем по-другому. -->
-            <button class="tabbar__item tabbar__item--exit" type="button" title="Выйти из почты" @click="logout">
-                <Icon name="logout" :size="22" /><span>Выход</span>
-            </button>
         </nav>
+
+        <!-- «Ещё»: настройки, справка, обращение, тема и выход. -->
+        <div v-if="more" class="sheet" @click.self="more = false">
+            <div class="sheet__panel" role="dialog" aria-label="Ещё">
+                <Link class="sheet__item" href="/mail/settings" @click="more = false"><Icon name="sliders" :size="20" />Настройки</Link>
+                <Link class="sheet__item" href="/mail/help" @click="more = false"><Icon name="info" :size="20" />Справка</Link>
+                <!-- 270, 271: на телефоне «Сообщить о проблеме» пропадало совсем,
+                     хотя справка обещает кнопку на любой странице. -->
+                <button class="sheet__item" type="button" @click="more = false; feedback = true">
+                    <Icon name="warn" :size="20" />Сообщить о проблеме
+                    <span v-if="feedbackNew" class="chip chip--warn" style="margin-left: auto">{{ feedbackNew }}</span>
+                </button>
+                <button class="sheet__item" type="button" @click="toggleTheme">
+                    <Icon :name="isDark ? 'sun' : 'moon'" :size="20" />{{ isDark ? 'Светлая тема' : 'Тёмная тема' }}
+                </button>
+                <!-- 334: «Выйти» стояло наравне с разделами и читалось как раздел. -->
+                <button class="sheet__item sheet__item--exit" type="button" @click="logout"><Icon name="logout" :size="20" />Выйти из почты</button>
+                <button class="sheet__item sheet__item--close" type="button" @click="more = false">Закрыть</button>
+            </div>
+        </div>
 
         <FeedbackDialog v-if="feedback" @close="feedback = false" />
     </div>

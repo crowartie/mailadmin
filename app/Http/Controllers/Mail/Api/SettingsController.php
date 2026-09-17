@@ -24,7 +24,7 @@ class SettingsController extends Controller
             'signature' => ['nullable', 'string', 'max:1200000'],   // с картинками (data:, до 400 КБ каждая)
             'signature_reply' => ['nullable', 'boolean'],
             'theme' => ['nullable', 'in:light,dark,system'],
-            'density' => ['nullable', 'in:normal,compact'],
+            'density' => ['nullable', 'in:roomy,normal,compact'],
             'reply_all' => ['nullable', 'boolean'],
             'notify_browser' => ['nullable', 'boolean'],
             'ask_rule_on_move' => ['nullable', 'boolean'],

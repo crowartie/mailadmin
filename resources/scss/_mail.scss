@@ -163,6 +163,24 @@
         b { margin-right: auto; }
     }
 
+    // Плотность списка. В обычном режиме строка — три строки текста; в плотном первые
+    // слова письма скрыты и строка становится вдвое ниже, в просторном воздуха больше.
+    // Настройка лежала в модели с самого начала, но ничего не делала.
+    &--compact .mrow {
+        padding: 5px 14px 5px 12px;
+        grid-template-columns: 18px 22px minmax(0, 1fr) auto;
+        gap: 8px;
+    }
+    &--compact .mrow__av { width: 22px; height: 22px; border-radius: 7px; font-size: 10px; }
+    &--compact .mrow__prev { display: none; }
+    &--compact .mrow__dot { left: 34px; top: 8px; width: 8px; height: 8px; }
+    &--compact .mrow__when { min-height: 0; }
+    &--compact .mrow__when-icons { min-height: 0; }
+
+    &--roomy .mrow { padding: 15px 16px 15px 12px; }
+    &--roomy .mrow__av { width: 40px; height: 40px; }
+    &--roomy .mrow__dot { top: 15px; }
+
     // Подпись группы по дате: «Сегодня», «Вчера», «Сентябрь». Липнет к верху списка,
     // чтобы при прокрутке было видно, к какому дню относятся строки на экране.
     &__day {
@@ -1042,6 +1060,43 @@ select.input { padding-right: 28px; }
         &--exit { color: v.$c-faint; border-left: 1px solid v.$c-border; }
     }
     .mset { padding-bottom: calc(56px + 32px + env(safe-area-inset-bottom)); }
+
+    // Панель «Ещё»: то, что не поместилось в четыре пункта нижней панели.
+    .sheet {
+        position: fixed;
+        inset: 0;
+        z-index: 95;
+        background: rgba(10, 14, 20, .45);
+        display: flex;
+        align-items: flex-end;
+    }
+    .sheet__panel {
+        width: 100%;
+        background: v.$c-surface;
+        border-radius: 16px 16px 0 0;
+        border-top: 1px solid v.$c-border;
+        padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+        box-shadow: 0 -12px 32px -12px rgba(0, 0, 0, .35);
+    }
+    .sheet__item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        padding: 13px 20px;
+        font: inherit;
+        font-size: 15px;
+        color: v.$c-text;
+        text-decoration: none;
+        background: none;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+
+        &:hover { background: v.$c-surface-2; text-decoration: none; }
+        &--exit { color: v.$c-no; }
+        &--close { justify-content: center; color: v.$c-muted; border-top: 1px solid v.$c-border; margin-top: 6px; }
+    }
 
     .mnav {
         position: fixed;

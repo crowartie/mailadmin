@@ -17,6 +17,7 @@ const props = defineProps({
     cursor: { type: Number, default: null },
     opening: { type: Number, default: null },   // письмо, которое сейчас открывается
     highlightUnread: { type: Boolean, default: true },
+    density: { type: String, default: 'normal' },
     unreadColor: { type: String, default: '' },
     openUid: { type: Number, default: null },
     labels: { type: Array, default: () => [] },
@@ -65,7 +66,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
 </script>
 
 <template>
-    <section class="mlist" :class="{ 'mlist--hl': highlightUnread, 'mlist--select': selectMode }" :style="unreadColor ? { '--unread-c': unreadColor } : null">
+    <section class="mlist" :class="{ 'mlist--hl': highlightUnread, 'mlist--select': selectMode, 'mlist--roomy': density === 'roomy', 'mlist--compact': density === 'compact' }" :style="unreadColor ? { '--unread-c': unreadColor } : null">
         <div class="mobile-bar">
             <button class="ib" type="button" @click="$emit('menu')" aria-label="Папки"><Icon name="menu" :size="22" /></button>
             <b>{{ folderName }}</b>
