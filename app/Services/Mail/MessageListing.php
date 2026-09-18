@@ -48,23 +48,41 @@ final class MessageListing
      * @return array{messages:array,total:int,page:int,pages:int}
      */
     /**
-     * Поиск по всем своим папкам. Справка обещает «искать по всем папкам», а поиск работал
-     * только по текущей: письмо, разложенное правилом, найти было нельзя.
-     * Корзину, спам и чужие папки не трогаем — если человек ищет там, он открывает их сам.
+     * Поиск по всем папкам, которые видит сотрудник, — включая общие папки коллег,
+     * «Спам» и «Корзину».
+     *
+     * Раньше эти три вида папок пропускались: считалось, что туда человек заглянет сам.
+     * На деле выходило наоборот. Письмо, отправленное из общего ящика, лежит в его
+     * «Отправленных» — то есть в общей папке, — и поиск отвечал «Найдено 0 во всех
+     * папках». Человек читал это как «письмо пропало». Ровно так и случилось
+     * с пересылкой из info@ 17 сентября.
+     *
+     * Порядок обхода важен: сначала текущая папка и свои, потом общие, потом спам
+     * и корзина. Если сработает общий срок поиска, необойдённым останется то,
+     * что человек ищет реже, и об этих папках мы скажем прямо.
      *
      * @return array{messages:array,total:int,page:int,pages:int}
      */
     public function searchEverywhere(string $query, int $page = 1, string $sort = 'date'): array
     {
         $page = max(1, $page);
-        $paths = [];
+        $own = [];
+        $shared = [];
+        $junk = [];
         foreach ($this->tree->folders() as $f) {
-            if (! in_array($f['role'] ?? '', ['spam', 'trash', 'shared'], true)) {
-                $paths[] = $f['path'];
+            $role = $f['role'] ?? '';
+            if ($role === 'shared') {
+                $shared[] = $f['path'];
+            } elseif (in_array($role, ['spam', 'trash'], true)) {
+                $junk[] = $f['path'];
+            } else {
+                $own[] = $f['path'];
             }
         }
+        // Текущая папка и «Входящие» с «Отправленными» — первыми: там ищут чаще всего.
+        $paths = array_merge([$path, $this->tree->rolePath('inbox'), $this->tree->rolePath('sent')], $own, $shared, $junk);
         // Ограничение на число папок: иначе на большом дереве это десятки поисков подряд.
-        $paths = array_slice(array_values(array_unique($paths)), 0, 15);
+        $paths = array_slice(array_values(array_unique(array_filter($paths))), 0, 25);
 
         $hits = [];
         $skipped = [];

@@ -91,7 +91,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         <div v-if="query" class="hint" style="padding: 0 16px 8px">
             <!-- 172: подсказка была написана в третьем формате, не совпадавшем ни со справкой,
                  ни с разборщиком. Пишем ровно так, как понимает поиск. -->
-            Найдено {{ list.total }}<template v-if="!everywhere"> в папке «{{ folderName }}»</template><template v-else> во всех папках</template>
+            Найдено {{ list.total }}<template v-if="!everywhere"> в папке «{{ folderName }}»</template><template v-else> во всех папках, включая общие, «Спам» и «Корзину»</template>
             &#183;
             <button type="button" class="linklike" @click="$emit('everywhere', !everywhere)">{{ everywhere ? 'только в этой папке' : 'искать во всех папках' }}</button>
             <br v-if="list.skipped && list.skipped.length">
