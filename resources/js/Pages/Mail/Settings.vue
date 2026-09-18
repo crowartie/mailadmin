@@ -53,7 +53,6 @@ function when(iso, long = false) {
     }
     return whenCommon(iso, true);
 }
-if (props.section === 'security') loadSecurity();
 const busy = ref(false);
 let toastTimer = null;
 
@@ -97,6 +96,8 @@ const {
     loadSecurity, copyPassword, startTwofa, enableTwofa, disableTwofa,
     createAppPassword, revokeAppPassword, kickSession, kickOthers,
 } = useSecuritySettings({ busy, say, ask, force2fa: props.force2fa });
+// Открыли сразу «Безопасность» — читаем её данные, не дожидаясь щелчка по разделу.
+if (props.section === 'security') loadSecurity();
 
 /**
  * 196: поля, которые ждут кнопки «Сохранить». Раздел настроек — обычная ссылка,
