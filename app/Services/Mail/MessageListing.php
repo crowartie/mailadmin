@@ -167,6 +167,13 @@ class MessageListing
         if (! $searching && $filter === 'all') {
             $q->all();
         }
+        // Вкладка «Вложения»: отбор по структуре письма, как и у оператора «есть:вложение».
+        if ($this->q->filterNeedsAttachment($filter)) {
+            $needAttachment = true;
+            if (! $searching) {
+                $q->all();
+            }
+        }
 
         $messages = [];
         // Порядок писем задаёт дата письма, а не внутренний номер: письмо, перенесённое в папку

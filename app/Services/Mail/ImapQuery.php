@@ -161,6 +161,22 @@ class ImapQuery
     }
 
 
+    /**
+     * Нужен ли этому отбору разбор структуры писем.
+     *
+     * «Вложения» раньше отбирались поиском по заголовку Content-Type: multipart/mixed.
+     * При fts_enforced = body Dovecot на поиск по заголовкам не отвечает ничем, и вкладка
+     * молча показывала пустой список — во «Входящих» на две сотни писем тоже. Ровно так же
+     * не работал оператор «есть:вложение», пока его не перевели на структуру письма.
+     *
+     * Заголовок и по сути не годится: multipart/mixed стоит у письма, где «вложение» —
+     * картинка из подписи, и не стоит у письма с одним PDF без текста.
+     */
+    public function filterNeedsAttachment(string $filter): bool
+    {
+        return $filter === 'attach';
+    }
+
     public function applyFilter(WhereQuery $q, string $filter): WhereQuery
     {
         if (str_starts_with($filter, 'label:')) {
@@ -170,7 +186,8 @@ class ImapQuery
         return match ($filter) {
             'unread' => $q->unseen(),
             'flagged' => $q->where('FLAGGED'),   // ->flagged() в php-imap 6.2 требует аргумент и падает
-            'attach' => $q->whereHeader('Content-Type', 'multipart/mixed'),
+            // «Вложения» сервером не отбираются: смотрите filterNeedsAttachment().
+            'attach' => $q,
             default => $q,
         };
     }
