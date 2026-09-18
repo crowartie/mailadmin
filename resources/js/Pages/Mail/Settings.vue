@@ -9,6 +9,7 @@ import Toast from '../../Components/Mail/Toast.vue';
 import { plural, when as whenCommon } from '../../mail/format';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import { api } from '../../mail/api';
+import { useSecuritySettings } from '../../mail/useSecuritySettings';
 
 const props = defineProps({
     user: String,
@@ -38,39 +39,7 @@ const autoreply = ref({ enabled: false, from: '', to: '', subject: 'Автоот
 const toast = ref(null);
 const dialog = ref(null);
 const editing = ref(null); // редактируемое правило
-const sec = ref(null);
-const twofa = ref(null);
-const twofaCode = ref('');
-const twofaPassword = ref('');
-const newAppPassword = ref(null);
-const createdPassword = ref(null);
-/**
- * 13: пароль висел на экране открытым текстом до перезагрузки страницы, а скопировать его
- * можно было только выделением мышью.
- */
-async function copyPassword() {
-    const text = createdPassword.value?.plain || '';
-    try {
-        await navigator.clipboard.writeText(text);
-        say('Пароль скопирован — вставьте его в почтовую программу');
-    } catch {
-        say('Браузер не дал скопировать — выделите пароль и нажмите Ctrl+C', true);
-    }
-}
-// 205: до ответа сервера раздел рисовал пустые карточки и выглядел сломанным —
-// теперь видно, что данные грузятся, и видно, если они не пришли.
-const secError = ref('');
-async function loadSecurity() {
-    secError.value = '';
-    try { sec.value = await api.security(); } catch (e) { secError.value = e.message; say(e.message, true); }
-}
-async function startTwofa() { busy.value = true; try { twofa.value = await api.twofaSetup(); twofaCode.value = ''; } catch (e) { say(e.message, true); } finally { busy.value = false; } }
-async function enableTwofa() { busy.value = true; try { await api.twofaEnable(twofaCode.value); twofa.value = null; await loadSecurity(); say('Двухфакторная защита включена'); if (props.force2fa) window.location.href = '/mail'; } catch (e) { say(e.message, true); } finally { busy.value = false; } }
-async function disableTwofa() { busy.value = true; try { await api.twofaDisable(twofaPassword.value); twofaPassword.value = ''; await loadSecurity(); say('Защита выключена'); } catch (e) { say(e.message, true); } finally { busy.value = false; } }
-async function createAppPassword() { busy.value = true; try { createdPassword.value = await api.createAppPassword(newAppPassword.value.name, newAppPassword.value.password); newAppPassword.value = null; await loadSecurity(); } catch (e) { say(e.message, true); } finally { busy.value = false; } }
-async function revokeAppPassword(p) { if (!await ask(`Отозвать пароль «${p.name}»?`, 'Устройство с этим паролем перестанет получать почту. Основной пароль менять не придётся.', 'Отозвать', true)) return; try { await api.deleteAppPassword(p.id); await loadSecurity(); } catch (e) { say(e.message, true); } }
-async function kickSession(s) { try { const r = await api.kickSession(s.id); sec.value.sessions = r.sessions; } catch (e) { say(e.message, true); } }
-async function kickOthers() { try { const r = await api.kickOthers(); sec.value.sessions = r.sessions; say('Остальные сеансы завершены'); } catch (e) { say(e.message, true); } }
+
 // Свежие события показываем по-своему («12 мин назад»), всё остальное — общей функцией
 // почты: местная копия давала «17 сент., 14:03» там, где весь интерфейс пишет
 // «17 сентября, 14:03».
@@ -120,6 +89,14 @@ function say(text, error = false) {
     // и вернуть его было нечем. Закрывает человек — крестиком.
     if (!error) toastTimer = setTimeout(() => { toast.value = null; }, 3000);
 }
+
+// Безопасность живёт в своём композабле: двухфакторная защита, пароли для почтовых
+// программ и сеансы — единственная часть настроек, где ошибка стоит дорого.
+const {
+    sec, secError, twofa, twofaCode, twofaPassword, newAppPassword, createdPassword,
+    loadSecurity, copyPassword, startTwofa, enableTwofa, disableTwofa,
+    createAppPassword, revokeAppPassword, kickSession, kickOthers,
+} = useSecuritySettings({ busy, say, ask, force2fa: props.force2fa });
 
 /**
  * 196: поля, которые ждут кнопки «Сохранить». Раздел настроек — обычная ссылка,
