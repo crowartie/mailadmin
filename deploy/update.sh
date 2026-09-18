@@ -12,7 +12,15 @@ export COMPOSER_ALLOW_SUPERUSER=1 HOME=/root
 SELF_BEFORE=$(sha1sum "$0" | cut -d' ' -f1)
 
 echo "==> git pull"
-git -c safe.directory="$APP" fetch -q origin
+# Связь до внешнего репозитория бывает недоступна минутами. Без повторов выкладка падает
+# на первом шаге, и её запускают вслепую по второму разу — так однажды выложат не то.
+fetch_ok=
+for try in 1 2 3; do
+  if git -c safe.directory="$APP" fetch -q origin; then fetch_ok=1; break; fi
+  echo "    попытка $try не удалась, ждём 15 с"
+  sleep 15
+done
+[ -n "$fetch_ok" ] || { echo "не удалось забрать код из репозитория — выкладка отменена, приложение не тронуто" >&2; exit 1; }
 git -c safe.directory="$APP" checkout -q "${BRANCH:-$(git -c safe.directory="$APP" rev-parse --abbrev-ref HEAD)}"
 git -c safe.directory="$APP" pull -q --ff-only
 
