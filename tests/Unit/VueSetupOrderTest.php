@@ -82,19 +82,14 @@ class VueSetupOrderTest extends TestCase
         $out = [];
         $depth = 0;
         $lines = explode("\n", $script);
+        // Разбор объекта бывает многострочным. Пока он не закрыт, глубину не считаем
+        // и строки собираем: иначе имена из `const {\n a,\n b,\n} = useX()` теряются —
+        // первая же версия этой проверки так и не увидела ошибку, ради которой писалась.
         $pending = null;
         foreach ($lines as $no => $line) {
-            $before = $depth;
-            if ($before === 0) {
-                if (preg_match('/^(?:const|let|var)\s+\{(.*)$/', $line, $m)) {
-                    $pending = ['no' => $no, 'text' => $m[1]];
-                } elseif (preg_match('/^(?:const|let|var)\s+(\w+)/', $line, $m)) {
-                    $out[$m[1]] = $no;
-                }
-                if ($pending !== null && $pending['no'] !== $no) {
-                    $pending['text'] .= ' ' . $line;
-                }
-                if ($pending !== null && str_contains($line, '}')) {
+            if ($pending !== null) {
+                $pending['text'] .= ' ' . $line;
+                if (str_contains($line, '}')) {
                     foreach (preg_split('/[,\s]+/', explode('}', $pending['text'])[0]) as $name) {
                         $name = trim($name);
                         if ($name !== '' && preg_match('/^\w+$/', $name)) {
@@ -102,7 +97,26 @@ class VueSetupOrderTest extends TestCase
                         }
                     }
                     $pending = null;
+                    $depth = 0;
                 }
+
+                continue;
+            }
+            if ($depth === 0 && preg_match('/^(?:const|let|var)\s+\{(.*)$/', $line, $m)) {
+                if (str_contains($m[1], '}')) {
+                    foreach (preg_split('/[,\s]+/', explode('}', $m[1])[0]) as $name) {
+                        $name = trim($name);
+                        if ($name !== '' && preg_match('/^\w+$/', $name)) {
+                            $out[$name] = $no;
+                        }
+                    }
+                } else {
+                    $pending = ['no' => $no, 'text' => $m[1]];
+
+                    continue;
+                }
+            } elseif ($depth === 0 && preg_match('/^(?:const|let|var)\s+(\w+)/', $line, $m)) {
+                $out[$m[1]] = $no;
             }
             $depth += substr_count($line, '{') + substr_count($line, '(') + substr_count($line, '[')
                 - substr_count($line, '}') - substr_count($line, ')') - substr_count($line, ']');
