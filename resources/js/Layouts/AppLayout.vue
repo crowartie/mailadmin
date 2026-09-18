@@ -1,5 +1,5 @@
 <script setup>
-import { Link, usePage, router } from '@inertiajs/vue3';
+import { Head, Link, usePage, router } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import Icon from '../Components/Icon.vue';
 
@@ -73,6 +73,9 @@ function logout() {
 </script>
 
 <template>
+    <!-- У страниц админки не было своего заголовка вкладки: во всех вкладках браузера
+         стояло одинаковое «Почта», и найти нужную среди двух десятков было нельзя. -->
+    <Head :title="title ? title + ' — Администрирование' : 'Администрирование'" />
     <div class="app">
         <aside class="rail" aria-label="Сервисы">
             <div class="rail__logo">П</div>
