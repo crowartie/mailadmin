@@ -15,6 +15,10 @@ import Dialog from '../../Components/Mail/Dialog.vue';
 import ShortcutsHelp from '../../Components/Mail/ShortcutsHelp.vue';
 import { api, composeForm } from '../../mail/api';
 import { addrString, escapeHtml, hotkey, plural, presets, when } from '../../mail/format';
+import { useColumns } from '../../mail/useColumns';
+import { useLiveUpdates } from '../../mail/useLiveUpdates';
+import { useMessageActions } from '../../mail/useMessageActions';
+import { useUrlState } from '../../mail/useUrlState';
 
 const props = defineProps({
     user: String,
@@ -97,98 +101,18 @@ function fail(e) {
     showToast({ text: e?.message || 'Что-то пошло не так', error: true }, 6000);
 }
 
-/** Адрес страницы = папка + отбор + поиск + номер страницы. */
-function currentUrl() {
-    const p = new URLSearchParams();
-    if (filter.value !== 'all') p.set('filter', filter.value);
-    if (query.value) p.set('q', query.value);
-    // Номер страницы в адресе: без него обновление на седьмой странице возвращало на первую.
-    if ((list.value.page || 1) > 1) p.set('page', String(list.value.page));
-    if (sort.value !== 'date') p.set('sort', sort.value);
-    const qs = p.toString();
-    return `/mail/folder/${encodeURIComponent(folder.value)}${qs ? '?' + qs : ''}`;
-}
-function syncUrl() {
-    const url = currentUrl();
-    if (url !== window.location.pathname + window.location.search) {
-        window.history.replaceState({ mail: true }, '', url);
-    }
-}
-// Переход в другую папку добавляет запись в историю: раньше всё писалось поверх одной,
-// и кнопка «Назад» уводила из почты целиком вместо возврата в предыдущую папку.
-function pushUrl() {
-    const url = currentUrl();
-    if (url !== window.location.pathname + window.location.search) {
-        window.history.pushState({ mail: true }, '', url);
-    }
-}
-function onPopState() {
-    const m = window.location.pathname.match(/^\/mail\/folder\/(.+)$/);
-    const sp = new URLSearchParams(window.location.search);
-    folder.value = m ? decodeURIComponent(m[1]) : (rolePath('inbox') || 'INBOX');
-    filter.value = sp.get('filter') || 'all';
-    query.value = sp.get('q') || '';
-    sort.value = sp.get('sort') || 'date';
-    open.value = null;
-    mobileRead.value = false;
-    load(Number(sp.get('page')) || 1);
-}
+// Адрес страницы, история и кнопка «Назад» — в useUrlState.
+const { syncUrl, pushUrl, onPopState } = useUrlState({
+    folder, filter, query, sort, list, open, mobileRead, load, rolePath,
+});
 
 // ── Списки ────────────────────────────────────────────────────
 // ── Живое обновление ──────────────────────────────────────────
-let lastUidnext = null;
-let lastPoll = 0;
-// В приватном окне и при запрете данных сайта обращение к хранилищу бросает исключение —
-// без защиты страница почты не отрисовывалась вовсе.
-const shownReminders = new Set((() => {
-    try { return JSON.parse(localStorage.getItem('mail.reminders.shown') || '[]'); } catch { return []; }
-})());
-function updateTitle() {
-    const inbox = folders.value.find((f) => f.role === 'inbox');
-    const n = inbox?.unread || 0;
-    document.title = (n ? `(${n}) ` : '') + (folderInfo.value.name || 'Почта') + ' — ' + (props.user || 'Почта');
-}
-function canNotify() { return settings.value.notify_browser && typeof Notification !== 'undefined' && Notification.permission === 'granted'; }
-function notify(title, body, tag, onclick) {
-    if (!canNotify()) return;
-    try {
-        const n = new Notification(title, { body, tag, icon: '/favicon.ico' });
-        n.onclick = () => { window.focus(); onclick?.(); n.close(); };
-        setTimeout(() => n.close(), 15000);
-    } catch {}
-}
-async function poll() {
-    if (document.visibilityState !== 'visible' && Date.now() - lastPoll < 60000) return;
-    if (compose.value || menu.value) return;
-    lastPoll = Date.now();
-    try {
-        const st = await api.status(folder.value);
-        const inbox = folders.value.find((f) => f.role === 'inbox');
-        if (inbox && inbox.unread !== st.inboxUnseen) { inbox.unread = st.inboxUnseen; updateTitle(); }
-        const cur = folders.value.find((f) => f.path === folder.value);
-        if (cur) { cur.unread = st.folder.unseen; cur.total = st.folder.messages; }
-        if (lastUidnext !== null && st.folder.uidnext > lastUidnext) {
-            const prev = lastUidnext;
-            // Тихая перезагрузка: обычная сбрасывала галочки и на секунду гасила список,
-            // а письмо приходит как раз тогда, когда человек отмечает пачку.
-            await load(list.value.page, true, true);
-            // Сервер отдаёт признак «прочитано» (seen); поля unread в ответе нет никогда,
-            // поэтому список новых всегда получался пустым и уведомления не приходили.
-            const fresh = (list.value.messages || []).filter((m) => m.uid >= prev && !m.seen);
-            fresh.slice(0, 3).forEach((m) => notify(m.from?.name || m.from?.mail || 'Новое письмо', m.subject || '(без темы)', 'mail-' + m.uid, () => openMessage(m.uid)));
-            if (fresh.length > 3) notify('Новые письма', `и ещё ${fresh.length - 3}`, 'mail-more');
-        }
-        lastUidnext = st.folder.uidnext;
-        for (const r of st.reminders || []) {
-            if (shownReminders.has(r.key)) continue;
-            shownReminders.add(r.key);
-            try { localStorage.setItem('mail.reminders.shown', JSON.stringify([...shownReminders].slice(-200))); } catch { /* приватное окно */ }
-            const t = r.allDay ? 'сегодня' : new Date(r.start).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-            notify('Напоминание: ' + r.title, (r.allDay ? 'Весь день' : 'В ' + t) + (r.location ? ' · ' + r.location : ''), 'rem-' + r.key, () => { window.location.href = '/calendar'; });
-            showToast({ text: 'Напоминание: ' + r.title + ' — ' + t }, 8000);
-        }
-    } catch {}
-}
+// Опрос сервера, счётчик в заголовке вкладки и уведомления — в useLiveUpdates.
+const { poll, updateTitle, resetUidnext } = useLiveUpdates({
+    folders, folder, list, settings, compose, menu, folderInfo, user: props.user,
+    load, openMessage, showToast,
+});
 
 async function load(page = 1, keepOpen = false, silent = false) {
     if (!silent) loading.value = true;
@@ -284,112 +208,11 @@ function selectAll() {
 }
 
 // ── Действия ──────────────────────────────────────────────────
-function removeRows(uids) {
-    const set = new Set(uids);
-    let unreadGone = 0;
-    list.value.messages = list.value.messages.filter((m) => { if (set.has(m.uid)) { if (!m.seen) unreadGone++; return false; } return true; });
-    list.value.total = Math.max(0, list.value.total - uids.length);
-    bump(folder.value, -unreadGone, -uids.length);
-    selected.value = selected.value.filter((u) => !set.has(u));
-    if (open.value && set.has(open.value.uid)) { open.value = null; mobileRead.value = false; }
-}
-
-async function act(op, uids, extra = {}, deferrable = true) {
-    if (!uids?.length) return;
-    menu.value = null;
-    const rows = list.value.messages.filter((m) => uids.includes(m.uid));
-    // Сначала меняем экран, потом идём на сервер — так интерфейс не ждёт IMAP.
-    switch (op) {
-        case 'seen': rows.forEach((m) => { if (!m.seen) { m.seen = true; bump(folder.value, -1); } }); break;
-        case 'unseen': rows.forEach((m) => { if (m.seen) { m.seen = false; bump(folder.value, 1); } }); if (open.value && uids.includes(open.value.uid)) open.value.seen = false; break;
-        case 'flag': rows.forEach((m) => { m.flagged = true; }); if (open.value && uids.includes(open.value.uid)) open.value.flagged = true; break;
-        case 'unflag': rows.forEach((m) => { m.flagged = false; }); if (open.value && uids.includes(open.value.uid)) open.value.flagged = false; break;
-        case 'label': rows.forEach((m) => { if (!m.labels.includes(extra.label)) m.labels.push(extra.label); }); if (open.value && uids.includes(open.value.uid) && !open.value.labels.includes(extra.label)) open.value.labels.push(extra.label); break;
-        case 'unlabel': rows.forEach((m) => { m.labels = m.labels.filter((l) => l !== extra.label); }); if (open.value && uids.includes(open.value.uid)) open.value.labels = open.value.labels.filter((l) => l !== extra.label); break;
-        case 'delete': case 'move': case 'archive': case 'spam': case 'notspam': case 'lists': case 'snooze': case 'unsnooze': removeRows(uids); break;
-        default: break;
-    }
-    const names = { delete: 'Удалено', archive: 'В архиве', spam: 'Помечено как спам', move: 'Перемещено', lists: 'В рассылки', snooze: 'Отложено', unsnooze: 'Возвращено во «Входящие»', notspam: 'Возвращено во Входящие', remind: 'Напомню, если не ответят' };
-    const label = `${names[op] || ''}${uids.length > 1 ? ` · ${uids.length} ${plural(uids.length, 'письмо', 'письма', 'писем')}` : ''}`;
-    // Удаление/перенос/архив/спам — с отменой: сервер получит команду через N секунд (Настройки → Общие),
-    // до этого «Отменить» просто возвращает список. Диалоги по отправителю и повторные действия — сразу.
-    const secs = Number(settings.value.undo_seconds ?? 5);
-    // Отмена выключена в настройках: удаление уходит сразу и навсегда — спрашиваем.
-    if (!secs && op === 'delete') {
-        const forever = folderInfo.value.role === 'trash';
-        const what = uids.length > 1 ? `${uids.length} ${plural(uids.length, 'письмо', 'письма', 'писем')}` : 'письмо';
-        const q = forever ? `Стереть ${what} навсегда? Восстановить будет нельзя.` : `Удалить ${what}?`;
-        if (!window.confirm(q)) return;
-    }
-    // Перетащили письмо мышью не в ту папку или ошиблись со «Спамом» — отмена нужна так же,
-    // как при удалении. Раньше эти действия уходили на сервер сразу и без отмены.
-    if (secs > 0 && ['delete', 'archive', 'spam', 'move', 'lists'].includes(op)) {
-        flushPendingAct();
-        pendingAct = { folder: folder.value, uids, op, extra, seconds: secs, timer: null };
-        clearTimeout(toastTimer);
-        toast.value = { text: label, actionLabel: 'Отменить', seconds: secs };
-        const tick = () => {
-            if (!pendingAct) return;
-            pendingAct.seconds--;
-            if (pendingAct.seconds <= 0) {
-                const p = pendingAct; pendingAct = null; toast.value = null;
-                runAct(p).then(() => refillAfter(p.op)).catch((e) => { fail(e); load(list.value.page, true); });
-            } else {
-                // Обновляем только своё сообщение внизу: если его уже сменило другое («Черновик сохранён»), чужое не трогаем.
-                if (toast.value?.actionLabel === 'Отменить') toast.value = { ...toast.value, seconds: pendingAct.seconds };
-                pendingAct.timer = setTimeout(tick, 1000);
-            }
-        };
-        pendingAct.timer = setTimeout(tick, 1000);
-        return;
-    }
-    try {
-        const r = await runAct({ folder: folder.value, uids, op, extra });
-        // Сервер сообщает, со сколькими письмами получилось: раньше из двадцати выделенных
-        // могло отложиться девятнадцать, и сообщение всё равно было победным.
-        const skipped = Number(r?.skipped || 0);
-        if (names[op]) {
-            showToast({ text: skipped ? `${label} · ${skipped} ${plural(skipped, 'письмо', 'письма', 'писем')} пропущено: нет Message-ID` : label }, skipped ? 6000 : 2500);
-        }
-        refillAfter(op);
-    } catch (e) {
-        fail(e);
-        load(list.value.page, true);
-    }
-}
-
-// ── Отложенное действие с отменой ────────────────────────────
-let pendingAct = null;   // { folder, uids, op, extra, seconds, timer }
-async function runAct(p, opts = {}) {
-    const r = await api.action(p.folder, p.uids, p.op, p.extra, opts);
-    if (r?.folders) folders.value = r.folders;
-    return r;
-}
-function flushPendingAct(keepalive = false) {
-    if (!pendingAct) return;
-    clearTimeout(pendingAct.timer);
-    const p = pendingAct; pendingAct = null;
-    // Плашка с таймером без действия за ней зависала навсегда (обращение №4) — убираем вместе с действием.
-    if (toast.value?.actionLabel === 'Отменить' && toast.value?.seconds) toast.value = null;
-    runAct(p, keepalive ? { keepalive: true } : {})
-        .then(() => { if (!keepalive) refillAfter(p.op); })
-        // При уходе со страницы показывать уже нечего, в остальных случаях молчать нельзя:
-        // письмо пропадало с экрана, хотя на сервере ничего не произошло.
-        .catch((e) => { if (!keepalive) { fail(e); load(list.value.page, true); } });
-}
-function undoAct() {
-    if (!pendingAct) return false;
-    clearTimeout(pendingAct.timer);
-    pendingAct = null; toast.value = null;
-    // Сервер ничего не делал — достаточно перечитать список и счётчики.
-    load(list.value.page, true);
-    showToast({ text: 'Отменено' }, 2000);
-    return true;
-}
-function undoToast() {
-    if (undoAct()) return;
-    undoSend();
-}
+// Сами действия и окно отмены — в useMessageActions.
+const { act, flushPendingAct, undoAct, undoToast } = useMessageActions({
+    list, folder, folders, selected, open, mobileRead, menu, toast, settings, folderInfo,
+    showToast, fail, load, refillAfter, bump, undoSend,
+});
 
 function onDrop(data, target) {
     if (data.folder === folder.value) moveTo(data.uids, target);
@@ -451,36 +274,8 @@ async function markSender(match) {
     } catch (e) { d.busy = false; fail(e); }
 }
 
-// ── Ширина колонок (папки, список): тянется за разделитель, запоминается в браузере (обращение №7) ──
-const COL_LIMITS = { nav: [160, 420], list: [360, 820] };   // уже 360 — обрезаются вкладки фильтра
-const colW = ref((() => { try { return JSON.parse(localStorage.getItem('mail.cols') || '{}'); } catch { return {}; } })());
-const resizing = ref(false);
-const colStyle = computed(() => ({
-    '--nav-w': colW.value.nav ? colW.value.nav + 'px' : undefined,
-    '--list-w': colW.value.list ? colW.value.list + 'px' : undefined,
-}));
-function startResize(which, e) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const pane = e.currentTarget.previousElementSibling;
-    const startX = e.clientX;
-    const startW = pane.getBoundingClientRect().width;
-    const [min, max] = COL_LIMITS[which];
-    resizing.value = true;
-    const move = (ev) => { colW.value = { ...colW.value, [which]: Math.round(Math.min(max, Math.max(min, startW + ev.clientX - startX))) }; };
-    const up = () => {
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        resizing.value = false;
-        try { localStorage.setItem('mail.cols', JSON.stringify(colW.value)); } catch { /* приватный режим */ }
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-}
-function resetCol(which) {
-    const next = { ...colW.value }; delete next[which]; colW.value = next;
-    try { localStorage.setItem('mail.cols', JSON.stringify(next)); } catch { /* приватный режим */ }
-}
+// Ширина колонок «папки» и «список» — в useColumns.
+const { colStyle, resizing, startResize, resetCol } = useColumns();
 
 // ── Меню ──────────────────────────────────────────────────────
 function openMenu(e, uid, kind = 'context') {
@@ -507,9 +302,9 @@ const nowInput = computed(() => {
     return d.toISOString().slice(0, 16);
 });
 
-// Смена папки отложенное действие не выполняет досрочно: таймер идёт дальше, «Отменить» работает и из другой папки
-// (сервер ещё ничего не делал, папка действия запомнена в pendingAct).
-watch(folder, () => { lastUidnext = null; updateTitle(); });
+// Смена папки отложенное действие не выполняет досрочно: таймер идёт дальше, «Отменить»
+// работает и из другой папки — сервер ещё ничего не делал, а папку действие помнит само.
+watch(folder, () => { resetUidnext(); updateTitle(); });
 
 // 368: у окна «Это спам / Это рассылка» не было ни Escape, ни автофокуса — в отличие
 // от общего диалога. Обработчик клавиш списка писем при открытом окне выходит раньше,
