@@ -13,7 +13,16 @@ export const ext = (a) => {
 export const isImg = (a) => String(a.type || '').startsWith('image/');
 export const isPdf = (a) => a.type === 'application/pdf' || ext(a) === 'pdf';
 export const isOffice = (a) => OFFICE.includes(ext(a));
-export const viewable = (a) => !a.inline && (isImg(a) || isPdf(a) || isOffice(a));
+
+// Пустое вложение: отправитель объявил файл, но тела не прислал.
+// Так делают мобильные клиенты, когда связь рвётся на полуслове: в письме остаются
+// заголовки части с «size=0», а внутри — один перевод строки. Поэтому порог не ноль:
+// два байта — это уже только перевод строки, полезного файла такого размера не бывает.
+export const EMPTY_MAX = 2;
+export const isEmpty = (a) => Number(a.size ?? 0) <= EMPTY_MAX;
+
+// Показывать нечего — ни картинку, ни PDF: смотреть пустоту предлагать не надо.
+export const viewable = (a) => !a.inline && !isEmpty(a) && (isImg(a) || isPdf(a) || isOffice(a));
 
 export function viewUrl(folder, uid, a) {
     return isOffice(a) ? api.attachmentPreviewUrl(folder, uid, a.index) : api.attachmentUrl(folder, uid, a.index, true);

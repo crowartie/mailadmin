@@ -3,7 +3,7 @@
 import { computed, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
-import { viewable, viewerItems } from '../../mail/attachments';
+import { isEmpty, viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
 import { addrList, initials, size, when } from '../../mail/format';
 
@@ -63,6 +63,12 @@ function openAttachment(m, a) {
     const list = m.attachments.filter(viewable);
     viewer.value = { start: Math.max(0, list.findIndex((x) => x.index === a.index)), items: viewerItems(m.folder, m.uid, m.attachments) };
 }
+// Вложения письма без картинок из тела — то, что человек видит списком.
+const atts = (m) => (m.attachments || []).filter((a) => !a.inline);
+// Целые (непустые) — их и считает «Скачать все», пустым в архиве делать нечего.
+const attsOk = (m) => atts(m).filter((a) => !isEmpty(a));
+const attsEmpty = (m) => atts(m).filter(isEmpty);
+
 const labelMap = computed(() => Object.fromEntries(props.labels.map((l) => [l.id, l])));
 
 watch(() => props.message.uid, () => { expanded.value = {}; quick.value = ''; });
@@ -217,24 +223,37 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                     <Icon name="warn" :size="16" />Письмо не загрузилось: {{ failed[key(m)] }}
                     <button type="button" class="linklike" style="font-weight: 600" @click.stop="load(m)">Повторить</button>
                 </div>
-                <div v-if="m.attachments?.filter((a) => !a.inline).length" class="msg__atts">
+                <div v-if="atts(m).length" class="msg__atts">
                     <!-- Чип вложения: имя — просмотр (если умеем) или скачивание; справа явные кнопки «посмотреть» и «скачать» -->
-                    <span v-for="a in m.attachments.filter((a) => !a.inline)" :key="a.index" class="att" :class="{ 'att--view': viewable(a) }">
-                        <a class="att__main" :href="api.attachmentUrl(m.folder, m.uid, a.index)" :title="a.name + ' · ' + a.type" @click="viewable(a) && (openAttachment(m, a), $event.preventDefault())">
+                    <span v-for="a in atts(m)" :key="a.index" class="att" :class="{ 'att--view': viewable(a), 'att--empty': isEmpty(a) }">
+                        <!-- Пустое вложение скачивать не даём: файла нет, а нулевой байт в папке
+                             «Загрузки» выглядит как поломка почты. Поэтому здесь не ссылка. -->
+                        <span v-if="isEmpty(a)" class="att__main" :title="a.name + ' · файл не дошёл: отправитель объявил вложение, но не догрузил его'">
+                            <Icon name="warn" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">файл не дошёл</span>
+                        </span>
+                        <a v-else class="att__main" :href="api.attachmentUrl(m.folder, m.uid, a.index)" :title="a.name + ' · ' + a.type" @click="viewable(a) && (openAttachment(m, a), $event.preventDefault())">
                             <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                         </a>
                         <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openAttachment(m, a)" aria-label="Посмотреть"><Icon name="eye" :size="14" /></button>
-                        <a class="att__btn" :href="api.attachmentUrl(m.folder, m.uid, a.index)" title="Скачать" aria-label="Скачать"><Icon name="download" :size="14" /></a>
+                        <a v-if="!isEmpty(a)" class="att__btn" :href="api.attachmentUrl(m.folder, m.uid, a.index)" title="Скачать" aria-label="Скачать"><Icon name="download" :size="14" /></a>
                     </span>
                     <!-- Несколько вложений — одним архивом (обращение №11) -->
                     <a
-                        v-if="m.attachments.filter((a) => !a.inline).length > 1"
+                        v-if="attsOk(m).length > 1"
                         class="att att--all"
                         :href="api.attachmentsZipUrl(m.folder, m.uid)"
                         title="Все вложения одним ZIP-архивом"
                     >
-                        <Icon name="download" :size="13" /><span class="name">Скачать все ({{ m.attachments.filter((a) => !a.inline).length }})</span>
+                        <Icon name="download" :size="13" /><span class="name">Скачать все ({{ attsOk(m).length }})</span>
                     </a>
+                </div>
+                <!-- Объясняем, что произошло, и что с этим делать: иначе пустой файл читается
+                     как «почта потеряла вложение». -->
+                <div v-if="attsEmpty(m).length" class="msg__notice">
+                    <Icon name="warn" :size="16" />
+                    <template v-if="attsEmpty(m).length === atts(m).length">Вложения пришли пустыми</template>
+                    <template v-else>{{ attsEmpty(m).length }} из {{ atts(m).length }} вложений пришли пустыми</template>
+                    — отправитель их не догрузил, чаще всего из-за плохой связи на телефоне. Попросите прислать файлы заново.
                 </div>
                 <div v-if="hasExternalImages(m)" class="msg__notice">
                     <Icon name="img" :size="16" />
