@@ -8,7 +8,7 @@ import { api } from './api';
  * списка в этот момент сбрасывала бы выбор прямо под руками.
  *
  * @param {object} ctx состояние страницы: folders, folder, list, settings, compose, menu,
- *                     folderInfo, user, и действия load, openMessage, showToast
+ *                     и действия load, openMessage, showToast
  */
 export function useLiveUpdates(ctx) {
     let lastUidnext = null;
@@ -23,12 +23,6 @@ export function useLiveUpdates(ctx) {
             return [];
         }
     })());
-
-    function updateTitle() {
-        const inbox = ctx.folders.value.find((f) => f.role === 'inbox');
-        const n = inbox?.unread || 0;
-        document.title = (n ? `(${n}) ` : '') + (ctx.folderInfo.value.name || 'Почта') + ' — ' + (ctx.user || 'Почта');
-    }
 
     function canNotify() {
         return ctx.settings.value.notify_browser && typeof Notification !== 'undefined' && Notification.permission === 'granted';
@@ -52,7 +46,8 @@ export function useLiveUpdates(ctx) {
         try {
             const st = await api.status(ctx.folder.value);
             const inbox = ctx.folders.value.find((f) => f.role === 'inbox');
-            if (inbox && inbox.unread !== st.inboxUnseen) { inbox.unread = st.inboxUnseen; updateTitle(); }
+            // Счётчик во вкладке пересчитывается сам: он вычисляется из этого же числа.
+            if (inbox && inbox.unread !== st.inboxUnseen) inbox.unread = st.inboxUnseen;
             const cur = ctx.folders.value.find((f) => f.path === ctx.folder.value);
             if (cur) { cur.unread = st.folder.unseen; cur.total = st.folder.messages; }
             if (lastUidnext !== null && st.folder.uidnext > lastUidnext) {
@@ -99,5 +94,5 @@ export function useLiveUpdates(ctx) {
         lastUidnext = null;
     }
 
-    return { poll, updateTitle, notify, resetUidnext };
+    return { poll, notify, resetUidnext };
 }

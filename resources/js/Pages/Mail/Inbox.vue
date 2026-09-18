@@ -109,9 +109,22 @@ const { syncUrl, pushUrl, onPopState } = useUrlState({
 // ── Списки ────────────────────────────────────────────────────
 // ── Живое обновление ──────────────────────────────────────────
 // Опрос сервера, счётчик в заголовке вкладки и уведомления — в useLiveUpdates.
-const { poll, updateTitle, resetUidnext } = useLiveUpdates({
-    folders, folder, list, settings, compose, menu, folderInfo, user: props.user,
+const { poll, resetUidnext } = useLiveUpdates({
+    folders, folder, list, settings, compose, menu,
     load, openMessage, showToast,
+});
+
+/**
+ * Заголовок вкладки: «(3) Входящие». Слово «Почта» добавляет Inertia (app.js).
+ *
+ * Считать его вручную нельзя: заголовком управляет Inertia, и её отрисовка перетирала
+ * выставленный нами document.title — счётчик непрочитанных во вкладке не появлялся никогда.
+ */
+const tabTitle = computed(() => {
+    const inbox = folders.value.find((f) => f.role === 'inbox');
+    const n = inbox?.unread || 0;
+
+    return (n ? `(${n}) ` : '') + (folderInfo.value.name || 'Почта');
 });
 
 async function load(page = 1, keepOpen = false, silent = false) {
@@ -304,7 +317,7 @@ const nowInput = computed(() => {
 
 // Смена папки отложенное действие не выполняет досрочно: таймер идёт дальше, «Отменить»
 // работает и из другой папки — сервер ещё ничего не делал, а папку действие помнит само.
-watch(folder, () => { resetUidnext(); updateTitle(); });
+watch(folder, () => { resetUidnext(); });
 
 // 368: у окна «Это спам / Это рассылка» не было ни Escape, ни автофокуса — в отличие
 // от общего диалога. Обработчик клавиш списка писем при открытом окне выходит раньше,
@@ -682,7 +695,6 @@ onMounted(() => {
     // Опрос «есть ли новое» каждые 20 с (60 с в фоне): дёшево (один STATUS), список перечитываем только когда изменился.
     refreshTimer = setInterval(() => poll(), 20000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poll(); });
-    updateTitle();
     if (props.openUid) openMessage(props.openUid);
     if (props.composeTo !== null) {
         startCompose('new');
@@ -700,8 +712,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <!-- 398: заголовок вкладки собирался ещё и в updateTitle(), в другом формате,
-         и побеждал тот, кто отработал последним. Формат теперь один — там. -->
+    <!-- 398: заголовок вкладки собирался в двух местах, и побеждал тот, кто отработал
+         последним. Теперь он один и вычисляется из счётчика непрочитанных. -->
+    <Head :title="tabTitle" />
     <MailLayout :user="user" :theme="settings.theme">
         <!-- 361: экранный диктор не сообщал, какая это страница — заголовка не было вовсе.
              Показывать его незачем: название папки и так видно над списком. -->
