@@ -133,7 +133,7 @@ final class MessageListing
                     $row = $this->summaries->summary($m, $previews[(int) $m->getUid()] ?? null);
                     // Строка знает свою папку: иначе щелчок открывал бы письмо из текущей.
                     $row['folder'] = $p;
-                    $row['folderName'] = Mime::utf8Name(basename(str_replace('.', '/', $p))) ?: $p;
+                    $row['folderName'] = $this->searchFolderName($p);
                     $messages[] = $row;
                 }
             } catch (\Throwable) {
@@ -318,6 +318,30 @@ final class MessageListing
         }
 
         return $uids ?: null;
+    }
+
+    /**
+     * Название папки для строки найденного письма.
+     *
+     * Раньше оно собиралось из пути, и у общей папки выходило «su»: адрес владельца
+     * (info@innotec.su) резался по точке — это правило для вложенных папок Maildir++,
+     * к адресу оно не относится. А «Отправленные» свои и «Отправленные» общего ящика
+     * выглядели одинаково, хотя лежат в разных ящиках.
+     */
+    private function searchFolderName(string $path): string
+    {
+        foreach ($this->tree->folders() as $f) {
+            if ($f['path'] !== $path) {
+                continue;
+            }
+            $name = (string) ($f['name'] ?? $path);
+
+            return ($f['role'] ?? '') === 'shared'
+                ? trim((string) ($f['ownerName'] ?? $f['owner'] ?? '')) . ' · ' . $name
+                : $name;
+        }
+
+        return Mime::utf8Name(basename(str_replace('.', '/', $path))) ?: $path;
     }
 
     /**
