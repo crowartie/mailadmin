@@ -16,6 +16,9 @@ use Webklex\PHPIMAP\Query\WhereQuery;
  */
 class MessagePage
 {
+    /** Сколько писем на странице. Живёт здесь: страницы собирает этот класс. */
+    public const PAGE = 40;
+
     public function __construct(
         private readonly Client $client,
         private readonly FolderTree $tree,

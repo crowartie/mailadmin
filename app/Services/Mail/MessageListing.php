@@ -27,7 +27,8 @@ class MessageListing
         $this->pages = new MessagePage($client, $tree, $summaries);
     }
 
-    public const PAGE = 40;
+    /** @see MessagePage::PAGE — размер страницы задаёт тот, кто её собирает. */
+    public const PAGE = MessagePage::PAGE;
 
 
     /** Сколько всего ждём поиск по всем папкам, секунд (срок проверяется между папками). */
@@ -80,7 +81,7 @@ class MessageListing
         // чем приходил ответ. Поэтому на время перебора ждём каждый ответ недолго и держим
         // общий срок: что успели — показываем, остальные папки честно называем.
         $deadline = microtime(true) + self::SEARCH_BUDGET;
-        $this->q->withTimeout(self::SEARCH_TIMEOUT);
+        $this->q->withTimeout(ImapQuery::SEARCH_TIMEOUT);
         try {
             foreach ($paths as $i => $p) {
                 if (microtime(true) > $deadline) {
