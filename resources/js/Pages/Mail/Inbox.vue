@@ -17,6 +17,7 @@ import { api, composeForm } from '../../mail/api';
 import { addrString, escapeHtml, hotkey, plural, presets, when } from '../../mail/format';
 import { useColumns } from '../../mail/useColumns';
 import { useCompose } from '../../mail/useCompose';
+import { useHotkeys } from '../../mail/useHotkeys';
 import { useLiveUpdates } from '../../mail/useLiveUpdates';
 import { useMessageActions } from '../../mail/useMessageActions';
 import { useUrlState } from '../../mail/useUrlState';
@@ -413,79 +414,11 @@ const {
 });
 
 // ── Горячие клавиши ───────────────────────────────────────────
-let gPrefix = false; let gTimer = null;
-let starPrefix = false; let starTimer = null;
-/** Подвести список к строке под курсором: без этого j/k уводят курсор за пределы экрана. */
-function revealCursor() {
-    nextTick(() => {
-        const el = document.querySelector('.mrow--cursor');
-        if (!el) return;
-        const r = el.getBoundingClientRect();
-        if (r.top < 70 || r.bottom > window.innerHeight - 60) {
-            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
-    });
-}
-function onKey(e) {
-    if (!settings.value.shortcuts) return;
-    const t = e.target;
-    if (compose.value || dialog.value || help.value) return;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
-        if (e.key === 'Escape') t.blur();
-        return;
-    }
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const key = hotkey(e);
-    const ids = list.value.messages.map((m) => m.uid);
-    const cur = cursor.value ?? open.value?.uid ?? null;
-    const idx = ids.indexOf(cur);
-    const target = selected.value.length ? selected.value : (cur != null ? [cur] : []);
-    const row = list.value.messages.find((m) => m.uid === cur);
-
-    if (starPrefix) {
-        starPrefix = false; clearTimeout(starTimer);
-        if (key === 'a') { selected.value = list.value.messages.map((m) => m.uid); e.preventDefault(); }
-        if (key === 'n') { selected.value = []; e.preventDefault(); }
-        return;
-    }
-    if (gPrefix) {
-        gPrefix = false; clearTimeout(gTimer);
-        const map = { i: 'inbox', s: 'sent', d: 'drafts', t: 'trash', a: 'archive' };
-        if (map[key] && rolePath(map[key])) { go(rolePath(map[key])); e.preventDefault(); }
-        return;
-    }
-    switch (key) {
-        case 'g': gPrefix = true; gTimer = setTimeout(() => { gPrefix = false; }, 1200); break;
-        case 'j': case 'ArrowDown': if (menu.value) return; e.preventDefault(); { const n = ids[Math.min(ids.length - 1, idx + 1)]; if (n != null) { cursor.value = n; revealCursor(); if (open.value) openMessage(n); } } break;
-        case 'k': case 'ArrowUp': if (menu.value) return; e.preventDefault(); { const n = ids[Math.max(0, idx - 1)]; if (n != null) { cursor.value = n; revealCursor(); if (open.value) openMessage(n); } } break;
-        case 'Enter': case 'o': if (cur != null) openMessage(cur); break;
-        case 'u': open.value = null; mobileRead.value = false; break;
-        case 'x': if (cur != null) toggle(cur); break;
-        case 'e': act('archive', target); break;
-        case '#': case 'Delete': act('delete', target); break;
-        // Ориентир — письмо под курсором, а если его нет (после «выбрать все»), первое выделенное:
-        // раньше эти две клавиши в таком случае просто ничего не делали.
-        case 's': { const r = row || list.value.messages.find((m) => target.includes(m.uid)); if (r) act(r.flagged ? 'unflag' : 'flag', target); break; }
-        case 'i': { const r = row || list.value.messages.find((m) => target.includes(m.uid)); if (r) act(r.seen ? 'unseen' : 'seen', target); break; }
-        case '!': act('spam', target); break;
-        case 'r': if (open.value) startCompose(settings.value.reply_all ? 'replyAll' : 'reply', open.value); break;
-        case 'a': if (open.value) startCompose('replyAll', open.value); break;
-        case 'f': if (open.value) startCompose('forward', open.value); break;
-        case 'c': startCompose('new'); break;
-        // Меню появляется у строки под курсором, а не в жёстко заданной точке 420×160,
-        // которая после изменения ширины колонок попадала в чужую колонку.
-        case 'z': case 'v': case 'l': if (target.length) {
-            const el = document.querySelector('.mrow--cursor') || document.querySelector('.mlist');
-            const r = el ? el.getBoundingClientRect() : { left: 320, bottom: 160 };
-            menu.value = { kind: { z: 'snooze', v: 'move', l: 'label' }[key], x: Math.round(r.left + 40), y: Math.round(Math.min(r.bottom, window.innerHeight - 120)), uids: target };
-        } break;
-        case '/': e.preventDefault(); listRef.value?.focusSearch(); break;
-        case '?': help.value = true; break;
-        case '*': starPrefix = true; clearTimeout(starTimer); starTimer = setTimeout(() => { starPrefix = false; }, 1200); e.preventDefault(); break;
-        case 'Escape': if (menu.value) menu.value = null; else if (selected.value.length) selected.value = []; else { open.value = null; mobileRead.value = false; } break;
-        default: return;
-    }
-}
+// Разбор нажатий — в useHotkeys; здесь остаётся только подписка (см. onMounted).
+const { onKey } = useHotkeys({
+    settings, list, cursor, open, selected, menu, compose, dialog, help, mobileRead, listRef,
+    act, openMessage, toggle, startCompose, go, rolePath,
+});
 
 onMounted(() => {
     document.addEventListener('keydown', onKey);
