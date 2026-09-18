@@ -34,6 +34,12 @@ install -m 0755 -o root -g root "$HERE/mailadmin-spamnet" /usr/local/sbin/mailad
 install -m 0755 -o root -g root "$HERE/mailadmin-sysinfo" /usr/local/sbin/mailadmin-sysinfo
 install -m 0755 -o root -g root "$HERE/fail2ban-mailadmin.sh" /usr/local/sbin/mailadmin-f2b
 install -m 0644 "$HERE/logrotate-mailadmin" /etc/logrotate.d/mailadmin
+# mail.log теперь наш (хранится 10 недель, как журналы Dovecot). Из пачки rsyslog его
+# нужно убрать: двух записей об одном файле logrotate не допускает.
+if grep -q '^/var/log/mail\.log$' /etc/logrotate.d/rsyslog 2>/dev/null; then
+  sed -i '\#^/var/log/mail\.log$#d' /etc/logrotate.d/rsyslog
+  echo "    mail.log переведён на хранение 10 недель"
+fi
 bash "$HERE/dovecot-fts-learn.sh" >/dev/null 2>&1 || true
 bash "$HERE/postfix-quota-soft.sh" >/dev/null 2>&1 || true
 bash "$HERE/postfix-delivery.sh" >/dev/null 2>&1 || true

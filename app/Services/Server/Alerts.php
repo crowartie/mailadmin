@@ -67,6 +67,22 @@ class Alerts
                 $fire('cert', 'Сертификат истекает через ' . $c['daysLeft'] . ' дн — автопродление не сработало');
             }
         }
+        // Проверки со страницы «Состояние»: всё красное — это поломка, о которой
+        // должен узнать человек, а не строчка, которую однажды заметят. Раньше сюда
+        // попадали только пять условий ниже, и, например, десять дней подряд не
+        // обновлявшиеся правила антиспама оставались личным делом страницы.
+        try {
+            $checks = app(HealthChecks::class);
+            foreach ($checks->checks($checks->sysinfo()) as $c) {
+                if (($c['kind'] ?? '') === 'no') {
+                    $fire('health.' . md5($c['group'] . $c['title']), $c['group'] . ' — ' . $c['title'] . ': ' . $c['text']
+                        . ($c['hint'] ? '. ' . $c['hint'] : ''));
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('проверки состояния для уведомлений: ' . $e->getMessage());
+        }
+
         if ($a['backup']) {
             $last = Backup::query()->orderByDesc('id')->first();
             if ($last && $last->status !== 'ok') {

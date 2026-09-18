@@ -104,7 +104,10 @@ class HealthChecks
         $add('Антиспам', 'Чёрные списки отвечают', $dead ? 'warn' : 'ok', $dead ? 'не отвечают: ' . implode(', ', array_column($dead, 'host')) : count($net['dnsbl'] ?? []) . ' списков, все отвечают', $dead ? 'Проверьте резолвер (unbound) — без ответа список просто не участвует' : null, '/antispam');
         $add('Антиспам', 'Razor и Pyzor', ($net['razor'] ?? false) && ($net['pyzor'] ?? false) ? 'ok' : 'warn', (($net['razor'] ?? false) ? 'Razor зарегистрирован' : 'Razor не зарегистрирован') . ', ' . (($net['pyzor'] ?? false) ? 'Pyzor отвечает' : 'Pyzor не отвечает'), null, '/antispam');
         $ru = (int) ($net['rulesUpdated'] ?? 0);
-        $add('Антиспам', 'Правила SpamAssassin', $ru && $ru > time() - 7 * 86400 ? 'ok' : 'warn', $ru ? 'обновлены ' . date('d.m.Y', $ru) : 'дата обновления неизвестна', $ru && $ru <= time() - 7 * 86400 ? 'sa-update не запускался неделю — проверьте таймер spamassassin-maintenance' : null);
+        // Две недели без обновления — это уже не «присмотреться», а поломка: sa-update
+        // молчит даже когда не может достучаться до зеркал, служба всё равно рапортует успех.
+        $ruKind = ! $ru ? 'warn' : ($ru > time() - 7 * 86400 ? 'ok' : ($ru > time() - 14 * 86400 ? 'warn' : 'no'));
+        $add('Антиспам', 'Правила SpamAssassin', $ruKind, $ru ? 'обновлены ' . date('d.m.Y', $ru) : 'дата обновления неизвестна', $ruKind === 'ok' ? null : 'sa-update не обновляет правила — journalctl -u spamassassin-maintenance покажет причину (обычно недоступны зеркала)');
 
         // ── Планировщик и фоновые задачи ──
         $last = (int) Cache::get('scheduler.last_run', 0);
