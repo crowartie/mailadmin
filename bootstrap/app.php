@@ -65,6 +65,21 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return response()->json(['message' => 'Такого адреса нет — обновите страницу'], 404);
         });
+        // Всё остальное, что приходит от php-imap, — это разговор с почтовым сервером,
+        // а не поломка приложения. Раньше такое доезжало до человека как «Server Error»:
+        // так отвечал, например, запрос письма с номером ноль (такого номера в IMAP нет,
+        // Dovecot отвечает пустотой). Пишем словами, подробности оставляем в журнале.
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            if (! str_starts_with($e::class, 'Webklex\\PHPIMAP\\Exceptions\\')) {
+                return null;
+            }
+            \Illuminate\Support\Facades\Log::warning('почтовый сервер: ' . $e::class . ': ' . $e->getMessage());
+            $msg = 'Почтовый сервер ответил не так, как мы ожидали. Обновите страницу; если повторится — сообщите администратору.';
+
+            return $request->expectsJson() || $request->is('mail/api/*') || $request->is('api/*')
+                ? response()->json(['message' => $msg], 502)
+                : back()->with('error', $msg);
+        });
         // Ошибки работы с почтой приходят своим типом и уже с человеческим текстом:
         // хранилищу больше не нужно знать про HTTP, чтобы сообщить о нехватке прав.
         $exceptions->render(function (\App\Exceptions\MailException $e, Request $request) {

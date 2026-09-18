@@ -66,7 +66,7 @@ Route::middleware('area:mail')->group(function () {
         Route::get('/mail/settings/{section?}', [InboxController::class, 'settings'])->where('section', '[a-z]+');
         Route::get('/mail/folder/{folder}', [InboxController::class, 'index'])->where('folder', '.*');
         // Печатная форма письма: отдельная страница, открывается в новой вкладке и сама вызывает печать.
-        Route::get('/mail/print/{folder}/{uid}', [\App\Http\Controllers\Mail\PrintController::class, 'show'])->where('folder', '.*')->whereNumber('uid');
+        Route::get('/mail/print/{folder}/{uid}', [\App\Http\Controllers\Mail\PrintController::class, 'show'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
 
         // Живые данные для интерфейса.
         Route::prefix('/mail/api')->group(function () {
@@ -89,18 +89,18 @@ Route::middleware('area:mail')->group(function () {
             Route::post('folders/{folder}/empty', [FolderController::class, 'empty'])->where('folder', '.*');
 
             Route::get('list/{folder}', [MessageController::class, 'list'])->where('folder', '.*');
-            Route::get('message/{folder}/{uid}/attachment/{index}', [MessageController::class, 'attachment'])->where('folder', '.*')->whereNumber('uid')->whereNumber('index');
-            Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 'attachmentsZip'])->where('folder', '.*')->whereNumber('uid');
-            Route::get('message/{folder}/{uid}/attachment/{index}/preview.pdf', [MessageController::class, 'attachmentPreview'])->where('folder', '.*')->whereNumber('uid')->whereNumber('index');
-            Route::get('message/{folder}/{uid}/raw', [MessageController::class, 'raw'])->where('folder', '.*')->whereNumber('uid');
-            Route::get('message/{folder}/{uid}/thread', [MessageController::class, 'thread'])->where('folder', '.*')->whereNumber('uid');
-            Route::get('message/{folder}/{uid}', [MessageController::class, 'show'])->where('folder', '.*')->whereNumber('uid');
+            Route::get('message/{folder}/{uid}/attachment/{index}', [MessageController::class, 'attachment'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
+            Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 'attachmentsZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
+            Route::get('message/{folder}/{uid}/attachment/{index}/preview.pdf', [MessageController::class, 'attachmentPreview'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
+            Route::get('message/{folder}/{uid}/raw', [MessageController::class, 'raw'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
+            Route::get('message/{folder}/{uid}/thread', [MessageController::class, 'thread'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
+            Route::get('message/{folder}/{uid}', [MessageController::class, 'show'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
 
             Route::post('action', [ActionController::class, 'store']);
 
             Route::post('send', [ComposeController::class, 'send']);
             Route::post('draft', [ComposeController::class, 'draft']);
-            Route::get('draft/{uid}', [ComposeController::class, 'openDraft'])->whereNumber('uid');
+            Route::get('draft/{uid}', [ComposeController::class, 'openDraft'])->where('uid', '[1-9][0-9]*');
             Route::get('outbox', [ComposeController::class, 'outbox']);
             Route::delete('outbox/{id}', [ComposeController::class, 'cancel'])->whereNumber('id');
 
