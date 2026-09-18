@@ -11,6 +11,8 @@ import RecipientInput from '../../Components/Mail/RecipientInput.vue';
 import { api } from '../../mail/api';
 import { hotkey, initials, toLocalInput } from '../../mail/format';
 import { DAYS, DAYS_FULL, MONTHS, MONTHS_N, addDays, addLabel, at9, day0, hex6, hm, monday, parseDay, sameDay, ymd } from '../../mail/dates';
+import { useCalendarTasks } from '../../mail/useCalendarTasks';
+import { useFreeBusy } from '../../mail/useFreeBusy';
 
 const props = defineProps({
     user: String,
@@ -39,11 +41,10 @@ const menu = ref(null);
 const dialog = ref(null);
 const toast = ref(null);
 const navOpen = ref(false);
-const freebusy = ref({});
 const shares = ref([]);
 const gridRef = ref(null);
 const now = ref(new Date());
-let toastTimer = null; let fbTimer = null; let tick = null;
+let toastTimer = null; let tick = null;
 
 const writable = computed(() => calendars.value.filter((c) => !c.readonly));
 const own = computed(() => calendars.value.filter((c) => c.kind === 'personal' || c.kind === 'own'));
@@ -338,37 +339,9 @@ async function respond(e, status) {
     } catch (err) { fail(err); }
 }
 
-// ── Занятость участников ──────────────────────────────────────
-watch(() => editing.value && [editing.value.attendees.map((a) => a.mail).join(','), editing.value.start, editing.value.allDay], () => {
-    clearTimeout(fbTimer);
-    freebusy.value = {};
-    const f = editing.value;
-    if (!f || f.allDay || !f.attendees.some((a) => a.mail)) return;
-    fbTimer = setTimeout(async () => {
-        const day = day0(new Date(f.start));
-        try { freebusy.value = await api.freebusy([props.user, ...f.attendees.map((a) => a.mail)], day.toISOString(), addDays(day, 1).toISOString()); } catch { freebusy.value = {}; }
-    }, 300);
-}, { deep: true });
-function busyBlocks(mail) {
-    const f = editing.value; if (!f) return [];
-    const day = day0(new Date(f.start));
-    return (freebusy.value[mail] || []).map((b) => {
-        const s = Math.max(0, (new Date(b.start) - day) / 60000); const e = Math.min(1440, (new Date(b.end) - day) / 60000);
-        return { left: (s / 1440 * 100) + '%', width: (Math.max(e - s, 8) / 1440 * 100) + '%' };
-    });
-}
-const conflict = computed(() => {
-    const f = editing.value; if (!f || f.allDay) return [];
-    const s = new Date(f.start); const e = new Date(f.end);
-    // null — занятость неизвестна (внешний адрес): это не повод объявлять время занятым.
-    return Object.entries(freebusy.value).filter(([mail, list]) => mail !== props.user.toLowerCase() && (list || []).some((b) => new Date(b.start) < e && new Date(b.end) > s)).map(([mail]) => mail);
-});
-const eventWindow = computed(() => {
-    const f = editing.value; if (!f || f.allDay) return null;
-    const day = day0(new Date(f.start));
-    const s = (new Date(f.start) - day) / 60000; const e = (new Date(f.end) - day) / 60000;
-    return { left: (Math.max(0, s) / 1440 * 100) + '%', width: (Math.max(8, Math.min(1440, e) - Math.max(0, s)) / 1440 * 100) + '%' };
-});
+// Занятость участников живёт в своём композабле: она зависит ровно от открытой формы.
+const { freebusy, busyBlocks, conflict, eventWindow, stopFreeBusy } = useFreeBusy(editing, props.user);
+onBeforeUnmount(stopFreeBusy);
 
 // Галочка «Весь день» только переключала поля, а значения в них оставались прежние:
 // изменил время начала, включил «Весь день» — событие вставало на исходную дату.
@@ -566,64 +539,19 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKey); clearInt
 watch(view, async () => { await nextTick(); if (gridRef.value) gridRef.value.scrollTop = 7.5 * HOUR; });
 
 const STATUS = { ACCEPTED: ['принял(а)', 'ok'], DECLINED: ['отказ', 'no'], TENTATIVE: ['под вопросом', 'warn'], 'NEEDS-ACTION': ['без ответа', 'off'] };
-// ── Задачи ───────────────────────────────────────────────────
-const tasks = ref([]);
-const newTask = ref('');
-const newTaskDue = ref('');
-const showDone = ref(false);
-const editTask = ref(null);
+// Задачи живут в своём композабле: сетка недели, форма события и занятость участников
+// им не нужны — нужен только способ сказать об ошибке.
+const {
+    tasks, newTask, newTaskDue, showDone, editTask, taskWithTime, today,
+    openTasks, visibleTasks,
+    loadTasks, addTask, toggleTask, saveTask, removeTask, dueLabel,
+} = useCalendarTasks(fail);
+onMounted(loadTasks);
+
 // Ссылки на поля адресов: перед чтением списка просим их дописать набранное,
 // иначе последний участник пропадает — фишка создаётся на 150 мс позже.
 const evAttendees = ref(null);
 const shareWith = ref(null);
-const today = new Date().toISOString().slice(0, 10);
-const openTasks = computed(() => tasks.value.filter((t) => !t.done));
-// Со временем или только дата: при включении добавляем 09:00, при выключении — обрезаем.
-const taskWithTime = ref(false);
-watch(taskWithTime, (on) => {
-    const t = editTask.value;
-    if (!t) return;
-    if (on && t.due && t.due.length <= 10) t.due = t.due + 'T09:00';
-    if (!on && t.due && t.due.length > 10) t.due = t.due.slice(0, 10);
-});
-watch(editTask, (t) => { taskWithTime.value = !!(t && t.due && t.due.length > 10); });
-const visibleTasks = computed(() => showDone.value ? tasks.value : openTasks.value);
-async function loadTasks() { try { tasks.value = await api.tasks(); } catch (e) { fail(e); } }
-async function addTask() {
-    if (!newTask.value.trim()) return;
-    try { const t = await api.createTask({ calendar: 'personal', title: newTask.value.trim(), due: newTaskDue.value || null, done: false }); tasks.value = [t, ...tasks.value]; newTask.value = ''; newTaskDue.value = ''; } catch (e) { fail(e); }
-}
-async function toggleTask(t) {
-    // Галочка рисуется по :checked, а не по модели, поэтому при неудачном сохранении
-    // задача оставалась на экране выполненной. Возвращаем состояние сами.
-    const was = t.done;
-    try {
-        const u = await api.updateTask(t.calendar, t.id, { done: !t.done });
-        tasks.value = tasks.value.map((x) => (x.id === t.id && x.calendar === t.calendar ? u : x));
-    } catch (e) {
-        t.done = was;
-        tasks.value = [...tasks.value];
-        fail(e);
-    }
-}
-async function saveTask() {
-    const t = editTask.value;
-    try { const u = await api.updateTask(t.calendar, t.id, { title: t.title, due: t.due || null, description: t.description || '', priority: t.priority || 0 }); tasks.value = tasks.value.map((x) => (x.id === t.id && x.calendar === t.calendar ? u : x)); editTask.value = null; } catch (e) { fail(e); }
-}
-async function removeTask(t) {
-    // У события и контакта подтверждение есть, а задача удалялась одним кликом и без отмены.
-    if (!window.confirm(`Удалить задачу «${t.title}»? Восстановить её будет нельзя.`)) return;
-    try { await api.deleteTask(t.calendar, t.id); tasks.value = tasks.value.filter((x) => !(x.id === t.id && x.calendar === t.calendar)); } catch (e) { fail(e); }
-}
-function dueLabel(due) {
-    const d = due.slice(0, 10);
-    if (d === today) return 'сегодня';
-    const t = new Date(d + 'T00:00:00'); const diff = Math.round((t - new Date(today + 'T00:00:00')) / 86400000);
-    if (diff === 1) return 'завтра';
-    if (diff === -1) return 'вчера';
-    return t.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + (due.length > 10 ? ' ' + due.slice(11) : '');
-}
-onMounted(loadTasks);
 
 const ALARMS = [['', 'без напоминания'], [0, 'в момент начала'], [5, 'за 5 минут'], [15, 'за 15 минут'], [30, 'за 30 минут'], [60, 'за час'], [120, 'за 2 часа'], [1440, 'за день'], [2880, 'за 2 дня']];
 </script>
