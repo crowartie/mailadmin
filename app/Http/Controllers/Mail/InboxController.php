@@ -37,7 +37,9 @@ class InboxController extends Controller
             // Порядок берём из адреса: страница, открытая по ссылке или после обновления,
             // должна показывать список в том же порядке.
             'list' => $store->list($folder, (int) $request->query('page', 1), $filter, $q, (string) $request->query('sort', 'date')),
-            'outbox' => Outbox::where('user', $imap->user())->where('status', 'scheduled')->count(),
+            // Считаем и «не отправилось»: про неудачу человек должен узнать сам,
+            // а не обнаружить через неделю, что письмо не ушло.
+            'outbox' => Outbox::where('user', $imap->user())->whereIn('status', ['scheduled', 'failed'])->count(),
             'quarantine' => \App\Http\Controllers\Mail\QuarantineController::count($imap->user()),
             // Индикатор занятого места: разметка в панели папок была, данных не было.
             'quota' => $store->quota(),

@@ -7,6 +7,18 @@ use Illuminate\Support\Facades\Cache;
 /** Место на дисках: почта (/var/vmail) и система. */
 class Disk
 {
+    /**
+     * Лежат ли два пути на одном разделе. Сравниваем номер устройства: путь может быть
+     * записан как угодно и вести через ссылки, а важен именно физический носитель.
+     */
+    public function sameDevice(string $a, string $b): bool
+    {
+        $sa = @stat($a);
+        $sb = @stat($b);
+
+        return $sa && $sb && $sa['dev'] === $sb['dev'];
+    }
+
     /** @return array{size:int,used:int,avail:int,pct:int}|null */
     public function vmail(): ?array
     {

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Schedule;
 // Веб-почта: вернуть отложенные письма, разослать напоминания, отправить письма по расписанию.
 Schedule::command('mail:wake')->everyMinute()->withoutOverlapping();
 Schedule::command('mail:outbox')->everyMinute()->withoutOverlapping();
+Schedule::command('mail:sent-retry')->everyMinute()->withoutOverlapping();
 // Общая книга «Сотрудники» — сверка с таблицей ящиков (правки через iRedAdmin или SQL).
 Schedule::command('dav:sync-employees')->hourly()->withoutOverlapping();
 // Отметка для обзора: планировщик жив.

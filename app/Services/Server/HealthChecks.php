@@ -128,6 +128,21 @@ class HealthChecks
             $kind = $b->status !== 'ok' ? 'no' : ($age > 36 ? 'warn' : 'ok');
             $add('Обслуживание', 'Резервная копия', $kind, ($b->status === 'ok' ? 'успешно ' : 'ошибка ') . $b->created_at->locale('ru')->translatedFormat('j F H:i') . ($b->size ? ' · ' . round($b->size / 1048576) . ' МБ' : ''), $kind === 'ok' ? null : ($b->status !== 'ok' ? mb_substr((string) $b->error, 0, 120) : 'Старше полутора суток — проверьте расписание'), '/settings/backup');
         }
+        // Отдельная проверка: что именно попадает в копию. Успешная задача, из которой
+        // исключена почта, — это не резервная копия почты, а копия настроек.
+        $bset = AppSetting::group('backup');
+        if (! ($bset['mail'] ?? false)) {
+            $add('Обслуживание', 'Почта в резервной копии', 'no', 'ящики не копируются',
+                'В копию входят только база и настройки. Если пропадёт диск с почтой, восстанавливать будет нечего — включите «Почтовые ящики» в /settings/backup, предварительно выбрав место: почта не помещается на тот же раздел.', '/settings/backup');
+        } else {
+            $dir = (string) ($bset['dir'] ?? '');
+            // Копия на том же разделе спасает от «удалил письмо», но не от потери диска.
+            $same = $dir !== '' && $this->disk->sameDevice($dir, '/var/vmail');
+            $add('Обслуживание', 'Почта в резервной копии', $same ? 'warn' : 'ok',
+                $dir !== '' ? 'копируются в ' . $dir : 'копируются',
+                $same ? 'Копии лежат на том же разделе, что и почта: от потери диска это не спасёт' : null, '/settings/backup');
+        }
+
         $cert = $this->cert->info();
         $add('Обслуживание', 'Сертификат HTTPS/IMAP/SMTP', $cert ? ($cert['daysLeft'] < 14 ? 'no' : ($cert['daysLeft'] < 30 ? 'warn' : 'ok')) : 'off', $cert ? 'действует ещё ' . $cert['daysLeft'] . ' дн' : 'нет данных', $cert && $cert['daysLeft'] < 14 ? 'Автопродление не сработало — /settings/cert' : null, '/settings/cert');
         $add('Обслуживание', 'Время синхронизировано (NTP)', ($si['ntp'] ?? '') === 'yes' ? 'ok' : 'warn', ($si['ntp'] ?? '') === 'yes' ? 'да' : 'нет: ' . ($si['ntp'] ?? 'неизвестно'), ($si['ntp'] ?? '') === 'yes' ? null : 'timedatectl set-ntp true — иначе поедут даты писем и DKIM');

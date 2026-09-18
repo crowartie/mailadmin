@@ -205,8 +205,14 @@ export function useCompose(ctx) {
 
             return;
         }
+        // Пока идёт обратный отсчёт, письмо есть только в этой вкладке. Закрытый ноутбук,
+        // упавший браузер или вложение тяжелее 64 КБ (столько тянет fetch с keepalive) —
+        // и письма нет нигде. Поэтому сначала откладываем его в черновики: даже в худшем
+        // случае человек найдёт свой текст, а не пустоту.
+        keepDraft(payload);
         pending = { payload, seconds: secs };
-        ctx.showToast({ text: 'Письмо отправлено', actionLabel: 'Отменить', seconds: secs }, 0);
+        // И не обещаем того, чего ещё не случилось: письмо пока не отправлено.
+        ctx.showToast({ text: 'Отправляем…', actionLabel: 'Отменить', seconds: secs }, 0);
         const tick = () => {
             if (!pending) return;
             pending.seconds--;
@@ -224,6 +230,22 @@ export function useCompose(ctx) {
             pending.timer = setTimeout(tick, 1000);
         };
         pending.timer = setTimeout(tick, 1000);
+    }
+
+    /**
+     * Сохранить черновик до отправки, чтобы письмо пережило закрытую вкладку.
+     * Если черновик уже есть (автосохранение), обходимся без повторной заливки вложений.
+     */
+    function keepDraft(payload) {
+        const form = payload.form;
+        if (!form) return;
+        const keep = !!form.draftUid;
+        api.draft(composeForm({ ...form, draftKeepFiles: keep }, keep ? [] : (payload.files || [])))
+            // Обычно ответ успевает прийти до конца отсчёта, и тогда отправка сама уберёт
+            // этот черновик. Если не успел — письмо уже ушло, а черновик останется висеть;
+            // это видно и поправимо, в отличие от потерянного письма.
+            .then((r) => { if (r?.draftUid && pending) form.draftUid = r.draftUid; })
+            .catch(() => {});   // не вышло — отправку из-за этого не задерживаем
     }
 
     function undoSend() {
