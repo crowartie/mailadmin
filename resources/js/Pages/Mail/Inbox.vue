@@ -16,6 +16,7 @@ import ShortcutsHelp from '../../Components/Mail/ShortcutsHelp.vue';
 import { api, composeForm } from '../../mail/api';
 import { addrString, escapeHtml, hotkey, plural, presets, when } from '../../mail/format';
 import { useColumns } from '../../mail/useColumns';
+import { useCompose } from '../../mail/useCompose';
 import { useLiveUpdates } from '../../mail/useLiveUpdates';
 import { useMessageActions } from '../../mail/useMessageActions';
 import { useUrlState } from '../../mail/useUrlState';
@@ -85,7 +86,6 @@ const navOpen = ref(false);
 const outboxCount = ref(props.outbox);
 const listRef = ref(null);
 let toastTimer = null;
-let pending = null;          // отложенная отправка с «Отменить»
 let refreshTimer = null;
 
 const folderInfo = computed(() => folders.value.find((f) => f.path === folder.value) || { name: folder.value, role: 'custom' });
@@ -392,226 +392,22 @@ async function recolor(l, color) {
 }
 const COLORS = ['#2F6FEB', '#16A05C', '#D9791F', '#C0392B', '#7B3FE4', '#0E8A8A', '#6B7787'];
 
-// ── Написать ──────────────────────────────────────────────────
-// Подпись зависит от поля «От»: у общего ящика (info и т.п.) — его собственная, иначе личная.
-function signatureText(fromMail) {
-    const id = (props.identities || []).find((i) => i.shared && i.mail.toLowerCase() === (fromMail || '').toLowerCase());
-    return id ? (id.signature || '') : (settings.value.signature || '');
-}
-function signature(forReply, fromMail) {
-    const s = signatureText(fromMail);
-    if (!s || (forReply && !settings.value.signature_reply)) return '';
-    return `<p><br></p><div class="sig">${s}</div>`;
-}
-// Письмо из общей папки (или новое, пока открыта общая папка) — от имени её владельца, если нам разрешено писать за него.
-function sharedFrom(m) {
-    const path = m ? m.folder : folder.value;
-    const owner = (folders.value.find((f) => f.path === path) || {}).owner;
-    return owner && (props.identities || []).some((i) => i.shared && i.mail === owner) ? owner : '';
-}
-function quote(m) {
-    const inner = m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`;
-    return `<p><br></p><div class="quote"><div style="color:#6B7787">${escapeHtml(when(m.date, true))}, ${escapeHtml(m.from.name)} &lt;${escapeHtml(m.from.mail)}&gt; писал(а):</div><blockquote>${inner}</blockquote></div>`;
-}
-function me(a) { return (a.mail || '').toLowerCase() === props.user.toLowerCase() || props.identities.some((i) => i.mail.toLowerCase() === (a.mail || '').toLowerCase()); }
-function replyTargets(m) {
-    if (folderInfo.value.role === 'sent') return m.to;
-    return m.replyTo?.length ? m.replyTo : [m.from];
-}
-// Своя метка у каждого окна письма: раньше два «Написать» подряд давали один и тот же ключ,
-// Vue переиспользовал компонент, и во второй форме оставался текст первой.
-let composeSeq = 0;
-function startCompose(mode = 'new', m = null, text = '') {
-    menu.value = null;
-    if (mode === 'draft') { openDraft(m.uid); return; }
-    const c = { token: ++composeSeq, mode, to: [], cc: [], bcc: [], subject: '', html: '', from: sharedFrom(m) || '' };
-    if (mode === 'new') {
-        c.html = `<p>${escapeHtml(text)}</p>${signature(false, c.from)}`;
-    } else if (mode === 'reply' || mode === 'replyAll') {
-        c.to = replyTargets(m).filter((a) => !me(a) || replyTargets(m).length === 1);
-        if (mode === 'replyAll') {
-            const seen = new Set(c.to.map((a) => a.mail));
-            [...m.to, ...(m.cc || [])].forEach((a) => { if (!me(a) && !seen.has(a.mail)) { seen.add(a.mail); c.cc.push(a); } });
-        }
-        // trim(): у письма без темы получалось «Re: » с висящим пробелом.
-        c.subject = /^re:/i.test(m.subject) ? m.subject : ('Re: ' + (m.subject === '(без темы)' ? '' : m.subject)).trim();
-        c.html = `<p>${escapeHtml(text)}</p>${signature(true, c.from)}${quote(m)}`;
-        c.inReplyTo = m.messageId;
-        c.references = [m.references, m.messageId].filter(Boolean).join(' ');
-        c.answeredFolder = m.folder; c.answeredUid = m.uid;
-        c.attachments = m.attachments || []; c.sourceFolder = m.folder; c.sourceUid = m.uid; c.keepAttachments = false;
-    } else if (mode === 'forward') {
-        c.subject = /^fwd?:/i.test(m.subject) ? m.subject : ('Fwd: ' + (m.subject === '(без темы)' ? '' : m.subject)).trim();
-        const hdr = `<div class="fwd" style="color:#6B7787">---------- Пересланное письмо ----------<br>От: ${escapeHtml(m.from.name)} &lt;${escapeHtml(m.from.mail)}&gt;<br>Дата: ${escapeHtml(when(m.date, true))}<br>Тема: ${escapeHtml(m.subject)}<br>Кому: ${escapeHtml(addrString(m.to))}</div><br>`;
-        c.html = `<p><br></p>${signature(true, c.from)}<p><br></p>${hdr}${m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`}`;
-        c.references = [m.references, m.messageId].filter(Boolean).join(' ');
-        c.attachments = m.attachments || []; c.sourceFolder = m.folder; c.sourceUid = m.uid; c.keepAttachments = true;
-    } else if (mode === 'again') {
-        // «Изменить как новое» (как в Kerio/Outlook «Отправить повторно»): те же получатели, тема, текст и вложения,
-        // без цитаты и шапки пересылки. Подпись не добавляем — в отправленном письме она уже есть.
-        c.to = [...(m.to || [])]; c.cc = [...(m.cc || [])];
-        c.subject = m.subject === '(без темы)' ? '' : (m.subject || '');
-        c.html = m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`;
-        c.attachments = m.attachments || []; c.sourceFolder = m.folder; c.sourceUid = m.uid; c.keepAttachments = true;
-    }
-    compose.value = c;
-    mobileRead.value = true;
-}
-/** Из контекстного меню: открыть письмо (если ещё не открыто) и начать ответ или пересылку. */
-async function openThen(mode) {
-    const uid = menu.value?.uids?.[0];
-    menu.value = null;
-    if (!uid) return;
-    let m = open.value && open.value.uid === uid ? open.value : null;
-    if (!m) {
-        try { m = await api.message(folder.value, uid); open.value = m; cursor.value = uid; } catch (e) { fail(e); return; }
-    }
-    startCompose(mode, m);
-}
-async function openDraft(uid) {
-    try {
-        const d = await api.openDraft(uid);
-        compose.value = { token: ++composeSeq, mode: 'draft', ...d, to: parseList(d.to), cc: parseList(d.cc), bcc: parseList(d.bcc), keepAttachments: d.attachments?.length > 0, sourceFolder: rolePath('drafts'), sourceUid: uid };
-        mobileRead.value = true;
-    } catch (e) { fail(e); }
-}
-function parseList(s) {
-    return (s || '').split(/,(?![^<]*>)/).map((p) => p.trim()).filter(Boolean).map((p) => {
-        const m = p.match(/^"?([^"<]*)"?\s*<([^>]+)>$/);
-        return m ? { name: m[1].trim(), mail: m[2].trim() } : { name: '', mail: p };
-    });
-}
-
-// Черновик сохранён: обновляем счётчик папки и сам список, если открыты «Черновики».
-function onDraftSaved() {
-    api.folders().then((r) => { if (Array.isArray(r)) folders.value = r; }).catch(() => {});
-    if (folderInfo.value.role === 'drafts') load(list.value.page, true);
-}
-
-function onComposeClose(opts) {
-    if (opts?.discard && opts.draftUid) {
-        api.action(rolePath('drafts'), [opts.draftUid], 'delete').then(refresh).catch(() => {});
-    }
-    compose.value = null;
-    if (!open.value) mobileRead.value = false;
-}
-
-async function doSend(payload) {
-    const r = await api.send(composeForm(payload.form, payload.files));
-    if (r.folders) folders.value = r.folders;
-    if (folderInfo.value.role === 'drafts' || folderInfo.value.role === 'sent') load(1, true);
-    return r;
-}
-
-function send(payload) {
-    compose.value = null;
-    if (!open.value) mobileRead.value = false;
-    if (payload.sendAt) {
-        doSend(payload).then(() => { outboxCount.value++; showToast({ text: `Отправится ${when(payload.sendAt, true)}` }); }).catch(fail);
-        return;
-    }
-    const secs = Number(settings.value.undo_seconds ?? 5);
-    if (!secs) { doSend(payload).then(() => showToast({ text: 'Письмо отправлено' })).catch(fail); return; }
-    pending = { payload, seconds: secs };
-    toast.value = { text: 'Письмо отправлено', actionLabel: 'Отменить', seconds: secs };
-    clearTimeout(toastTimer);
-    const tick = () => {
-        if (!pending) return;
-        pending.seconds--;
-        if (pending.seconds <= 0) {
-            const p = pending; pending = null; toast.value = null;
-            doSend(p.payload).then(() => showToast({ text: 'Письмо отправлено' }, 2000)).catch((e) => { fail(e); compose.value = { ...formToCompose(p.payload.form), files: p.payload.files }; });
-        } else {
-            toast.value = { ...toast.value, seconds: pending.seconds };
-            pending.timer = setTimeout(tick, 1000);
-        }
-    };
-    pending.timer = setTimeout(tick, 1000);
-}
-function undoSend() {
-    if (!pending) { toast.value = null; return; }
-    clearTimeout(pending.timer);
-    const p = pending; pending = null; toast.value = null;
-    // Вместе с формой возвращаем и приложенные файлы: раньше «Отменить» открывало письмо без них.
-    compose.value = { ...formToCompose(p.payload.form), files: p.payload.files || [] };
-    mobileRead.value = true;
-    showToast({ text: 'Отправка отменена' }, 2000);
-}
-function formToCompose(f) {
-    return { token: ++composeSeq, mode: 'new', ...f, to: parseList(f.to), cc: parseList(f.cc), bcc: parseList(f.bcc), attachments: [] };
-}
-function flushPending() {
-    flushPendingAct(true);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    const p = pending; pending = null;
-    api.send(composeForm(p.payload.form, p.payload.files), { keepalive: true }).catch(() => {});
-}
-
-async function quickReply({ text, message: m, done }) {
-    const to = replyTargets(m);
-    const form = {
-        to: addrString(to),
-        // Та же тема, что и у полного ответа: раньше быстрый ответ уходил с «Re: (без темы)».
-        subject: /^re:/i.test(m.subject) ? m.subject : ('Re: ' + (m.subject === '(без темы)' ? '' : m.subject)).trim(),
-        ...(sharedFrom(m) ? { from: sharedFrom(m) } : {}),
-        html: `<p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>${signature(true, sharedFrom(m))}${quote(m)}`,
-        inReplyTo: m.messageId,
-        references: [m.references, m.messageId].filter(Boolean).join(' '),
-        answeredFolder: m.folder, answeredUid: m.uid,
-    };
-    try {
-        const r = await api.send(composeForm(form, []));
-        if (r.folders) folders.value = r.folders;
-        const row = list.value.messages.find((x) => x.uid === m.uid); if (row) row.answered = true;
-        showToast({ text: 'Ответ отправлен' });
-        // Поле очищает MessageView — но только после того, как письмо действительно ушло.
-        if (done) done(true);
-    } catch (e) { fail(e); if (done) done(false); }
-}
-
-/** «Встреча» из письма: событие с темой письма и всеми участниками переписки. */
 /** Печатная форма письма — та же, что по кнопке «Печать» в панели действий. */
 function printOpen(m) {
     if (m) window.open(`/mail/print/${encodeURIComponent(m.folder)}/${m.uid}`, '_blank');
 }
 
-function meetingFrom(m) {
-    const people = [m.from, ...(m.to || []), ...(m.cc || [])].map((a) => a.mail).filter((x) => x && !me({ mail: x }));
-    const p = new URLSearchParams({ new: '1', title: m.subject === '(без темы)' ? '' : m.subject, attendees: [...new Set(people)].join(','), description: (m.text || '').slice(0, 800) });
-    router.visit('/calendar?' + p);
-}
-
-function unsubscribe(m) {
-    const h = m.listUnsubscribe || '';
-    const mailto = h.match(/<mailto:([^>]+)>/i);
-    const http = h.match(/<(https?:[^>]+)>/i);
-    if (http) {
-        // Ссылка ведёт на чужой сайт из письма, которое человек уже счёл лишним: показываем адрес
-        // и спрашиваем. Раньше один клик открывал произвольную страницу без предупреждения.
-        let host = http[1];
-        try { host = new URL(http[1]).host; } catch { /* оставим как есть */ }
-        if (!window.confirm(`Открыть страницу отписки на сайте ${host}?`)) return;
-        window.open(http[1], '_blank', 'noopener');
-        return;
-    }
-    if (mailto) {
-        const [addr, qs] = mailto[1].split('?');
-        const subj = new URLSearchParams(qs || '').get('subject') || 'Unsubscribe';
-        compose.value = { token: ++composeSeq, mode: 'new', to: [{ name: '', mail: addr }], cc: [], bcc: [], subject: subj, html: '<p>Unsubscribe</p>' };
-        mobileRead.value = true;   // на телефоне окно письма иначе остаётся за кадром
-    }
-}
-
-async function showOutbox() {
-    try {
-        const rows = await api.outbox();
-        dialog.value = { kind: 'outbox', rows };
-    } catch (e) { fail(e); }
-}
-async function cancelOutbox(id) {
-    try { await api.cancelOutbox(id); dialog.value.rows = dialog.value.rows.filter((r) => r.id !== id); outboxCount.value = Math.max(0, outboxCount.value - 1); showToast({ text: 'Письмо вернулось в черновики' }); } catch (e) { fail(e); }
-}
+// ── Написать ──────────────────────────────────────────────────
+// Вся работа с формой письма, отправкой и отменой — в useCompose.
+const {
+    startCompose, openThen, openDraft, onDraftSaved, onComposeClose,
+    send, undoSend, flushPending, quickReply, meetingFrom, unsubscribe,
+    showOutbox, cancelOutbox, parseList,
+} = useCompose({
+    props, settings, folders, folder, folderInfo, compose, open, cursor, mobileRead,
+    menu, toast, list, dialog, outboxCount,
+    load, refresh, fail, showToast, flushPendingAct, rolePath, router,
+});
 
 // ── Горячие клавиши ───────────────────────────────────────────
 let gPrefix = false; let gTimer = null;
