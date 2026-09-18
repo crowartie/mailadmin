@@ -45,7 +45,8 @@ class DavStoreFacadeTest extends TestCase
     {
         $src = file(__DIR__ . '/../../app/Services/Dav/DavStore.php');
         foreach ($this->facadeMethods() as $m) {
-            $lines = array_slice($src, $m->getStartLine(), $m->getEndLine() - $m->getStartLine() - 1);
+            // getStartLine — строка с «public function», следом идёт «{», и только потом тело.
+            $lines = array_slice($src, $m->getStartLine() + 1, $m->getEndLine() - $m->getStartLine() - 2);
             $code = array_values(array_filter(array_map('trim', $lines), fn ($l) => $l !== ''));
             $this->assertCount(1, $code, "в {$m->getName()} у фасада появилась своя логика: " . implode(' ', $code));
         }
