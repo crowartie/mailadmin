@@ -16,6 +16,7 @@ import { useFreeBusy } from '../../mail/useFreeBusy';
 import { HOUR, useCalendarLayout } from '../../mail/useCalendarLayout';
 import { useEventDrag } from '../../mail/useEventDrag';
 import { useEventForm } from '../../mail/useEventForm';
+import { useCalendarData } from '../../mail/useCalendarData';
 
 const props = defineProps({
     user: String,
@@ -31,12 +32,9 @@ const props = defineProps({
 const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
 // ── Состояние ─────────────────────────────────────────────────
-const calendars = ref(props.calendars.map((c) => ({ ...c, color: hex6(c.color) })));
 const hidden = ref(new Set(JSON.parse(localStorage.getItem('cal.hidden') || '[]')));
 const view = ref(localStorage.getItem('cal.view') || (window.innerWidth < 700 ? 'day' : 'week'));
 const anchor = ref(day0(new Date()));
-const events = ref([]);
-const loading = ref(false);
 const open = ref(null);        // просмотр события
 const editing = ref(null);     // форма
 const menu = ref(null);
@@ -52,10 +50,6 @@ const evAttendees = ref(null);
 const shareWith = ref(null);
 let toastTimer = null; let tick = null;
 
-const writable = computed(() => calendars.value.filter((c) => !c.readonly));
-const own = computed(() => calendars.value.filter((c) => c.kind === 'personal' || c.kind === 'own'));
-const foreign = computed(() => calendars.value.filter((c) => c.kind === 'shared' || c.kind === 'company'));
-const calMap = computed(() => Object.fromEntries(calendars.value.map((c) => [c.uri, c])));
 function say(text, error = false) {
     clearTimeout(toastTimer);
     toast.value = { text, error };
@@ -71,54 +65,36 @@ function fail(e) {
     say(net ? 'Нет связи с сервером — проверьте подключение к сети и попробуйте ещё раз' : (raw || 'Что-то пошло не так'), true);
 }
 
-// ── Диапазон и загрузка ───────────────────────────────────────
-const range = computed(() => {
-    const a = anchor.value;
-    if (view.value === 'day') return { from: day0(a), to: addDays(a, 1) };
-    if (view.value === 'week') return { from: monday(a), to: addDays(monday(a), 7) };
-    if (view.value === 'month') { const first = new Date(a.getFullYear(), a.getMonth(), 1); const from = monday(first); return { from, to: addDays(from, 42) }; }
-    return { from: day0(a), to: addDays(a, 30) };
+// Диапазон, заголовок и загрузка живут в своём композабле: это единственное место,
+// которое ходит на сервер за событиями и держит таймер тихого обновления.
+const { events, calendars, loading, range, days, heading, load, reloadCalendars } = useCalendarData({
+    view, anchor, editing, dialog, fail,
 });
-const days = computed(() => {
-    const out = [];
-    const n = view.value === 'day' ? 1 : view.value === 'week' ? 7 : view.value === 'month' ? 42 : 30;
-    for (let i = 0; i < n; i++) out.push(addDays(range.value.from, i));
-    return out;
-});
-const heading = computed(() => {
-    const a = anchor.value; const r = range.value;
-    if (view.value === 'day') return `${a.getDate()} ${MONTHS[a.getMonth()]}, ${DAYS_FULL[(a.getDay() + 6) % 7]}`;
-    if (view.value === 'month') return `${MONTHS_N[a.getMonth()]} ${a.getFullYear()}`;
-    const last = addDays(r.to, -1);
-    if (view.value === 'agenda') return `${a.getDate()} ${MONTHS[a.getMonth()]} — ${last.getDate()} ${MONTHS[last.getMonth()]}`;
-    return r.from.getMonth() === last.getMonth() ? `${r.from.getDate()} — ${last.getDate()} ${MONTHS[last.getMonth()]}` : `${r.from.getDate()} ${MONTHS[r.from.getMonth()]} — ${last.getDate()} ${MONTHS[last.getMonth()]}`;
-});
+calendars.value = props.calendars.map((c) => ({ ...c, color: hex6(c.color) }));
 
-async function load() {
-    loading.value = true;
-    try {
-        const list = await api.events(range.value.from.toISOString(), range.value.to.toISOString());
-        events.value = list.map((e) => ({ ...e, color: hex6(e.color), s: e.allDay ? parseDay(e.start) : new Date(e.start), e: e.allDay ? parseDay(e.end) : new Date(e.end) }));
-    } catch (e) { fail(e); } finally { loading.value = false; }
-}
-/** Обновить события и список календарей по кнопке. */
+const writable = computed(() => calendars.value.filter((c) => !c.readonly));
+const own = computed(() => calendars.value.filter((c) => c.kind === 'personal' || c.kind === 'own'));
+const foreign = computed(() => calendars.value.filter((c) => c.kind === 'shared' || c.kind === 'company'));
+const calMap = computed(() => Object.fromEntries(calendars.value.map((c) => [c.uri, c])));
+
+// Задачи живут в своём композабле: сетка недели, форма события и занятость участников
+// им не нужны — нужен только способ сказать об ошибке.
+const {
+    tasks, newTask, newTaskDue, showDone, editTask, taskWithTime, today,
+    openTasks, visibleTasks,
+    loadTasks, addTask, toggleTask, saveTask, removeTask, dueLabel,
+} = useCalendarTasks(fail);
+onMounted(loadTasks);
+
+/** Обновить события, календари и задачи по кнопке. */
 async function refresh() {
     await Promise.all([load(), reloadCalendars(), loadTasks()]);
 }
-async function reloadCalendars() {
-    try { calendars.value = (await api.calendars()).map((c) => ({ ...c, color: hex6(c.color) })); } catch (e) { fail(e); }
-}
-watch([view, anchor], () => { localStorage.setItem('cal.view', view.value); load(); });
-// Тихое обновление раз в пять минут: новые приглашения и чужие правки должны появляться
-// сами, как в списке писем. Форму и открытое событие не трогаем.
-let calTimer = null;
-onMounted(() => {
-    calTimer = setInterval(() => {
-        if (document.hidden || editing.value || dialog.value) return;
-        load();
-    }, 300000);
-});
-onBeforeUnmount(() => clearInterval(calTimer));
+
+// Перенос и растягивание мышью живут в своём композабле: это единственное место,
+// где страница слушает мышь глобально, и подписку на window легко пережить страницу.
+const { drag, dragging, startDrag, stopDrag } = useEventDrag({ events, view, say, fail, load });
+onBeforeUnmount(stopDrag);
 
 const visibleEvents = computed(() => {
     const d = drag.value;
@@ -226,10 +202,6 @@ async function removeShare(mail) {
 }
 const COLORS = ['#2F6FEB', '#16A05C', '#D9791F', '#C0392B', '#7B3FE4', '#0E8A8A', '#6B7787'];
 
-// Перенос и растягивание мышью живут в своём композабле: это единственное место,
-// где страница слушает мышь глобально, и подписку на window легко пережить страницу.
-const { drag, dragging, startDrag, stopDrag } = useEventDrag({ events, view, say, fail, load });
-onBeforeUnmount(stopDrag);
 
 // ── Мини-месяц ────────────────────────────────────────────────
 const miniMonth = ref(new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1));
@@ -291,14 +263,6 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKey); clearInt
 watch(view, async () => { await nextTick(); if (gridRef.value) gridRef.value.scrollTop = 7.5 * HOUR; });
 
 const STATUS = { ACCEPTED: ['принял(а)', 'ok'], DECLINED: ['отказ', 'no'], TENTATIVE: ['под вопросом', 'warn'], 'NEEDS-ACTION': ['без ответа', 'off'] };
-// Задачи живут в своём композабле: сетка недели, форма события и занятость участников
-// им не нужны — нужен только способ сказать об ошибке.
-const {
-    tasks, newTask, newTaskDue, showDone, editTask, taskWithTime, today,
-    openTasks, visibleTasks,
-    loadTasks, addTask, toggleTask, saveTask, removeTask, dueLabel,
-} = useCalendarTasks(fail);
-onMounted(loadTasks);
 
 
 const ALARMS = [['', 'без напоминания'], [0, 'в момент начала'], [5, 'за 5 минут'], [15, 'за 15 минут'], [30, 'за 30 минут'], [60, 'за час'], [120, 'за 2 часа'], [1440, 'за день'], [2880, 'за 2 дня']];
