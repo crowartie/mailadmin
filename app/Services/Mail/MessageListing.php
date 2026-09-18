@@ -42,12 +42,6 @@ final class MessageListing
     // ── Списки ───────────────────────────────────────────────────────────
 
     /**
-     * Страница списка. $filter: all|unread|flagged|attach. $query — строка поиска
-     * с операторами (см. SearchQuery); при поиске страницы считаются по результату.
-     *
-     * @return array{messages:array,total:int,page:int,pages:int}
-     */
-    /**
      * Поиск по всем папкам, которые видит сотрудник, — включая общие папки коллег,
      * «Спам» и «Корзину».
      *
@@ -58,8 +52,8 @@ final class MessageListing
      * с пересылкой из info@ 17 сентября.
      *
      * Порядок обхода важен: сначала папка, в которой человек стоит ($from), и свои,
-     * потом общие, потом спам и корзина. Если сработает общий срок поиска, необойдённым останется то,
-     * что человек ищет реже, и об этих папках мы скажем прямо.
+     * потом общие, потом спам и корзина. Если сработает общий срок поиска, необойдённым
+     * останется то, что ищут реже, и об этих папках поиск скажет прямо.
      *
      * @return array{messages:array,total:int,page:int,pages:int}
      */
@@ -152,6 +146,12 @@ final class MessageListing
         ];
     }
 
+    /**
+     * Страница списка. $filter: all|unread|flagged|attach. $query — строка поиска
+     * с операторами (см. SearchQuery); при поиске страницы считаются по результату.
+     *
+     * @return array{messages:array,total:int,page:int,pages:int}
+     */
     public function list(string $path, int $page = 1, string $filter = 'all', ?string $query = null, string $sort = 'date'): array
     {
         $folder = $this->tree->folder($path);
