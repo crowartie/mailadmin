@@ -25,6 +25,8 @@ class PartsWiringTest extends TestCase
         'App\\Services\\Dav\\DavStore',
         'App\\Services\\Mail\\MessageFetch', 'App\\Services\\Mail\\MessageBody', 'App\\Services\\Mail\\ThreadBuilder',
         'App\\Services\\Mail\\MailAttachments', 'App\\Services\\Mail\\MessageReader', 'App\\Services\\Mail\\MailStore',
+        'App\\Services\\Mail\\ImapQuery', 'App\\Services\\Mail\\MessagePage', 'App\\Services\\Mail\\MessageListing',
+        'App\\Services\\Mail\\MailActions', 'App\\Services\\Mail\\FolderTree', 'App\\Services\\Mail\\MessageSummary',
     ];
 
     public function test_every_call_between_parts_resolves(): void
