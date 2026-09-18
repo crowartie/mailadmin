@@ -74,3 +74,38 @@
 Нужен второй канал, не зависящий от почтового сервера: бот в Telegram или SMS через шлюз.
 Место для врезки — `App\Services\Server\Alerts::send()`, там уже есть ветка «копия в
 отчёты»; добавить рядом отправку во внешний канал и настройку в разделе «Уведомления».
+
+## Разбиение кода: что осталось
+
+**Заведено:** 19.09.2026. Продолжение работы, начатой с `MailStore` (1772 → 352 строки),
+`Inbox.vue` (1204 → 744) и `SettingsController` (749 → 192).
+
+Порядок — по убыванию пользы. Правило то же, что и раньше: разделение не должно менять
+вызовы снаружи, иначе правка расползается по контроллерам и планировщику.
+
+1. **`app/Services/Dav/DavStore.php` — 919 строк, самый крупный файл проекта.**
+   Швы видны по методам: контакты (`books`/`cards`/`importCards`/`exportCards`/`suggest`),
+   календари (`calendars`/`events`/`saveEvent`), задачи (`tasks`/`parseTask`), общий доступ
+   и занятость (`shares`/`share`/`freeBusy`), заведение и удаление пользователя
+   (`ensureUser`/`removeUser`/`ensureUnitResources`). Делить так же, как `MailStore`:
+   фасад плюс `ContactBooks`, `Calendars`, `Tasks`, `DavShares`, `DavUsers`.
+
+2. **`resources/js/Pages/Mail/Calendar.vue` — 1010 строк, самый крупный файл фронтенда.**
+   Готовые куски: работа с датами (строки 23–36) → `resources/js/mail/dates.js`;
+   загрузка и диапазон → `useCalendarData`; раскладка недели/дня/месяца (`layout`,
+   `dayEvents`, `monthCell`) → `useCalendarLayout`; форма события (`blank`/`payload`/`save`)
+   → `useEventForm`; занятость участников (`busyBlocks`) → `useFreeBusy`.
+
+3. **`app/Services/Mail/MessageReader.php` — 679 строк.** После первого разделения остался
+   самым крупным в почтовом ядре и делится дальше на три понятные части: чтение письма
+   (`message`/`full`/`fullLight`), переписка (`threadOf`/`thread`/`threadBySubject`,
+   ~250 строк) и вложения (`attachment`/`attachmentsZip`/`attachmentPreviewPdf`).
+
+4. **`resources/js/Pages/Mail/Settings.vue` (717) и `resources/js/Pages/Settings/Index.vue`
+   (616).** Обе — набор независимых вкладок в одном файле; каждая вкладка просится в свой
+   компонент. Пользы меньше, чем в пунктах 1–3: файлы длинные, но простые.
+
+5. **`resources/js/Pages/Mail/Contacts.vue` (573)** — список, карточка и импорт в одном месте.
+
+Трогать не надо: `Help.vue` (729) — это почти сплошной текст справки, делить нечего;
+`MessageListing` (573) и `FolderTree` (530) — цельные по смыслу после первого разделения.
