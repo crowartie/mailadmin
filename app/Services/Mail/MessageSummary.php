@@ -21,7 +21,7 @@ final class MessageSummary
 
 
     /** Строка списка из сырого ответа FETCH — те же поля, что даёт summary(). */
-    private function summaryFromFetch(array $row): array
+    public function summaryFromFetch(array $row): array
     {
         // Библиотека режет «BODY[HEADER.FIELDS (FROM …)]» на ключ «BODY[HEADER.FIELDS» и список, где последний элемент — сам текст заголовков.
         $headers = '';
@@ -78,7 +78,7 @@ final class MessageSummary
         ];
     }
 
-    private function previews(array $uids): array
+    public function previews(array $uids): array
     {
         if ($uids === []) {
             return [];
