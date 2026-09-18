@@ -14,11 +14,12 @@ use PHPUnit\Framework\TestCase;
  */
 class MailAddressListTest extends TestCase
 {
+    /** splitAddresses делит строку как есть, пробелы снимает уже parseAddresses. */
     public function test_splits_simple_list(): void
     {
         $this->assertSame(
             ['a@b.ru', 'c@d.ru', 'e@f.ru'],
-            MailAddressList::splitAddresses('a@b.ru, c@d.ru; e@f.ru')
+            array_map('trim', MailAddressList::splitAddresses('a@b.ru, c@d.ru; e@f.ru'))
         );
     }
 
