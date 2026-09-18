@@ -19,9 +19,13 @@ if [ ! -d "$DIR/.git" ]; then
 fi
 
 cd "$DIR"
-git --git-dir="$DIR/.git" remote set-url origin "$SRC" >/dev/null 2>&1 || true
-git fetch --quiet origin
-git reset --hard --quiet origin/master
+# Тянем из общего репозитория, а не из рабочего каталога: иначе, чтобы проверить свежий
+# коммит, его пришлось бы сначала выложить людям. Проверка должна идти до выкладки.
+UPSTREAM=$(git -C "$SRC" -c safe.directory="$SRC" remote get-url origin 2>/dev/null || echo "$SRC")
+git --git-dir="$DIR/.git" remote set-url origin "$UPSTREAM" >/dev/null 2>&1 || true
+BR=${BRANCH:-$(git -C "$SRC" -c safe.directory="$SRC" rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)}
+git fetch --quiet origin "$BR"
+git reset --hard --quiet FETCH_HEAD
 echo "==> версия: $(git log --oneline -1)"
 
 # С dev-зависимостями: именно здесь живёт PHPUnit.
