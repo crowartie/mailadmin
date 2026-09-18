@@ -224,7 +224,10 @@ function selectAll() {
 // Сами действия и окно отмены — в useMessageActions.
 const { act, flushPendingAct, undoAct, undoToast } = useMessageActions({
     list, folder, folders, selected, open, mobileRead, menu, toast, settings, folderInfo,
-    showToast, fail, load, refillAfter, bump, undoSend,
+    showToast, fail, load, refillAfter, bump,
+    // Отмена отправки живёт в useCompose, а он создаётся ниже — иначе ему неоткуда взять
+    // flushPendingAct. Поэтому здесь не сама функция, а обращение к ней в момент вызова.
+    undoSend: () => undoSend(),
 });
 
 function onDrop(data, target) {
