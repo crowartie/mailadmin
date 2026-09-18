@@ -10,6 +10,7 @@ import Toast from '../../Components/Mail/Toast.vue';
 import RecipientInput from '../../Components/Mail/RecipientInput.vue';
 import { api } from '../../mail/api';
 import { hotkey, initials, toLocalInput } from '../../mail/format';
+import { DAYS, DAYS_FULL, MONTHS, MONTHS_N, addDays, addLabel, at9, day0, hex6, hm, monday, parseDay, sameDay, ymd } from '../../mail/dates';
 
 const props = defineProps({
     user: String,
@@ -20,20 +21,10 @@ const props = defineProps({
     prefill: { type: Object, default: null },
 });
 
-// ── Даты ──────────────────────────────────────────────────────
-const DAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
-const DAYS_FULL = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
-const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-const MONTHS_N = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+// Даты и цвет календаря живут в mail/dates.js: это чистые функции, они нужны не только
+// здесь, и проверять их удобнее по отдельности.
 const HOUR = 48; // px на час в сетке
 const origin = typeof window !== 'undefined' ? window.location.origin : '';
-const day0 = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
-const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-const monday = (d) => addDays(day0(d), -((d.getDay() + 6) % 7));
-const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const hm = (d) => d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-const parseDay = (s) => { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
 
 // ── Состояние ─────────────────────────────────────────────────
 const calendars = ref(props.calendars.map((c) => ({ ...c, color: hex6(c.color) })));
@@ -58,19 +49,6 @@ const writable = computed(() => calendars.value.filter((c) => !c.readonly));
 const own = computed(() => calendars.value.filter((c) => c.kind === 'personal' || c.kind === 'own'));
 const foreign = computed(() => calendars.value.filter((c) => c.kind === 'shared' || c.kind === 'company'));
 const calMap = computed(() => Object.fromEntries(calendars.value.map((c) => [c.uri, c])));
-/**
- * Цвет календаря в виде #RRGGBB. Календарь, заведённый с iPhone, хранит восьмизначный
- * код с прозрачностью (#RRGGBBAA): к нему дописывалась ещё пара знаков на полупрозрачный
- * фон события, получалось десять — такой цвет браузер не понимает, и событие оставалось
- * без фона. Заодно принимаем короткую запись (#RGB).
- */
-function hex6(c) {
-    const v = String(c || '').trim();
-    if (/^#[0-9a-f]{3}$/i.test(v)) return '#' + v[1] + v[1] + v[2] + v[2] + v[3] + v[3];
-    if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v)) return v.slice(0, 7);
-    return '#2F6FEB';
-}
-
 function say(text, error = false) {
     clearTimeout(toastTimer);
     toast.value = { text, error };
@@ -153,10 +131,6 @@ function toggleCal(uri) {
     hidden.value = new Set(hidden.value);
     localStorage.setItem('cal.hidden', JSON.stringify([...hidden.value]));
 }
-/** Дата с временем 9:00 — с него начинается событие, созданное щелчком по дню. */
-function at9(d) { const x = new Date(d); x.setHours(9, 0, 0, 0); return x; }
-/** Подпись кнопки «+» в дне: «Создать событие: 18 сентября». */
-function addLabel(d) { return 'Создать событие: ' + d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }); }
 function goToday() { anchor.value = day0(new Date()); }
 function shift(dir) {
     const a = anchor.value;
