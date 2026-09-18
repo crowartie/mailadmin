@@ -13,6 +13,8 @@ import { hotkey, initials, toLocalInput } from '../../mail/format';
 import { DAYS, DAYS_FULL, MONTHS, MONTHS_N, addDays, addLabel, at9, day0, hex6, hm, monday, parseDay, sameDay, ymd } from '../../mail/dates';
 import { useCalendarTasks } from '../../mail/useCalendarTasks';
 import { useFreeBusy } from '../../mail/useFreeBusy';
+import { HOUR, useCalendarLayout } from '../../mail/useCalendarLayout';
+import { useEventDrag } from '../../mail/useEventDrag';
 
 const props = defineProps({
     user: String,
@@ -25,7 +27,6 @@ const props = defineProps({
 
 // Даты и цвет календаря живут в mail/dates.js: это чистые функции, они нужны не только
 // здесь, и проверять их удобнее по отдельности.
-const HOUR = 48; // px на час в сетке
 const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
 // ── Состояние ─────────────────────────────────────────────────
@@ -143,68 +144,9 @@ function shift(dir) {
 function setView(v) { view.value = v; }
 function openDay(d) { anchor.value = day0(d); view.value = 'day'; }
 
-// ── Раскладка недели/дня ──────────────────────────────────────
-function dayEvents(d) {
-    const start = day0(d); const end = addDays(start, 1);
-    return visibleEvents.value.filter((e) => !e.allDay && e.s < end && e.e > start);
-}
-function allDayEvents(d) {
-    const start = day0(d); const end = addDays(start, 1);
-    return visibleEvents.value.filter((e) => e.allDay && e.s < end && e.e > start);
-}
-/** Колонки для пересекающихся событий одного дня. */
-function layout(d) {
-    const start = day0(d); const end = addDays(start, 1);
-    const items = dayEvents(d).map((e) => {
-        const s = Math.max(0, (Math.max(e.s, start) - start) / 60000);
-        const en = Math.min(1440, (Math.min(e.e, end) - start) / 60000);
-        return { e, top: s, height: Math.max(22, (en - s) / 60 * HOUR), sMin: s, eMin: Math.max(en, s + 25), col: 0, cols: 1 };
-    }).sort((a, b) => a.sMin - b.sMin || b.eMin - a.eMin);
-    // Кластеры пересечений → распределение по колонкам.
-    let cluster = []; let clusterEnd = -1;
-    const flush = () => {
-        const colsEnd = [];
-        cluster.forEach((it) => {
-            let c = colsEnd.findIndex((endMin) => endMin <= it.sMin);
-            if (c < 0) { c = colsEnd.length; colsEnd.push(0); }
-            colsEnd[c] = it.eMin; it.col = c;
-        });
-        cluster.forEach((it) => { it.cols = colsEnd.length; });
-        cluster = [];
-    };
-    items.forEach((it) => {
-        if (cluster.length && it.sMin >= clusterEnd) flush();
-        cluster.push(it); clusterEnd = Math.max(clusterEnd, it.eMin);
-    });
-    if (cluster.length) flush();
-    return items.map((it) => ({ ...it, style: { top: (it.top / 60 * HOUR) + 'px', height: it.height + 'px', left: `calc(${(100 / it.cols) * it.col}% + 2px)`, width: `calc(${100 / it.cols}% - 4px)`, background: it.e.color + '22', borderLeftColor: it.e.color, color: 'var(--text)' } }));
-}
-const nowTop = computed(() => (now.value.getHours() * 60 + now.value.getMinutes()) / 60 * HOUR);
-const hours = Array.from({ length: 24 }, (_, i) => i);
-
-function monthCell(d) {
-    const start = day0(d); const end = addDays(start, 1);
-    return visibleEvents.value.filter((e) => e.s < end && e.e > start).sort((a, b) => (b.allDay - a.allDay) || (a.s - b.s));
-}
-const agendaGroups = computed(() => {
-    const m = new Map();
-    const from = day0(range.value.from);
-    const to = day0(range.value.to);
-    // Раньше событие попадало только в день своего начала: командировка с понедельника
-    // по пятницу в повестке была видна один раз, в понедельник.
-    visibleEvents.value.forEach((e) => {
-        let d = day0(e.s) < from ? new Date(from) : day0(e.s);
-        const last = e.allDay ? addDays(day0(e.e), -1) : day0(e.e);
-        for (let i = 0; i < 62 && d <= last && d < to; i++) {
-            const k = ymd(d);
-            if (!m.has(k)) m.set(k, []);
-            m.get(k).push(e);
-            d = addDays(d, 1);
-        }
-    });
-
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, list]) => ({ day: parseDay(k), list }));
-});
+// Раскладка сетки живёт в своём композабле: ей нужны только события, показанный
+// диапазон и текущее время.
+const { hours, dayEvents, allDayEvents, layout, monthCell, nowTop, agendaGroups } = useCalendarLayout(visibleEvents, range, now);
 
 // ── Клик по сетке → новое событие ─────────────────────────────
 function slotClick(d, ev) {
@@ -396,88 +338,10 @@ async function removeShare(mail) {
 }
 const COLORS = ['#2F6FEB', '#16A05C', '#D9791F', '#C0392B', '#7B3FE4', '#0E8A8A', '#6B7787'];
 
-// ── Перенос и растягивание событий мышью ──────────────────────
-// Курсор-крестик над сеткой обещал перетаскивание, а его не было вовсе: чтобы сдвинуть
-// встречу на час, приходилось открывать форму и править время руками. Тянем по сетке
-// с шагом в четверть часа; событие двигается за курсором, сохраняется по отпусканию.
-const drag = ref(null);
-const STEP = 15;   // минут — шаг сетки при переносе
-
-/** Тянут ли прямо сейчас именно это событие. */
-function dragging(e) {
-    const d = drag.value;
-    return !!(d && d.moved && d.id === e.id && d.calendar === e.calendar);
-}
-
-function startDrag(ev, item, mode) {
-    const e = item.e;
-    if (ev.button !== 0) return;
-    if (e.readonly) { say('Этот календарь только для чтения', true); return; }
-    if (e.recurring) { say('У повторяющегося события время меняется в правке — откройте его', true); return; }
-    ev.preventDefault();
-    drag.value = {
-        id: e.id, calendar: e.calendar, mode, moved: false,
-        x0: ev.clientX, y0: ev.clientY,
-        s0: new Date(e.s), e0: new Date(e.e),
-        s: new Date(e.s), end: new Date(e.e),
-        colW: ev.currentTarget.closest('.cal__col')?.getBoundingClientRect().width || 0,
-        src: e,
-    };
-    window.addEventListener('pointermove', onDrag);
-    window.addEventListener('pointerup', endDrag, { once: true });
-}
-
-function onDrag(ev) {
-    const d = drag.value;
-    if (!d) return;
-    const dy = ev.clientY - d.y0;
-    const dx = ev.clientX - d.x0;
-    const dmin = Math.round((dy / HOUR) * 60 / STEP) * STEP;
-    // Перенос на соседний день — по горизонтали, целыми колонками (только в виде недели).
-    const dday = d.mode === 'move' && d.colW > 0 && view.value === 'week' ? Math.round(dx / d.colW) : 0;
-    if (Math.abs(dy) > 3 || dday !== 0) d.moved = true;
-    if (d.mode === 'move') {
-        d.s = new Date(d.s0.getTime() + dmin * 60000 + dday * 86400000);
-        d.end = new Date(d.e0.getTime() + dmin * 60000 + dday * 86400000);
-    } else {
-        const end = new Date(d.e0.getTime() + dmin * 60000);
-        // Короче четверти часа встреча быть не может — иначе её не ухватить обратно.
-        d.end = end.getTime() - d.s0.getTime() < STEP * 60000 ? new Date(d.s0.getTime() + STEP * 60000) : end;
-        d.s = d.s0;
-    }
-    drag.value = { ...d };
-}
-
-async function endDrag() {
-    window.removeEventListener('pointermove', onDrag);
-    const d = drag.value;
-    drag.value = null;
-    if (!d || !d.moved) return;   // это был обычный щелчок — открыть событие
-    if (+d.s === +d.s0 && +d.end === +d.e0) return;
-    const e = d.src;
-    // Показываем новое время сразу: иначе событие прыгает на старое место и обратно.
-    events.value = events.value.map((x) => (x.id === e.id && x.calendar === e.calendar ? { ...x, s: d.s, e: d.end } : x));
-    try {
-        await api.updateEvent(e.calendar, e.id, {
-            calendar: e.calendar,
-            title: e.title,
-            allDay: false,
-            location: e.location || '',
-            description: e.description || '',
-            transparent: !!e.transparent,
-            attendees: (e.attendees || []).filter((a) => a.mail).map((a) => ({ name: a.name, mail: a.mail })),
-            alarm: e.alarm ?? null,
-            start: d.s.toISOString(),
-            end: d.end.toISOString(),
-        });
-        say((e.attendees || []).some((a) => a.mail) ? 'Время изменено, участники извещены' : 'Время изменено');
-    } catch (err) {
-        fail(err);
-    }
-    await load();
-}
-
-onBeforeUnmount(() => window.removeEventListener('pointermove', onDrag));
+// Перенос и растягивание мышью живут в своём композабле: это единственное место,
+// где страница слушает мышь глобально, и подписку на window легко пережить страницу.
+const { drag, dragging, startDrag, stopDrag } = useEventDrag({ events, view, say, fail, load });
+onBeforeUnmount(stopDrag);
 
 // ── Мини-месяц ────────────────────────────────────────────────
 const miniMonth = ref(new Date(anchor.value.getFullYear(), anchor.value.getMonth(), 1));
