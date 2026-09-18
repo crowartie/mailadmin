@@ -8,6 +8,8 @@ import Popover from '../../Components/Mail/Popover.vue';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import { api } from '../../mail/api';
+import { useContactForm } from '../../mail/useContactForm';
+import { useContactActions } from '../../mail/useContactActions';
 import { hotkey, initials, plural, quoteName, when } from '../../mail/format';
 
 const props = defineProps({
@@ -181,138 +183,16 @@ async function select(c) {
     } catch (e) { fail(e); }
 }
 
-// ── Форма ─────────────────────────────────────────────────────
-function blank(book = null) {
-    const target = book && writableBooks.value.some((b) => b.uri === book) ? book : (writableBooks.value[0]?.uri || 'personal');
-    return { book: target, first: '', last: '', middle: '', nick: '', org: '', department: '', title: '', emails: [{ value: '', type: 'work' }], phones: [{ value: '', type: 'cell' }], addresses: [], birthday: '', url: '', note: '', groups: [], favorite: false, groupsText: '' };
-}
-function create() {
-    open.value = null;
-    editing.value = blank(filter.value !== 'all' && filter.value !== 'favorites' && !filter.value.startsWith('group:') ? filter.value : null);
-    if (filter.value.startsWith('group:')) { editing.value.groups = [filter.value.slice(6)]; editing.value.groupsText = filter.value.slice(6); }
-    mobileRead.value = true;
-    navOpen.value = false;
-}
-function edit(c) {
-    editing.value = {
-        ...c, sourceBook: c.book, sourceUri: c.uri,
-        emails: c.emails?.length ? c.emails.map((e) => ({ ...e })) : [{ value: '', type: 'work' }],
-        phones: c.phones?.length ? c.phones.map((p) => ({ ...p })) : [{ value: '', type: 'cell' }],
-        addresses: (c.addresses || []).map((a) => ({ ...a })),
-        groups: [...(c.groups || [])], groupsText: (c.groups || []).join(', '),
-    };
-}
-async function save() {
-    const f = editing.value;
-    // Ни одно поле не было обязательным, и в списке появлялось «Без имени».
-    const hasName = [f.first, f.last, f.middle, f.nick, f.org].some((x) => String(x || '').trim());
-    const hasContact = (f.emails || []).some((e) => String(e.value || '').trim())
-        || (f.phones || []).some((p) => String(p.value || '').trim());
-    if (!hasName && !hasContact) {
-        say('Заполните хотя бы имя, организацию, адрес почты или телефон', true);
+// Форма карточки живёт в своём композабле: там же проверки, которых не делает сервер.
+const { create, edit, save, dropPhoto, onPhoto } = useContactForm({
+    writableBooks, filter, open, editing, mobileRead, navOpen, loading, history, say, fail, reload,
+});
 
-        return;
-    }
-    const payload = {
-        book: f.book, first: f.first, last: f.last, middle: f.middle, nick: f.nick, org: f.org, department: f.department, title: f.title,
-        emails: f.emails.filter((e) => e.value.trim()), phones: f.phones.filter((p) => p.value.trim()), addresses: f.addresses,
-        birthday: f.birthday, url: f.url, note: f.note, groups: f.groupsText.split(',').map((s) => s.trim()).filter(Boolean), favorite: !!f.favorite,
-    };
-    if (f.photo !== undefined) payload.photo = f.photo;
-    loading.value = true;
-    try {
-        const saved = f.sourceUri ? await api.updateContact(f.sourceBook, f.sourceUri, payload) : await api.createContact(payload);
-        editing.value = null;
-        await reload(false);
-        if (f.fromHistory) { history.value = history.value.filter((h) => h.email !== f.fromHistory); }
-        open.value = await api.contact(saved.book, saved.uri);
-        say('Сохранено');
-    } catch (e) { fail(e); } finally { loading.value = false; }
-}
-/** Убрать фото: раньше был только выбор файла, снять его было нечем. */
-function dropPhoto() {
-    if (editing.value) editing.value.photo = '';
-}
-function onPhoto(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1500000) { say('Фото больше 1,5 МБ — уменьшите его', true); return; }
-    const r = new FileReader();
-    r.onload = () => { editing.value.photo = r.result; };
-    r.readAsDataURL(file);
-}
-
-// ── Действия ──────────────────────────────────────────────────
-function menuFor(e, c) {
-    e.preventDefault?.();
-    const r = e.currentTarget?.getBoundingClientRect?.();
-    menu.value = { x: e.clientX || (r ? r.left : 100), y: e.clientY || (r ? r.bottom + 4 : 100), c };
-}
-function write(c) {
-    const mail = c.email || c.emails?.[0]?.value;
-    if (!mail) { say('У контакта нет адреса почты', true); return; }
-    // Имя с запятой или кавычками («ООО "Ромашка", Иванов») разъезжалось на двух
-    // получателей — берём ту же функцию экранирования, что и в самом письме.
-    const to = c.fn && c.fn !== mail ? `${quoteName(c.fn)} <${mail}>` : mail;
-    router.visit(`/mail?compose=1&to=${encodeURIComponent(to)}`);
-}
-function meeting(c) {
-    const mail = c.email || c.emails?.[0]?.value;
-    router.visit(`/calendar?new=1&attendees=${encodeURIComponent(mail || '')}&title=${encodeURIComponent('Встреча: ' + c.fn)}`);
-}
-async function toggleFavorite(c) {
-    menu.value = null;
-    if (c.readonly) { say('Сначала скопируйте контакт к себе — тогда можно и в избранное', true); return; }
-    try {
-        const full = await api.contact(c.book, c.uri);
-        const saved = await api.updateContact(c.book, c.uri, { ...full, favorite: !full.favorite });
-        const row = all.value.find((x) => x.uri === c.uri && x.book === c.book);
-        if (row) row.favorite = saved.favorite;
-        if (open.value?.uri === c.uri) open.value.favorite = saved.favorite;
-    } catch (e) { fail(e); }
-}
-async function copyToMine(c) {
-    menu.value = null;
-    try {
-        const saved = await api.copyContact(c.book, c.uri, 'personal');
-        await reload(false);
-        open.value = await api.contact(saved.book, saved.uri);
-        say('Скопировано в «Мои контакты»');
-    } catch (e) { fail(e); }
-}
-async function suggest(c) {
-    menu.value = null;
-    try {
-        const r = await api.suggestContact(c.book, c.uri);
-        say(r.status === 'approved' ? 'Добавлено в «Контакты компании»' : 'Отправлено администратору — появится в общей книге после одобрения');
-        if (r.status === 'approved') reload();
-    } catch (e) { fail(e); }
-}
-function askDelete(c) { menu.value = null; dialog.value = { kind: 'delete', c }; }
-async function confirmDialog() {
-    const d = dialog.value; dialog.value = null;
-    try {
-        if (d.kind === 'delete') {
-            await api.deleteContact(d.c.book, d.c.uri);
-            all.value = all.value.filter((x) => !(x.uri === d.c.uri && x.book === d.c.book));
-            if (open.value?.uri === d.c.uri) { open.value = null; mobileRead.value = false; }
-            say('Контакт удалён');
-        }
-    } catch (e) { fail(e); }
-}
-async function importFile(e) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-        // Раньше импорт всегда попадал в первую доступную книгу, даже если открыта другая.
-        const target = writableBooks.value.find((b) => b.uri === filter.value)?.uri || writableBooks.value[0]?.uri || 'personal';
-        const into = writableBooks.value.find((b) => b.uri === target);
-        const r = await api.importContacts(file, target);
-        say(`Импортировано: ${r.imported}${r.skipped ? `, пропущено как уже имеющиеся: ${r.skipped}` : ''}${into ? ` — в книгу «${into.name}»` : ''}`);
-        reload();
-    } catch (err) { fail(err); }
-}
+// Действия над контактом живут в своём композабле: там всё, что меняет чужие данные
+// или уходит наружу — копия в общую книгу, предложение, удаление, импорт.
+const {
+    menuFor, write, meeting, toggleFavorite, copyToMine, suggest, askDelete, confirmDialog, importFile,
+} = useContactActions({ books, all, open, menu, dialog, loading, editing, history, say, fail, reload, go });
 
 function onKey(e) {
     const t = e.target;
