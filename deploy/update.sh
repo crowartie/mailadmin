@@ -9,10 +9,19 @@ BRANCH=${1:-}
 cd "$APP"
 export COMPOSER_ALLOW_SUPERUSER=1 HOME=/root
 
+SELF_BEFORE=$(sha1sum "$0" | cut -d' ' -f1)
+
 echo "==> git pull"
 git -c safe.directory="$APP" fetch -q origin
 git -c safe.directory="$APP" checkout -q "${BRANCH:-$(git -c safe.directory="$APP" rev-parse --abbrev-ref HEAD)}"
 git -c safe.directory="$APP" pull -q --ff-only
+
+# Если обновился сам этот файл, дальше надо идти по новой его версии: bash читает
+# скрипт по мере выполнения, и правки в уже прочитанной части просто не применятся.
+if [ "${UPDATE_REEXEC:-}" != 1 ] && [ "$(sha1sum "$0" | cut -d" " -f1)" != "$SELF_BEFORE" ]; then
+  echo "==> update.sh обновился — перезапускаю по новой версии"
+  UPDATE_REEXEC=1 exec bash "$0" "$@"
+fi
 
 echo "==> зависимости и сборка"
 composer install --no-dev --optimize-autoloader --no-interaction --quiet
