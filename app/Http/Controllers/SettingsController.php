@@ -95,6 +95,14 @@ class SettingsController extends Controller
         ];
     }
 
+    /** Запись TXT с открытым ключом подписи: её нужно прописать в DNS домена. */
+    private function dkimTxt(string $domain): ?string
+    {
+        [$code, $out] = Ctl::run('dkim-txt', [$domain], 10);
+
+        return $code === 0 ? trim($out) : null;
+    }
+
     private function dkim(string $domain): ?array
     {
         return Cache::remember('dkim.' . $domain, 600, function () use ($domain) {
