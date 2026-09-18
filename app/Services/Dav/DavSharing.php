@@ -24,7 +24,7 @@ class DavSharing
     /** @return array<int,array{mail:string,name:string,level:string}> */
     public function shares(string $user, string $calUri): array
     {
-        $c = $this->calendar($user, $calUri);
+        $c = $this->cal->calendar($user, $calUri);
         $out = [];
         foreach ($this->a->cals->getInvites([$c['id'], $c['instance']]) as $sharee) {
             if (in_array($sharee->access, [Sharing::ACCESS_READ, Sharing::ACCESS_READWRITE], true)) {
@@ -39,7 +39,7 @@ class DavSharing
 
     public function share(string $user, string $calUri, string $with, string $level): array
     {
-        $c = $this->calendar($user, $calUri);
+        $c = $this->cal->calendar($user, $calUri);
         if ($c['kind'] !== 'personal' && $c['kind'] !== 'own') {
             throw new DavException('Делиться можно только своим календарём', 403);
         }
@@ -65,7 +65,7 @@ class DavSharing
 
     public function unshare(string $user, string $calUri, string $with): array
     {
-        $c = $this->calendar($user, $calUri);
+        $c = $this->cal->calendar($user, $calUri);
         $this->a->cals->updateInvites([$c['id'], $c['instance']], [new Sharee([
             'href' => 'mailto:' . strtolower(trim($with)),
             'principal' => Server::principal($with),

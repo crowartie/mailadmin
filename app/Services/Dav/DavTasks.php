@@ -20,7 +20,7 @@ class DavTasks
     public function tasks(string $user): array
     {
         $out = [];
-        foreach ($this->calendars($user) as $c) {
+        foreach ($this->cal->calendars($user) as $c) {
             if ($c['readonly'] || $c['kind'] === 'company') {
                 continue;
             }
