@@ -36,15 +36,54 @@ class ComposeController extends Controller
         'remindDays' => ['nullable', 'integer', 'min:1', 'max:60'],
         'draftKeepFiles' => ['nullable', 'boolean'],
         'files' => ['nullable', 'array', 'max:20'],
+        // Точный предел подставляется в send()/draft(): он берётся из настроек почтового
+        // сервера. Здесь оставляем только грубую защиту от совсем больших тел.
         'files.*' => ['file', 'max:262144'],
         'cloud' => ['nullable', 'array'],
         'cloud.*' => ['integer', 'min:0', 'max:19'],
     ];
 
+    /**
+     * Предел на размер письма — тот же, что у почтового сервера.
+     *
+     * Без этой проверки человек заливал двести мегабайт, ждал, и только потом получал отказ
+     * от Postfix: время потеряно, временный файл занимает диск, объяснения нет. Считаем
+     * с запасом на кодирование вложений (base64 добавляет примерно треть).
+     */
+    private function checkSize(Request $request): void
+    {
+        $files = $request->file('files', []);
+        if (! $files) {
+            return;
+        }
+        $limitMb = 0;
+        try {
+            $limitMb = (int) (app(\App\Services\Server\AmavisConfig::class)->current()['sizeLimitMb'] ?? 0);
+        } catch (\Throwable) {
+            $limitMb = 0;   // настройки недоступны — не мешаем отправке
+        }
+        if ($limitMb < 1) {
+            return;
+        }
+        $bytes = 0;
+        foreach ($files as $f) {
+            $bytes += (int) $f->getSize();
+        }
+        // Вложения уходят в письме закодированными: 3 байта превращаются в 4 знака.
+        $withEncoding = (int) ($bytes * 4 / 3);
+        $limit = $limitMb * 1024 * 1024;
+        if ($withEncoding > $limit) {
+            abort(422, 'Вложения весят ' . \App\Support\Format::size($bytes)
+                . ', а почтовый сервер принимает письма до ' . $limitMb . ' МБ (вложения в письме занимают примерно на треть больше). '
+                . 'Отправьте файлы через облако — кнопка «Скрепка» → «Через облако».');
+        }
+    }
+
     /** Отправить сейчас или (с sendAt) положить в очередь на отправку по расписанию. */
     public function send(Request $request, ImapSession $imap): JsonResponse
     {
         $form = $request->validate(self::RULES);
+        $this->checkSize($request);
         abort_if(trim((string) ($form['to'] ?? '') . ($form['cc'] ?? '') . ($form['bcc'] ?? '')) === '', 422, 'Укажите хотя бы одного получателя');
 
         $store = new MailStore($imap->client());
