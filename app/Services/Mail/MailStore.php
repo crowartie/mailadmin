@@ -201,9 +201,9 @@ class MailStore
     }
 
     /** @see MessageListing::searchEverywhere() */
-    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date'): array
+    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date', ?string $from = null): array
     {
-        return $this->listing->searchEverywhere($query, $page, $sort);
+        return $this->listing->searchEverywhere($query, $page, $sort, $from);
     }
 
     /** @see MessageListing::searchFrom() */

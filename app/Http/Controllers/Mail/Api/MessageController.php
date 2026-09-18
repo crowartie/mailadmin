@@ -28,7 +28,8 @@ class MessageController extends Controller
         // это просто все письма ящика.
         $everywhere = $request->query('scope') === 'all' && trim($q) !== '';
         $list = $everywhere
-            ? $store->searchEverywhere($q, (int) $request->query('page', 1), (string) $request->query('sort', 'date'))
+            // Папку, в которой человек стоит, передаём: с неё поиск и начинается.
+            ? $store->searchEverywhere($q, (int) $request->query('page', 1), (string) $request->query('sort', 'date'), $folder)
             : $store->list(
                 $folder,
                 (int) $request->query('page', 1),

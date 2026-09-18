@@ -57,13 +57,13 @@ final class MessageListing
      * папках». Человек читал это как «письмо пропало». Ровно так и случилось
      * с пересылкой из info@ 17 сентября.
      *
-     * Порядок обхода важен: сначала текущая папка и свои, потом общие, потом спам
-     * и корзина. Если сработает общий срок поиска, необойдённым останется то,
+     * Порядок обхода важен: сначала папка, в которой человек стоит ($from), и свои,
+     * потом общие, потом спам и корзина. Если сработает общий срок поиска, необойдённым останется то,
      * что человек ищет реже, и об этих папках мы скажем прямо.
      *
      * @return array{messages:array,total:int,page:int,pages:int}
      */
-    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date'): array
+    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date', ?string $from = null): array
     {
         $page = max(1, $page);
         $own = [];
@@ -80,7 +80,7 @@ final class MessageListing
             }
         }
         // Текущая папка и «Входящие» с «Отправленными» — первыми: там ищут чаще всего.
-        $paths = array_merge([$path, $this->tree->rolePath('inbox'), $this->tree->rolePath('sent')], $own, $shared, $junk);
+        $paths = array_merge([$from, $this->tree->rolePath('inbox'), $this->tree->rolePath('sent')], $own, $shared, $junk);
         // Ограничение на число папок: иначе на большом дереве это десятки поисков подряд.
         $paths = array_slice(array_values(array_unique(array_filter($paths))), 0, 25);
 
