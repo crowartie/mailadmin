@@ -166,17 +166,66 @@ final class MailActions
         }
     }
 
+    /**
+     * Сколько последних писем папки просматриваем в поисках ответа.
+     *
+     * Ответ приходит после исходного письма, а напоминание ставят на дни, не на годы.
+     * Триста писем — это с запасом и ровно одно обращение к серверу.
+     */
+    private const REPLY_SCAN = 300;
+
+    /**
+     * По сколько писем спрашиваем заголовки за раз.
+     *
+     * Целым диапазоном нельзя: на двухстах письмах разбор ответа возвращает пусто,
+     * на сорока — исправно. Сорок — размер страницы списка, то есть заведомо рабочий.
+     */
+    private const REPLY_CHUNK = 40;
+
     /** Есть ли в папке ответ на письмо с таким Message-ID. */
     public function hasReplyTo(string $path, string $messageId): bool
     {
+        $id = trim($messageId, " \t<>");
+        if ($id === '') {
+            return false;
+        }
         try {
-            $folder = $this->tree->folder($path);
-            if ($folder->query()->setFetchBody(false)->whereInReplyTo($messageId)->limit(1)->get()->count()) {
-                return true;
+            // Не поиском: полнотекстовый указатель сервера (fts_xapian) знает только
+            // From, To, Cc, Bcc, Subject и Message-ID, а поиск по In-Reply-To
+            // и References уходит к нему же и молча отвечает «ничего». Из-за этого
+            // напоминание «на письмо не ответили» приходило даже тогда, когда ответ
+            // лежал в той же папке. Поэтому читаем заголовки сами — одной командой.
+            $total = (int) ($this->tree->folder($path)->examine()['exists'] ?? 0);
+            if ($total < 1) {
+                return false;
+            }
+            $this->client->openFolder($path, true);
+            $conn = $this->client->getConnection();
+            $stop = max(1, $total - self::REPLY_SCAN + 1);
+            // Идём от новых к старым: ответ обычно среди последних писем.
+            for ($hi = $total; $hi >= $stop; $hi -= self::REPLY_CHUNK) {
+                $lo = max($stop, $hi - self::REPLY_CHUNK + 1);
+                // UID в запросе обязателен: по нему библиотека раскладывает ответ
+                // по письмам, а без него молча отдаёт пустой список.
+                $rows = (array) $conn->fetch(['UID', 'BODY.PEEK[HEADER.FIELDS (IN-REPLY-TO REFERENCES)]'], $lo, $hi, IMAP::ST_MSGN)->data();
+                foreach ($rows as $row) {
+                    foreach ((array) $row as $key => $value) {
+                        if (! is_string($key) || ! str_starts_with($key, 'BODY[')) {
+                            continue;
+                        }
+                        $text = is_array($value) ? (string) (end($value) ?: '') : (string) $value;
+                        if ($text !== '' && str_contains($text, $id)) {
+                            return true;
+                        }
+                    }
+                }
             }
 
-            return $folder->query()->setFetchBody(false)->whereHeader('References', $messageId)->limit(1)->get()->count() > 0;
-        } catch (\Throwable) {
+            return false;
+        } catch (\Throwable $e) {
+            // Промолчать тут нельзя: «ответа нет» — это повод разбудить человека письмом.
+            \Illuminate\Support\Facades\Log::warning('проверка ответа не удалась (' . $path . '): ' . $e->getMessage());
+
             return false;
         }
     }
