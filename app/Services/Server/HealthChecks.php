@@ -22,7 +22,6 @@ class HealthChecks
         private readonly Disk $disk,
         private readonly Certificate $cert,
         private readonly Antispam $antispam,
-        private readonly PostfixQueue $queue,
     ) {
     }
 

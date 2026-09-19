@@ -215,7 +215,9 @@ class UnitService
         if (Mailbox::query()->where('username', $address)->exists()) {
             throw new \InvalidArgumentException('Такой ящик уже есть — адрес отдела должен быть свободен');
         }
-        $taken = Unit::query()->where('address', $address)->exists() || (Alias::query()->find($address) && ! Unit::query()->where('address', $address)->exists());
+        // Адрес занят другим отделом или псевдонимом. Раньше условие было записано
+        // как «отдел или (псевдоним и не отдел)» — это то же самое, только длиннее.
+        $taken = Unit::query()->where('address', $address)->exists() || Alias::query()->find($address) !== null;
         if ($taken) {
             throw new \InvalidArgumentException('Адрес уже занят другим отделом или псевдонимом');
         }

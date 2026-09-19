@@ -78,6 +78,9 @@ if (initial.scope) scope.value = initial.scope;
 const q = ref(initial.text);
 watch(() => props.query, (v) => { const d = decomposeQuery(v); if (d.scope) scope.value = d.scope; q.value = d.text; });
 const searchInput = ref(null);
+// Подсказка по операторам — по ссылке, а не всегда: с переключателем поля она нужна
+// только тем, кто пишет операторы руками.
+const showOps = ref(false);
 const selectedSet = computed(() => new Set(props.selected));
 const labelMap = computed(() => Object.fromEntries(props.labels.map((l) => [l.id, l])));
 const allChecked = computed(() => props.list.messages.length > 0 && props.list.messages.every((m) => selectedSet.value.has(m.uid)));
@@ -139,7 +142,9 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                      показывал неполный ответ. Лучше честно назвать, где ещё не искали. -->
                 Не искали в {{ list.skipped.length }} {{ list.skipped.length === 1 ? 'папке' : 'папках' }} ({{ list.skipped.join(', ') }}) — сервер достраивает индекс, повторите через минуту
             </span>
-            <br>операторы: <span class="mono">от:иванов кому:sales тема:счёт текст:договор файл:счёт.pdf есть:вложение после:01.09.2026 до:30.09.2026</span>
+            &#183;
+            <button type="button" class="linklike" @click="showOps = !showOps">{{ showOps ? 'скрыть операторы' : 'операторы…' }}</button>
+            <br v-if="showOps"><span v-if="showOps" class="mono">от:иванов кому:sales тема:счёт текст:договор файл:счёт.pdf есть:вложение после:01.09.2026 до:30.09.2026</span>
         </div>
 
         <div v-if="selected.length" class="mlist__bulk">
