@@ -31,10 +31,6 @@ final class MailHtml
         'border-color', 'border-style', 'border-width', 'border-collapse', 'border-spacing',
         'width', 'max-width', 'min-width', 'height', 'max-height',
         'line-height', 'vertical-align', 'white-space', 'list-style-type', 'table-layout',
-        // На display держатся колонки: MJML, на котором свёрстано большинство рассылок,
-        // ставит блоки рядом через inline-block. Выйти за пределы письма он не позволяет —
-        // за это отвечают position, z-index и координаты, а их здесь нет.
-        'display',
     ];
 
     /** Область, внутри которой действуют собственные стили письма. */
