@@ -4,7 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\Mail\MailCss;
 use App\Services\Mail\MailHtml;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * Собственные стили письма: что из них проходит, а что нет.
