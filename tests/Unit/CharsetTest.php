@@ -14,6 +14,14 @@ use Tests\TestCase;
  */
 class CharsetTest extends TestCase
 {
+    /** Пустое закодированное слово — это пустая тема, а не служебная запись в списке. */
+    public function test_пустое_закодированное_слово_даёт_пустую_строку(): void
+    {
+        $this->assertSame('', Charset::header('=?utf-8?B??='));
+        $this->assertSame('', Charset::header('=?UTF-8?Q??= =?UTF-8?Q??='));
+        $this->assertSame('Тема', Charset::header('=?utf-8?B?0KLQtdC80LA=?='));
+    }
+
     private const RU = 'Привет, коллеги! Счёт на оплату во вложении.';
 
     /** Однобайтовые кодировки определяются по виду текста, а не берутся всегда windows-1251. */

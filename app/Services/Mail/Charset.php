@@ -52,6 +52,10 @@ final class Charset
         $decoded = @iconv_mime_decode($s, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
         if (is_string($decoded) && $decoded !== '') {
             $s = $decoded;
+        } elseif ($decoded === '' && preg_match('/^\s*(=\?[^?]+\?[BbQq]\?[^?]*\?=\s*)+$/', $s)) {
+            // Слово есть, содержимого в нём нет: «=?utf-8?B??=» — это пустая тема,
+            // а не сбой разбора. Раньше такая запись попадала в список как есть.
+            return '';
         }
         // Если что-то осталось нераскрытым — разбираем сами: пользователю служебная запись не нужна.
         if (str_contains($s, '=?')) {
