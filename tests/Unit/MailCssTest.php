@@ -93,12 +93,25 @@ class MailCssTest extends TestCase
         $this->assertStringContainsString('.msg__body-inner .col', $out);
     }
 
-    /** !important письма перебивал бы наши собственные стили чтения. */
-    public function test_important_is_stripped(): void
+    /**
+     * !important остаётся: на нём держится ширина колонок в рассылках. MJML пишет
+     * «width: 21.93% !important», чтобы перебить встроенное width:100%; без этого
+     * двухколоночная вёрстка складывается в стопку.
+     */
+    public function test_important_is_kept(): void
     {
-        $out = $this->scope('.x { color: red !important }');
-        $this->assertStringContainsString('color: red', $out);
-        $this->assertStringNotContainsString('important', $out);
+        $out = $this->scope('.mj-column-per-21-93 { width: 21.93% !important }');
+        $this->assertStringContainsString('width: 21.93% !important', $out);
+    }
+
+    /** display разрешён — на нём стоят колонки; но письму целиком спрятать себя нельзя. */
+    public function test_display_is_allowed_inside_but_not_for_the_message_itself(): void
+    {
+        $inside = $this->scope('.col { display: inline-block }');
+        $this->assertStringContainsString('display: inline-block', $inside);
+
+        $whole = $this->scope('body { display: none }');
+        $this->assertStringNotContainsString('display', $whole);
     }
 
     public function test_comments_cannot_hide_a_selector(): void
@@ -136,7 +149,7 @@ class MailCssTest extends TestCase
         $this->assertStringContainsString('текст', $html);
         $this->assertStringContainsString('.msg__body-inner .t', $html);
         $this->assertStringContainsString('border-bottom', $html);
-        // display не в списке разрешённого, поэтому «спрятать страницу» не выйдет
+        // Правило на письмо целиком не может менять display: спрятать себя не выйдет
         $this->assertStringNotContainsString('display: none', $html);
     }
 }

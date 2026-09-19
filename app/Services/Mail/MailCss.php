@@ -97,7 +97,10 @@ final class MailCss
             if ($selector === null) {
                 continue;
             }
-            $decls = self::filterDeclarations($body, $allowed);
+            // Правило, нацеленное на письмо целиком, не должно менять display: иначе письмо
+            // спрячет само себя. Это приём из фишинга — показать одно, в исходнике держать другое.
+            $wholeMessage = $selector === $scope || str_contains($selector, $scope . ',') || str_ends_with($selector, ' ' . $scope);
+            $decls = self::filterDeclarations($body, $allowed, $wholeMessage);
             if ($decls === '') {
                 continue;
             }
@@ -207,8 +210,12 @@ final class MailCss
         return $parts ? implode(', ', $parts) : null;
     }
 
-    /** Оставить только разрешённые свойства и только те значения, что не ходят в сеть. */
-    private static function filterDeclarations(string $body, array $allowed): string
+    /**
+     * Оставить только разрешённые свойства и только те значения, что не ходят в сеть.
+     *
+     * @param  bool  $wholeMessage  правило нацелено на письмо целиком — тогда без display
+     */
+    private static function filterDeclarations(string $body, array $allowed, bool $wholeMessage = false): string
     {
         $out = [];
         foreach (explode(';', $body) as $decl) {
@@ -221,6 +228,9 @@ final class MailCss
             if ($prop === '' || $value === '' || ! isset($allowed[$prop])) {
                 continue;
             }
+            if ($wholeMessage && $prop === 'display') {
+                continue;
+            }
             if (mb_strlen($value) > 500) {
                 continue;
             }
@@ -231,8 +241,9 @@ final class MailCss
             if (preg_match('/expression|javascript:|behavior|@import|\\\\/i', $value)) {
                 continue;
             }
-            // !important письма перебивал бы наши собственные стили чтения.
-            $value = trim((string) preg_replace('/!\s*important/i', '', $value));
+            // !important оставляем: на нём держится ширина колонок в рассылках —
+            // «width: 21.93% !important» перебивает встроенное width:100%, без которого
+            // MJML-вёрстка не работает. Действует оно только внутри письма.
             if ($value === '') {
                 continue;
             }
