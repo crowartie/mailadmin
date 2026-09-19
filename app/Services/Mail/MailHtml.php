@@ -50,6 +50,7 @@ final class MailHtml
         // Собственные стили письма вынимаем до очистки: HTMLPurifier вырезал бы их целиком,
         // а вместе с ними — задуманную вёрстку. Вернём их в конце, но только внутрь письма.
         [$html, $ownCss] = MailCss::extract($html);
+        $html = MailCss::cleanInlineStyles($html);
 
         $config = \HTMLPurifier_Config::createDefault();
         $config->set('Cache.SerializerPath', storage_path('app/purifier'));

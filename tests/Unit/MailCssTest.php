@@ -174,6 +174,28 @@ class MailCssTest extends TestCase
         $this->assertStringContainsString('#222222', $out);
     }
 
+    /** Письмо не должно мерить себя окном: так оно распирает панель чтения. */
+    public function test_viewport_units_do_not_pass(): void
+    {
+        $out = $this->scope('.a { width: 100vw; height: 100vh; max-width: 50vmin; font-size: 12px }');
+
+        $this->assertStringNotContainsString('vw', $out);
+        $this->assertStringNotContainsString('vh', $out);
+        $this->assertStringNotContainsString('vmin', $out);
+        $this->assertStringContainsString('font-size: 12px', $out);
+    }
+
+    /** Во встроенных стилях единицы окна тоже не нужны. */
+    public function test_viewport_units_are_cleaned_from_inline_styles(): void
+    {
+        $out = MailCss::cleanInlineStyles('<div style="width:100vw;padding:8px"><p style="height: 50 vh">т</p></div>');
+
+        $this->assertStringNotContainsString('100vw', $out);
+        $this->assertStringNotContainsString('vh', $out);
+        $this->assertStringContainsString('padding:8px', $out);
+        $this->assertStringContainsString('<p >т</p>', str_replace('  ', ' ', $out));
+    }
+
     /** Незакрытая кавычка ломает правило — но наружу не должно уйти ничего сломанного. */
     public function test_unclosed_quote_produces_nothing_broken(): void
     {

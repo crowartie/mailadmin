@@ -42,6 +42,16 @@ final class MailCss
     private const FORBIDDEN_AT = ['import', 'charset', 'font-face', 'page', 'namespace', 'document'];
 
     /**
+     * Единицы окна: 100vw, 50vh и подобные.
+     *
+     * Они меряются не колонкой чтения, а экраном целиком, и письмо получает возможность
+     * распирать себя по размеру окна. Рассылки верстают в пикселях и процентах, так что
+     * терять нечего. Отсекаются в обоих путях — и в блоках <style>, и во встроенных
+     * стилях: очистка считает их обычной длиной и пропускает.
+     */
+    private const VIEWPORT_UNITS = '/\\d\\s*v(w|h|min|max)\\b/i';
+
+    /**
      * Вырезать из письма блоки <style> и вернуть их содержимое.
      *
      * @return array{0:string,1:string} письмо без блоков <style> и сам собранный CSS
@@ -115,6 +125,33 @@ final class MailCss
         }
 
         return implode('', $out);
+    }
+
+    /**
+     * Вычистить единицы окна из встроенных стилей письма.
+     *
+     * Делается до очистки: та считает «100vw» обычной длиной и пропускает, а письму
+     * этого хватает, чтобы растянуться по размеру экрана вместо колонки чтения.
+     */
+    public static function cleanInlineStyles(string $html): string
+    {
+        $out = preg_replace_callback(
+            '/\\bstyle\\s*=\\s*(["\\x27])(.*?)\\1/is',
+            static function (array $m): string {
+                $kept = [];
+                foreach (explode(';', $m[2]) as $decl) {
+                    if (trim($decl) === '' || preg_match(self::VIEWPORT_UNITS, $decl)) {
+                        continue;
+                    }
+                    $kept[] = trim($decl);
+                }
+
+                return $kept === [] ? '' : 'style=' . $m[1] . implode('; ', $kept) . $m[1];
+            },
+            $html
+        );
+
+        return $out ?? $html;
     }
 
     /** Убрать комментарии: внутри них прячут и селекторы, и закрывающие скобки. */
@@ -316,6 +353,9 @@ final class MailCss
             // Скобка в значении означает, что разбор сбился (обычно — незакрытая кавычка).
             // Выпускать такое наружу нельзя: оно разъедется с нашими стилями чтения.
             if (str_contains($value, '{') || str_contains($value, '}')) {
+                continue;
+            }
+            if (preg_match(self::VIEWPORT_UNITS, $value)) {
                 continue;
             }
             // Обращение к сети из стилей — это следящий пиксель. Встроенные data: оставляем.
