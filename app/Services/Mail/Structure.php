@@ -377,7 +377,7 @@ final class Structure
      */
     public static function bodyParts(array $parts): array
     {
-        $out = [];
+        $candidates = [];
         foreach ($parts as $p) {
             if ($p['type'] !== 'text' || ! in_array($p['subtype'], ['plain', 'html'], true)) {
                 continue;
@@ -385,13 +385,43 @@ final class Structure
             if ($p['disposition'] === 'attachment' || $p['name'] !== '') {
                 continue;   // приложенный .txt — это вложение, а не текст письма
             }
-            // Берём по одной части каждого вида — первую попавшуюся: это и есть тело.
-            if (! isset($out[$p['subtype']])) {
-                $out[$p['subtype']] = $p;
+            $candidates[] = $p;
+        }
+
+        // Текст письма бывает разбит на куски, между которыми лежат вложения: так шлёт
+        // Apple Mail. Раньше бралась только первая часть каждого вида, и письмо, у которого
+        // первый кусок — пустая строка, а весь текст в последнем, показывалось пустым.
+        // Берём все куски одного вида, лежащие на одном уровне, и по порядку.
+        if ($candidates === []) {
+            return [];
+        }
+        // Уровень у тела один — тот, где нашлась первая часть текста. Всё, что лежит
+        // ниже, принадлежит вложенному пересланному письму, а не этому.
+        $level = self::levelOf((string) $candidates[0]['no']);
+        $out = [];
+        foreach (['plain', 'html'] as $subtype) {
+            foreach ($candidates as $p) {
+                if ($p['subtype'] === $subtype && self::levelOf((string) $p['no']) === $level) {
+                    $out[] = $p;
+                }
             }
         }
 
-        return array_values($out);
+        return $out;
+    }
+
+    /**
+     * Уровень части: «1.2.3» → «1.2», «2» → «».
+     *
+     * Куски одного тела лежат рядом, то есть на одном уровне. Разные уровни — это
+     * либо вложенное пересланное письмо, либо соседнее представление того же текста;
+     * склеивать их между собой нельзя.
+     */
+    private static function levelOf(string $no): string
+    {
+        $pos = strrpos($no, '.');
+
+        return $pos === false ? '' : substr($no, 0, $pos);
     }
 
     /**

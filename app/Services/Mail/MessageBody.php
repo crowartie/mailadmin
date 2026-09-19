@@ -92,10 +92,12 @@ class MessageBody
             }
             // Завершающий перевод строки к письму не относится — библиотека его тоже убирает.
             $content = rtrim(Charset::body($raw[$b['no']], (string) $b['charset']), "\r\n");
+            // Кусков одного вида может быть несколько (текст вперемежку с вложениями,
+            // см. Structure::bodyParts) — тогда письмо складывается из них по порядку.
             if ($b['subtype'] === 'html') {
-                $html = $content;
+                $html = $html === null ? $content : $html . "\n" . $content;
             } else {
-                $text = $content;
+                $text = $text === null ? $content : $text . "\n" . $content;
             }
         }
 

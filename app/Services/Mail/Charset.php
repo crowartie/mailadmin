@@ -9,34 +9,56 @@ namespace App\Services\Mail;
  */
 final class Charset
 {
+    /**
+     * Сколько раз пробуем снять кодировку заголовка.
+     *
+     * Обычно слой один. Но имя файла бывает закодировано несколько раз: программа
+     * берёт уже закодированную строку и кодирует её ещё раз. Такое встретилось
+     * в настоящем черновике — три слоя. Больше четырёх не разбираем: дальше это
+     * уже не имя, а повод остановиться.
+     */
+    private const MAX_LAYERS = 4;
+
     /** Заголовок: если библиотека оставила =?utf-8?Q?…?= (так бывает при переносах), раскодировать самим. */
     public static function header(?string $s): ?string
     {
-        if ($s !== null && str_contains($s, '=?')) {
-            // Outlook склеивает encoded-word без пробела («?==?utf-8?B?…») и переносит внутри слова — приводим к RFC 2047.
-            $s = preg_replace('/\?=(?==\?)/', '?= ', $s);
-            $s = preg_replace_callback('/=\?[^?\s]+\?[BbQq]\?[^?]*\?=/', fn ($w) => preg_replace('/\s+/', '', $w[0]), $s);
-            // «utf8», «cp1251», «koi8r» — не имена кодировок для iconv, и такой заголовок
-            // оставался на экране служебной записью вида =?utf8?B?…?=. Приводим к известным именам.
-            $s = preg_replace_callback('/=\?([^?]+)\?([BbQq])\?/', fn ($m) => '=?' . self::charsetName($m[1]) . '?' . $m[2] . '?', $s);
-            // Длинное имя файла разрезают на несколько encoded-word, и разрез приходится
-            // посреди буквы: каждое слово раскрывается отдельно, и «АКБ.jpg» становилось
-            // «АК?» плюс нерасшифрованный хвост. Соседние слова одной кодировки склеиваем.
-            $glued = 1;
-            while ($glued) {
-                $s = preg_replace('/=\?([^?]+)\?([Qq])\?([^?]*)\?=\s*=\?\1\?\2\?([^?]*)\?=/', '=?$1?$2?$3$4?=', $s, 1, $glued) ?? $s;
+        for ($i = 0; $i < self::MAX_LAYERS && $s !== null && str_contains($s, '=?'); $i++) {
+            $next = self::headerOnce($s);
+            if ($next === $s) {
+                break;   // больше не снимается — дальше крутиться незачем
             }
-            $decoded = @iconv_mime_decode($s, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
-            if (is_string($decoded) && $decoded !== '') {
-                $s = $decoded;
-            }
-            // Если что-то осталось нераскрытым — разбираем сами: пользователю служебная запись не нужна.
-            if (str_contains($s, '=?')) {
-                $s = self::decodeWords($s);
-            }
+            $s = $next;
         }
 
         return self::fix($s);
+    }
+
+    /** Один слой кодировки заголовка. */
+    private static function headerOnce(string $s): string
+    {
+        // Outlook склеивает encoded-word без пробела («?==?utf-8?B?…») и переносит внутри слова — приводим к RFC 2047.
+        $s = preg_replace('/\?=(?==\?)/', '?= ', $s);
+        $s = preg_replace_callback('/=\?[^?\s]+\?[BbQq]\?[^?]*\?=/', fn ($w) => preg_replace('/\s+/', '', $w[0]), $s);
+        // «utf8», «cp1251», «koi8r» — не имена кодировок для iconv, и такой заголовок
+        // оставался на экране служебной записью вида =?utf8?B?…?=. Приводим к известным именам.
+        $s = preg_replace_callback('/=\?([^?]+)\?([BbQq])\?/', fn ($m) => '=?' . self::charsetName($m[1]) . '?' . $m[2] . '?', $s);
+        // Длинное имя файла разрезают на несколько encoded-word, и разрез приходится
+        // посреди буквы: каждое слово раскрывается отдельно, и «АКБ.jpg» становилось
+        // «АК?» плюс нерасшифрованный хвост. Соседние слова одной кодировки склеиваем.
+        $glued = 1;
+        while ($glued) {
+            $s = preg_replace('/=\?([^?]+)\?([Qq])\?([^?]*)\?=\s*=\?\1\?\2\?([^?]*)\?=/', '=?$1?$2?$3$4?=', $s, 1, $glued) ?? $s;
+        }
+        $decoded = @iconv_mime_decode($s, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+        if (is_string($decoded) && $decoded !== '') {
+            $s = $decoded;
+        }
+        // Если что-то осталось нераскрытым — разбираем сами: пользователю служебная запись не нужна.
+        if (str_contains($s, '=?')) {
+            $s = self::decodeWords($s);
+        }
+
+        return $s;
     }
 
     /**
@@ -87,7 +109,8 @@ final class Charset
                 }
                 if (str_contains($decoded, '=?')) {
                     // РЖД и некоторые роботы режут encoded-word на куски filename*0=/filename*1= — после склейки его ещё надо раскодировать.
-                    $d = @iconv_mime_decode(preg_replace('/\s+/', '', $decoded), ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+                    // Слоёв может быть несколько (см. header): снимаем все.
+                    $d = self::header(preg_replace('/\s+(?=[^?]*\?=)/', '', $decoded) ?? $decoded);
                     if (is_string($d) && trim($d) !== '') {
                         $decoded = $d;
                     }
@@ -101,9 +124,9 @@ final class Charset
             if (preg_match('/[;\s]' . $param . '=\s*("((?:[^"\\\\]|\\\\.)*)"|[^;\r\n]+)/i', $h, $m)) {
                 $v = isset($m[2]) && $m[2] !== '' ? stripslashes($m[2]) : $m[1];
                 if (str_contains($v, '=?')) {
-                    // соседние encoded-word разделены пробелом — iconv их склеит сам, лишь бы внутри слова не было пробелов
-                    $v = preg_replace_callback('/=\?[^?\s]+\?[BbQq]\?[^?]*\?=/', fn ($w) => preg_replace('/\s+/', '', $w[0]), $v);
-                    $d = @iconv_mime_decode($v, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+                    // Снимаем все слои сразу: header() умеет и склейку соседних слов,
+                    // и повторную кодировку.
+                    $d = self::header($v);
                     if (is_string($d) && trim($d) !== '') {
                         $v = $d;
                     }

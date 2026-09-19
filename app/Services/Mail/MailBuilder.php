@@ -118,10 +118,10 @@ class MailBuilder
             // не прикладывались, и получатель получал пересылку без файлов.
             abort_unless($src, 409, 'Исходное письмо больше не в той папке, поэтому его вложения не приложить. Снимите галочку «Вложения исходного письма» или откройте письмо заново.');
             if ($src) {
-                foreach ($src->getAttachments() as $a) {
+                foreach ($src->getAttachments() as $i => $a) {
                     // Имя — как показываем в веб-почте: библиотека отдаёт «=?utf-8?B?…?=» сырым, и при пересылке
                     // получатель видел закодированную абракадабру вместо имени (обращение №20).
-                    $email->attach($a->getContent(), MailStore::attachmentName($a, 'attachment'), $a->getMimeType());
+                    $email->attach($a->getContent(), self::plainName(MailStore::attachmentName($a, 'attachment'), (int) $i), $a->getMimeType());
                 }
             }
         }
@@ -135,6 +135,28 @@ class MailBuilder
 
 
     /** Загрузить отмеченные файлы в Nextcloud. @return array<int,array{name:string,size:int,url:string,expires:?string}> */
+    /**
+     * Имя файла, которое можно класть в письмо.
+     *
+     * Если имя осталось закодированным («=?utf-8?B?…?=»), отдавать его почтовой
+     * библиотеке нельзя: она закодирует его ещё раз. В настоящем черновике нашёлся
+     * файл с тремя слоями кодировки — каждое сохранение добавляло по слою, и человек
+     * видел вместо имени служебную запись. Такое имя всё равно бесполезно, поэтому
+     * заменяем понятным, сохраняя расширение.
+     */
+    private static function plainName(string $name, int $index): string
+    {
+        if (! str_contains($name, '=?')) {
+            return $name;
+        }
+        $ext = '';
+        if (preg_match('/\.([A-Za-z0-9]{1,8})$/', $name, $m)) {
+            $ext = '.' . strtolower($m[1]);
+        }
+
+        return 'вложение-' . ($index + 1) . $ext;
+    }
+
     private function publishToCloud(array $files, array $cloud): array
     {
         if (! $cloud || ! \App\Services\Cloud\Nextcloud::enabled()) {
