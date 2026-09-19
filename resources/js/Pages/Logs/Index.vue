@@ -67,7 +67,7 @@ const COLS = '80px 90px minmax(0, 1.1fr) minmax(0, 1fr)';
     <AppLayout title="Журналы" search-placeholder="Адрес, тема или message-id…">
         <template #actions>
             <div class="seg"><button v-for="[k, l] in TYPES" :key="k" type="button" class="seg__item" :class="{ 'seg__item--on': type === k }" @click="type = k">{{ l }}</button></div>
-            <select v-model="period" class="input" style="width: 130px"><option value="hour">За час</option><option value="day">За сутки</option><option value="week">Всё, что есть</option></select>
+            <select v-model="period" class="input" style="width: 130px" aria-label="Период"><option value="hour">За час</option><option value="day">За сутки</option><option value="week">Всё, что есть</option></select>
             <label class="btn" style="cursor: pointer"><input v-model="live" type="checkbox" style="accent-color: var(--accent)"> Живая лента</label>
         </template>
 

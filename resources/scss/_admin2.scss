@@ -60,9 +60,10 @@
 .modal h2 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 10px; }
 .modal__foot { display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
 .dropzone { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border: 1px dashed v.$c-border; border-radius: 10px; background: v.$c-surface-2; }
-.attn { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; border-radius: 10px; background: v.$c-warn-soft; color: v.$c-warn; font-size: 13px; }
-.attn--no { background: v.$c-no-soft; color: v.$c-no; }
-.attn--ok { background: v.$c-ok-soft; color: v.$c-ok; }
+// Тёмные оттенки (-ink): цвет самого чипа на мягком фоне давал контраст 2.79–3.0 при норме 4.5.
+.attn { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; border-radius: 10px; background: v.$c-warn-soft; color: v.$c-warn-ink; font-size: 13px; }
+.attn--no { background: v.$c-no-soft; color: v.$c-no-ink; }
+.attn--ok { background: v.$c-ok-soft; color: v.$c-ok-ink; }
 
 @media (max-width: 1200px) {
     .tiles--5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }

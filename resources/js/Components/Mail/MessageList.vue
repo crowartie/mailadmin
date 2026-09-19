@@ -224,7 +224,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                         <!-- При поиске по всем папкам видно, откуда письмо. -->
                         <span v-if="m.folderName" class="thr" :title="'Письмо лежит в папке «' + m.folderName + '»'">{{ m.folderName }}</span>
                     </span>
-                    <span class="mrow__subj">{{ m.subject }}</span>
+                    <span class="mrow__subj" :title="m.subject">{{ m.subject }}</span>
                     <span v-if="m.preview" class="mrow__prev">{{ m.preview }}</span>
                 </span>
                 <span class="mrow__when">

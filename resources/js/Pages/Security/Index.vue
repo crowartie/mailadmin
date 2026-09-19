@@ -76,7 +76,7 @@ const filteredEmployees = computed(() => (props.employees || []).filter((e) => !
                 <form class="card card--pad span-2" @submit.prevent="pol.post('/security/policies', { preserveScroll: true })">
                     <div class="card__title">Политики</div>
                     <div class="toggles--3">
-                        <div class="field__row"><span>Пароль не короче</span><input v-model="pol.min_password" class="input" type="number" min="6" max="64" style="width: 70px; height: 34px"><span>символов, смена раз в</span><input v-model="pol.password_days" class="input" type="number" min="0" style="width: 80px; height: 34px"><span>дн</span></div>
+                        <div class="field__row"><span>Пароль не короче</span><input v-model="pol.min_password" class="input" type="number" aria-label="Минимальная длина пароля" min="6" max="64" style="width: 70px; height: 34px"><span>символов, смена раз в</span><input v-model="pol.password_days" class="input" type="number" min="0" style="width: 80px; height: 34px"><span>дн</span></div>
                         <Toggle v-model="pol.admin_2fa" label="2FA обязательна для администраторов" />
                         <Toggle v-model="pol.all_2fa_internet" label="2FA обязательна для всех при входе из интернета" />
                         <Toggle v-model="pol.notify_new_device" label="Уведомлять сотрудника о входе с нового устройства" />

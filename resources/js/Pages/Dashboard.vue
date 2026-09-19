@@ -50,7 +50,7 @@ const maxTop = computed(() => Math.max(1, ...props.top.map((t) => t.n)));
                 <div v-if="!attention.length" class="empty">Всё в порядке</div>
                 <component :is="a.href ? Link : 'div'" v-for="(a, i) in attention" :key="i" :href="a.href || undefined" class="kv kv--link">
                     <span class="dot" :class="`dot--${a.kind}`" style="flex: 0 0 8px; margin-top: 7px" />
-                    <span style="color: inherit; flex: 1">{{ a.text }}</span>
+                    <span style="color: inherit; flex: 1; min-width: 0; overflow-wrap: anywhere">{{ a.text }}</span>
                 </component>
             </div>
         </div>
@@ -76,7 +76,8 @@ const maxTop = computed(() => Math.max(1, ...props.top.map((t) => t.n)));
                 <div v-if="!actions.length" class="empty">Записей ещё нет</div>
                 <div v-for="(a, i) in actions" :key="i" class="kv kv--start">
                     <span class="mono faint" style="flex: 0 0 52px">{{ a.ts }}</span>
-                    <span style="color: inherit">{{ a.text }}</span>
+                    <!-- Длинная запись растягивала страницу вширь: без min-width строка не переносится. -->
+                    <span style="color: inherit; min-width: 0; overflow-wrap: anywhere">{{ a.text }}</span>
                 </div>
             </div>
         </div>

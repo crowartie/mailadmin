@@ -85,10 +85,10 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
         <div class="card card--pad" style="margin-bottom: 16px">
             <div class="group-title">Открыть доступ</div>
             <div class="field__row" style="flex-wrap: wrap">
-                <select v-model="add.owner" class="input" style="width: 240px; height: 34px"><option value="" disabled>чей ящик…</option><option v-for="c in candidates" :key="'o' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
-                <select v-model="add.folder" class="input" style="width: 150px; height: 34px"><option value="INBOX">Входящие</option></select>
-                <select v-model="add.with" class="input" style="width: 240px; height: 34px"><option value="" disabled>кому…</option><option v-for="c in candidates.filter((x) => x.mail !== add.owner)" :key="'w' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
-                <select v-model="add.level" class="input" style="width: 130px; height: 34px"><option v-for="(t, k) in levels" :key="k" :value="k">{{ t }}</option></select>
+                <select v-model="add.owner" class="input" aria-label="Чей ящик" style="width: 240px; height: 34px"><option value="" disabled>чей ящик…</option><option v-for="c in candidates" :key="'o' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
+                <select v-model="add.folder" class="input" aria-label="Папка" style="width: 150px; height: 34px"><option value="INBOX">Входящие</option></select>
+                <select v-model="add.with" class="input" aria-label="Кому дать доступ" style="width: 240px; height: 34px"><option value="" disabled>кому…</option><option v-for="c in candidates.filter((x) => x.mail !== add.owner)" :key="'w' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
+                <select v-model="add.level" class="input" aria-label="Уровень доступа" style="width: 130px; height: 34px"><option v-for="(t, k) in levels" :key="k" :value="k">{{ t }}</option></select>
                 <button class="btn btn--primary" type="button" :disabled="busy || !add.owner || !add.with" @click="grant">Открыть</button>
             </div>
             <p class="hint">Доступ по «Входящим» — это доступ к ящику: редактор получает системные папки, владелец — все папки и право писать от имени ящика. Отдельные папки открываются в карточке сотрудника.</p>
@@ -103,7 +103,7 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
                     <span class="srow__people">
                         <span v-for="p in f.people" :key="p.with" class="srow__person">
                             <span :title="p.with">{{ p.withName }}</span>
-                            <select class="input input--sm" :value="p.level" :disabled="busy" @change="setLevel(p, $event.target.value)"><option v-for="l in levelOptions(p)" :key="l" :value="l">{{ levels[l] }}</option></select>
+                            <select class="input input--sm" :value="p.level" aria-label="Уровень доступа" :disabled="busy" @change="setLevel(p, $event.target.value)"><option v-for="l in levelOptions(p)" :key="l" :value="l">{{ levels[l] }}</option></select>
                             <button class="ib ib--sm" type="button" title="Закрыть доступ" :disabled="busy" @click="remove(p)" aria-label="Закрыть доступ"><Icon name="x" :size="13" /></button>
                         </span>
                     </span>
@@ -118,7 +118,7 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
                 <div v-for="r in p.items" :key="r.owner + r.folder" class="srow">
                     <span class="srow__folder"><Icon name="folder" :size="14" style="color: var(--faint)" />{{ r.ownerName }} → {{ r.folderName }}</span>
                     <span class="srow__people"><span class="srow__person">
-                        <select class="input input--sm" :value="r.level" :disabled="busy" @change="setLevel(r, $event.target.value)"><option v-for="l in levelOptions(r)" :key="l" :value="l">{{ levels[l] }}</option></select>
+                        <select class="input input--sm" :value="r.level" aria-label="Уровень доступа" :disabled="busy" @change="setLevel(r, $event.target.value)"><option v-for="l in levelOptions(r)" :key="l" :value="l">{{ levels[l] }}</option></select>
                         <button class="ib ib--sm" type="button" title="Закрыть доступ" :disabled="busy" @click="remove(r)" aria-label="Закрыть доступ"><Icon name="x" :size="13" /></button>
                     </span></span>
                 </div>

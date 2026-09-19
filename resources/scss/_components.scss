@@ -568,7 +568,7 @@ select.input { padding-right: 32px; }
         display: grid; place-items: center;
         background: v.$c-accent-soft; color: v.$c-accent-ink;
 
-        &--ok { background: v.$c-ok-soft; color: v.$c-ok; }
+        &--ok { background: v.$c-ok-soft; color: v.$c-ok-ink; }
         // Контраст «выключена» был 2.79 при норме 4.5: тёмный оттенок того же цвета.
         &--warn { background: v.$c-warn-soft; color: v.$c-warn-ink; }
         &--off { background: v.$c-surface-2; color: v.$c-faint; }
