@@ -469,7 +469,12 @@
     &__atts { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 20px 12px 72px; }
 
     &__body {
-        padding: 4px 24px 18px 72px;
+        // Отступ слева был 72 px — под кружок с инициалами, чтобы текст шёл вровень
+        // с именем отправителя. Но он отбирал у письма шестьдесят пикселей, и колонка
+        // выходила уже 600 — рассылки в такой ширине сами переключаются в «телефонную»
+        // раскладку, и двухколоночная вёрстка складывалась в стопку. Шапку оставляем
+        // с отступом, письму отдаём всю ширину: так делают почтовые клиенты.
+        padding: 4px 24px 18px 24px;
         line-height: 1.6;
         font-size: 14px;
         overflow-x: auto;
@@ -1020,7 +1025,7 @@ select.input { padding-right: 28px; }
 // в полосе около 150 px — каждое слово на своей строке.
 @media (max-width: 1100px) {
     .mail { --nav-w: 180px; --list-w: 300px; }
-    .msg__body, .msg__atts { padding-left: 24px; }
+    .msg__atts { padding-left: 24px; }
     .msg__notice { margin-left: 24px; }
 }
 @media (max-width: 940px) {
@@ -1136,7 +1141,7 @@ select.input { padding-right: 28px; }
     .mrow:hover .mrow__when { visibility: visible; }
     .compose { margin: 0; border-radius: 0; border: none; min-height: 100%; }
     .mread__scroll { padding: 12px 12px 80px; }
-    .msg__body, .msg__atts { padding-left: 20px; }
+    .msg__atts { padding-left: 20px; }
     // Адрес отправителя — отдельной строкой под именем: прятать его нельзя, именно
     // отображаемое имя и подделывают в мошеннических письмах.
     .msg__from { white-space: normal; }
@@ -1246,7 +1251,7 @@ select.input { padding-right: 28px; }
     .mail--read .mread, .mread { position: static; inset: auto; width: auto; padding: 0; }
     .mread__scroll { overflow: visible; height: auto; max-height: none; padding: 0; }
     .msg { border: none; box-shadow: none; break-inside: avoid; }
-    .msg__body, .msg__atts { padding-left: 0; }
+    .msg__atts { padding-left: 0; }
     .quick, .msg__acts { display: none !important; }
 }
 
