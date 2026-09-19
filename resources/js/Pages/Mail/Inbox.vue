@@ -87,7 +87,6 @@ const navOpen = ref(false);
 const outboxCount = ref(props.outbox);
 const listRef = ref(null);
 let toastTimer = null;
-let refreshTimer = null;
 
 const folderInfo = computed(() => folders.value.find((f) => f.path === folder.value) || { name: folder.value, role: 'custom' });
 const folderName = computed(() => (filter.value === 'flagged' ? 'Важное' : filter.value.startsWith('label:') ? (labels.value.find((l) => 'label:' + l.id === filter.value)?.name || 'Метка') : folderInfo.value.name));
@@ -110,7 +109,7 @@ const { syncUrl, pushUrl, onPopState } = useUrlState({
 // ── Списки ────────────────────────────────────────────────────
 // ── Живое обновление ──────────────────────────────────────────
 // Опрос сервера, счётчик в заголовке вкладки и уведомления — в useLiveUpdates.
-const { poll, resetUidnext } = useLiveUpdates({
+const { poll, resetUidnext, schedule, stopPolling, wakeUp } = useLiveUpdates({
     folders, folder, list, settings, compose, menu,
     load, openMessage, showToast,
 });
@@ -424,9 +423,12 @@ onMounted(() => {
     document.addEventListener('keydown', onKey);
     window.addEventListener('beforeunload', flushPending);
     window.addEventListener('popstate', onPopState);
-    // Опрос «есть ли новое» каждые 20 с (60 с в фоне): дёшево (один STATUS), список перечитываем только когда изменился.
-    refreshTimer = setInterval(() => poll(), 20000);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poll(); });
+    // Опрос «есть ли новое»: 20 с, пока что-то происходит, и до 60 с в тишине.
+    // Список перечитываем только когда папка изменилась.
+    schedule();
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') { wakeUp(); poll(); }
+    });
     if (props.openUid) openMessage(props.openUid);
     if (props.composeTo !== null) {
         startCompose('new');
@@ -438,7 +440,7 @@ onBeforeUnmount(() => {
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('popstate', onPopState);
     window.removeEventListener('beforeunload', flushPending);
-    clearInterval(refreshTimer);
+    stopPolling();
     flushPending();
 });
 </script>

@@ -10,9 +10,17 @@ import { api } from './api';
  * @param {object} ctx состояние страницы: folders, folder, list, settings, compose, menu,
  *                     и действия load, openMessage, showToast
  */
+/**
+ * Сколько ждать до следующего опроса, секунды. Пока что-то происходит — часто;
+ * в тишине интервал растёт, чтобы не дёргать сервер полсотни тысяч раз в сутки.
+ */
+const STEPS = [20, 30, 45, 60];
+
 export function useLiveUpdates(ctx) {
     let lastUidnext = null;
     let lastPoll = 0;
+    let quiet = 0;          // сколько опросов подряд ничего не принесли
+    let timer = null;
 
     // В приватном окне и при запрете данных сайта обращение к хранилищу бросает исключение —
     // без защиты страница почты не отрисовывалась вовсе.
@@ -39,9 +47,28 @@ export function useLiveUpdates(ctx) {
         }
     }
 
+    /** Вернуть частый опрос: что-то произошло или человек вернулся к почте. */
+    function wakeUp() {
+        quiet = 0;
+        schedule();
+    }
+
+    /** Поставить следующий опрос по текущему интервалу. */
+    function schedule() {
+        clearTimeout(timer);
+        const secs = STEPS[Math.min(quiet, STEPS.length - 1)];
+        timer = setTimeout(() => { poll().finally(schedule); }, secs * 1000);
+    }
+
+    function stopPolling() {
+        clearTimeout(timer);
+    }
+
     async function poll() {
         if (document.visibilityState !== 'visible' && Date.now() - lastPoll < 60000) return;
-        if (ctx.compose.value || ctx.menu.value) return;
+        // Пока человек пишет письмо или держит меню, не мешаем — но и интервал не растим:
+        // он вот-вот вернётся к списку.
+        if (ctx.compose.value || ctx.menu.value) { quiet = 0; return; }
         lastPoll = Date.now();
         try {
             const st = await api.status(ctx.folder.value);
@@ -51,6 +78,7 @@ export function useLiveUpdates(ctx) {
             const cur = ctx.folders.value.find((f) => f.path === ctx.folder.value);
             if (cur) { cur.unread = st.folder.unseen; cur.total = st.folder.messages; }
             if (lastUidnext !== null && st.folder.uidnext > lastUidnext) {
+                quiet = 0;   // письмо пришло — дальше смотрим часто
                 const prev = lastUidnext;
                 // Тихая перезагрузка: обычная сбрасывала галочки и на секунду гасила список,
                 // а письмо приходит как раз тогда, когда человек отмечает пачку.
@@ -67,6 +95,9 @@ export function useLiveUpdates(ctx) {
                 if (fresh.length > 3) notify('Новые письма', `и ещё ${fresh.length - 3}`, 'mail-more');
             }
             lastUidnext = st.folder.uidnext;
+            if (lastUidnext !== null) {
+                quiet++;   // в этот раз ничего нового; в тишине опрашиваем реже
+            }
             for (const r of st.reminders || []) {
                 if (shownReminders.has(r.key)) continue;
                 shownReminders.add(r.key);
@@ -86,13 +117,15 @@ export function useLiveUpdates(ctx) {
             }
         } catch {
             /* сеть моргнула — следующий опрос через минуту */
+            quiet = STEPS.length - 1;
         }
     }
 
     /** После смены папки прежний UIDNEXT ничего не значит: в новой папке своя нумерация. */
     function resetUidnext() {
         lastUidnext = null;
+        wakeUp();
     }
 
-    return { poll, notify, resetUidnext };
+    return { poll, notify, resetUidnext, schedule, stopPolling, wakeUp };
 }
