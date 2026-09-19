@@ -128,6 +128,37 @@ final class MessageSummary
         }
     }
 
+    /**
+     * Время получения письма — запасная дата, когда заголовка Date нет или он кривой.
+     *
+     * Сервер знает его всегда, и список писем этим уже пользуется. При открытии письма
+     * запасного пути не было, и письмо показывалось без даты вовсе. Спрашиваем только
+     * для таких писем: обычным это ничего не стоит.
+     */
+    private static function receivedAt(Client $client, int $uid): ?string
+    {
+        if ($uid < 1) {
+            return null;
+        }
+        try {
+            $rows = (array) $client->getConnection()->fetch(['UID', 'INTERNALDATE'], [$uid], null, \Webklex\PHPIMAP\IMAP::ST_UID)->data();
+            // По ключу брать нельзя: библиотека режет строку в кавычках по пробелам,
+            // и «"31-Aug-2026 08:54:48 +0800"» превращается в значение «"31-Aug-2026»
+            // плюс мусорный ключ «08:54:48». Ищем дату в ответе по её собственному виду.
+            $flat = '';
+            array_walk_recursive($rows, function ($v, $k) use (&$flat) {
+                $flat .= ' ' . (string) $k . ' ' . (string) $v;
+            });
+            if (preg_match('/(\\d{1,2}-[A-Za-z]{3}-\\d{4}\\s+\\d{1,2}:\\d{2}:\\d{2}\\s*[+-]\\d{4})/', $flat, $m)) {
+                return Carbon::parse($m[1])->toIso8601String();
+            }
+        } catch (\Throwable) {
+            // Без даты письмо всё равно откроется — это не повод ронять показ.
+        }
+
+        return null;
+    }
+
     /** @return array<string,mixed> */
     public function summary(Message $message, ?string $preview = null): array
     {
@@ -152,7 +183,7 @@ final class MessageSummary
             // иначе в списке стоит «popovav@innotec.su» вместо «Попов Андрей Викторович».
             'from' => $from ? Directory::fill(Mime::address($from->personal, $from->mail)) : ['name' => '—', 'mail' => ''],
             'toName' => $to ? Directory::fill(Mime::address($to->personal, $to->mail))['name'] : null,
-            'date' => $date ? $date->toIso8601String() : null,
+            'date' => $date ? $date->toIso8601String() : self::receivedAt($this->client, (int) $message->getUid()),
             'seen' => $flags->has('seen'),
             'flagged' => $flags->has('flagged'),
             'answered' => $flags->has('answered'),
