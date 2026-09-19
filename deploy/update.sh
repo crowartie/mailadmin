@@ -38,6 +38,10 @@ chown -R root:www-data public/build 2>/dev/null || true
 npm run build >/dev/null
 
 echo "==> миграции и кэш"
+# Разобранное описание разрешённого в письмах HTMLPurifier хранит на диске. Оно производное
+# от настроек очистки, но само об их смене не узнаёт: однажды после правки настроек там
+# осталось прежнее описание, и письма с оформлением перестали открываться вовсе.
+rm -rf storage/app/purifier/* 2>/dev/null || true
 chown -R www-data:www-data storage bootstrap/cache public/build
 chgrp -R www-data "$APP"; chmod -R g+rX "$APP"; chmod 0640 .env
 sudo -u www-data php artisan migrate --force -q
