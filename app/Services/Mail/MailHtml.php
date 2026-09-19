@@ -11,11 +11,41 @@ namespace App\Services\Mail;
 final class MailHtml
 {
     /**
+     * Что письму разрешено про оформление — один список и для встроенных стилей,
+     * и для собственных блоков <style> письма (см. MailCss).
+     *
+     * Список нарочно перечислительный: сюда не попадают position, z-index, координаты
+     * и преобразования — то, чем письмо могло бы вылезти за пределы своего места
+     * и накрыть собой интерфейс.
+     *
+     * border-radius сюда не входит: HTMLPurifier знает его только в отдельном режиме
+     * CSS.Proprietary, а таблицам он не нужен. Из-за него письма однажды перестали
+     * открываться вовсе.
+     */
+    public const CSS_PROPERTIES = [
+        'color', 'background-color', 'background', 'font-weight', 'font-style', 'font-variant',
+        'text-decoration', 'text-align', 'text-transform', 'font-size', 'font-family',
+        'letter-spacing', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+        'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+        'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
+        'border-color', 'border-style', 'border-width', 'border-collapse', 'border-spacing',
+        'width', 'max-width', 'min-width', 'height', 'max-height',
+        'line-height', 'vertical-align', 'white-space', 'list-style-type', 'table-layout',
+    ];
+
+    /** Область, внутри которой действуют собственные стили письма. */
+    public const SCOPE = '.msg__body-inner';
+
+    /**
      * Письмо — чужой HTML. Режем скрипты, формы, внешние ресурсы и стили,
      * которые могут вылезти за пределы окна чтения. Картинки data: (встроенные) оставляем.
      */
     public static function sanitize(string $html): string
     {
+        // Собственные стили письма вынимаем до очистки: HTMLPurifier вырезал бы их целиком,
+        // а вместе с ними — задуманную вёрстку. Вернём их в конце, но только внутрь письма.
+        [$html, $ownCss] = MailCss::extract($html);
+
         $config = \HTMLPurifier_Config::createDefault();
         $config->set('Cache.SerializerPath', storage_path('app/purifier'));
         $config->set('HTML.ForbiddenElements', ['script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'style', 'link', 'meta']);
@@ -30,23 +60,7 @@ final class MailHtml
         // Что письму разрешено про оформление. Список нарочно перечислительный: сюда не
         // попадают position, z-index, координаты и преобразования — то, чем письмо могло бы
         // вылезти за пределы своего места и накрыть собой интерфейс.
-        // Рамки, фон и отступы таблиц добавлены после сравнения с Mail.ru: без них письма,
-        // свёрстанные таблицами (а это почти все рассылки), теряли разделительные линии
-        // и превращались в сплошную простыню.
-        //
-        // border-radius сюда не входит: HTMLPurifier знает его только в отдельном режиме
-        // CSS.Proprietary, а таблицам он не нужен. Из-за него письма однажды перестали
-        // открываться вовсе.
-        $config->set('CSS.AllowedProperties', [
-            'color', 'background-color', 'background', 'font-weight', 'font-style', 'font-variant',
-            'text-decoration', 'text-align', 'text-transform', 'font-size', 'font-family',
-            'letter-spacing', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-            'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-            'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
-            'border-color', 'border-style', 'border-width', 'border-collapse', 'border-spacing',
-            'width', 'max-width', 'min-width', 'height', 'max-height',
-            'line-height', 'vertical-align', 'white-space', 'list-style-type', 'table-layout',
-        ]);
+        $config->set('CSS.AllowedProperties', self::CSS_PROPERTIES);
         $config->set('URI.AllowedSchemes', ['http' => true, 'https' => true, 'mailto' => true, 'data' => true, 'tel' => true]);
         // Внешние ссылки на картинки оставляем в разметке, но прячем в data-blocked-* (blockRemote).
         // Раньше здесь стояло true: Purifier вырезал их совсем, поэтому обещанная кнопка
@@ -63,7 +77,11 @@ final class MailHtml
             @mkdir(storage_path('app/purifier'), 0775, true);
         }
 
-        return self::blockRemote((new \HTMLPurifier($config))->purify($html));
+        $clean = self::blockRemote((new \HTMLPurifier($config))->purify($html));
+        $scoped = MailCss::scope($ownCss, self::SCOPE, self::CSS_PROPERTIES);
+
+        // Блок собран нами из проверенных правил, поэтому добавляется после очистки.
+        return $scoped === '' ? $clean : $clean . "\n<style>\n" . $scoped . '</style>';
     }
 
     /**
