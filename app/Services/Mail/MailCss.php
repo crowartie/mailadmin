@@ -23,6 +23,12 @@ namespace App\Services\Mail;
  * Разбор нарочно простой и построчный: полноценный разборщик CSS здесь не нужен, а лишнее,
  * чего он не понял, просто не проходит. Отбрасывать больше, чем надо, безопасно;
  * пропускать лишнее — нет.
+ *
+ * Простой — не значит наивный. Скобки и кавычки приходится считать честно: в рассылке
+ * от OpenAI подключение шрифта выглядит как «@import url(...family=...;1,200..900...)»,
+ * и поиск конца правила по первой же «;» обрывался внутри адреса. Хвост адреса
+ * приклеивался к следующему правилу, заголовок «@media (min-width:480px)» переставал
+ * быть заголовком — и весь блок с сеткой колонок отбрасывался целиком.
  */
 final class MailCss
 {
@@ -120,6 +126,10 @@ final class MailCss
     /**
      * Разложить CSS на блоки «преамбула { тело }» с учётом вложенности @media.
      *
+     * Скобки и кавычки считаются везде: внутри url(...) и строк встречаются и «;»,
+     * и «{», и «}», и принимать их за разделители нельзя — на этом однажды терялась
+     * вся сетка колонок в рассылке (см. заголовок класса).
+     *
      * @return array<int,array{0:string,1:string,2:bool}>
      */
     private static function blocks(string $css): array
@@ -130,12 +140,22 @@ final class MailCss
         $i = 0;
         while ($i < $len) {
             $ch = $css[$i];
+            if ($ch === '"' || $ch === "'") {
+                $prelude .= self::readString($css, $i);
+
+                continue;
+            }
             if ($ch === '{') {
                 $depth = 1;
                 $body = '';
                 $i++;
                 while ($i < $len && $depth > 0) {
                     $c = $css[$i];
+                    if ($c === '"' || $c === "'") {
+                        $body .= self::readString($css, $i);
+
+                        continue;
+                    }
                     if ($c === '{') {
                         $depth++;
                     } elseif ($c === '}') {
@@ -162,12 +182,13 @@ final class MailCss
 
                 continue;
             }
-            if ($ch === '@' && $prelude === '') {
-                // Правило без тела: @import "...";
-                $end = strpos($css, ';', $i);
-                $brace = strpos($css, '{', $i);
-                if ($end !== false && ($brace === false || $end < $brace)) {
-                    $i = $end + 1;
+            if ($ch === '@' && trim($prelude) === '') {
+                // Правило без тела: @import "..."; — конец ищем с учётом скобок,
+                // иначе «;» внутри url(...) обрывает разбор на середине адреса.
+                [$stop, $what] = self::endOfStatement($css, $i);
+                if ($what === ';') {
+                    $i = $stop + 1;
+                    $prelude = '';
 
                     continue;
                 }
@@ -177,6 +198,64 @@ final class MailCss
         }
 
         return $out;
+    }
+
+    /**
+     * Прочитать строку в кавычках целиком, вместе с кавычками; $i сдвигается за неё.
+     *
+     * Внутри строки нет ни правил, ни разделителей — что бы там ни было написано.
+     */
+    private static function readString(string $css, int &$i): string
+    {
+        $quote = $css[$i];
+        $len = strlen($css);
+        $out = $quote;
+        $i++;
+        while ($i < $len) {
+            $c = $css[$i];
+            $out .= $c;
+            $i++;
+            if ($c === '\\' && $i < $len) {   // экранированная кавычка строку не закрывает
+                $out .= $css[$i];
+                $i++;
+
+                continue;
+            }
+            if ($c === $quote || $c === "\n") {   // незакрытая строка не тянется через всё письмо
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Найти конец правила, начинающегося с «@»: «;» без тела или «{» с телом.
+     *
+     * @return array{0:int,1:string} позиция и что именно нашлось («;», «{» или '')
+     */
+    private static function endOfStatement(string $css, int $i): array
+    {
+        $len = strlen($css);
+        $depth = 0;
+        while ($i < $len) {
+            $c = $css[$i];
+            if ($c === '"' || $c === "'") {
+                self::readString($css, $i);
+
+                continue;
+            }
+            if ($c === '(') {
+                $depth++;
+            } elseif ($c === ')') {
+                $depth = max(0, $depth - 1);
+            } elseif ($depth === 0 && ($c === ';' || $c === '{')) {
+                return [$i, $c];
+            }
+            $i++;
+        }
+
+        return [$len, ''];
     }
 
     /**
@@ -232,6 +311,11 @@ final class MailCss
                 continue;
             }
             if (mb_strlen($value) > 500) {
+                continue;
+            }
+            // Скобка в значении означает, что разбор сбился (обычно — незакрытая кавычка).
+            // Выпускать такое наружу нельзя: оно разъедется с нашими стилями чтения.
+            if (str_contains($value, '{') || str_contains($value, '}')) {
                 continue;
             }
             // Обращение к сети из стилей — это следящий пиксель. Встроенные data: оставляем.

@@ -142,6 +142,47 @@ class MailCssTest extends TestCase
         $this->assertSame('', $this->scope('это не css вовсе'));
     }
 
+    /**
+     * Подключение шрифта не должно уносить с собой следующие правила.
+     *
+     * Написано по настоящей рассылке: в адресе шрифта есть точка с запятой
+     * («wght@0,200..900;1,200..900»), и поиск конца правила по первой же «;»
+     * обрывался на середине адреса. Хвост приклеивался к следующему правилу,
+     * и блок @media со всей сеткой колонок отбрасывался целиком.
+     */
+    public function test_font_import_does_not_swallow_the_next_rules(): void
+    {
+        $css = '@import url(https://fonts.googleapis.com/css2?family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap);'
+            . '@import url(https://example.com/fonts.css);'
+            . '@media only screen and (min-width:480px) { .mj-column-per-50 { width:50% !important; max-width: 50%; } }';
+
+        $out = $this->scope($css);
+
+        $this->assertStringContainsString('@media only screen and (min-width:480px)', $out);
+        $this->assertStringContainsString('.msg__body-inner .mj-column-per-50', $out);
+        $this->assertStringContainsString('width: 50% !important', $out);
+        $this->assertStringNotContainsString('fonts.googleapis.com', $out);
+        $this->assertStringNotContainsString('@import', $out);
+    }
+
+    /** Скобки и кавычки в значениях не должны сбивать счёт. */
+    public function test_braces_inside_strings_do_not_break_parsing(): void
+    {
+        $out = $this->scope('.a:before { content: "}"; color: #111111 } .b { color: #222222 }');
+
+        $this->assertStringContainsString('.msg__body-inner .b', $out);
+        $this->assertStringContainsString('#222222', $out);
+    }
+
+    /** Незакрытая кавычка ломает правило — но наружу не должно уйти ничего сломанного. */
+    public function test_unclosed_quote_produces_nothing_broken(): void
+    {
+        $out = $this->scope(".a { font-family: 'Broken }\n.b { color: #333333 }");
+
+        $this->assertStringNotContainsString('Broken', $out);
+        $this->assertSame(substr_count($out, '{'), substr_count($out, '}'), 'скобки в выводе не сходятся');
+    }
+
     /** Письмо целиком: стили доезжают, но только своей областью. */
     public function test_sanitize_keeps_message_styles_scoped(): void
     {
