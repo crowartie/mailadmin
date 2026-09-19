@@ -469,10 +469,15 @@
     &__atts { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 20px 12px 72px; }
 
     &__body {
-        padding: 4px 20px 18px 72px;
+        padding: 4px 24px 18px 72px;
         line-height: 1.6;
         font-size: 14px;
         overflow-x: auto;
+        // Рассылки верстают под 600–640 px: это ширина, на которую рассчитаны шаблоны.
+        // Без ограничения письмо растягивалось во всю панель — шапка во весь экран,
+        // строки длиннее читаемых 60–80 знаков. Для простого текста ограничение то же:
+        // читать строку в тысячу пикселей неудобно.
+        &-inner { max-width: 760px; }
 
         img { max-width: 100%; height: auto; }
         table { max-width: 100%; }

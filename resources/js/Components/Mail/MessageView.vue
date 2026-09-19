@@ -266,8 +266,10 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         <button type="button" class="linklike" style="font-weight: 600" @click="showImages[key(m)] = true">Показать</button>
                     </template>
                 </div>
-                <div v-if="m.html" class="msg__body" v-html="body(m)" />
-                <div v-else class="msg__body"><pre class="msg__text">{{ m.text || '' }}</pre></div>
+                <!-- Внутренняя обёртка ограничивает ширину: письма верстают под 600–640 px,
+                     и во всю ширину панели они разъезжаются. -->
+                <div v-if="m.html" class="msg__body"><div class="msg__body-inner" v-html="body(m)" /></div>
+                <div v-else class="msg__body"><div class="msg__body-inner"><pre class="msg__text">{{ m.text || '' }}</pre></div></div>
                 <div v-if="m.listUnsubscribe && isLast(m)" style="padding: 0 20px 14px 72px">
                     <button class="chip chip--btn" type="button" @click="$emit('unsubscribe', m)"><Icon name="unsub" :size="13" />Отписаться от рассылки</button>
                 </div>
