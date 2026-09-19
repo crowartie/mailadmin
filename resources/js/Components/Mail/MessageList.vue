@@ -9,6 +9,9 @@ const props = defineProps({
     folder: String,
     folderName: String,
     folderRole: String,
+    // Чужая папка, открытая только для просмотра: действий, меняющих письма, в ней нет.
+    // Признак приходит с сервера (права IMAP), а не угадывается по роли папки.
+    readonly: { type: Boolean, default: false },
     filter: { type: String, default: 'all' },
     sort: { type: String, default: 'date' },
     query: { type: String, default: '' },
@@ -108,11 +111,14 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             <b>Выбрано {{ selected.length }}</b>
             <button class="ib ib--sm" type="button" title="Прочитано" @click="$emit('act', 'seen', selected)" aria-label="Прочитано"><Icon name="eye" :size="16" /></button>
             <button class="ib ib--sm" type="button" title="Непрочитано" @click="$emit('act', 'unseen', selected)" aria-label="Непрочитано"><Icon name="unread" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="В папку (v)" @click="$emit('context', $event, null, 'move')" aria-label="В папку (v)"><Icon name="folder" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="Метка (l)" @click="$emit('context', $event, null, 'label')" aria-label="Метка (l)"><Icon name="tag" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="Архив (e)" @click="$emit('act', 'archive', selected)" aria-label="Архив (e)"><Icon name="archive" :size="16" /></button>
-            <button class="ib ib--sm" type="button" title="Спам (!)" @click="$emit('act', 'spam', selected)" aria-label="Спам (!)"><Icon name="spam" :size="16" /></button>
-            <button class="ib ib--sm ib--danger" type="button" title="Удалить (#)" @click="$emit('act', 'delete', selected)" aria-label="Удалить (#)"><Icon name="trash" :size="16" /></button>
+            <template v-if="!readonly">
+                <button class="ib ib--sm" type="button" title="В папку (v)" @click="$emit('context', $event, null, 'move')" aria-label="В папку (v)"><Icon name="folder" :size="16" /></button>
+                <button class="ib ib--sm" type="button" title="Метка (l)" @click="$emit('context', $event, null, 'label')" aria-label="Метка (l)"><Icon name="tag" :size="16" /></button>
+                <button class="ib ib--sm" type="button" title="Архив (e)" @click="$emit('act', 'archive', selected)" aria-label="Архив (e)"><Icon name="archive" :size="16" /></button>
+                <button class="ib ib--sm" type="button" title="Спам (!)" @click="$emit('act', 'spam', selected)" aria-label="Спам (!)"><Icon name="spam" :size="16" /></button>
+                <button class="ib ib--sm ib--danger" type="button" title="Удалить (#)" @click="$emit('act', 'delete', selected)" aria-label="Удалить (#)"><Icon name="trash" :size="16" /></button>
+            </template>
+            <span v-else class="mlist__ro" title="Владелец открыл эту папку только для просмотра">только просмотр</span>
         </div>
         <div v-else class="mlist__meta">
             <span class="cb" :class="{ 'cb--on': allChecked }" role="checkbox" tabindex="0" :aria-checked="allChecked"

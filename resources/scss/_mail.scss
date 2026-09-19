@@ -1300,6 +1300,14 @@ select.input { padding-right: 28px; }
     // vue-easy-lightbox рисует свою подложку поверх нашей — панель и стрелки выше неё
     .vel-modal { z-index: 9995; }
 }
+// Пометка в панели выбора: в чужой папке менять письма нельзя.
+.mlist__ro {
+    font-size: 12.5px;
+    color: v.$c-muted;
+    padding: 0 6px;
+    white-space: nowrap;
+}
+
 .att { padding-right: 4px; }
 .att__main { display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; min-width: 0; }
 .att--view .att__main { cursor: zoom-in; }

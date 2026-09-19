@@ -480,6 +480,7 @@ onBeforeUnmount(() => {
                 :folder="folder"
                 :folder-name="folderName"
                 :folder-role="folderInfo.role"
+                :readonly="!!folderInfo.readonly"
                 :highlight-unread="settings.unread_highlight !== false"
                 :unread-color="settings.unread_color || ''"
                 :density="settings.density || 'normal'"

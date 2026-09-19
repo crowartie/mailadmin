@@ -150,6 +150,7 @@ class FolderTree
 
         $this->dedupeRoles($out);
         $this->markShared($out);
+        $this->markReadonly($out);
 
         // Системные — в фиксированном порядке, свои — по алфавиту после них.
         // Путь папки в IMAP — modified UTF-7 («&BBAEEQQX-»), сравнивать надо раскодированное имя и по правилам языка:
@@ -186,6 +187,45 @@ class FolderTree
     public static function forgetSharesCache(string $user): void
     {
         \Illuminate\Support\Facades\Cache::forget('shares-any.' . strtolower($user));
+    }
+
+    /**
+     * Проставить общим папкам признак «только чтение».
+     *
+     * Без него чужая папка выглядит как своя: кнопки «Удалить», «В папку» и «Флажок»
+     * показываются, человек нажимает — и получает отказ от сервера. Отказ правильный
+     * и со словами, но узнавать о невозможности действия после нажатия неправильно.
+     *
+     * Права спрашиваем командой MYRIGHTS — по одной на общую папку, а их обычно две-три.
+     * Не ответил сервер — признак не ставим: лучше показать лишнюю кнопку, чем спрятать
+     * нужную.
+     */
+    private function markReadonly(array &$out): void
+    {
+        $conn = $this->client->getConnection();
+        foreach ($out as $i => $row) {
+            if (($row['role'] ?? '') !== 'shared') {
+                continue;
+            }
+            try {
+                $r = $conn->requestAndResponse('MYRIGHTS', [$conn->escapeString($row['path'])]);
+                $flat = [];
+                $data = (array) $r->data();
+                array_walk_recursive($data, function ($v) use (&$flat) { $flat[] = (string) $v; });
+                // * MYRIGHTS <папка> <права>; буквы: l lookup, r read, s write-seen,
+                // w write, i insert, t write-deleted, e expunge, k create, x delete, a admin
+                $rights = (string) end($flat);
+                if ($rights === '' || $rights === $row['path']) {
+                    continue;
+                }
+                // Писать в папку можно, если есть хотя бы право менять пометки или удалять.
+                $canWrite = (bool) preg_match('/[witek]/', $rights);
+                $out[$i]['readonly'] = ! $canWrite;
+                $out[$i]['rights'] = $rights;
+            } catch (\Throwable) {
+                // Права не спросились — не выдумываем: пусть кнопки останутся.
+            }
+        }
     }
 
     private function markShared(array &$out): void
