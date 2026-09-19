@@ -522,6 +522,8 @@
         gap: 6px 10px;
         align-items: center;
     }
+    // Ссылка на оранжевой плашке синим давала контраст 4.08 при норме 4.5.
+    &__notice .linklike { color: v.$c-warn-ink; text-decoration: underline; }
     // Лупа «все письма от этого отправителя» — в строке с адресом, не отдельной строкой.
     &__fromsearch { display: inline-flex; vertical-align: middle; width: 22px; height: 22px; margin-left: 2px; flex: 0 0 auto; }
 }
@@ -1370,4 +1372,6 @@ select.input { padding-right: 28px; }
 // На телефоне ссылки «Копия» и «Скрытая» были высотой 19 px — в них не попасть пальцем.
 @media (max-width: 700px) {
     .compose__row .linklike { min-height: 32px; display: inline-flex; align-items: center; padding: 0 6px; }
+    // Кнопки-значки в шапке письма были 30 px шириной — для пальца нужно 32.
+    .msg .ib, .mread .ib { min-width: 32px; min-height: 32px; }
 }
