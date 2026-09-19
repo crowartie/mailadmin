@@ -119,13 +119,15 @@ class MessageListing
             try {
                 $this->client->openFolder($p, true);
                 $previews = $this->summaries->previews($uids);
+                $rows = [];
                 foreach ($this->tree->folder($p)->query()->whereUidIn($uids)->setFetchBody(false)->setFetchFlags(true)->get() as $m) {
                     $row = $this->summaries->summary($m, $previews[(int) $m->getUid()] ?? null);
                     // Строка знает свою папку: иначе щелчок открывал бы письмо из текущей.
                     $row['folder'] = $p;
                     $row['folderName'] = $this->searchFolderName($p);
-                    $messages[] = $row;
+                    $rows[] = $row;
                 }
+                $messages = array_merge($messages, $this->withRealAttachments($p, $rows));
             } catch (\Throwable) {
                 continue;
             }
@@ -208,7 +210,7 @@ class MessageListing
             }
             if ($messages || ! $slice) {
                 return [
-                    'messages' => $messages,
+                    'messages' => $this->withRealAttachments($path, $messages),
                     'total' => $total,
                     'page' => $page,
                     'pages' => max(1, (int) ceil($total / self::PAGE)),
@@ -234,7 +236,7 @@ class MessageListing
         }
 
         return [
-            'messages' => $messages,
+            'messages' => $this->withRealAttachments($path, $messages),
             'total' => $total,
             'page' => $page,
             'pages' => max(1, (int) ceil($total / self::PAGE)),
@@ -264,6 +266,48 @@ class MessageListing
         }
 
         return Mime::utf8Name(basename(str_replace('.', '/', $path))) ?: $path;
+    }
+
+
+    /**
+     * Поставить скрепку по составу письма, а не по заголовку.
+     *
+     * Заголовок Content-Type про вложения не знает: письмо с вложением внутри подписи
+     * не выглядит как multipart/mixed, а письмо из текста и логотипа в подписи — выглядит.
+     * На выборке из двухсот настоящих писем ошибка была у каждого десятого, в обе стороны.
+     *
+     * Состав приходит одной командой BODYSTRUCTURE на страницу: Dovecot держит структуры
+     * в своём кэше, и ту же команду мы уже делаем при отборе «Вложения». Если ответ
+     * не разобрался, строка остаётся с прежним признаком — список важнее скрепки.
+     *
+     * @param  array<int,array<string,mixed>>  $messages
+     * @return array<int,array<string,mixed>>
+     */
+    private function withRealAttachments(string $path, array $messages): array
+    {
+        if ($messages === []) {
+            return $messages;
+        }
+        $uids = array_values(array_filter(array_map(fn ($m) => (int) ($m['uid'] ?? 0), $messages)));
+        if ($uids === []) {
+            return $messages;
+        }
+        try {
+            $structures = Structure::many($this->client, $path, $uids);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('список: состав писем не прочитался, скрепка по заголовку: ' . $e->getMessage());
+
+            return $messages;
+        }
+
+        foreach ($messages as $i => $m) {
+            $uid = (int) ($m['uid'] ?? 0);
+            if (isset($structures[$uid])) {
+                $messages[$i]['hasAttachments'] = Structure::hasFiles($structures[$uid]);
+            }
+        }
+
+        return $messages;
     }
 
 

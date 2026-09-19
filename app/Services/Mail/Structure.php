@@ -323,6 +323,53 @@ final class Structure
     }
 
     /**
+     * Есть ли в письме то, что человек назовёт вложением.
+     *
+     * Правило одно на всё приложение: скрепка в списке, отбор «Вложения» и шапка
+     * открытого письма должны отвечать одинаково. Раньше скрепка считалась по слову
+     * «multipart/mixed» в заголовке и ошибалась на каждом десятом письме в обе стороны.
+     *
+     * @param  array<int,array<string,mixed>>  $parts
+     */
+    public static function hasFiles(array $parts): bool
+    {
+        return self::files($parts) !== [];
+    }
+
+    /**
+     * Вложения без картинок, вставленных в текст письма.
+     *
+     * Логотип в подписи вложением не считается — иначе «есть:вложение» находило бы
+     * каждое письмо с подписью. Но условие должно быть узким, иначе теряются настоящие
+     * файлы: Foxmail проставляет Content-ID каждой части подряд, и письмо с тремя
+     * чертежами по 400 КБ выглядело как письмо без вложений.
+     *
+     * Поэтому встроенной считается только часть, которая:
+     *   • картинка (image/*), а не файл неизвестного вида;
+     *   • не помечена отправителем как вложение — Content-Disposition: attachment
+     *     ставят как раз тогда, когда картинку нужно и показать, и дать сохранить.
+     *
+     * @param  array<int,array<string,mixed>>  $parts
+     * @return array<int,array<string,mixed>>
+     */
+    public static function files(array $parts): array
+    {
+        return array_values(array_filter(self::attachments($parts), fn (array $a) => ! self::isEmbeddedImage($a)));
+    }
+
+    /**
+     * Часть письма — это картинка, вставленная в его текст?
+     *
+     * @param  array<string,mixed>  $part
+     */
+    public static function isEmbeddedImage(array $part): bool
+    {
+        return (string) $part['id'] !== ''
+            && $part['disposition'] !== 'attachment'
+            && str_starts_with(strtolower((string) $part['mime']), 'image/');
+    }
+
+    /**
      * Части, составляющие само письмо: текст и/или HTML верхнего уровня.
      *
      * @param  array<int,array<string,mixed>>  $parts

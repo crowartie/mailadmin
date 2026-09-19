@@ -214,12 +214,9 @@ class ImapQuery
         $need = $needle === null ? null : mb_strtolower(trim($needle));
         $out = [];
         foreach (Structure::many($this->client, $path, $slice) as $uid => $parts) {
-            foreach (Structure::attachments($parts) as $a) {
-                // Картинка из текста письма вложением не считается: иначе «есть:вложение»
-                // находило бы каждое письмо с логотипом в подписи.
-                if ($a['disposition'] === 'inline' && $a['id'] !== '') {
-                    continue;
-                }
+            // Что считать вложением — решает Structure::files: то же правило, что у скрепки
+            // в списке и у шапки открытого письма.
+            foreach (Structure::files($parts) as $a) {
                 if ($need === null || ($a['name'] !== '' && str_contains(mb_strtolower($a['name']), $need))) {
                     $out[] = (int) $uid;
                     break;

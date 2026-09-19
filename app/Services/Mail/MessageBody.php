@@ -105,8 +105,13 @@ class MessageBody
         $inline = [];
         foreach ($list as $i => $a) {
             $cid = (string) $a['id'];
-            $isInline = $cid !== '' && $html !== null && str_contains($html, 'cid:' . $cid);
-            if ($isInline) {
+            // Встроенной — то есть скрытой из списка вложений — часть считается,
+            // только если это картинка, отправитель не пометил её вложением и на неё
+            // действительно ссылается разметка. Правило общее со списком писем
+            // и отбором «Вложения», см. Structure::isEmbeddedImage.
+            $referenced = $cid !== '' && $html !== null && str_contains($html, 'cid:' . $cid);
+            $isInline = $referenced && Structure::isEmbeddedImage($a);
+            if ($referenced) {
                 // Картинку из текста письма не вшиваем в разметку строкой data:, а даём
                 // ссылкой на себя же. Письмо с двумя десятками картинок иначе разрасталось
                 // до шести мегабайт разметки, и одна только чистка занимала три секунды;
