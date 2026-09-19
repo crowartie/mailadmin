@@ -27,17 +27,10 @@ final class MailHtml
         // Рамки, фон и отступы таблиц добавлены после сравнения с Mail.ru: без них письма,
         // свёрстанные таблицами (а это почти все рассылки), теряли разделительные линии
         // и превращались в сплошную простыню.
-        $config->set('CSS.AllowedProperties', [
-            'color', 'background-color', 'background', 'font-weight', 'font-style', 'font-variant',
-            'text-decoration', 'text-align', 'text-transform', 'font-size', 'font-family',
-            'letter-spacing', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-            'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-            'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
-            'border-color', 'border-style', 'border-width', 'border-radius',
-            'border-collapse', 'border-spacing',
-            'width', 'max-width', 'min-width', 'height', 'max-height',
-            'line-height', 'vertical-align', 'white-space', 'list-style-type',
-        ]);
+        // Что письму разрешено про оформление. Список нарочно перечислительный: сюда не
+        // попадают position, z-index, координаты и преобразования — то, чем письмо могло бы
+        // вылезти за пределы своего места и накрыть собой интерфейс.
+        $config->set('CSS.AllowedProperties', ['color', 'background-color', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'font-size', 'font-family', 'padding', 'margin', 'border', 'width', 'max-width', 'line-height', 'vertical-align']);
         $config->set('URI.AllowedSchemes', ['http' => true, 'https' => true, 'mailto' => true, 'data' => true, 'tel' => true]);
         // Внешние ссылки на картинки оставляем в разметке, но прячем в data-blocked-* (blockRemote).
         // Раньше здесь стояло true: Purifier вырезал их совсем, поэтому обещанная кнопка
