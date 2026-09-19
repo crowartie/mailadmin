@@ -31,6 +31,11 @@ final class MailHtml
         'border-color', 'border-style', 'border-width', 'border-collapse', 'border-spacing',
         'width', 'max-width', 'min-width', 'height', 'max-height',
         'line-height', 'vertical-align', 'white-space', 'list-style-type', 'table-layout',
+        // На display держатся колонки: MJML, на котором свёрстано большинство рассылок,
+        // ставит блоки рядом через inline-block. Требует режима CSS.AllowTricky (см. ниже);
+        // выйти за пределы письма он не даёт — за это отвечают position, z-index
+        // и координаты, и их в списке нет.
+        'display',
     ];
 
     /** Область, внутри которой действуют собственные стили письма. */
@@ -60,6 +65,10 @@ final class MailHtml
         // Что письму разрешено про оформление. Список нарочно перечислительный: сюда не
         // попадают position, z-index, координаты и преобразования — то, чем письмо могло бы
         // вылезти за пределы своего места и накрыть собой интерфейс.
+        // Режим «хитрых» свойств нужен, чтобы HTMLPurifier вообще знал про display.
+        // Он регистрирует описания display, visibility, position, float и overflow,
+        // но что из них пропускать, решает список ниже: position там нет и не будет.
+        $config->set('CSS.AllowTricky', true);
         $config->set('CSS.AllowedProperties', self::CSS_PROPERTIES);
         $config->set('URI.AllowedSchemes', ['http' => true, 'https' => true, 'mailto' => true, 'data' => true, 'tel' => true]);
         // Внешние ссылки на картинки оставляем в разметке, но прячем в data-blocked-* (blockRemote).
