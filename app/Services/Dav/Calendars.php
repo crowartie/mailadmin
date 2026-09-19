@@ -12,6 +12,18 @@ use Sabre\DAV\Sharing\Plugin as Sharing;
 /** Календари и события: список календарей, выборка по диапазону, правка и перенос событий. */
 class Calendars
 {
+    /**
+     * Забыть, когда у человека ближайший будильник.
+     *
+     * Опрос новой почты не открывает календарь, пока помнит, что до ближайшего напоминания
+     * далеко (см. FolderController::dueReminders). Завели встречу «через 15 минут» —
+     * эта память должна сброситься, иначе напоминание не придёт.
+     */
+    public static function forgetAlarms(string $user): void
+    {
+        \Illuminate\Support\Facades\Cache::forget(\App\Http\Controllers\Mail\Api\FolderController::ALARM_KEY . strtolower($user));
+    }
+
     public function __construct(
         private readonly DavAccess $a,
     ) {
@@ -193,6 +205,8 @@ class Calendars
     /** Создать или обновить событие. */
     public function saveEvent(string $user, string $calUri, ?string $objUri, array $data): array
     {
+        // Расписание изменилось — опрос почты должен заново узнать, когда ближайший будильник.
+        self::forgetAlarms($user);
         $c = $this->calendar($user, $calUri);
         $existing = null;
         if ($objUri) {
@@ -220,6 +234,8 @@ class Calendars
      */
     public function moveEvent(string $user, string $fromCal, string $toCal, string $objUri, array $data): array
     {
+        // Расписание изменилось — опрос почты должен заново узнать, когда ближайший будильник.
+        self::forgetAlarms($user);
         $from = $this->calendar($user, $fromCal);
         $row = $this->a->cals->getCalendarObject([$from['id'], $from['instance']], $objUri);
         $existing = $row ? (string) $row['calendardata'] : null;
@@ -234,6 +250,8 @@ class Calendars
     /** Удалить событие или одно его вхождение ($occurrence — ISO-дата вхождения). */
     public function deleteEvent(string $user, string $calUri, string $objUri, ?string $occurrence = null): void
     {
+        // Расписание изменилось — опрос почты должен заново узнать, когда ближайший будильник.
+        self::forgetAlarms($user);
         if ($occurrence) {
             $c = $this->calendar($user, $calUri);
             $row = $this->a->cals->getCalendarObject([$c['id'], $c['instance']], $objUri);
