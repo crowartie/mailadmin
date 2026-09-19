@@ -93,6 +93,26 @@ class StructureBodyTest extends TestCase
         $this->assertSame(['1.1', '1.3'], array_column(Structure::bodyParts($parts), 'no'));
     }
 
+    /**
+     * Разметка лежит глубже текста — обычное сочетание alternative внутри mixed.
+     *
+     * Написано по настоящему письму: текстовая часть пустая (ноль байт), всё письмо
+     * в разметке на уровень ниже, плюс картинки подписи и два PDF. Если брать только
+     * уровень первой текстовой части, разметка выпадает и письмо показывается пустым.
+     */
+    public function test_html_one_level_deeper_than_text_is_taken(): void
+    {
+        $parts = [
+            $this->part('1.1', 'text/plain'),
+            $this->part('1.2.1', 'text/html'),
+            $this->part('1.2.2', 'image/png', 'подпись.png'),
+            $this->part('2', 'application/pdf', 'счёт.pdf', 'attachment'),
+            $this->part('3', 'application/pdf', 'список.pdf', 'attachment'),
+        ];
+
+        $this->assertSame(['1.1', '1.2.1'], array_column(Structure::bodyParts($parts), 'no'));
+    }
+
     public function test_letter_without_text_gives_nothing(): void
     {
         $this->assertSame([], Structure::bodyParts([$this->part('1', 'application/pdf', 'счёт.pdf', 'attachment')]));

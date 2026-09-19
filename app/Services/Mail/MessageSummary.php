@@ -129,6 +129,32 @@ final class MessageSummary
     }
 
     /**
+     * Отправитель письма, с запасным разбором заголовка.
+     *
+     * Библиотека не понимает старую запись по RFC 822 — «root@host (Cron Daemon)»,
+     * адрес без угловых скобок и имя в круглых, — и отдаёт пустоту. Так шлют письма
+     * служебные программы самого сервера, и человек видел их без отправителя вовсе.
+     * В списке писем тот же заголовок разбирается нашим разборщиком и всё видно,
+     * поэтому здесь просто добавляем тот же запасной путь.
+     *
+     * @return array{name:string,mail:string}
+     */
+    private static function fromOf(Message $message): array
+    {
+        $first = $message->getFrom()->first();
+        $out = $first ? Directory::fill(Mime::address($first->personal, $first->mail)) : null;
+        if (($out['mail'] ?? '') !== '') {
+            return $out;
+        }
+        $raw = Mime::headerValue((string) ($message->getHeader()?->raw ?? ''), 'From');
+        if ($raw !== null && ($parsed = Mime::firstAddress($raw)) !== null) {
+            return Directory::fill($parsed);
+        }
+
+        return $out ?? ['name' => '—', 'mail' => ''];
+    }
+
+    /**
      * Время получения письма — запасная дата, когда заголовка Date нет или он кривой.
      *
      * Сервер знает его всегда, и список писем этим уже пользуется. При открытии письма
@@ -181,7 +207,7 @@ final class MessageSummary
             'subject' => $subject !== '' ? $subject : '(без темы)',
             // Если отправитель не подписался именем, берём его из общей книги сотрудников:
             // иначе в списке стоит «popovav@innotec.su» вместо «Попов Андрей Викторович».
-            'from' => $from ? Directory::fill(Mime::address($from->personal, $from->mail)) : ['name' => '—', 'mail' => ''],
+            'from' => self::fromOf($message),
             'toName' => $to ? Directory::fill(Mime::address($to->personal, $to->mail))['name'] : null,
             'date' => $date ? $date->toIso8601String() : self::receivedAt($this->client, (int) $message->getUid()),
             'seen' => $flags->has('seen'),

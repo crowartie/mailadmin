@@ -92,6 +92,39 @@ class MimeTest extends TestCase
         }
     }
 
+    /**
+     * Старая запись адреса: «root@host (Cron Daemon)».
+     *
+     * Так шлют письма служебные программы самого сервера — адрес без угловых скобок,
+     * имя в круглых. Библиотека такую не разбирает, и письма показывались вовсе
+     * без отправителя.
+     */
+    public function test_адрес_с_именем_в_круглых_скобках(): void
+    {
+        $a = Mime::firstAddress('root@mail.innotec.su (Cron Daemon)');
+        $this->assertSame('root@mail.innotec.su', $a['mail']);
+        $this->assertSame('Cron Daemon', $a['name']);
+    }
+
+    /** Скобки внутри настоящего имени убирать нельзя. */
+    public function test_скобки_внутри_имени_остаются(): void
+    {
+        $a = Mime::firstAddress('"Иванов (бухгалтерия)" <buh@innotec.su>');
+        $this->assertSame('buh@innotec.su', $a['mail']);
+        $this->assertSame('Иванов (бухгалтерия)', $a['name']);
+    }
+
+    /** Обычная запись от этого не должна пострадать. */
+    public function test_обычный_адрес_разбирается_как_прежде(): void
+    {
+        $a = Mime::firstAddress('Пётр Петров <petrov@innotec.su>');
+        $this->assertSame('petrov@innotec.su', $a['mail']);
+        $this->assertSame('Пётр Петров', $a['name']);
+
+        $b = Mime::firstAddress('petrov@innotec.su');
+        $this->assertSame('petrov@innotec.su', $b['mail']);
+    }
+
     /** Отказ почтового сервера объясняем словами, а не английским хвостом протокола. */
     public function test_причина_отказа(): void
     {

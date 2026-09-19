@@ -395,11 +395,24 @@ final class Structure
         if ($candidates === []) {
             return [];
         }
-        // Уровень у тела один — тот, где нашлась первая часть текста. Всё, что лежит
-        // ниже, принадлежит вложенному пересланному письму, а не этому.
-        $level = self::levelOf((string) $candidates[0]['no']);
+        // Если своё тело лежит на самом верху письма, то всё, что глубже, — это уже
+        // вложенное пересланное письмо, и в тело оно не идёт. Если же тело само вложено
+        // (обычное сочетание alternative внутри mixed), у текста и разметки свои уровни:
+        // текст в «1.1», разметка в «1.2.1» — и то и другое принадлежит письму.
+        $atTop = self::levelOf((string) $candidates[0]['no']) === '';
+
         $out = [];
         foreach (['plain', 'html'] as $subtype) {
+            $level = null;
+            foreach ($candidates as $p) {
+                if ($p['subtype'] === $subtype) {
+                    $level = $atTop ? '' : self::levelOf((string) $p['no']);
+                    break;
+                }
+            }
+            if ($level === null) {
+                continue;
+            }
             foreach ($candidates as $p) {
                 if ($p['subtype'] === $subtype && self::levelOf((string) $p['no']) === $level) {
                     $out[] = $p;

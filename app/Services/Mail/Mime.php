@@ -56,6 +56,12 @@ final class Mime
         if ($mail !== '' && (str_contains($mail, '<') || str_contains($mail, '=?') || str_contains($mail, ' ') || ! str_contains($mail, '@'))) {
             $addr = preg_match('/<([^<>\s]+@[^<>\s]+)>/', $mail, $m) ? $m[1] : (preg_match('/[^\s<>"]+@[^\s<>"]+/', $mail, $m) ? $m[0] : $mail);
             $rest = trim(preg_replace('/<[^<>]*>/', '', str_replace($addr, '', $mail)), " \t\"'");
+            // «root@host (Cron Daemon)» — запись по RFC 822: имя в круглых скобках.
+            // Скобки к имени не относятся, но убираем их только если имя целиком в них:
+            // «Иванов (бухгалтерия)» должно остаться как есть.
+            if (str_starts_with($rest, '(') && str_ends_with($rest, ')') && ! str_contains(mb_substr($rest, 1, -1), '(')) {
+                $rest = trim(mb_substr($rest, 1, -1));
+            }
             if ($name === '' || $name === $mail) {
                 $name = $rest;
             }
