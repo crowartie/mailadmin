@@ -12,6 +12,29 @@ use Symfony\Component\Process\Process;
 class AmavisConfig
 {
     /** @return array{tag:float,tag2:float,kill:float,cutoff:float,virus:bool,greylist:bool,sizeLimitMb:int} */
+    /** Ключ кэша для предела размера письма — отдельно от остальных настроек. */
+    public const SIZE_KEY = 'amavis.size-limit-mb';
+
+    /**
+     * Предел на размер письма, МБ.
+     *
+     * Отдельно от current() потому, что страница почты и форма отправки спрашивают именно
+     * его, а current() ради семи значений запускает семь внешних программ и стоит 172 мс —
+     * больше, чем список папок и список писем вместе. Кэш там живёт полминуты, так что
+     * каждые тридцать секунд кому-то доставалась страница, открывающаяся заметно дольше.
+     *
+     * Здесь запускается одна программа, а ответ помнится сутки: значение меняет
+     * администратор, и он же сбрасывает память (см. setSizeLimit).
+     */
+    public function messageSizeMb(): int
+    {
+        return (int) Cache::remember(self::SIZE_KEY, 86400, function () {
+            [$code, $size] = Ctl::run('postconf-get', ['message_size_limit'], 10);
+
+            return $code === 0 ? (int) round(((int) trim($size)) / 1048576) : 15;
+        });
+    }
+
     public function current(): array
     {
         return Cache::remember('amavis.config', 30, function () {
@@ -91,9 +114,11 @@ class AmavisConfig
         Cache::forget('amavis.config');
     }
 
+    /** @see messageSizeMb() — при смене предела забываем запомненное значение. */
     public function setSizeLimit(int $mb): void
     {
         Ctl::out('postconf-set', ['message_size_limit', (string) ($mb * 1048576)], 30);
         Cache::forget('amavis.config');
+        Cache::forget(self::SIZE_KEY);
     }
 }

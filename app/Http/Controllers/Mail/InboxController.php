@@ -53,11 +53,16 @@ class InboxController extends Controller
         ]);
     }
 
-    /** Предел на размер письма из настроек почтового сервера (message_size_limit). */
+    /**
+     * Предел на размер письма из настроек почтового сервера (message_size_limit).
+     *
+     * Спрашиваем отдельно, а не через current(): тот ради семи значений запускает семь
+     * внешних программ и стоил странице 172 мс — больше, чем список папок и писем вместе.
+     */
     private static function messageLimitMb(): int
     {
         try {
-            $mb = (int) (app(\App\Services\Server\AmavisConfig::class)->current()['sizeLimitMb'] ?? 0);
+            $mb = app(\App\Services\Server\AmavisConfig::class)->messageSizeMb();
         } catch (\Throwable) {
             $mb = 0;
         }

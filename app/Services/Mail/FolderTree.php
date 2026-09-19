@@ -555,9 +555,14 @@ class FolderTree
                 return $this->statusCache;
             }
             $r = $conn->requestAndResponse('LIST', ['""', '"*"', 'RETURN', '(STATUS (MESSAGES UNSEEN UIDNEXT))']);
-            foreach ((array) $r->data() as $line) {
+            $lines = (array) $r->data();
+            foreach ($lines as $line) {
                 // Строка приходит разобранной в массив: ['STATUS', '<путь>', ['MESSAGES', '5', ...]]
                 $flat = [];
+                $line = (array) $line;
+                // Через переменную: array_walk_recursive принимает только ссылку,
+                // а приведение к массиву прямо в вызове её не даёт — и весь быстрый путь
+                // молча проваливался в запасной.
                 array_walk_recursive($line, function ($v) use (&$flat) { $flat[] = (string) $v; });
                 if (($flat[0] ?? '') !== 'STATUS' || count($flat) < 4) {
                     continue;
@@ -572,8 +577,10 @@ class FolderTree
                     $this->statusCache[strtolower($path)] = $vals;
                 }
             }
-        } catch (\Throwable) {
-            // сервер ответил не так — работаем по-старому, папка за папкой
+        } catch (\Throwable $e) {
+            // Сервер ответил не так — работаем по-старому, папка за папкой. Но молчать
+            // об этом нельзя: именно так однажды «ускорение» полдня простояло выключенным.
+            \Illuminate\Support\Facades\Log::warning('быстрый список папок не сработал, идём по одной: ' . $e->getMessage());
             $this->statusCache = [];
         }
 
@@ -587,7 +594,8 @@ class FolderTree
             try {
                 $r = $this->client->getConnection()->requestAndResponse('CAPABILITY');
                 $flat = [];
-                array_walk_recursive((array) $r->data(), function ($v) use (&$flat) { $flat[] = (string) $v; });
+                $data = (array) $r->data();
+                array_walk_recursive($data, function ($v) use (&$flat) { $flat[] = (string) $v; });
                 $this->capsCache = implode(' ', $flat);
             } catch (\Throwable) {
                 $this->capsCache = '';

@@ -58,7 +58,7 @@ class ComposeController extends Controller
         }
         $limitMb = 0;
         try {
-            $limitMb = (int) (app(\App\Services\Server\AmavisConfig::class)->current()['sizeLimitMb'] ?? 0);
+            $limitMb = app(\App\Services\Server\AmavisConfig::class)->messageSizeMb();
         } catch (\Throwable) {
             $limitMb = 0;   // настройки недоступны — не мешаем отправке
         }
