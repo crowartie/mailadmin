@@ -33,6 +33,12 @@ class FolderTree
 
     private ?array $folderCache = null;
 
+    /** Счётчики по всем папкам, полученные одной командой (см. statusAll). */
+    private ?array $statusCache = null;
+
+    /** Строка возможностей сервера: спрашиваем один раз за соединение. */
+    private ?string $capsCache = null;
+
     public function __construct(private readonly Client $client)
     {
     }
@@ -41,6 +47,7 @@ class FolderTree
     public function forgetCache(): void
     {
         $this->folderCache = null;
+        $this->statusCache = null;
     }
 
     /** Чей это ящик (в режиме администратора логин вида user*master — берём часть до звёздочки). */
@@ -360,6 +367,7 @@ class FolderTree
         $this->client->createFolder($name, false);
         $this->client->getConnection()->subscribeFolder($name);
         $this->folderCache = null;
+        $this->statusCache = null;
 
         return $name;
     }
@@ -422,6 +430,7 @@ class FolderTree
         }
         $this->client->getConnection()->subscribeFolder($this->utf7($path));
         $this->folderCache = null;
+        $this->statusCache = null;
 
         return $this->utf7($path);
     }
@@ -436,6 +445,7 @@ class FolderTree
         // Folder::move() шлёт старое имя в UTF-8, сервер ждёт UTF-7 — переименовываем через протокол сами.
         $this->client->getConnection()->renameFolder($path, $this->utf7($new));
         $this->folderCache = null;
+        $this->statusCache = null;
 
         return $this->utf7($new);
     }
@@ -444,6 +454,7 @@ class FolderTree
     {
         $this->folder($path)->delete(false);
         $this->folderCache = null;
+        $this->statusCache = null;
     }
 
     public function folder(string $path): Folder
@@ -497,13 +508,93 @@ class FolderTree
         return ['messages' => (int) ($st['messages'] ?? 0), 'unseen' => (int) ($st['unseen'] ?? 0), 'uidnext' => (int) ($st['uidnext'] ?? 0)];
     }
 
+    /**
+     * Счётчики писем по папке.
+     *
+     * Сначала смотрим в общий ответ, полученный одной командой на весь ящик
+     * (см. statusAll). Если его нет — спрашиваем отдельно, как раньше.
+     */
     private function safeStatus(Folder $folder): array
     {
+        $all = $this->statusAll();
+        $key = strtolower($folder->path);
+        if (isset($all[$key])) {
+            return $all[$key];
+        }
+
         try {
             return $folder->status();
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    /**
+     * Счётчики сразу по всем папкам — одной командой.
+     *
+     * Раньше на каждую папку уходила своя команда STATUS: у ящика с десятью папками это
+     * десять обращений туда и обратно, 52 мс из 199 мс на открытие страницы, и чем больше
+     * у человека папок, тем хуже. Dovecot умеет отдать список папок вместе со счётчиками
+     * за один раз — расширение LIST-STATUS.
+     *
+     * Если сервер его не объявил или ответ разобрать не вышло, возвращаем пустоту:
+     * вызывающий спросит счётчики по-старому. Почта не должна зависеть от того,
+     * угадали ли мы формат ответа.
+     *
+     * @return array<string,array{messages:int,unseen:int,uidnext:int}> ключ — путь папки строчными
+     */
+    private function statusAll(): array
+    {
+        if ($this->statusCache !== null) {
+            return $this->statusCache;
+        }
+        $this->statusCache = [];
+        try {
+            $conn = $this->client->getConnection();
+            if (! str_contains(strtoupper($this->capabilities()), 'LIST-STATUS')) {
+                return $this->statusCache;
+            }
+            $r = $conn->requestAndResponse('LIST', ['""', '"*"', 'RETURN', '(STATUS (MESSAGES UNSEEN UIDNEXT))']);
+            foreach ((array) $r->data() as $line) {
+                // Строка приходит разобранной в массив: ['STATUS', '<путь>', ['MESSAGES', '5', ...]]
+                $flat = [];
+                array_walk_recursive($line, function ($v) use (&$flat) { $flat[] = (string) $v; });
+                if (($flat[0] ?? '') !== 'STATUS' || count($flat) < 4) {
+                    continue;
+                }
+                $path = $flat[1];
+                $pairs = array_slice($flat, 2);
+                $vals = [];
+                for ($i = 0; $i + 1 < count($pairs); $i += 2) {
+                    $vals[strtolower($pairs[$i])] = (int) $pairs[$i + 1];
+                }
+                if ($vals !== []) {
+                    $this->statusCache[strtolower($path)] = $vals;
+                }
+            }
+        } catch (\Throwable) {
+            // сервер ответил не так — работаем по-старому, папка за папкой
+            $this->statusCache = [];
+        }
+
+        return $this->statusCache;
+    }
+
+    /** Что умеет сервер: строка возможностей, спрошенная один раз за соединение. */
+    private function capabilities(): string
+    {
+        if ($this->capsCache === null) {
+            try {
+                $r = $this->client->getConnection()->requestAndResponse('CAPABILITY');
+                $flat = [];
+                array_walk_recursive((array) $r->data(), function ($v) use (&$flat) { $flat[] = (string) $v; });
+                $this->capsCache = implode(' ', $flat);
+            } catch (\Throwable) {
+                $this->capsCache = '';
+            }
+        }
+
+        return $this->capsCache;
     }
 
     private function utf7(string $path): string
@@ -524,6 +615,7 @@ class FolderTree
         $this->client->createFolder($path, false, true);
         $this->client->getConnection()->subscribeFolder($path);
         $this->folderCache = null;
+        $this->statusCache = null;
 
         return $path;
     }
