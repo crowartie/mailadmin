@@ -1,9 +1,3 @@
-@import 'tailwindcss';
-
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
-
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
-}
+/* Этот файл не входит в сборку: vite.config собирает resources/scss/app.scss.
+   Раньше здесь подключался Tailwind, который нигде не использовался и только
+   утяжелял node_modules и каждую выкладку. Стили приложения — в resources/scss. */
