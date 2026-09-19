@@ -102,7 +102,7 @@ function printPage() {
                 <span class="grow" />
                 <div class="help__search">
                     <Icon name="search" :size="16" />
-                    <input v-model="q" class="input" placeholder="Что вы ищете? Например: отложить, вложение, спам, телефон" @input="onInput">
+                    <input v-model="q" class="input" placeholder="Что вы ищете? Например: отложить, вложение, спам, телефон" aria-label="Поиск по справке" @input="onInput">
                     <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="clear">✕</button>
                 </div>
                 <button class="btn btn--sm" type="button" title="Распечатать справочник" @click="printPage"><Icon name="print" :size="14" />Печать</button>
@@ -202,13 +202,14 @@ function printPage() {
                         </article>
                         <article class="help__item">
                             <h3>Как искать?</h3>
-                            <p>Поле «Поиск по письмам» вверху (клавиша <kbd>/</kbd>). Простые слова ищутся по всему письму — заголовкам и тексту. Чтобы сузить, используйте операторы, по-русски или по-английски:</p>
+                            <p>Поле «Поиск по письмам» вверху (клавиша <kbd>/</kbd>). Слева от поля — переключатель, где искать: «Везде», «От кого», «Кому», «Тема», «В тексте». Выберите «От кого» и напишите имя или адрес — найдутся письма только от этого человека; выбор запоминается. В открытом письме рядом с отправителем есть кнопка-лупа: она сразу показывает все письма от него. Простые слова при выборе «Везде» ищутся по всему письму — заголовкам и тексту. Те же отборы можно писать операторами, по-русски или по-английски:</p>
                             <table class="help__table">
                                 <thead><tr><th>Оператор</th><th>Что ищет</th></tr></thead>
                                 <tr><td><code>от: иванов</code></td><td>по отправителю (<code>from:</code>)</td></tr>
                                 <tr><td><code>кому: sales</code></td><td>по получателю (<code>to:</code>)</td></tr>
                                 <tr><td><code>тема: "счёт на оплату"</code></td><td>по теме, фраза в кавычках (<code>subject:</code>)</td></tr>
                                 <tr><td><code>копия: petrov</code></td><td>по полю «Копия» (<code>cc:</code>)</td></tr>
+                                <tr><td><code>текст: договор</code></td><td>только по тексту письма, без темы и адресов (<code>body:</code>)</td></tr>
                                 <tr><td><code>до: 2026-09-01</code></td><td>письма раньше даты (<code>before:</code>)</td></tr>
                                 <tr><td><code>после: 2026-08-01</code></td><td>письма позже даты (<code>after:</code>, <code>с:</code>)</td></tr>
                                 <tr><td><code>есть: вложение</code></td><td>с вложениями; также <code>есть: флажок</code>, <code>есть: непрочитанное</code>, <code>есть: ответ</code></td></tr>

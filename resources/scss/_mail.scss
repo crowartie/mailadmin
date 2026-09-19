@@ -138,6 +138,24 @@
         }
     }
 
+    // Переключатель поля поиска: живёт внутри рамки поиска, без своей рамки.
+    &__scope {
+        flex: 0 0 auto;
+        max-width: 108px;
+        height: 28px;
+        padding: 0 4px;
+        border: none;
+        border-right: 1px solid v.$c-border;
+        border-radius: 0;
+        background: transparent;
+        color: v.$c-muted;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        &:focus { outline: none; color: v.$c-text; }
+        @media (max-width: 700px) { max-width: 96px; font-size: 12.5px; }
+    }
+
     &__meta {
         display: flex;
         align-items: center;

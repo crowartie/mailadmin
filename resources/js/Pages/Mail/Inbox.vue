@@ -364,7 +364,7 @@ async function confirmDialog(value) {
         if (d.kind === 'newFolder') { const r = await api.createFolder(value, d.folder?.path || null); folders.value = r.folders; showToast({ text: 'Папка создана' }); }
         if (d.kind === 'renameFolder') { const r = await api.renameFolder(d.folder.path, value); folders.value = r.folders; if (folder.value === d.folder.path) folder.value = r.path; }
         // Панель папок рисуется из этого списка: пустой ответ сервера её бы уронил.
-        if (d.kind === 'deleteFolder') { const r = await api.deleteFolder(d.folder.path); if (Array.isArray(r?.folders)) folders.value = r.folders; if (folder.value === d.folder.path) go('INBOX'); }
+        if (d.kind === 'deleteFolder') { const r = await api.deleteFolder(d.folder.path); if (Array.isArray(r?.folders)) folders.value = r.folders; if (r?.moved) showToast({ text: `Папка удалена, ${plural(r.moved, 'письмо', 'письма', 'писем')} — в «Корзине»` }); if (folder.value === d.folder.path) go('INBOX'); }
         if (d.kind === 'emptyFolder') { const r = await api.emptyFolder(d.folder.path); folders.value = r.folders; if (folder.value === d.folder.path) load(1); }
         if (d.kind === 'label') { labels.value = await api.createLabel(value, d.color || '#2F6FEB'); }
         if (d.kind === 'renameLabel') { labels.value = await api.updateLabel(d.label.id, value, d.label.color); }
@@ -537,6 +537,7 @@ onBeforeUnmount(() => {
                     @context="openMenu"
                     @back="mobileRead = false"
                     @unsubscribe="unsubscribe"
+                    @search="search"
                     @meeting="meetingFrom"
                 />
                 <div v-else-if="selected.length" class="mread__empty">
@@ -700,13 +701,16 @@ onBeforeUnmount(() => {
         <Dialog v-if="dialog && dialog.kind === 'newFolder'" :title="dialog.folder ? 'Папка внутри «' + dialog.folder.name + '»' : 'Новая папка'" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты', maxlength: 80 }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'renameFolder'" title="Переименовать папку" :prompt="{ label: 'Новое название', value: dialog.folder.name, maxlength: 80 }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'deleteFolder'" :title="'Удалить папку «' + dialog.folder.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog">
-            <p style="margin: 0" class="hint">Письма в ней ({{ dialog.folder.total }}) будут удалены вместе с папкой.</p>
+            <!-- Раньше письма уничтожались вместе с папкой. Теперь они переезжают в корзину:
+                 папка может выглядеть пустой из-за фильтра, а внутри лежать сотня писем. -->
+            <p v-if="folders.some((f) => f.parent === dialog.folder.path)" style="margin: 0" class="hint hint--warn">У этой папки есть вложенные — сервер не удалит её, пока они есть. Сначала удалите их.</p>
+            <p v-else style="margin: 0" class="hint">Письма в ней ({{ dialog.folder.total }}) переедут в «Корзину» — оттуда их можно вернуть.</p>
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'emptyFolder'" :title="'Очистить «' + dialog.folder.name + '»?'" confirm-label="Очистить" danger @close="dialog = null" @confirm="confirmDialog">
             <p style="margin: 0" class="hint">Все письма ({{ dialog.folder.total }}) будут удалены навсегда.</p>
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'label'" title="Новая метка" :prompt="{ label: 'Название', placeholder: 'Например, Срочно' }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog">
-            <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: (dialog.color || COLORS[0]) === c }" :style="{ background: c }" @click="dialog.color = c" /></div>
+            <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: (dialog.color || COLORS[0]) === c }" :aria-label="'Цвет ' + c" :title="'Цвет ' + c" :style="{ background: c }" @click="dialog.color = c" /></div>
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'renameLabel'" title="Переименовать метку" :prompt="{ label: 'Название', value: dialog.label.name, maxlength: 80 }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'deleteLabel'" :title="'Удалить метку «' + dialog.label.name + '»?'" confirm-label="Удалить" danger @close="dialog = null" @confirm="confirmDialog">

@@ -21,6 +21,27 @@ class SearchQueryTest extends TestCase
         $this->assertTrue($q->needsAttachment());
     }
 
+    /** «текст:» ищет только по телу — отдельное условие BODY, а не общее TEXT. */
+    public function test_оператор_текста_письма(): void
+    {
+        $q = (new SearchQuery('текст:договор body:акт'))->apply($this->emptyQuery());
+        $criteria = json_encode($q->getQuery()->toArray(), JSON_UNESCAPED_UNICODE);
+
+        $this->assertStringContainsString('BODY', $criteria);
+        $this->assertStringContainsString('договор', $criteria);
+        $this->assertStringContainsString('акт', $criteria);
+        $this->assertStringNotContainsString('TEXT', $criteria);
+    }
+
+    /** Переключатель поля в интерфейсе шлёт по оператору на слово: оба слова должны совпасть. */
+    public function test_несколько_операторов_одного_поля(): void
+    {
+        $q = (new SearchQuery('от:Иван от:Петров'))->apply($this->emptyQuery());
+        $criteria = json_encode($q->getQuery()->toArray(), JSON_UNESCAPED_UNICODE);
+
+        $this->assertSame(2, substr_count($criteria, 'FROM'));
+    }
+
     public function test_английское_написание_и_синонимы(): void
     {
         foreach (['file:smeta', 'вложение:smeta', 'attachment:smeta'] as $text) {

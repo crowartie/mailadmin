@@ -48,8 +48,35 @@ function toggleSelectMode() {
     if (!selectMode.value) emit('clear');
 }
 
-const q = ref(props.query || '');
-watch(() => props.query, (v) => { q.value = v || ''; });
+// Поле поиска: «Везде» — простые слова по всему письму; остальное превращает каждое
+// слово в оператор («от:Иван от:Петров»). Операторы, написанные руками, не трогаем.
+const SCOPES = { from: 'от', to: 'кому', subject: 'тема', body: 'текст' };
+const SCOPE_LABELS = { all: 'Везде', from: 'От кого', to: 'Кому', subject: 'Тема', body: 'В тексте' };
+const SCOPE_HINTS = { all: 'Поиск по письмам', from: 'От кого: имя или адрес', to: 'Кому: имя или адрес', subject: 'Слова из темы', body: 'Слова из текста письма' };
+function loadScope() { try { return SCOPES[localStorage.getItem('mail.searchScope')] ? localStorage.getItem('mail.searchScope') : 'all'; } catch (e) { return 'all'; } }
+const scope = ref(loadScope());
+watch(scope, (v) => { try { localStorage.setItem('mail.searchScope', v); } catch (e) { /* приватный режим */ } });
+
+function composeQuery(text, sc) {
+    if (!text || sc === 'all' || !SCOPES[sc] || /(^|\s)\S+:/.test(text)) return text;
+    return text.split(/\s+/).filter(Boolean).map((w) => SCOPES[sc] + ':' + w).join(' ');
+}
+// Запрос, пришедший снаружи (из адреса страницы или «все письма от него»), раскладываем
+// обратно на поле и слова, если он весь из операторов одного поля.
+function decomposeQuery(query) {
+    const words = String(query || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return { scope: null, text: '' };
+    for (const [sc, op] of Object.entries(SCOPES)) {
+        const re = new RegExp('^' + op + ':(.+)$', 'i');
+        if (words.every((w) => re.test(w))) return { scope: sc, text: words.map((w) => w.replace(re, '$1')).join(' ') };
+    }
+    return { scope: null, text: query };
+}
+
+const initial = decomposeQuery(props.query);
+if (initial.scope) scope.value = initial.scope;
+const q = ref(initial.text);
+watch(() => props.query, (v) => { const d = decomposeQuery(v); if (d.scope) scope.value = d.scope; q.value = d.text; });
 const searchInput = ref(null);
 const selectedSet = computed(() => new Set(props.selected));
 const labelMap = computed(() => Object.fromEntries(props.labels.map((l) => [l.id, l])));
@@ -62,7 +89,11 @@ function onDragStart(e, m) {
 }
 
 function submitSearch() {
-    emit('search', q.value.trim());
+    emit('search', composeQuery(q.value.trim(), scope.value));
+}
+// Сменили поле при уже введённых словах — ищем сразу, не заставляя жать Enter ещё раз.
+function changeScope() {
+    if (q.value.trim() || props.query) submitSearch();
 }
 
 defineExpose({ focusSearch: () => searchInput.value?.focus() });
@@ -84,9 +115,14 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         <form class="mlist__search" role="search" @submit.prevent="submitSearch">
             <label for="mlist-q" class="sr-only">Поиск по письмам</label>
             <Icon name="search" :size="18" />
+            <!-- Поле поиска: люди ищут по отправителю и получателю, а о операторах «от:» и «кому:»
+                 знают не все. Переключатель делает то же самое, только видимо. -->
+            <select v-model="scope" class="mlist__scope" aria-label="Где искать" title="Где искать" @change="changeScope">
+                <option v-for="(label, key) in SCOPE_LABELS" :key="key" :value="key">{{ label }}</option>
+            </select>
             <!-- 174: Escape очищал поле и сразу выполнял поиск — набранное пропадало без возврата.
                  Теперь Escape только очищает поле; поиск запускает Enter или крестик. -->
-            <input id="mlist-q" ref="searchInput" v-model="q" type="search" placeholder="Поиск по письмам" @keydown.esc.prevent="q ? (q = '') : searchInput?.blur()">
+            <input id="mlist-q" ref="searchInput" v-model="q" type="search" :placeholder="SCOPE_HINTS[scope]" @keydown.esc.prevent="q ? (q = '') : searchInput?.blur()">
             <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''; submitSearch()" aria-label="Очистить"><Icon name="x" :size="14" /></button>
             <!-- 340: подсказка про клавишу показывалась и на телефоне, где клавиши нет. -->
             <span v-else class="kbd desktop-only">/</span>
@@ -103,7 +139,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                      показывал неполный ответ. Лучше честно назвать, где ещё не искали. -->
                 Не искали в {{ list.skipped.length }} {{ list.skipped.length === 1 ? 'папке' : 'папках' }} ({{ list.skipped.join(', ') }}) — сервер достраивает индекс, повторите через минуту
             </span>
-            <br>операторы: <span class="mono">от:иванов кому:sales тема:счёт файл:счёт.pdf есть:вложение после:01.09.2026 до:30.09.2026</span>
+            <br>операторы: <span class="mono">от:иванов кому:sales тема:счёт текст:договор файл:счёт.pdf есть:вложение после:01.09.2026 до:30.09.2026</span>
         </div>
 
         <div v-if="selected.length" class="mlist__bulk">

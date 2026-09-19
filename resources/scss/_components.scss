@@ -172,6 +172,9 @@
 
         &:hover { color: v.$c-text; }
         &--on { background: v.$c-accent-soft; color: v.$c-accent-ink; font-weight: 600; }
+
+        // На телефоне переключатель высотой 21 px — в него не попасть пальцем.
+        @media (max-width: 700px) { min-height: 32px; padding: 7px 12px; }
     }
 }
 
@@ -566,7 +569,8 @@ select.input { padding-right: 32px; }
         background: v.$c-accent-soft; color: v.$c-accent-ink;
 
         &--ok { background: v.$c-ok-soft; color: v.$c-ok; }
-        &--warn { background: v.$c-warn-soft; color: v.$c-warn; }
+        // Контраст «выключена» был 2.79 при норме 4.5: тёмный оттенок того же цвета.
+        &--warn { background: v.$c-warn-soft; color: v.$c-warn-ink; }
         &--off { background: v.$c-surface-2; color: v.$c-faint; }
     }
 

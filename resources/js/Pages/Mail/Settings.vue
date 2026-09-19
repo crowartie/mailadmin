@@ -257,17 +257,17 @@ const shortcuts = [
                                 </div>
                                 <div class="field">
                                     <label>Отмена отправки</label>
-                                    <select v-model="s.undo_seconds" class="input"><option :value="0">Выключена</option><option :value="5">5 секунд</option><option :value="10">10 секунд</option><option :value="20">20 секунд</option><option :value="30">30 секунд</option></select>
+                                    <select v-model="s.undo_seconds" class="input" aria-label="Окно отмены отправки"><option :value="0">Выключена</option><option :value="5">5 секунд</option><option :value="10">10 секунд</option><option :value="20">20 секунд</option><option :value="30">30 секунд</option></select>
                                 </div>
                                 <div class="field">
                                     <label>Картинки из интернета в письмах</label>
-                                    <select v-model="s.show_images" class="input"><option value="ask">Показывать по кнопке</option><option value="always">Показывать всегда</option></select>
+                                    <select v-model="s.show_images" class="input" aria-label="Картинки из интернета в письмах"><option value="ask">Показывать по кнопке</option><option value="always">Показывать всегда</option></select>
                                 </div>
                             </div>
                             <label class="toggle"><input v-model="s.unread_highlight" type="checkbox"><span class="toggle__track" />Подсвечивать непрочитанные цветом: полоска слева и тема</label>
                             <div v-if="s.unread_highlight" class="field__row" style="align-items: center; gap: 10px; padding-left: 44px">
                                 <span class="hint" style="margin: 0">Цвет подсветки</span>
-                                <input type="color" :value="s.unread_color || '#2F6FEB'" style="width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer" @input="s.unread_color = $event.target.value">
+                                <input type="color" :value="s.unread_color || '#2F6FEB'" aria-label="Цвет непрочитанных писем" title="Цвет непрочитанных писем" style="width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer" @input="s.unread_color = $event.target.value">
                                 <span class="hint" style="margin: 0"><span :style="{ display: 'inline-block', width: '3px', height: '14px', verticalAlign: 'middle', marginRight: '8px', background: s.unread_color || 'var(--accent)' }" /><b :style="{ color: s.unread_color || 'var(--accent-ink)' }">Так будет выглядеть тема непрочитанного</b></span>
                                 <button v-if="s.unread_color" class="btn btn--sm" type="button" @click="s.unread_color = ''">Синий темы</button>
                             </div>
@@ -328,13 +328,13 @@ const shortcuts = [
                         <form class="card mset__section" @submit.prevent="saveAutoreply">
                             <h2>Автоответ <span class="grow" /><label class="toggle"><input v-model="autoreply.enabled" type="checkbox"><span class="toggle__track" />{{ autoreply.enabled ? 'Включён' : 'Выключен' }}</label></h2>
                             <div class="mset__cols">
-                                <div class="field"><label>С (необязательно)</label><input v-model="autoreply.from" class="input" type="date"></div>
-                                <div class="field"><label>По (необязательно)</label><input v-model="autoreply.to" class="input" type="date"></div>
+                                <div class="field"><label for="ar-from">С (необязательно)</label><input id="ar-from" v-model="autoreply.from" class="input" type="date"></div>
+                                <div class="field"><label for="ar-to">По (необязательно)</label><input id="ar-to" v-model="autoreply.to" class="input" type="date"></div>
                             </div>
-                            <div class="field"><label>Тема</label><input v-model="autoreply.subject" class="input" required></div>
-                            <div class="field"><label>Текст</label><textarea v-model="autoreply.body" class="input" rows="5" required /></div>
+                            <div class="field"><label for="ar-subject">Тема</label><input id="ar-subject" v-model="autoreply.subject" class="input" required></div>
+                            <div class="field"><label for="ar-body">Текст</label><textarea id="ar-body" v-model="autoreply.body" class="input" rows="5" required /></div>
                             <div class="field" style="max-width: 260px"><label>Отвечать одному адресу не чаще, чем раз в</label>
-                                <select v-model="autoreply.days" class="input"><option :value="1">день</option><option :value="3">3 дня</option><option :value="7">неделю</option></select></div>
+                                <select v-model="autoreply.days" class="input" aria-label="Отвечать одному адресу не чаще, чем раз в"><option :value="1">день</option><option :value="3">3 дня</option><option :value="7">неделю</option></select></div>
                             <div><button class="btn btn--primary" type="submit" :disabled="busy">Сохранить</button></div>
                             <p class="hint" style="margin: 0">Автоответ работает на сервере: отвечает и когда веб-почта закрыта. Рассылкам и спаму сервер не отвечает.</p>
                         </form>
@@ -428,7 +428,7 @@ const shortcuts = [
                                 <div v-for="l in labels" :key="l.id" class="mset__li">
                                     <span class="mnav__swatch mnav__swatch--round" :style="{ background: l.color }" />
                                     <span class="grow">{{ l.name }}</span>
-                                    <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: l.color === c }" :style="{ background: c, width: '18px', height: '18px' }" @click="recolor(l, c)" /></div>
+                                    <div class="color-dots"><button v-for="c in COLORS" :key="c" type="button" :class="{ on: l.color === c }" :aria-label="'Цвет ' + c" :title="'Цвет ' + c" :style="{ background: c, width: '18px', height: '18px' }" @click="recolor(l, c)" /></div>
                                     <button class="ib ib--sm" type="button" title="Переименовать" @click="dialog = { kind: 'renameLabel', label: l }" aria-label="Переименовать"><Icon name="edit" :size="14" /></button>
                                     <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="dialog = { kind: 'deleteLabel', label: l }" aria-label="Удалить"><Icon name="trash" :size="14" /></button>
                                 </div>

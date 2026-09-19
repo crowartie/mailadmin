@@ -30,7 +30,8 @@
     background: v.$c-surface; border-bottom: 1px solid v.$c-border;
 }
 .crow__book { font-size: 11px; color: v.$c-faint; }
-.mrow__av--emp { background: v.$c-ok-soft; color: v.$c-ok; }
+// Контраст инициалов сотрудника был 3.0 при норме 4.5.
+.mrow__av--emp { background: v.$c-ok-soft; color: v.$c-ok-ink; }
 
 .ccard {
     flex: 1; min-height: 0; display: flex; flex-direction: column;

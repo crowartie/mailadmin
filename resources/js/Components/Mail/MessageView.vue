@@ -15,7 +15,7 @@ const props = defineProps({
     settings: { type: Object, default: () => ({}) },
     user: String,
 });
-const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting']);
+const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search']);
 
 const expanded = ref({});
 const quick = ref('');
@@ -196,6 +196,9 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                     <div class="msg__from" :title="m.from.mail">
                         <b>{{ m.from.name }}</b>
                         <span v-if="m.from.name !== m.from.mail" class="mono msg__mail" style="color: var(--muted)">{{ m.from.mail }}</span>
+                        <!-- Самый частый вопрос к поиску — «что ещё он мне писал». Одна кнопка вместо
+                             того, чтобы знать оператор «от:». -->
+                        <button v-if="m.from.mail" class="ib ib--sm msg__fromsearch" type="button" title="Все письма от этого отправителя" aria-label="Все письма от этого отправителя" @click.stop="$emit('search', 'от:' + m.from.mail)"><Icon name="search" :size="13" /></button>
                     </div>
                     <!-- 69: показываем первых троих, остальных — по щелчку; сорок адресатов
                          раньше выдавливали текст письма далеко вниз. -->

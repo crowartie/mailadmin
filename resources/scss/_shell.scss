@@ -223,3 +223,6 @@
     .app { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
     .app .nav { position: static; }
 }
+
+// Подписи нижней панели на телефоне были 10.5 px — мельче, чем читается на ходу.
+.tabbar__item span { font-size: 11.5px; }

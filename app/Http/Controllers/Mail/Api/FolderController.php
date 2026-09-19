@@ -47,9 +47,10 @@ class FolderController extends Controller
     {
         $store = new MailStore($imap->client());
         $this->guardSystem($store, $folder);
-        $store->deleteFolder($folder);
+        $moved = $store->deleteFolder($folder);
 
-        return response()->json(['folders' => $store->folders()]);
+        // Сколько писем переехало в корзину — интерфейс скажет об этом человеку.
+        return response()->json(['folders' => $store->folders(), 'moved' => $moved]);
     }
 
     /** Очистить корзину или спам. */

@@ -8,7 +8,7 @@ use Webklex\PHPIMAP\Query\WhereQuery;
 /**
  * Строка поиска с операторами → IMAP SEARCH.
  *
- *   от:иванов   кому:buh@   тема:счёт   есть:флажок   есть:непрочитанное   есть:вложение
+ *   от:иванов   кому:buh@   тема:счёт   текст:договор   есть:флажок   есть:непрочитанное   есть:вложение
  *   до:2026-09-01   после:2026-08-01   свободный текст — по всему письму
  *
  * Английские синонимы: from: to: subject: is:flagged is:unread has:attachment before: after:
@@ -87,6 +87,11 @@ class SearchQuery
                     break;
                 case 'копия': case 'cc':
                     $q->whereCc($value);
+                    break;
+                case 'текст': case 'body':
+                    // Только тело письма, без заголовков: «текст:договор» не найдёт письмо,
+                    // где «договор» стоит лишь в теме. Тело в полнотекстовом указателе есть.
+                    $q->whereBody($value);
                     break;
                 case 'до': case 'before': case 'по':
                     if ($d = $this->date($value)) {

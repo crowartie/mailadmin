@@ -156,10 +156,49 @@ class MailStore
         return $this->tree->renameFolder($path, $newName);
     }
 
-    /** @see FolderTree::deleteFolder() */
-    public function deleteFolder(string $path): void
+    /**
+     * Удалить папку, сохранив письма.
+     *
+     * Раньше папка удалялась вместе с содержимым, и письма исчезали бесследно: диалог
+     * предупреждал, но папка может выглядеть пустой из-за фильтра, а внутри лежать
+     * сотня писем. Теперь письма сначала переезжают в «Корзину» — из неё их можно
+     * вернуть, — и только потом папка удаляется. Так делают Thunderbird и Outlook.
+     *
+     * Папку внутри самой корзины переносить некуда: её письма и так в корзине,
+     * и они удаляются вместе с ней, как и раньше.
+     *
+     * @return int сколько писем переехало в корзину
+     */
+    public function deleteFolder(string $path): int
     {
+        // Папку с вложенными папками сервер не удаляет, но и не отказывает внятно:
+        // отвечает «ок», а папка остаётся. Говорим прямо.
+        $children = 0;
+        foreach ($this->tree->folders() as $f) {
+            if (str_starts_with((string) $f['path'], $path . '/') || str_starts_with((string) $f['path'], $path . '.')) {
+                $children++;
+            }
+        }
+        if ($children > 0) {
+            throw \App\Exceptions\MailException::invalid('Сначала удалите вложенные папки (' . $children . ') — сервер не удаляет папку, пока внутри есть другие.');
+        }
+
+        $trash = $this->tree->rolePathFor($path, 'trash');
+        $moved = 0;
+        $insideTrash = $trash !== '' && ($path === $trash || str_starts_with($path, $trash . '/') || str_starts_with($path, $trash . '.'));
+        if ($trash !== '' && ! $insideTrash) {
+            $uids = $this->listing->searchFrom($path, 1);
+            if ($uids !== []) {
+                $this->actions->move($path, $uids, $trash);
+                $moved = count($uids);
+            }
+        }
+        // Удалять открытую папку нельзя: соединение сидит в ней, и сервер на DELETE
+        // отвечает молчанием, роняя всё, что идёт следом в том же запросе.
+        $this->client->openFolder('INBOX', true);
         $this->tree->deleteFolder($path);
+
+        return $moved;
     }
 
     /** @see FolderTree::ensureFolder() */

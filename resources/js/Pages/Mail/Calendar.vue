@@ -278,9 +278,9 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                 <button class="btn btn--primary" type="button" style="margin: 0 0 10px" @click="create()"><Icon name="plus" :size="16" />Событие</button>
                 <div class="mini">
                     <div class="mini__head">
-                        <button class="ib ib--sm" type="button" @click="miniMonth = new Date(miniMonth.getFullYear(), miniMonth.getMonth() - 1, 1)"><Icon name="left" :size="14" /></button>
+                        <button class="ib ib--sm" type="button" aria-label="Предыдущий месяц" title="Предыдущий месяц" @click="miniMonth = new Date(miniMonth.getFullYear(), miniMonth.getMonth() - 1, 1)"><Icon name="left" :size="14" /></button>
                         <b>{{ MONTHS_N[miniMonth.getMonth()] }} {{ miniMonth.getFullYear() }}</b>
-                        <button class="ib ib--sm" type="button" @click="miniMonth = new Date(miniMonth.getFullYear(), miniMonth.getMonth() + 1, 1)"><Icon name="right" :size="14" /></button>
+                        <button class="ib ib--sm" type="button" aria-label="Следующий месяц" title="Следующий месяц" @click="miniMonth = new Date(miniMonth.getFullYear(), miniMonth.getMonth() + 1, 1)"><Icon name="right" :size="14" /></button>
                     </div>
                     <div class="mini__grid">
                         <span v-for="d in DAYS" :key="d" class="mini__dow">{{ d }}</span>
@@ -316,7 +316,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                      подсказку было не прочитать. Теперь поле во всю ширину, а срок появляется
                      под ним, когда есть что записывать. -->
                 <form class="task__add" @submit.prevent="addTask">
-                    <input v-model="newTask" class="input" placeholder="Новая задача…" style="height: 32px">
+                    <input v-model="newTask" class="input" placeholder="Новая задача…" aria-label="Новая задача" style="height: 32px">
                     <input v-if="newTask.trim()" v-model="newTaskDue" class="input" type="date" title="Срок" aria-label="Срок задачи" style="height: 32px; padding: 0 6px">
                 </form>
                 <div v-for="t in visibleTasks" :key="t.calendar + t.id" class="task" :class="{ 'task--done': t.done, 'task--late': !t.done && t.due && t.due < today }">
@@ -338,7 +338,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
 
             <section class="cal__main">
                 <div class="mread__bar cal__bar">
-                    <button class="ib mobile-only" type="button" @click="navOpen = true"><Icon name="menu" :size="22" /></button>
+                    <button class="ib mobile-only" type="button" aria-label="Меню" title="Меню" @click="navOpen = true"><Icon name="menu" :size="22" /></button>
                     <button class="btn btn--sm" type="button" @click="goToday">Сегодня</button>
                     <button class="ib ib--sm" type="button" title="Назад" @click="shift(-1)" aria-label="Назад"><Icon name="left" :size="18" /></button>
                     <button class="ib ib--sm" type="button" title="Вперёд" @click="shift(1)" aria-label="Вперёд"><Icon name="right" :size="18" /></button>

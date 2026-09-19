@@ -247,13 +247,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 
             <section class="mlist">
                 <div class="mobile-bar">
-                    <button class="ib" type="button" @click="navOpen = true"><Icon name="menu" :size="22" /></button>
+                    <button class="ib" type="button" aria-label="Меню" title="Меню" @click="navOpen = true"><Icon name="menu" :size="22" /></button>
                     <b>{{ title }}</b>
                     <button class="ib" type="button" title="Новый контакт" @click="create" aria-label="Новый контакт"><Icon name="plus" :size="20" /></button>
                 </div>
                 <form class="mlist__search" @submit.prevent>
                     <Icon name="search" :size="18" />
-                    <input ref="searchInput" v-model="q" type="search" placeholder="Имя, телефон, компания" @keydown.esc="q = ''">
+                    <input ref="searchInput" v-model="q" type="search" placeholder="Имя, телефон, компания" aria-label="Поиск контактов" @keydown.esc="q = ''">
                     <button v-if="q" class="ib ib--sm" type="button" title="Очистить" @click="q = ''" aria-label="Очистить"><Icon name="x" :size="14" /></button>
                     <span v-else class="kbd">/</span>
                 </form>
