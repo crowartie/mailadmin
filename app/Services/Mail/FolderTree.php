@@ -454,6 +454,7 @@ class FolderTree
         if (mb_strlen($clean) > 80) {
             throw MailException::invalid('Название длиннее 80 символов — сократите');
         }
+        self::assertNoDot($clean);
         $name = $clean;
         // Родитель приходит в виде IMAP-пути (UTF-7), имя — в UTF-8; собираем в UTF-8, кодирует библиотека.
         $parentName = $parent ? mb_convert_encoding($parent, 'UTF-8', 'UTF7-IMAP') : null;
@@ -489,7 +490,15 @@ class FolderTree
         $folder = $this->folder($path);
         $parts = explode($folder->delimiter, $folder->full_name);
         array_pop($parts);
-        $parts[] = trim(str_replace(['/', '.'], ' ', $newName));
+        // Точку не заменяем молча, как раньше: «Счета 2026.09» превращались
+        // в «Счета 2026 09», и человек об этом не узнавал.
+        $renamed = trim(str_replace(['/', "\r", "\n", "\t"], ' ', $newName));
+        $renamed = trim(preg_replace('/\s{2,}/u', ' ', $renamed) ?? $renamed);
+        if ($renamed === '') {
+            throw MailException::invalid('Введите название папки');
+        }
+        self::assertNoDot($renamed);
+        $parts[] = $renamed;
         $new = implode($folder->delimiter, $parts);
         // Folder::move() шлёт старое имя в UTF-8, сервер ждёт UTF-7 — переименовываем через протокол сами.
         $this->client->getConnection()->renameFolder($path, $this->utf7($new));
@@ -497,6 +506,21 @@ class FolderTree
         $this->statusCache = null;
 
         return $this->utf7($new);
+    }
+
+    /**
+     * Точка в названии: почтовый сервер её не принимает.
+     *
+     * Он хранит папки по уровням и точку считает служебным знаком — «Счета 2026.09»
+     * создать нельзя. Раньше человек видел «Такое имя занято почтовым сервером»
+     * и не мог догадаться, в чём дело. Проверено: точка — единственный запрещённый
+     * знак, кавычки, звёздочка, вопрос, процент и решётка проходят.
+     */
+    private static function assertNoDot(string $name): void
+    {
+        if (str_contains($name, '.')) {
+            throw MailException::invalid('В названии папки нельзя ставить точку — почтовый сервер считает её служебным знаком. Например, «' . str_replace('.', '-', $name) . '».');
+        }
     }
 
     public function deleteFolder(string $path): void
