@@ -209,13 +209,22 @@ class FolderTree
             }
             try {
                 $r = $conn->requestAndResponse('MYRIGHTS', [$conn->escapeString($row['path'])]);
-                $flat = [];
-                $data = (array) $r->data();
-                array_walk_recursive($data, function ($v) use (&$flat) { $flat[] = (string) $v; });
-                // * MYRIGHTS <папка> <права>; буквы: l lookup, r read, s write-seen,
-                // w write, i insert, t write-deleted, e expunge, k create, x delete, a admin
-                $rights = (string) end($flat);
-                if ($rights === '' || $rights === $row['path']) {
+                // Ответ приходит двумя строками:
+                //   ["MYRIGHTS", "<папка>", "lrs"]
+                //   ["OK", "Myrights", "completed", [ … время выполнения … ]]
+                // Берём первую по имени, а не по месту: сначала я взял последнее слово
+                // и получил «secs).» из служебной строки.
+                // Буквы: l lookup, r read, s write-seen, w write, i insert,
+                // t write-deleted, e expunge, k create, x delete, a admin.
+                $rights = '';
+                foreach ((array) $r->data() as $line) {
+                    $line = (array) $line;
+                    if (($line[0] ?? '') === 'MYRIGHTS' && isset($line[2])) {
+                        $rights = (string) $line[2];
+                        break;
+                    }
+                }
+                if ($rights === '') {
                     continue;
                 }
                 // Писать в папку можно, если есть хотя бы право менять пометки или удалять.
