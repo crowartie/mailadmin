@@ -767,6 +767,9 @@
     flex-direction: column;
     margin: 18px 22px;
     min-height: calc(100% - 36px);
+    // И не выше панели: иначе редактор уходил под нижнюю кромку, и его полоса
+    // фокуса обрывалась. Что не влезает — прокручивается внутри редактора.
+    max-height: calc(100% - 36px);
     position: relative;
 
     &--drop::after {
@@ -798,8 +801,10 @@
         > label { min-width: 56px; color: v.$c-muted; font-size: 13px; flex: 0 0 auto; }
         > input, > select { flex: 1; border: none; outline: none; font: inherit; background: transparent; color: v.$c-text; min-width: 0; }
         // Снимать обводку у поля можно, только если видно, что строка в фокусе:
-        // иначе с клавиатуры непонятно, где вводишь.
-        &:focus-within { box-shadow: inset 2px 0 0 v.$c-accent; background: v.$c-surface-2; }
+        // иначе с клавиатуры непонятно, где вводишь. Черта — снизу под всей строкой,
+        // как у Mail.ru: полоса слева дублировала такую же у редактора, а черта
+        // у самого поля «Кому» ложилась на нижний край фишки адресата.
+        &:focus-within { box-shadow: inset 0 -2px 0 v.$c-accent; background: v.$c-surface-2; }
         .links { display: flex; gap: 10px; font-size: 13px; }
         .links a { cursor: pointer; }
     }
@@ -817,7 +822,7 @@
     &__editor {
         flex: 1;
         padding: 16px 18px;
-        min-height: 220px;
+        min-height: 120px;
         line-height: 1.6;
         outline: none;
         overflow-y: auto;
@@ -887,7 +892,8 @@
     position: relative;
 
     input { flex: 1; min-width: 160px; border: none; outline: none; font: inherit; background: transparent; color: v.$c-text; height: 26px; }
-    &:focus-within { box-shadow: inset 0 -2px 0 v.$c-accent; }
+    // Черту фокуса рисует строка целиком (.compose__row): своя черта у поля ложилась
+    // на нижний край фишки адресата.
 
     &__chip {
         display: inline-flex;
