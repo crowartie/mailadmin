@@ -239,13 +239,6 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                     </span>
                     <span>{{ when(m.date) }}</span>
                 </span>
-                <span class="mrow__acts">
-                    <span class="mrow__acts-when">{{ when(m.date) }}</span>
-                    <button class="ib ib--sm" type="button" title="Архив" @click.stop="$emit('act', 'archive', [m.uid])" aria-label="Архив"><Icon name="archive" :size="15" /></button>
-                    <button class="ib ib--sm" type="button" title="Удалить" @click.stop="$emit('act', 'delete', [m.uid])" aria-label="Удалить"><Icon name="trash" :size="15" /></button>
-                    <button class="ib ib--sm" type="button" :title="m.flagged ? 'Снять флажок' : 'Флажок'" :class="{ 'ib--on': m.flagged }" @click.stop="$emit('act', m.flagged ? 'unflag' : 'flag', [m.uid])" :aria-label="m.flagged ? 'Снять флажок' : 'Флажок'"><Icon name="flag" :size="15" /></button>
-                    <button class="ib ib--sm" type="button" title="Отложить" @click.stop="$emit('context', $event, m.uid, 'snooze')" aria-label="Отложить"><Icon name="clock" :size="15" /></button>
-                </span>
             </div>
             </template>
             <div v-if="!list.messages.length && !loading" class="empty" style="padding-top: 60px">
