@@ -13,6 +13,7 @@ import Popover from '../../Components/Mail/Popover.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import ShortcutsHelp from '../../Components/Mail/ShortcutsHelp.vue';
+import PrintPreview from '../../Components/Mail/PrintPreview.vue';
 import { api, composeForm } from '../../mail/api';
 import { addrString, escapeHtml, hotkey, plural, presets, when } from '../../mail/format';
 import { useColumns } from '../../mail/useColumns';
@@ -395,9 +396,10 @@ async function recolor(l, color) {
 }
 const COLORS = ['#2F6FEB', '#16A05C', '#D9791F', '#C0392B', '#7B3FE4', '#0E8A8A', '#6B7787'];
 
-/** Печатная форма письма — та же, что по кнопке «Печать» в панели действий. */
+/** Предпросмотр печати поверх почты: печать — только по кнопке в нём. */
+const printing = ref(null);
 function printOpen(m) {
-    if (m) window.open(`/mail/print/${encodeURIComponent(m.folder)}/${m.uid}`, '_blank');
+    if (m) printing.value = { folder: m.folder, uid: m.uid, subject: m.subject };
 }
 
 // ── Написать ──────────────────────────────────────────────────
@@ -538,6 +540,7 @@ onBeforeUnmount(() => {
                     @back="mobileRead = false"
                     @unsubscribe="unsubscribe"
                     @search="search"
+                    @print="printOpen"
                     @meeting="meetingFrom"
                 />
                 <div v-else-if="selected.length" class="mread__empty">
@@ -746,6 +749,7 @@ onBeforeUnmount(() => {
         </Dialog>
 
         <ShortcutsHelp v-if="help" @close="help = false" />
+        <PrintPreview v-if="printing" :message="printing" @close="printing = null" />
         <Toast :toast="toast" @action="undoToast" @close="toast = null" />
     </MailLayout>
 </template>

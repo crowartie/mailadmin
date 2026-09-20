@@ -15,7 +15,7 @@ const props = defineProps({
     settings: { type: Object, default: () => ({}) },
     user: String,
 });
-const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search']);
+const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search', 'print']);
 
 const expanded = ref({});
 const quick = ref('');
@@ -136,10 +136,8 @@ function sendQuick() {
 }
 
 function print() {
-    // Печатная форма — отдельная страница без интерфейса (тема, поля, вложения, текст, переписка).
-    const m = props.message;
-    if (!m) return;
-    window.open(`/mail/print/${encodeURIComponent(m.folder)}/${m.uid}`, '_blank');
+    // Предпросмотр печати открывает страница — окном поверх почты, а не отдельной вкладкой.
+    if (props.message) emit('print', props.message);
 }
 
 const isDraft = computed(() => props.folderRole === 'drafts');
