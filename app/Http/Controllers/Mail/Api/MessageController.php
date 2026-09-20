@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Mail\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Cloud\LocalFiles;
 use App\Services\Mail\ImapSession;
 use App\Services\Mail\MailStore;
 use Illuminate\Http\JsonResponse;
@@ -50,6 +51,8 @@ class MessageController extends Controller
     {
         $store = new MailStore($imap->client());
         $m = $store->message($folder, $uid, ! $request->boolean('peek'));
+        // Ссылки на своё хранилище в теле письма — карточками: посмотреть, скачать, продлить.
+        $m['cloudFiles'] = LocalFiles::cardsIn($m['html'] ?? null, $imap->user());
         // История общения: отправитель прочитанного письма — тоже контакт (кроме своих, рассылок и роботов).
         $from = strtolower((string) ($m['from']['mail'] ?? ''));
         if ($from !== '' && $from !== strtolower($imap->user()) && ! in_array(MailStore::roleOfPath($folder), ['sent', 'drafts', 'spam', 'trash'], true)

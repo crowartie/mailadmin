@@ -1369,6 +1369,16 @@ select.input { padding-right: 28px; }
     .name { text-decoration: line-through; }
     .sz { color: v.$c-warn-ink; text-decoration: none; }
 }
+// Файл из хранилища, у которого истёк срок ссылки: чип на месте, нажимать не на что.
+.att--gone {
+    border-style: dashed;
+    background: transparent;
+    color: v.$c-muted;
+    .att__main { cursor: default; }
+    .sz { color: v.$c-warn-ink; }
+}
+.msg__cloud { align-items: center; }
+.msg__cloud-note { flex-basis: 100%; font-size: 12px; color: v.$c-muted; }
 .att__btn {
     display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; border-radius: 6px;
     border: none; background: transparent; color: v.$c-muted; cursor: pointer; margin-left: 2px;

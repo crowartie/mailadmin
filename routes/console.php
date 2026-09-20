@@ -28,6 +28,8 @@ Schedule::command('feedback:import')->everyMinute()->withoutOverlapping();
 Schedule::command('reports:fetch')->hourly()->withoutOverlapping();
 // Сервисы меняют свои серверы — SPF-диапазоны для «отправки с чужих серверов» перечитываем ежедневно.
 Schedule::command('external-senders:refresh')->dailyAt('04:10')->withoutOverlapping();
+// Хранилище больших вложений: по умолчанию ничего не удаляет (keep_days = 0), только чистит временные каталоги конвертера.
+Schedule::command('files:purge')->dailyAt('04:30')->withoutOverlapping();
 // Кэш предпросмотра офисных вложений (PDF из LibreOffice): старше недели — удалить.
 Schedule::call(function () {
     $dir = storage_path('app/private/preview');

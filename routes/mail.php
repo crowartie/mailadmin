@@ -27,6 +27,9 @@ Route::middleware('area:mail')->group(function () {
     Route::post('/mail/logout', [LoginController::class, 'destroy']);
     // Выпуск письма из карантина по подписанной ссылке из сводки (вход не нужен).
     Route::get('/mail/quarantine/release/{id}/{secret}', [\App\Http\Controllers\Mail\QuarantineController::class, 'releaseSigned'])->name('mail.quarantine.release')->middleware('signed:relative');
+    // Файл по ссылке из письма (https://files.<домен>/<токен>/<имя> → nginx переписывает в /f/…). Входа нет.
+    Route::match(['GET', 'HEAD'], '/f/{token}/{name?}', [\App\Http\Controllers\Mail\FilesController::class, 'download'])
+        ->where('token', '[A-Za-z0-9_-]{20,64}')->where('name', '.*')->middleware('throttle:120,1');
 
     // CalDAV/CardDAV для телефонов и почтовых программ (Basic-авторизация паролем от почты).
     Route::match(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'PROPFIND', 'PROPPATCH', 'REPORT', 'MKCOL', 'MKCALENDAR', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'ACL'], '/dav/{path?}', DavController::class)->where('path', '.*');
@@ -92,6 +95,13 @@ Route::middleware('area:mail')->group(function () {
             Route::get('message/{folder}/{uid}/attachment/{index}', [MessageController::class, 'attachment'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
             Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 'attachmentsZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
             Route::get('message/{folder}/{uid}/attachment/{index}/preview.pdf', [MessageController::class, 'attachmentPreview'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
+            // Своё хранилище больших вложений: мои файлы, продление, удаление, предпросмотр в почте.
+            Route::get('files', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'index']);
+            Route::get('files/{token}', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'show'])->where('token', '[A-Za-z0-9_-]{20,64}');
+            Route::post('files/{token}/renew', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'renew'])->where('token', '[A-Za-z0-9_-]{20,64}');
+            Route::delete('files/{token}', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'destroy'])->where('token', '[A-Za-z0-9_-]{20,64}');
+            Route::get('files/{token}/content', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'content'])->where('token', '[A-Za-z0-9_-]{20,64}');
+            Route::get('files/{token}/preview.pdf', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'preview'])->where('token', '[A-Za-z0-9_-]{20,64}');
             Route::get('message/{folder}/{uid}/raw', [MessageController::class, 'raw'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
             Route::get('message/{folder}/{uid}/thread', [MessageController::class, 'thread'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
             Route::get('message/{folder}/{uid}', [MessageController::class, 'show'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');

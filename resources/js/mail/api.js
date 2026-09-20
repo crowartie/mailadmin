@@ -105,6 +105,12 @@ export const api = {
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
     attachmentPreviewUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/preview.pdf`,
     attachmentsZipUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/attachments.zip`,
+    // Своё хранилище больших вложений
+    files: () => request('GET', '/mail/api/files'),
+    fileRenew: (token) => request('POST', `/mail/api/files/${token}/renew`),
+    fileDelete: (token) => request('DELETE', `/mail/api/files/${token}`),
+    fileContentUrl: (token) => `/mail/api/files/${token}/content`,
+    filePreviewUrl: (token) => `/mail/api/files/${token}/preview.pdf`,
     rawUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/raw`,
 
     action: (folder, uids, op, extra = {}, opts = {}) => request('POST', '/mail/api/action', { folder, uids, op, ...extra }, opts),

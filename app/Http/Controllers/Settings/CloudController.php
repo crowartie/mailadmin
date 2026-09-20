@@ -104,6 +104,33 @@ class CloudController extends Controller
         return back()->with('success', 'Настройки облака сохранены');
     }
 
+    /** Своё хранилище больших вложений (files.<домен>): включение, адрес, пороги, срок. */
+    public function filesSave(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'enabled' => ['boolean'],
+            'host' => ['required', 'string', 'max:120', 'regex:/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i'],
+            'threshold_mb' => ['required', 'integer', 'min:1', 'max:1024'],
+            'max_mb' => ['required', 'integer', 'min:1', 'max:2048'],
+            'expire_days' => ['required', 'integer', 'min:1', 'max:3650'],
+            'preview_mb' => ['required', 'integer', 'min:0', 'max:200'],
+            'keep_days' => ['required', 'integer', 'min:0', 'max:3650'],
+            'user_quota_gb' => ['required', 'integer', 'min:1', 'max:1000'],
+        ]);
+        $enabled = (bool) ($data['enabled'] ?? false);
+        if ($enabled && ! \App\Http\Controllers\Mail\FilesController::ready()) {
+            return back()->with('error', 'Каталог хранилища не готов — выполните на сервере: sudo bash /opt/mailadmin/deploy/files-host.sh');
+        }
+        AppSetting::put(\App\Services\Cloud\LocalFiles::GROUP, [
+            'enabled' => $enabled, 'host' => strtolower(trim($data['host'])),
+            'threshold_mb' => (int) $data['threshold_mb'], 'max_mb' => (int) $data['max_mb'], 'expire_days' => (int) $data['expire_days'],
+            'preview_mb' => (int) $data['preview_mb'], 'keep_days' => (int) $data['keep_days'], 'user_quota_gb' => (int) $data['user_quota_gb'],
+        ]);
+        AdminAction::log('settings.update', 'хранилище файлов');
+
+        return back()->with('success', 'Настройки хранилища сохранены');
+    }
+
     public function cloudDisconnect(): RedirectResponse
     {
         \App\Services\Cloud\Nextcloud::disconnect();

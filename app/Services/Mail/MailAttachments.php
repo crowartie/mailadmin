@@ -151,56 +151,7 @@ class MailAttachments
     public function attachmentPreviewPdf(string $path, int $uid, int $index): string
     {
         $a = $this->attachment($path, $uid, $index);
-        $content = (string) $a->getContent();
-        if ($content === '') {
-            throw MailException::notFound('Вложение пустое');
-        }
-        if (strlen($content) > 25 * 1024 * 1024) {
-            throw MailException::tooLarge('Документ слишком большой для предпросмотра — скачайте его');
-        }
-        $name = $a->getName();
-        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-        if (! in_array($ext, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'], true)) {
-            throw MailException::unsupported('Этот тип файла не показываем — скачайте его');
-        }
-        $dir = storage_path('app/private/preview');
-        if (! is_dir($dir)) {
-            mkdir($dir, 0750, true);
-        }
-        $pdf = $dir . '/' . sha1($content) . '.pdf';
-        if (is_file($pdf) && filesize($pdf) > 0) {
-            touch($pdf);
 
-            return $pdf;
-        }
-        $lock = \Illuminate\Support\Facades\Cache::lock('office-preview', 90);
-        if (! $lock->block(60)) {
-            throw MailException::busy('Конвертер занят — попробуйте через минуту');
-        }
-        try {
-            if (is_file($pdf) && filesize($pdf) > 0) {   // пока ждали, сделал кто-то другой
-                return $pdf;
-            }
-            $work = $dir . '/tmp-' . bin2hex(random_bytes(6));
-            mkdir($work, 0750, true);
-            $src = $work . '/in.' . $ext;
-            file_put_contents($src, $content);
-            // Свой профиль в каталоге кэша: у www-data нет домашней папки, без профиля soffice не стартует.
-            $cmd = ['soffice', '-env:UserInstallation=file://' . $dir . '/profile', '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', $work, $src];
-            $p = new \Symfony\Component\Process\Process($cmd, $work, ['HOME' => $dir], null, 120);
-            $p->run();
-            $out = $work . '/in.pdf';
-            if (! $p->isSuccessful() || ! is_file($out)) {
-                \Illuminate\Support\Facades\Log::warning('office-preview: ' . $name . ': ' . trim($p->getErrorOutput() . ' ' . $p->getOutput()));
-                \Illuminate\Support\Facades\File::deleteDirectory($work);
-                throw MailException::upstream('Не удалось подготовить предпросмотр — скачайте документ');
-            }
-            rename($out, $pdf);
-            \Illuminate\Support\Facades\File::deleteDirectory($work);
-
-            return $pdf;
-        } finally {
-            $lock->release();
-        }
+        return OfficePdf::convertContent((string) $a->getContent(), (string) $a->getName());
     }
 }

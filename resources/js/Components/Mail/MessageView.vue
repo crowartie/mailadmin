@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import Popover from './Popover.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
-import { isEmpty, viewable, viewerItems } from '../../mail/attachments';
+import { isEmpty, isImg, isOffice, viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
 import { addrList, initials, size, when } from '../../mail/format';
 
@@ -96,6 +96,35 @@ const viewer = ref(null);   // { items, start }
 function openAttachment(m, a) {
     const list = m.attachments.filter(viewable);
     viewer.value = { start: Math.max(0, list.findIndex((x) => x.index === a.index)), items: viewerItems(m.folder, m.uid, m.attachments) };
+}
+// Файлы из своего хранилища (ссылки в теле письма) — карточками рядом с вложениями.
+const cloudFiles = (m) => (m.cloudFiles || []);
+const cloudLive = (m) => cloudFiles(m).filter((f) => !f.expired);
+const fmtDay = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU') : '');
+function cloudNote(m) {
+    const live = cloudLive(m);
+    if (!live.length) return 'Срок ссылок истёк' + (cloudFiles(m).some((f) => f.mine) ? ' — продлите их кнопкой у файла' : ' — попросите отправителя продлить');
+    const until = live.map((f) => f.expires).filter(Boolean).sort()[0];
+    return 'Файлы лежат на сервере почты' + (until ? ', ссылки действуют до ' + fmtDay(until) : '') + (live.some((f) => f.mine) ? ' — можно продлить' : '');
+}
+function openCloudFile(m, f) {
+    const list = cloudLive(m).filter((x) => x.preview);
+    viewer.value = {
+        start: Math.max(0, list.findIndex((x) => x.token === f.token)),
+        items: list.map((x) => ({
+            url: isOffice(x) ? api.filePreviewUrl(x.token) : api.fileContentUrl(x.token), downloadUrl: x.url,
+            name: x.name, type: isImg(x) ? x.type : 'application/pdf', size: x.size, converted: isOffice(x),
+        })),
+    };
+}
+async function renewFile(f) {
+    try {
+        const r = await api.fileRenew(f.token);
+        Object.assign(f, r);
+        emit('toast', { text: 'Ссылка на «' + f.name + '» продлена до ' + fmtDay(r.expires) });
+    } catch (e) {
+        emit('toast', { text: e.message || 'Не удалось продлить ссылку', error: true });
+    }
 }
 // Вложения письма без картинок из тела — то, что человек видит списком.
 const atts = (m) => (m.attachments || []).filter((a) => !a.inline);
@@ -296,6 +325,19 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                     >
                         <Icon name="download" :size="13" /><span class="name">Скачать все ({{ attsOk(m).length }})</span>
                     </a>
+                </div>
+                <!-- Файлы, ушедшие ссылкой через своё хранилище: смотреть, скачать, продлить (свои) -->
+                <div v-if="cloudFiles(m).length" class="msg__atts msg__cloud">
+                    <span v-for="f in cloudFiles(m)" :key="f.token" class="att att--cloud" :class="{ 'att--view': f.preview && !f.expired, 'att--gone': f.expired }" :title="f.expired ? f.name + ' · срок ссылки истёк' : f.name + ' · ссылка до ' + fmtDay(f.expires)">
+                        <a v-if="!f.expired" class="att__main" :href="f.url" @click="f.preview && (openCloudFile(m, f), $event.preventDefault())">
+                            <Icon name="cloud" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span>
+                        </a>
+                        <span v-else class="att__main"><Icon name="cloud" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">срок истёк</span></span>
+                        <button v-if="f.preview && !f.expired" class="att__btn" type="button" title="Посмотреть" aria-label="Посмотреть" @click="openCloudFile(m, f)"><Icon name="eye" :size="14" /></button>
+                        <a v-if="!f.expired" class="att__btn" :href="f.url" title="Скачать" aria-label="Скачать"><Icon name="download" :size="14" /></a>
+                        <button v-if="f.mine" class="att__btn" type="button" title="Продлить ссылку" aria-label="Продлить ссылку" @click="renewFile(f)"><Icon name="refresh" :size="14" /></button>
+                    </span>
+                    <span class="msg__cloud-note">{{ cloudNote(m) }}</span>
                 </div>
                 <!-- Объясняем, что произошло, и что с этим делать: иначе пустой файл читается
                      как «почта потеряла вложение». -->

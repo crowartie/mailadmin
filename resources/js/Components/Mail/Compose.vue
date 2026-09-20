@@ -229,7 +229,7 @@ function addFiles(list) {
             // Текст про облако показывался, даже когда облако выключено.
             emit('toast', {
                 text: props.cloud?.enabled
-                    ? `«${f.name}» больше ${Math.round(MAX_FILE / 1048576)} МБ — не влезет ни в письмо, ни в облако`
+                    ? `«${f.name}» больше ${Math.round(MAX_FILE / 1048576)} МБ — столько не примет даже хранилище файлов`
                     : `«${f.name}» больше ${Math.round(MAX_MESSAGE / 1048576)} МБ — столько почта не принимает`,
                 error: true,
             });
@@ -416,14 +416,14 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                     <button class="att__btn" type="button" title="Убрать это вложение" aria-label="Убрать это вложение" @click="dropExisting(a)"><Icon name="x" :size="13" /></button>
                 </span>
             </template>
-            <span v-for="(f, i) in files" :key="f.name + i" class="att" :class="{ 'att--cloud': viaCloud.has(i) }" :title="viaCloud.has(i) ? 'Уйдёт ссылкой через облако' : f.name">
+            <span v-for="(f, i) in files" :key="f.name + i" class="att" :class="{ 'att--cloud': viaCloud.has(i) }" :title="viaCloud.has(i) ? 'Уйдёт ссылкой: файл ляжет на сервер, в письме будет ссылка' : f.name">
                 <a v-if="localViewable(f)" class="att__main" href="#" title="Посмотреть" @click.prevent="openLocal(i)"><Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></a>
                 <template v-else><Icon :name="viaCloud.has(i) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></template>
                 <button v-if="localViewable(f)" class="att__btn" type="button" title="Посмотреть" @click="openLocal(i)" aria-label="Посмотреть"><Icon name="eye" :size="13" /></button>
-                <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'" @click="toggleCloud(i)" :aria-label="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой через облако'"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
+                <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой, а не вложением'" @click="toggleCloud(i)" :aria-label="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой, а не вложением'"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
                 <button type="button" title="Убрать" @click="removeFile(i)" aria-label="Убрать"><Icon name="x" :size="13" /></button>
             </span>
-            <span v-if="cloud.enabled && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель откроет их в облаке</span>
+            <span v-if="cloud.enabled && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель скачает по ссылке из письма</span>
             <!-- Предупреждение показываем и при включённом облаке: часть файлов всё равно
                  уходит внутри письма, а вес считаем вместе с унаследованными. -->
             <span v-if="inMailSize > MAX_MESSAGE" class="chip chip--no" style="height: 28px">{{ size(inMailSize) }} — больше предела почты ({{ Math.round(MAX_MESSAGE / 1048576) }} МБ), письмо не уйдёт</span>

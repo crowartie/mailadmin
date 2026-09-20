@@ -24,5 +24,5 @@ server {
         include fastcgi_params;
     }
     location ~ /\.(?!well-known).* { deny all; }
-    client_max_body_size 260m;
+    client_max_body_size 520m;
 }

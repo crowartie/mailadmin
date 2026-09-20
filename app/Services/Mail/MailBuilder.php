@@ -3,6 +3,7 @@
 namespace App\Services\Mail;
 
 use App\Models\Webmail\Setting;
+use App\Services\Cloud\Cloud;
 use Illuminate\Http\UploadedFile;
 use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mime\Address;
@@ -29,7 +30,7 @@ class MailBuilder
      * @param array $form  to, cc, bcc (строки «Имя <адрес>, адрес»), subject, html, inReplyTo, references,
      *                     forwardOf {folder, uid} — переслать с вложениями исходного письма
      * @param UploadedFile[] $files
-     * @param int[] $cloud  индексы файлов, которые уходят ссылкой через Nextcloud
+     * @param int[] $cloud  индексы файлов, которые уходят ссылкой (своё хранилище или Nextcloud)
      */
     public function build(array $form, array $files = [], array $cloud = []): Email
     {
@@ -51,8 +52,11 @@ class MailBuilder
             }
         }
 
+        // Message-ID нужен заранее: файлы в хранилище помечаются письмом, к которому приложены.
+        $messageId = $email->generateMessageId();
+
         $html = (string) ($form['html'] ?? '');
-        $links = $this->publishToCloud($files, $cloud);
+        $links = $this->publishToCloud($files, $cloud, $messageId);
         if ($links) {
             $html .= $this->cloudBlockHtml($links);
         }
@@ -128,13 +132,13 @@ class MailBuilder
 
         $email->getHeaders()->addTextHeader('X-Mailer', 'Почта ' . config('areas.default_domain'));
         // Message-ID фиксируем сами: иначе у отправленного письма и копии в «Отправленных» он разный.
-        $email->getHeaders()->addIdHeader('Message-ID', $email->generateMessageId());
+        $email->getHeaders()->addIdHeader('Message-ID', $messageId);
 
         return $email;
     }
 
 
-    /** Загрузить отмеченные файлы в Nextcloud. @return array<int,array{name:string,size:int,url:string,expires:?string}> */
+    /** Положить отмеченные файлы в хранилище. @return array<int,array{name:string,size:int,url:string,expires:?string}> */
     /**
      * Имя файла, которое можно класть в письмо.
      *
@@ -157,38 +161,48 @@ class MailBuilder
         return 'вложение-' . ($index + 1) . $ext;
     }
 
-    private function publishToCloud(array $files, array $cloud): array
+    private function publishToCloud(array $files, array $cloud, string $messageId): array
     {
-        if (! $cloud || ! \App\Services\Cloud\Nextcloud::enabled()) {
+        if (! $cloud || ! Cloud::enabled()) {
             return [];
         }
-        $nc = new \App\Services\Cloud\Nextcloud();
         $out = [];
         foreach ($files as $i => $file) {
             if (! in_array((int) $i, $cloud, true) || ! $file instanceof UploadedFile || ! $file->isValid()) {
                 continue;
             }
-            $r = $nc->publish($file->getRealPath(), $file->getClientOriginalName(), $this->session->user());
-            $out[] = ['name' => $file->getClientOriginalName(), 'size' => (int) $file->getSize(), 'url' => $r['url'], 'expires' => $r['expires']];
+            $size = (int) $file->getSize();
+            $r = Cloud::publish($file->getRealPath(), $file->getClientOriginalName(), $this->session->user(), $messageId);
+            $out[] = ['name' => $file->getClientOriginalName(), 'size' => $size, 'url' => $r['url'], 'expires' => $r['expires']];
         }
 
         return $out;
     }
 
 
+    /**
+     * Блок ссылок в письме — как у Mail.ru: заголовок, по файлу имя и «Ссылка для скачивания»,
+     * внизу срок хранения. Читается в любом клиенте, в том числе без картинок и стилей.
+     */
     private function cloudBlockHtml(array $links): string
     {
         $fmt = fn (int $b): string => \App\Support\Format::size($b);
         $rows = '';
         foreach ($links as $l) {
-            $rows .= '<div style="margin:4px 0"><a href="' . htmlspecialchars($l['url']) . '" style="color:#1a56db">' . htmlspecialchars($l['name']) . '</a> <span style="color:#777">(' . $fmt($l['size']) . ')</span></div>';
+            $url = htmlspecialchars($l['url'], ENT_QUOTES);
+            $rows .= '<div style="margin:0 0 10px">'
+                . '<div style="font-weight:600;color:#1b2430">' . htmlspecialchars($l['name']) . ' <span style="font-weight:400;color:#6b7280">(' . $fmt($l['size']) . ')</span></div>'
+                . '<div style="color:#4b5563">Ссылка для скачивания: <a href="' . $url . '" style="color:#1a56db;word-break:break-all">' . $url . '</a></div>'
+                . '</div>';
         }
         $until = array_filter(array_map(fn ($l) => $l['expires'], $links));
-        $note = $until ? 'Ссылки действуют до ' . date('d.m.Y', strtotime(min($until))) . '.' : '';
+        $note = $until
+            ? 'Файлы будут храниться до ' . date('d.m.Y', strtotime(min($until))) . '. Если срок истёк, попросите отправителя продлить ссылку.'
+            : '';
 
-        return '<div style="margin-top:16px;padding:12px 14px;border:1px solid #dde3ea;border-radius:8px;background:#f6f8fa;font-family:sans-serif;font-size:14px">'
-            . '<div style="font-weight:600;margin-bottom:6px">Файлы к письму (через облако)</div>' . $rows
-            . ($note ? '<div style="color:#777;font-size:12px;margin-top:6px">' . $note . '</div>' : '') . '</div>';
+        return '<div style="margin-top:20px;padding:16px 18px;border:1px solid #dde3ea;border-radius:10px;background:#f6f8fa;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.45;color:#1b2430">'
+            . '<div style="font-weight:700;margin-bottom:10px">К этому письму приложены ссылки на следующие файлы:</div>' . $rows
+            . ($note ? '<div style="color:#6b7280;font-size:12px;margin-top:4px">' . $note . '</div>' : '') . '</div>';
     }
 
 

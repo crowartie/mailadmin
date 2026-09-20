@@ -175,6 +175,7 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/settings/cloud', [CloudController::class, 'cloudSave']);
         Route::post('/settings/cloud/disconnect', [CloudController::class, 'cloudDisconnect']);
         Route::post('/settings/cloud/test', [CloudController::class, 'cloudTest']);
+        Route::post('/settings/files', [CloudController::class, 'filesSave']);
         Route::get('/feedback', [FeedbackController::class, 'index']);
         Route::post('/feedback/{ticket}', [FeedbackController::class, 'update'])->whereNumber('ticket');
         Route::post('/feedback/{ticket}/reply', [FeedbackController::class, 'reply'])->whereNumber('ticket');

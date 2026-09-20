@@ -6,7 +6,7 @@ import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import Editor from '../../Components/Mail/Editor.vue';
 import Toast from '../../Components/Mail/Toast.vue';
-import { plural, when as whenCommon } from '../../mail/format';
+import { plural, size, when as whenCommon } from '../../mail/format';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import { api } from '../../mail/api';
 import { useSecuritySettings } from '../../mail/useSecuritySettings';
@@ -28,7 +28,7 @@ const props = defineProps({
 
 const SECTIONS = [
     ['general', 'Общие'], ['signature', 'Подпись'], ['autoreply', 'Автоответ'], ['rules', 'Правила'],
-    ['folders', 'Папки и метки'], ['devices', 'Телефон и программы'], ['security', 'Безопасность'], ['shortcuts', 'Горячие клавиши'],
+    ['folders', 'Папки и метки'], ['files', 'Мои файлы'], ['devices', 'Телефон и программы'], ['security', 'Безопасность'], ['shortcuts', 'Горячие клавиши'],
 ];
 
 const s = ref({ ...props.settings });
@@ -99,6 +99,31 @@ const {
 } = useSecuritySettings({ busy, say, ask, force2fa: props.force2fa });
 // Открыли сразу «Безопасность» — читаем её данные, не дожидаясь щелчка по разделу.
 if (props.section === 'security') loadSecurity();
+
+// «Мои файлы»: большие вложения, ушедшие ссылкой через своё хранилище.
+const cloudFiles = ref(null);
+const cloudFilesError = ref('');
+const fmtDay = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU') : '');
+async function loadFiles() {
+    cloudFilesError.value = '';
+    try { cloudFiles.value = await api.files(); } catch (e) { cloudFilesError.value = e.message; }
+}
+async function renewFile(f) {
+    try { Object.assign(f, await api.fileRenew(f.token)); say('Ссылка продлена до ' + fmtDay(f.expires)); } catch (e) { say(e.message, true); }
+}
+async function deleteFile(f) {
+    if (!await ask('Удалить файл?', '«' + f.name + '» исчезнет с сервера, ссылка из письма перестанет работать.', 'Удалить', true)) return;
+    try {
+        const r = await api.fileDelete(f.token);
+        cloudFiles.value.files = cloudFiles.value.files.filter((x) => x.token !== f.token);
+        cloudFiles.value.used = r.used;
+        say('Файл удалён');
+    } catch (e) { say(e.message, true); }
+}
+async function copyLink(f) {
+    try { await navigator.clipboard.writeText(f.url); say('Ссылка скопирована'); } catch { say('Скопируйте вручную: ' + f.url, true); }
+}
+if (props.section === 'files') loadFiles();
 
 /**
  * 196: поля, которые ждут кнопки «Сохранить». Раздел настроек — обычная ссылка,
@@ -525,6 +550,27 @@ const shortcuts = [
                         <div class="card mset__section" style="max-width: 560px">
                             <h2>Почтовые программы и телефон<span class="grow" /><Link href="/mail/settings/devices" class="btn btn--sm"><Icon name="mobile" :size="14" />Параметры</Link></h2>
                             <p class="hint" style="margin: 0">Адреса серверов, профиль для iPhone и сертификат — в разделе «Телефон и программы». Для отдельного устройства создайте пароль приложения выше, чтобы не давать ему основной.</p>
+                        </div>
+                    </template>
+
+                    <!-- Мои файлы -->
+                    <template v-if="section === 'files'">
+                        <div class="card mset__section">
+                            <h2>Мои файлы <span class="grow" /><span v-if="cloudFiles && cloudFiles.enabled" class="hint">{{ size(cloudFiles.used) }} из {{ size(cloudFiles.quota) }}</span></h2>
+                            <p class="hint" style="margin-top: 0">Большие вложения уходят из письма ссылкой и лежат здесь. Ссылка действует {{ cloudFiles ? cloudFiles.expireDays : 30 }} дн., файл остаётся — продлить можно в любой момент. Удалённый файл по ссылке больше не откроется.</p>
+                            <p v-if="cloudFilesError" class="hint">Не удалось загрузить: {{ cloudFilesError }} <button class="btn btn--sm" type="button" @click="loadFiles">Повторить</button></p>
+                            <p v-else-if="!cloudFiles" class="hint">Загружаем…</p>
+                            <p v-else-if="!cloudFiles.enabled" class="hint">Хранилище файлов выключено администратором.</p>
+                            <p v-else-if="!cloudFiles.files.length" class="hint">Пока ничего нет: файлы появятся здесь, когда вы отправите письмо с вложением крупнее порога.</p>
+                            <div v-else class="mset__list">
+                                <div v-for="f in cloudFiles.files" :key="f.token" class="mset__li">
+                                    <Icon name="file" :size="16" style="color: var(--faint)" />
+                                    <span class="grow"><a :href="f.url" target="_blank" rel="noopener">{{ f.name }}</a> <span class="sub">{{ size(f.size) }} · {{ f.expired ? 'срок истёк' : 'до ' + fmtDay(f.expires) }} · скачиваний: {{ f.downloads }}</span></span>
+                                    <button class="ib ib--sm" type="button" title="Скопировать ссылку" aria-label="Скопировать ссылку" @click="copyLink(f)"><Icon name="copy" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Продлить ссылку" aria-label="Продлить ссылку" @click="renewFile(f)"><Icon name="refresh" :size="14" /></button>
+                                    <button class="ib ib--sm ib--danger" type="button" title="Удалить" aria-label="Удалить" @click="deleteFile(f)"><Icon name="trash" :size="14" /></button>
+                                </div>
+                            </div>
                         </div>
                     </template>
 

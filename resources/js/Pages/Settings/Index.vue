@@ -52,6 +52,7 @@ const props = defineProps({
     channels: Object,
     // облако
     cloud: Object,
+    files: Object,
     cloudStatus: Object,
 });
 
@@ -124,6 +125,11 @@ const cloudError = ref('');
 const manual = ref(false);
 const cloudForm = useForm({ enabled: !!props.cloud?.enabled, folder: props.cloud?.folder || 'Почта', threshold_mb: props.cloud?.threshold_mb ?? 10, expire_days: props.cloud?.expire_days ?? 30, link_password: props.cloud?.link_password || '' });
 const manualForm = useForm({ url: props.cloud?.url || '', login: '', app_password: '' });
+const filesForm = useForm({
+    enabled: !!props.files?.enabled, host: props.files?.host || '',
+    threshold_mb: props.files?.threshold_mb ?? 10, max_mb: props.files?.max_mb ?? 500, expire_days: props.files?.expire_days ?? 30,
+    preview_mb: props.files?.preview_mb ?? 20, keep_days: props.files?.keep_days ?? 0, user_quota_gb: props.files?.user_quota_gb ?? 20,
+});
 let cloudTimer = null;
 const csrf = () => decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '');
 async function cloudConnect() {
@@ -539,7 +545,32 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
         <template v-if="tab === 'cloud'">
             <div class="grid-set">
                 <div class="card card--pad">
-                    <div class="card__title">Nextcloud для больших вложений</div>
+                    <div class="card__title">Своё хранилище: файлы на этом сервере</div>
+                    <p class="hint" style="margin-top: 0">Вложения крупнее порога не вкладываются в письмо, а сохраняются на сервере почты и уходят ссылкой вида https://{{ filesForm.host || 'files.<домен>' }}/…: получатель скачивает файл без входа. Ссылка действует заданный срок и продлевается отправителем в один щелчок; сам файл остаётся, пока его не удалят.</p>
+                    <div class="attn" :class="files && files.ready ? 'attn--ok' : 'attn--no'" style="margin-bottom: 14px">
+                        <Icon :name="files && files.ready ? 'check' : 'warn'" />
+                        <span><b>{{ files && files.ready ? 'Каталог готов' : 'Каталог не настроен' }}</b> — файлов: {{ files ? files.count : 0 }}, занято {{ mb(files ? files.used : 0) }}<template v-if="!(files && files.ready)">. На сервере: <code>sudo bash /opt/mailadmin/deploy/files-host.sh</code></template></span>
+                    </div>
+                    <form @submit.prevent="filesForm.post('/settings/files', { preserveScroll: true })">
+                        <Toggle v-model="filesForm.enabled" label="Отправлять большие вложения ссылкой со своего сервера" />
+                        <label class="field" style="margin-top: 12px"><span>Адрес хранилища</span><input v-model="filesForm.host" class="input" placeholder="files.example.ru"><span class="hint">DNS-запись A на этот сервер; nginx и сертификат ставит deploy/files-host.sh</span></label>
+                        <div class="toggles--3" style="margin-top: 12px">
+                            <label class="field"><span>Порог, МБ</span><input v-model.number="filesForm.threshold_mb" class="input" type="number" min="1" max="1024"><span class="hint">от этого размера файл уходит ссылкой</span></label>
+                            <label class="field"><span>Предел файла, МБ</span><input v-model.number="filesForm.max_mb" class="input" type="number" min="1" max="2048"><span class="hint">больше 500 сервер не пропустит</span></label>
+                            <label class="field"><span>Ссылка действует, дней</span><input v-model.number="filesForm.expire_days" class="input" type="number" min="1" max="3650"></label>
+                        </div>
+                        <div class="toggles--3" style="margin-top: 12px">
+                            <label class="field"><span>Предпросмотр до, МБ</span><input v-model.number="filesForm.preview_mb" class="input" type="number" min="0" max="200"><span class="hint">картинки, PDF, офисные — прямо в почте</span></label>
+                            <label class="field"><span>Удалять через, дней</span><input v-model.number="filesForm.keep_days" class="input" type="number" min="0" max="3650"><span class="hint">после истечения ссылки; 0 — не удалять</span></label>
+                            <label class="field"><span>На человека, ГБ</span><input v-model.number="filesForm.user_quota_gb" class="input" type="number" min="1" max="1000"></label>
+                        </div>
+                        <div class="form-actions" style="margin-top: 14px">
+                            <button class="btn btn--primary" type="submit" :disabled="filesForm.processing">Сохранить</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="card card--pad">
+                    <div class="card__title">Nextcloud (если своё хранилище выключено)</div>
                     <template v-if="!cloud.connected">
                         <p class="hint" style="margin-top: 0">Файлы крупнее порога не вкладываются в письмо, а загружаются в облако, получатель получает ссылку. Нужен любой Nextcloud (свой или у провайдера) и учётная запись в нём — она станет служебной, в её облаке появится папка «{{ cloudForm.folder }}».</p>
                         <label class="field"><span>Адрес Nextcloud</span><input v-model="cloudUrl" class="input" placeholder="https://cloud.deltaservices.ru" :disabled="cloudWaiting"></label>
@@ -576,9 +607,9 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                 </div>
                 <div class="card card--pad">
                     <div class="card__title">Как это работает</div>
-                    <p class="hint" style="margin-top: 0">Сотрудник пишет письмо и прикладывает файлы как обычно. Всё, что крупнее порога, веб-почта помечает облачком; такие файлы при отправке загружаются в Nextcloud, а в письмо вставляется список ссылок. Любой файл можно переключить вручную: маленький отправить ссылкой или большой вложить, если он влезает в лимит письма.</p>
-                    <p class="hint">Файлы лежат в облаке служебной учётной записи, а не в личных облаках сотрудников — их видит и чистит администратор. Срок ссылки ограничивает доступ, сам файл остаётся в папке.</p>
-                    <p class="hint">Пароль приложения хранится в базе в зашифрованном виде и не показывается. Чтобы сменить учётку, отключите облако и подключите заново.</p>
+                    <p class="hint" style="margin-top: 0">Сотрудник пишет письмо и прикладывает файлы как обычно. Всё, что крупнее порога, веб-почта помечает облачком: при отправке файл ложится в хранилище, а в письмо вставляется блок «К этому письму приложены ссылки на следующие файлы» — как у Mail.ru, его видит любой почтовый клиент.</p>
+                    <p class="hint">Своё хранилище: файлы лежат в storage/app/files под служебным именем, отдаются nginx по адресу files.&lt;домен&gt; только на скачивание (не открываются как страницы), перед сохранением проверяются антивирусом. В почте их можно посмотреть без скачивания (до порога предпросмотра), продлить ссылку или удалить — раздел «Мои файлы» в настройках сотрудника.</p>
+                    <p class="hint">Nextcloud остаётся запасным вариантом: если своё хранилище выключено, файлы уходят в облако служебной учётной записи. Если включены оба — работает своё.</p>
                 </div>
             </div>
         </template>

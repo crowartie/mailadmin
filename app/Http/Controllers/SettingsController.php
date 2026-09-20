@@ -161,7 +161,14 @@ class SettingsController extends Controller
         unset($s['app_password']);
         $s['connected'] = filled($s['login']);
 
-        return ['cloud' => $s, 'cloudStatus' => $s['connected'] ? $this->safe(fn () => (new \App\Services\Cloud\Nextcloud())->status()) : null, 'sizeLimitMb' => $this->safe(fn () => $this->amavis->current()['sizeLimitMb'], 15)];
+        $files = \App\Services\Cloud\LocalFiles::settings() + [
+            'ready' => \App\Http\Controllers\Mail\FilesController::ready(),
+            'root' => \App\Services\Cloud\LocalFiles::root(),
+            'count' => $this->safe(fn () => \App\Models\Webmail\CloudFile::query()->count(), 0),
+            'used' => $this->safe(fn () => (int) \App\Models\Webmail\CloudFile::query()->sum('size'), 0),
+        ];
+
+        return ['cloud' => $s, 'files' => $files, 'cloudStatus' => $s['connected'] ? $this->safe(fn () => (new \App\Services\Cloud\Nextcloud())->status()) : null, 'sizeLimitMb' => $this->safe(fn () => $this->amavis->current()['sizeLimitMb'], 15)];
     }
 
     /** Шаг 1: адрес облака → ссылка для входа (Login Flow v2). */

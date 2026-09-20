@@ -19,7 +19,7 @@ cat > "$APP/.rr.yaml" <<'EOF'
 version: "3"
 http:
   # вложения до 256 МБ (как post_max_size у PHP-FPM)
-  max_request_size: 260
+  max_request_size: 520
   pool:
     supervisor:
       # воркер, разросшийся после тяжёлого запроса, заменяется новым

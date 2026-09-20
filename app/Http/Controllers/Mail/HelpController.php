@@ -62,7 +62,11 @@ class HelpController extends Controller
             'domain' => $domain,
             'base' => $base,
             'hosts' => self::hosts($user),
-            'cloud' => ['enabled' => (bool) ($cloud['enabled'] ?? false), 'thresholdMb' => (int) ($cloud['threshold_mb'] ?? 10), 'expireDays' => (int) ($cloud['expire_days'] ?? 30)],
+            'cloud' => [
+                'enabled' => \App\Services\Cloud\Cloud::enabled(), 'thresholdMb' => \App\Services\Cloud\Cloud::thresholdMb(), 'maxMb' => \App\Services\Cloud\Cloud::maxMb(),
+                'expireDays' => \App\Services\Cloud\Cloud::provider() === 'local' ? (int) \App\Services\Cloud\LocalFiles::settings()['expire_days'] : (int) ($cloud['expire_days'] ?? 30),
+                'local' => \App\Services\Cloud\Cloud::provider() === 'local',
+            ],
             'quarantine' => ['digest' => (bool) ($quarantine['digest'] ?? true), 'digestTime' => (string) ($quarantine['digest_time'] ?? '09:00'), 'keepDays' => (int) ($quarantine['keep_days'] ?? 14)],
             'senders' => ['spamVotes' => (int) ($senders['spam_votes'] ?? 2), 'listsVotes' => (int) ($senders['lists_votes'] ?? 2), 'hamGlobal' => (bool) ($senders['ham_global'] ?? true)],
             'security' => ['appPasswords' => (bool) ($security['app_passwords'] ?? true), 'newDevice' => (bool) ($security['notify_new_device'] ?? true)],
