@@ -81,7 +81,8 @@ const CLOUD_FROM = (props.cloud?.thresholdMb || 10) * 1024 * 1024;
 const MAX_FILES = props.limits?.maxFiles || 20;
 const MAX_MESSAGE = (props.limits?.messageMb || 25) * 1024 * 1024;
 const viaCloud = ref(new Set());   // индексы файлов, которые уйдут ссылкой
-const cloudCount = computed(() => viaCloud.value.size);
+// Считаем и унаследованные вложения крупнее порога: они тоже уйдут ссылкой.
+const cloudCount = computed(() => viaCloud.value.size + (keepAttachments.value ? existing.value.filter((a) => keptCloud(a)).length : 0));
 function toggleCloud(i) { const s = new Set(viaCloud.value); s.has(i) ? s.delete(i) : s.add(i); viaCloud.value = s; dirty.value = true; }
 // Вес письма — свои файлы плюс унаследованные от пересылаемого. Раньше предупреждение
 // считало только свои, и пересылка с 40 МБ уходила молча.
