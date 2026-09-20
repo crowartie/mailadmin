@@ -4,6 +4,8 @@ namespace App\Services\Mail;
 
 use App\Models\Webmail\Recent;
 use App\Models\Webmail\SentRetry;
+use App\Exceptions\MailException;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mailer\Transport\TransportInterface;
 use Symfony\Component\Mime\Address;
@@ -121,7 +123,7 @@ class Outgoing
         if ($shared) {
             // Письмо от имени общего ящика: SMTP-авторизация под своим логином не пропустит чужой адрес,
             // поэтому шлём через локальный relay (как сам сервер), а копию кладём в «Отправленные» общего ящика.
-            (new Mailer(ImapSession::smtpLocal()))->send($email);
+            $this->deliver(new Mailer(ImapSession::smtpLocal()), $email);
             // Дальше — только уборка: копия в «Отправленные», отметка исходного, удаление черновика.
             // Её сбой раньше приходил в интерфейс как «письмо не отправлено», и сотрудник слал второй раз.
             $this->tidyUp(function () use ($from, $email, $form) {
@@ -137,13 +139,64 @@ class Outgoing
                 $this->afterSend($this->store, $email, $form, $this->session->user(), false);
             });
         } else {
-            (new Mailer($this->session->smtp()))->send($email);
+            $this->deliver(new Mailer($this->session->smtp()), $email);
             $this->tidyUp(fn () => $this->afterSend($this->store, $email, $form, $this->session->user()));
         }
 
         return self::messageId($email);
     }
 
+
+    /**
+     * Отдать письмо SMTP-серверу. Его отказ — не «ошибка сервера», а ответ по существу
+     * (нет такого адреса, письмо слишком большое, сейчас не принимает): показываем словами.
+     */
+    private function deliver(Mailer $mailer, Email $email): void
+    {
+        try {
+            $mailer->send($email);
+        } catch (TransportExceptionInterface $e) {
+            throw self::smtpFailure($e);
+        }
+    }
+
+    /**
+     * Ответ SMTP → сообщение для человека. Код 5xx — окончательный отказ, 4xx — временный.
+     * Пример: «550 5.1.1 <adress@innotec.su>: Recipient address rejected: User unknown».
+     */
+    public static function smtpFailure(\Throwable $e): MailException
+    {
+        $text = $e->getMessage();
+        // Symfony оборачивает ответ: Expected response code "250/251/252" but got code "550", with message "…".
+        if (preg_match('/got code "(\d{3})", with message "(.*)"\.?$/s', $text, $m)) {
+            $code = (int) $m[1];
+            $reply = $m[2];
+        } else {
+            $code = (int) $e->getCode();
+            $reply = $text;
+        }
+        $reply = trim(stripslashes($reply));
+        $addr = preg_match('/<([^<>@\s]+@[^<>\s]+)>/', $reply, $a) ? $a[1] : null;
+        $lower = mb_strtolower($reply);
+
+        if ($addr && (str_contains($lower, 'user unknown') || str_contains($lower, 'recipient address rejected') || str_contains($lower, 'no such user') || str_contains($lower, 'does not exist'))) {
+            return MailException::invalid('Адреса «' . $addr . '» не существует — почтовый сервер отверг его. Проверьте написание и отправьте снова.');
+        }
+        if (str_contains($lower, 'size') && (str_contains($lower, 'exceed') || str_contains($lower, 'too big') || str_contains($lower, 'limit'))) {
+            return MailException::tooLarge('Почтовый сервер не принял письмо: оно слишком большое. Уберите часть вложений или отправьте их ссылкой.');
+        }
+        if (str_contains($lower, 'relay access denied') || str_contains($lower, 'not permitted') || str_contains($lower, 'authentication')) {
+            return MailException::denied('Почтовый сервер не разрешил отправку' . ($addr ? ' на «' . $addr . '»' : '') . ': ' . mb_substr($reply, 0, 160));
+        }
+        if (str_contains($lower, 'connection') || str_contains($lower, 'timed out') || str_contains($lower, 'timeout')) {
+            return MailException::upstream('Не удалось связаться с почтовым сервером: ' . mb_substr($reply, 0, 160) . '. Письмо не потеряно, оно в окне — попробуйте ещё раз.');
+        }
+        if ($code >= 400 && $code < 500) {
+            return MailException::busy('Почтовый сервер сейчас не принимает письмо (' . mb_substr($reply, 0, 160) . '). Попробуйте через несколько минут — письмо не потеряно, оно в окне.');
+        }
+
+        return MailException::upstream('Почтовый сервер отверг письмо: ' . mb_substr($reply ?: 'нет ответа', 0, 200));
+    }
 
     /** То же самое из планировщика: транспорт без авторизации, IMAP через master-пользователя. */
     public static function sendRaw(string $raw, string $from, array $recipients, TransportInterface $transport, MailStore $store): void
