@@ -76,10 +76,16 @@ export function useMessageActions(ctx) {
     function undoAct() {
         if (!pending) return false;
         clearTimeout(pending.timer);
+        const p = pending;
         pending = null;
         ctx.toast.value = null;
         // Сервер ничего не делал — достаточно перечитать список и счётчики.
         ctx.load(ctx.list.value.page, true);
+        // Удалённое письмо было открыто — показываем его снова, а не «Выберите письмо слева».
+        if (p.opened) {
+            ctx.open.value = p.opened;
+            ctx.mobileRead.value = p.mobileRead;
+        }
         ctx.showToast({ text: 'Отменено' }, 2000);
 
         return true;
@@ -136,9 +142,9 @@ export function useMessageActions(ctx) {
         return window.confirm(forever ? `Стереть ${what} навсегда? Восстановить будет нельзя.` : `Удалить ${what}?`);
     }
 
-    function defer(op, uids, extra, label, secs) {
+    function defer(op, uids, extra, label, secs, opened = null, mobileRead = false) {
         flushPendingAct();
-        pending = { folder: ctx.folder.value, uids, op, extra, seconds: secs, timer: null };
+        pending = { folder: ctx.folder.value, uids, op, extra, seconds: secs, timer: null, opened, mobileRead };
         ctx.showToast({ text: label, actionLabel: 'Отменить', seconds: secs }, 0);
         const tick = () => {
             if (!pending) return;
@@ -171,6 +177,9 @@ export function useMessageActions(ctx) {
     async function act(op, uids, extra = {}, deferrable = true) {
         if (!uids?.length) return;
         ctx.menu.value = null;
+        // Что было открыто до действия — чтобы вернуть на экран при отмене.
+        const opened = ctx.open.value && uids.includes(ctx.open.value.uid) ? ctx.open.value : null;
+        const mobileRead = !!ctx.mobileRead.value;
         applyToScreen(op, uids, extra);
 
         const label = `${NAMES[op] || ''}${uids.length > 1 ? ` · ${uids.length} ${plural(uids.length, 'письмо', 'письма', 'писем')}` : ''}`;
@@ -180,7 +189,7 @@ export function useMessageActions(ctx) {
         // Перетащили письмо мышью не в ту папку или ошиблись со «Спамом» — отмена нужна
         // так же, как при удалении. Раньше эти действия уходили на сервер сразу.
         if (deferrable && secs > 0 && DEFERRABLE.includes(op)) {
-            defer(op, uids, extra, label, secs);
+            defer(op, uids, extra, label, secs, opened, mobileRead);
 
             return;
         }
