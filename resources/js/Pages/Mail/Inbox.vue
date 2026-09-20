@@ -540,6 +540,7 @@ onBeforeUnmount(() => {
                     @back="mobileRead = false"
                     @unsubscribe="unsubscribe"
                     @search="search"
+                    @toast="showToast"
                     @print="printOpen"
                     @meeting="meetingFrom"
                 />

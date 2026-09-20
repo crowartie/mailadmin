@@ -83,6 +83,8 @@ export function useCompose(ctx) {
         if (mode === 'draft') { openDraft(m.uid); return; }
         const c = { token: ++seq, mode, to: [], cc: [], bcc: [], subject: '', html: '', from: sharedFrom(m) || '' };
         if (mode === 'new') {
+            // «Написать письмо» из карточки адресата: адресат уже подставлен.
+            if (Array.isArray(m?.to)) c.to = [...m.to];
             c.html = `<p>${escapeHtml(text)}</p>${signature(false, c.from)}`;
         } else if (mode === 'reply' || mode === 'replyAll') {
             c.to = replyTargets(m).filter((a) => !me(a) || replyTargets(m).length === 1);

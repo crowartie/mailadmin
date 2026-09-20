@@ -2,6 +2,7 @@
 // Правая колонка: панель действий, цепочка писем, быстрый ответ.
 import { computed, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
+import Popover from './Popover.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
 import { isEmpty, viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
@@ -15,7 +16,40 @@ const props = defineProps({
     settings: { type: Object, default: () => ({}) },
     user: String,
 });
-const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search', 'print']);
+const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search', 'print', 'toast']);
+
+// Карточка адресата — как в Mail.ru: по щелчку на имени всплывают адрес и действия.
+const card = ref(null);   // { x, y, name, mail }
+function openCard(e, a) {
+    if (!a?.mail) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    card.value = { x: r.left, y: r.bottom + 4, name: a.name && a.name !== a.mail ? a.name : '', mail: a.mail };
+}
+async function copyAddress() {
+    const mail = card.value?.mail;
+    card.value = null;
+    try {
+        await navigator.clipboard.writeText(mail);
+        emit('toast', { text: 'Адрес скопирован' });
+    } catch (e) {
+        emit('toast', { text: 'Не удалось скопировать — выделите адрес и нажмите Ctrl+C', error: true });
+    }
+}
+function writeTo() {
+    const a = { name: card.value.name, mail: card.value.mail };
+    card.value = null;
+    emit('reply', 'new', { to: [a] });
+}
+function findAll() {
+    const mail = card.value.mail;
+    card.value = null;
+    emit('search', 'от:' + mail);
+}
+function inContacts() {
+    const mail = card.value.mail;
+    card.value = null;
+    window.location.href = '/contacts?q=' + encodeURIComponent(mail);
+}
 
 const expanded = ref({});
 const quick = ref('');
@@ -187,16 +221,31 @@ const isDraft = computed(() => props.folderRole === 'drafts');
             <span v-if="message.threadHidden" class="thr" :title="'В переписке есть ещё письма — найдите их поиском по теме'">показаны не все: ещё {{ message.threadHidden }}</span>
         </div>
 
+        <Popover v-if="card" :x="card.x" :y="card.y" @close="card = null">
+            <div class="pop__card">
+                <div class="msg__av">{{ initials(card.name, card.mail) }}</div>
+                <div class="pop__card-who">
+                    <b v-if="card.name">{{ card.name }}</b>
+                    <span class="mono">{{ card.mail }}</span>
+                </div>
+            </div>
+            <button class="pop__item" type="button" @click="copyAddress"><Icon name="copy" :size="15" />Копировать адрес</button>
+            <button class="pop__item" type="button" @click="writeTo"><Icon name="edit" :size="15" />Написать письмо</button>
+            <button class="pop__item" type="button" @click="findAll"><Icon name="search" :size="15" />Найти все письма</button>
+            <button class="pop__item" type="button" @click="inContacts"><Icon name="users" :size="15" />В контактах</button>
+        </Popover>
+
         <article v-for="m in all" :key="m.folder + '#' + m.uid" class="msg" :class="{ 'msg--col': !isOpen(m) }">
             <div class="msg__hd" @click="toggle(m)">
                 <div class="msg__av">{{ initials(m.from.name, m.from.mail) }}</div>
                 <div class="msg__who">
+                    <!-- Имя отправителя — кнопка: карточка с адресом и действиями (скопировать,
+                         написать, найти все письма, в контактах), как в Mail.ru. -->
                     <div class="msg__from" :title="m.from.mail">
-                        <b>{{ m.from.name }}</b>
-                        <span v-if="m.from.name !== m.from.mail" class="mono msg__mail" style="color: var(--muted)">{{ m.from.mail }}</span>
-                        <!-- Самый частый вопрос к поиску — «что ещё он мне писал». Одна кнопка вместо
-                             того, чтобы знать оператор «от:». -->
-                        <button v-if="m.from.mail" class="ib ib--sm msg__fromsearch" type="button" title="Все письма от этого отправителя" aria-label="Все письма от этого отправителя" @click.stop="$emit('search', 'от:' + m.from.mail)"><Icon name="search" :size="13" /></button>
+                        <button type="button" class="msg__who-btn" @click.stop="openCard($event, m.from)">
+                            <b>{{ m.from.name }}</b>
+                            <span v-if="m.from.name !== m.from.mail" class="mono msg__mail" style="color: var(--muted)">{{ m.from.mail }}</span>
+                        </button>
                     </div>
                     <!-- 69: показываем первых троих, остальных — по щелчку; сорок адресатов
                          раньше выдавливали текст письма далеко вниз. -->
