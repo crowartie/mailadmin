@@ -48,7 +48,9 @@
         html, body { margin: 0; padding: 0; }
         body { background: {{ $embed ? 'transparent' : '#E9ECF1' }}; font-family: "Golos Text", "Segoe UI", Arial, sans-serif; color: #1B2430; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         a { color: #1B4FC4; text-decoration: none; }
-        .sheet { width: 210mm; min-height: 297mm; margin: {{ $embed ? '16px' : '24px' }} auto; background: #fff; box-shadow: 0 2px 12px rgba(27, 36, 48, .12); padding: 14mm 16mm 16mm; }
+        .sheet { width: 210mm; min-height: 297mm; margin: {{ $embed ? '16px' : '24px' }} auto; background: #fff; box-shadow: 0 2px 12px rgba(27, 36, 48, .12); padding: 14mm 16mm 16mm; display: flex; flex-direction: column; }
+        /* На экране подвал прижат к низу листа, а не висит сразу под коротким письмом. */
+        .foot-screen { margin-top: auto; }
 
         /* Шапка: почта слева, ящик справа — как строка «Gmail · адрес» у Gmail. */
         .top { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: #98A3B3; padding-bottom: 10px; border-bottom: 1px solid #E3E8EF; }
@@ -82,7 +84,7 @@
         .atts .note { color: #98A3B3; margin-top: 4px; font-size: 11.5px; }
 
         .rest { margin-top: 16px; font-size: 12.5px; color: #6B7787; }
-        .foot-screen { display: flex; justify-content: space-between; font-size: 11px; color: #98A3B3; margin-top: 24px; padding-top: 8px; border-top: 1px solid #E3E8EF; }
+        .foot-screen { display: flex; justify-content: space-between; font-size: 11px; color: #98A3B3; padding-top: 8px; border-top: 1px solid #E3E8EF; }
 
         .bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 10px 16px; background: rgba(233, 236, 241, .92); backdrop-filter: blur(6px); font-size: 13px; color: #6B7787; }
         .bar button { font: inherit; font-weight: 500; padding: 7px 14px; border-radius: 8px; border: 1px solid #C9D1DC; background: #fff; color: #1B2430; cursor: pointer; }
@@ -95,7 +97,8 @@
                с бумаги совсем. Там, где margin-боксы поддерживаются, прячем экранный
                подвал; где нет — он и остаётся подвалом. */
             @supports (page: a4) and (content: counter(page)) { .foot-screen { display: none; } }
-            .sheet { width: auto; min-height: 0; margin: 0; box-shadow: none; padding: 0; }
+            .sheet { width: auto; min-height: 0; margin: 0; box-shadow: none; padding: 0; display: block; }
+            .foot-screen { margin-top: 24px; }
         }
         @media (max-width: 820px) {
             .sheet { width: auto; margin: 0; min-height: 0; padding: 16px; }
