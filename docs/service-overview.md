@@ -313,9 +313,9 @@ Subject и Message-ID. Поиск по любому другому заголо�
   `/_files/` в сниппет почтового хоста, поднимает `client_max_body_size` и `max_request_size` до 520 МБ,
   пишет `/etc/php/8.x/cli/conf.d/99-mailadmin.ini` (см. ниже) и расширяет сертификат certbot на `files.*`.
   Почта делается `default_server` на 443 — иначе запросы по IP уходили в `files.conf` (первый по алфавиту).
-  На прокси 192.168.30.149 блок `files.innotec.su` лежит в `/etc/nginx/certs/mail.innotec.su/files.innotec.su.conf`
-  (подключён из nginx.conf; admin1 пишет только туда) — ACME-проверка проксируется на .111, TLS с той же
-  копией сертификата, `proxy_buffering off`.
+  На прокси 192.168.30.149 блок `files.innotec.su` — в `/etc/nginx/sites-available/files.innotec.su` (как и
+  mail.innotec.su): ACME-проверка проксируется на .111, TLS с той же копией сертификата, `proxy_buffering off`;
+  лимит тела для mail.innotec.su на прокси поднят до 520m.
 - **Попутно найдено и починено.** Воркеры Octane — CLI-PHP с `post_max_size = 8M`: письмо с вложениями
   крупнее 8 МБ отвечало «The POST data is too large» (вероятная причина жалобы «пять попыток отправить»).
   Теперь 520M/500M. Проверка размера письма считала и файлы-ссылки — исправлено, у них свой предел.
