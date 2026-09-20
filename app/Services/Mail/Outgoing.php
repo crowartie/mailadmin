@@ -31,9 +31,10 @@ class Outgoing
     }
 
     /** @see MailBuilder::build() */
-    public function build(array $form, array $files = [], array $cloud = []): Email
+    /** @param bool $forSend письмо собирается на отправку (не в черновик): вложения исходного письма крупнее порога уходят ссылкой */
+    public function build(array $form, array $files = [], array $cloud = [], bool $forSend = false): Email
     {
-        return $this->builder->build($form, $files, $cloud);
+        return $this->builder->build($form, $files, $cloud, $forSend);
     }
 
     /** @see MailAddressList::parseAddresses() */
