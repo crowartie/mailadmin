@@ -38,7 +38,7 @@ class ComposeController extends Controller
         'files' => ['nullable', 'array', 'max:20'],
         // Точный предел подставляется в send()/draft(): он берётся из настроек почтового
         // сервера. Здесь оставляем только грубую защиту от совсем больших тел.
-        'files.*' => ['file', 'max:262144'],
+        'files.*' => ['file', 'max:512000'],
         'cloud' => ['nullable', 'array'],
         'cloud.*' => ['integer', 'min:0', 'max:19'],
     ];
@@ -65,8 +65,17 @@ class ComposeController extends Controller
         if ($limitMb < 1) {
             return;
         }
+        // Файлы, которые уходят ссылкой (своё хранилище или Nextcloud), в письме не лежат — их не считаем;
+        // для них свой предел — размер одного файла из настроек хранилища.
+        $viaCloud = \App\Services\Cloud\Cloud::enabled() ? array_map('intval', (array) $request->input('cloud', [])) : [];
+        $cloudMax = \App\Services\Cloud\Cloud::maxMb() * 1048576;
         $bytes = 0;
-        foreach ($files as $f) {
+        foreach ($files as $i => $f) {
+            if (in_array((int) $i, $viaCloud, true)) {
+                abort_if((int) $f->getSize() > $cloudMax, 422, '«' . $f->getClientOriginalName() . '» весит ' . \App\Support\Format::size((int) $f->getSize())
+                    . ', а хранилище принимает файлы до ' . \App\Services\Cloud\Cloud::maxMb() . ' МБ');
+                continue;
+            }
             $bytes += (int) $f->getSize();
         }
         // Вложения уходят в письме закодированными: 3 байта превращаются в 4 знака.

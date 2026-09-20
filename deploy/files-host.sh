@@ -33,6 +33,12 @@ if [ -f "$APP/.rr.yaml" ] && grep -q 'max_request_size: 260' "$APP/.rr.yaml"; th
   systemctl restart mailadmin-octane 2>/dev/null || true
 fi
 
+# Почта остаётся хостом по умолчанию на 443: иначе запросы по IP уходили бы в files.conf (он первый по алфавиту).
+MW=/etc/nginx/sites-enabled/mailweb.conf
+if [ -f "$MW" ] && ! grep -q 'listen 443 ssl http2 default_server' "$MW"; then
+  sed -i -e 's/^\(\s*listen 443 ssl http2\);/\1 default_server;/' -e 's/^\(\s*listen \[::\]:443 ssl http2\);/\1 default_server;/' "$MW"
+fi
+
 nginx -t && systemctl reload nginx
 
 echo "== сертификат"

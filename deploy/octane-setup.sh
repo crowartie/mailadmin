@@ -27,6 +27,15 @@ http:
 EOF
 chown www-data:www-data "$APP/.rr.yaml"
 
+# Воркеры Octane — это CLI-PHP, а у него post_max_size 8M: письмо с вложениями крупнее отвечало
+# «The POST data is too large». Пределы как у nginx и RoadRunner.
+PHPV="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')"
+cat > "/etc/php/$PHPV/cli/conf.d/99-mailadmin.ini" <<'EOF'
+; mailadmin: пределы загрузки для воркеров Octane (CLI-PHP); см. deploy/octane-setup.sh
+post_max_size = 520M
+upload_max_filesize = 500M
+EOF
+
 # 2. Octane за nginx на 127.0.0.1: адрес клиента и порт берём из X-Forwarded-* (иначе журнал входов и fail2ban видят 127.0.0.1)
 if ! grep -q '^TRUSTED_PROXIES=.*127\.0\.0\.1' .env; then
   if grep -q '^TRUSTED_PROXIES=$' .env; then sed -i 's/^TRUSTED_PROXIES=$/TRUSTED_PROXIES=127.0.0.1/' .env

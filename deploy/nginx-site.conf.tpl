@@ -1,7 +1,8 @@
 # @@TITLE@@ — создано deploy/install.sh; правки перезапишутся при повторной установке.
 server {
-    listen @@PORT@@ ssl http2;
-    listen [::]:@@PORT@@ ssl http2;
+    # default_server: на этот порт по IP или чужому имени попадают сюда, а не в первый по алфавиту хост (files.*).
+    listen @@PORT@@ ssl http2 default_server;
+    listen [::]:@@PORT@@ ssl http2 default_server;
     server_name @@SERVER_NAMES@@;
     root /opt/mailadmin/public;
     index index.php;
