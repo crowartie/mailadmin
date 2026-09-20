@@ -20,8 +20,14 @@ ln -sf /etc/nginx/sites-available/files.conf /etc/nginx/sites-enabled/files.conf
 
 # Скачивание с самого почтового хоста (предпросмотр в почте, /f/ на mail.*) — тот же закрытый location.
 SNIP=/etc/nginx/snippets/mailadmin-backend.conf
-if [ -f "$SNIP" ] && ! grep -q '/_files/' "$SNIP"; then
-  sed -i '0,/^location \/ {/s||location ^~ /_files/ { internal; alias '"$APP"'/storage/app/files/; }\nlocation / {|' "$SNIP"
+FILES_LOC='location ^~ /_files/ { internal; alias '"$APP"'/storage/app/files/; add_header X-Content-Type-Options nosniff; add_header Content-Security-Policy "sandbox"; add_header X-Robots-Tag "noindex, nofollow"; }'
+if [ -f "$SNIP" ]; then
+  if ! grep -q '/_files/' "$SNIP"; then
+    sed -i '0,/^location \/ {/s||'"$FILES_LOC"'\nlocation / {|' "$SNIP"
+  elif ! grep -q '/_files/.*X-Robots-Tag' "$SNIP"; then
+    # Строка уже есть, но без заголовков (первая версия скрипта) — заменяем целиком.
+    sed -i 's|^location ^~ /_files/ {.*}$|'"$FILES_LOC"'|' "$SNIP"
+  fi
 fi
 
 # Файл до 500 МБ должен пройти через nginx и RoadRunner.

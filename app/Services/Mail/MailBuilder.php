@@ -190,9 +190,12 @@ class MailBuilder
         $rows = '';
         foreach ($links as $l) {
             $url = htmlspecialchars($l['url'], ENT_QUOTES);
+            // Текст ссылки — раскодированный адрес: с кириллическим именем файла он читается,
+            // а «%D0%A1%D1%85…» на полстроки — нет. Ведёт по-прежнему на закодированный адрес.
+            $shown = htmlspecialchars(rawurldecode($l['url']));
             $rows .= '<div style="margin:0 0 10px">'
                 . '<div style="font-weight:600;color:#1b2430">' . htmlspecialchars($l['name']) . ' <span style="font-weight:400;color:#6b7280">(' . $fmt($l['size']) . ')</span></div>'
-                . '<div style="color:#4b5563">Ссылка для скачивания: <a href="' . $url . '" style="color:#1a56db;word-break:break-all">' . $url . '</a></div>'
+                . '<div style="color:#4b5563">Ссылка для скачивания: <a href="' . $url . '" style="color:#1a56db;word-break:break-all">' . $shown . '</a></div>'
                 . '</div>';
         }
         $until = array_filter(array_map(fn ($l) => $l['expires'], $links));

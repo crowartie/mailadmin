@@ -1378,6 +1378,9 @@ select.input { padding-right: 28px; }
     .sz { color: v.$c-warn-ink; }
 }
 .msg__cloud { align-items: center; }
+// Длинная ссылка в теле письма (в том числе на файл из хранилища) не должна вылезать за рамку:
+// чистка HTML отбрасывает word-break из письма, поэтому правило своё.
+.msg__body a { overflow-wrap: anywhere; }
 .msg__cloud-note { flex-basis: 100%; font-size: 12px; color: v.$c-muted; }
 .att__btn {
     display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; border-radius: 6px;

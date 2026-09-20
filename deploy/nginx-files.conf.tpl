@@ -30,6 +30,10 @@ server {
     location ^~ /_files/ {
         internal;
         alias /opt/mailadmin/storage/app/files/;
+        # Заголовки приложения при X-Accel-Redirect nginx не пропускает — ставим здесь.
+        add_header X-Content-Type-Options nosniff;
+        add_header Content-Security-Policy "sandbox";
+        add_header X-Robots-Tag "noindex, nofollow";
     }
     location = / { return 302 https://@@MAIL_HOST@@/mail; }
     location / {
