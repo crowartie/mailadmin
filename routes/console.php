@@ -30,6 +30,9 @@ Schedule::command('reports:fetch')->hourly()->withoutOverlapping();
 Schedule::command('external-senders:refresh')->dailyAt('04:10')->withoutOverlapping();
 // Хранилище больших вложений: по умолчанию ничего не удаляет (keep_days = 0), только чистит временные каталоги конвертера.
 Schedule::command('files:purge')->dailyAt('04:30')->withoutOverlapping();
+// Целостность хранилища: размеры — каждую ночь, контрольные суммы — по воскресеньям.
+Schedule::command('files:check')->dailyAt('04:35')->withoutOverlapping()->runInBackground();
+Schedule::command('files:check --hash')->weeklyOn(0, '04:50')->withoutOverlapping()->runInBackground();
 // Кэш предпросмотра офисных вложений (PDF из LibreOffice): старше недели — удалить.
 Schedule::call(function () {
     $dir = storage_path('app/private/preview');

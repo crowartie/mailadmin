@@ -156,7 +156,12 @@ class Outgoing
         try {
             $mailer->send($email);
         } catch (TransportExceptionInterface $e) {
+            // Ссылки на файлы никуда не ушли — файлам в хранилище делать нечего.
+            \App\Services\Cloud\LocalFiles::discardForMessage(self::messageId($email));
             throw self::smtpFailure($e);
+        } catch (\Throwable $e) {
+            \App\Services\Cloud\LocalFiles::discardForMessage(self::messageId($email));
+            throw $e;
         }
     }
 

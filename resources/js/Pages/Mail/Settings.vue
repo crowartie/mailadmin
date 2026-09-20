@@ -565,7 +565,7 @@ const shortcuts = [
                             <div v-else class="mset__list">
                                 <div v-for="f in cloudFiles.files" :key="f.token" class="mset__li">
                                     <Icon name="file" :size="16" style="color: var(--faint)" />
-                                    <span class="grow"><a :href="f.url" target="_blank" rel="noopener">{{ f.name }}</a> <span class="sub">{{ size(f.size) }} · {{ f.expired ? 'срок истёк' : 'до ' + fmtDay(f.expires) }} · скачиваний: {{ f.downloads }}</span></span>
+                                    <span class="grow"><a :href="f.url" target="_blank" rel="noopener">{{ f.name }}</a> <span class="sub">{{ size(f.size) }} · {{ f.expired ? 'срок истёк' : 'до ' + fmtDay(f.expires) }} · скачиваний: {{ f.downloads }}<template v-if="f.subject"> · письмо «{{ f.subject }}»</template></span></span>
                                     <button class="ib ib--sm" type="button" title="Скопировать ссылку" aria-label="Скопировать ссылку" @click="copyLink(f)"><Icon name="copy" :size="14" /></button>
                                     <button class="ib ib--sm" type="button" title="Продлить ссылку" aria-label="Продлить ссылку" @click="renewFile(f)"><Icon name="refresh" :size="14" /></button>
                                     <button class="ib ib--sm ib--danger" type="button" title="Удалить" aria-label="Удалить" @click="deleteFile(f)"><Icon name="trash" :size="14" /></button>

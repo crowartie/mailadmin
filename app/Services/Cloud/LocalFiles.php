@@ -91,9 +91,14 @@ final class LocalFiles
      *
      * @return array{url:string,expires:?string,token:string}
      */
-    public function publish(string $localFile, string $name, string $user, ?string $messageId = null): array
+    public function publish(string $localFile, string $name, string $user, ?string $messageId = null, ?string $subject = null): array
     {
-        $size = (int) filesize($localFile);
+        clearstatcache(true, $localFile);
+        $size = is_file($localFile) ? (int) filesize($localFile) : 0;
+        if ($size <= 0) {
+            // Файл не дочитался с диска отправителя или оборвалась загрузка: пустышку хранить нельзя.
+            throw MailException::invalid('«' . $name . '» пустой — файл не догрузился. Приложите его заново и отправьте письмо ещё раз.');
+        }
         if ($size > self::maxBytes()) {
             throw MailException::tooLarge('«' . $name . '» больше ' . (int) self::settings()['max_mb'] . ' МБ — столько хранилище не принимает');
         }
@@ -106,10 +111,22 @@ final class LocalFiles
         if (! is_dir($dir) && ! mkdir($dir, 0750, true) && ! is_dir($dir)) {
             throw MailException::upstream('Хранилище недоступно: не удалось создать каталог');
         }
-        if (! rename($localFile, self::root() . '/' . $rel) && ! copy($localFile, self::root() . '/' . $rel)) {
+        // Контрольная сумма считается до переноса, а после — проверяется, что на диске ровно то,
+        // что прислал отправитель: побитый файл в хранилище хуже, чем честная ошибка.
+        $sha = (string) hash_file('sha256', $localFile);
+        $dest = self::root() . '/' . $rel;
+        $moved = @rename($localFile, $dest);
+        if (! $moved && ! @copy($localFile, $dest)) {
             throw MailException::upstream('Хранилище недоступно: не удалось сохранить файл');
         }
-        chmod(self::root() . '/' . $rel, 0640);
+        clearstatcache(true, $dest);
+        $ok = is_file($dest) && (int) filesize($dest) === $size && ($moved || hash_file('sha256', $dest) === $sha);
+        if (! $ok) {
+            @unlink($dest);
+            Log::error('files: «' . $name . '» сохранился не целиком (ожидали ' . $size . ' байт)');
+            throw MailException::upstream('«' . $name . '» сохранился не целиком — на сервере не хватило места или диск занят. Попробуйте ещё раз.');
+        }
+        chmod($dest, 0640);
 
         $days = (int) self::settings()['expire_days'];
         $mime = self::mimeOf($name, self::root() . '/' . $rel);
@@ -120,11 +137,90 @@ final class LocalFiles
             'size' => $size,
             'mime' => $mime,
             'path' => $rel,
+            'sha256' => $sha,
             'message_id' => $messageId,
+            'subject' => $subject !== null ? mb_substr($subject, 0, 255) : null,
             'expires_at' => $days > 0 ? now()->addDays($days)->endOfDay() : null,
         ]);
 
         return ['url' => $f->url(), 'expires' => $f->expires_at?->toDateString(), 'token' => $token];
+    }
+
+    /** Убрать файлы по токенам (откат, когда письмо не ушло). @param string[] $tokens */
+    public static function discardTokens(array $tokens): int
+    {
+        if (! $tokens) {
+            return 0;
+        }
+        $n = 0;
+        foreach (CloudFile::query()->whereIn('token', $tokens)->get() as $f) {
+            @unlink($f->fullPath());
+            $f->delete();
+            $n++;
+        }
+
+        return $n;
+    }
+
+    /**
+     * Письмо не отправилось — его файлы в хранилище никому не нужны: ссылки на них
+     * никуда не ушли, а при повторной отправке файлы лягут заново.
+     */
+    public static function discardForMessage(?string $messageId): int
+    {
+        $messageId = trim((string) $messageId, '<> ');
+        if ($messageId === '') {
+            return 0;
+        }
+
+        return self::discardTokens(CloudFile::query()->where('message_id', $messageId)->pluck('token')->all());
+    }
+
+    /**
+     * Проверка целостности: файл на месте, размер сходится, при $hash — и контрольная сумма.
+     * Заодно убирает с диска файлы, которых нет в базе (старше суток — свежий мог ещё не записаться).
+     *
+     * @return array{checked:int,broken:array<int,string>,orphans:int}
+     */
+    public function check(bool $hash = false): array
+    {
+        $broken = [];
+        $checked = 0;
+        $known = [];
+        foreach (CloudFile::query()->orderBy('id')->cursor() as $f) {
+            $known[$f->path] = true;
+            $checked++;
+            $p = $f->fullPath();
+            clearstatcache(true, $p);
+            $why = null;
+            if (! is_file($p)) {
+                $why = 'файла нет на диске';
+            } elseif ((int) filesize($p) !== (int) $f->size) {
+                $why = 'размер ' . filesize($p) . ' вместо ' . $f->size;
+            } elseif ($hash && $f->sha256 && hash_file('sha256', $p) !== $f->sha256) {
+                $why = 'контрольная сумма не сходится';
+            }
+            if ($why !== null) {
+                $broken[] = $f->user . ' «' . $f->name . '» (' . $f->token . '): ' . $why;
+            }
+            $f->forceFill(['checked_at' => now()])->saveQuietly();
+        }
+        $orphans = 0;
+        $root = self::root();
+        if (is_dir($root)) {
+            foreach (glob($root . '/*/*/*') ?: [] as $file) {
+                $rel = substr($file, strlen($root) + 1);
+                if (is_file($file) && ! isset($known[$rel]) && filemtime($file) < time() - 86400) {
+                    @unlink($file);
+                    $orphans++;
+                }
+            }
+        }
+        if ($broken) {
+            Log::error('files:check — повреждённых файлов: ' . count($broken) . "\n" . implode("\n", $broken));
+        }
+
+        return ['checked' => $checked, 'broken' => $broken, 'orphans' => $orphans];
     }
 
     /** Продлить ссылку ещё на срок из настроек, считая от сегодня. */
@@ -173,12 +269,7 @@ final class LocalFiles
      */
     public static function cardsIn(?string $html, string $viewer): array
     {
-        $host = trim((string) self::settings()['host'], '/ ');
-        if ($html === null || $html === '' || $host === '' || stripos($html, $host) === false) {
-            return [];
-        }
-        preg_match_all('#https?://' . preg_quote($host, '#') . '/([A-Za-z0-9_-]{20,64})(?:[/"\'\s<>?]|$)#i', $html, $m);
-        $tokens = array_values(array_unique($m[1] ?? []));
+        $tokens = self::tokensIn($html, (string) self::settings()['host']);
         if (! $tokens) {
             return [];
         }
@@ -192,6 +283,32 @@ final class LocalFiles
         }
 
         return $out;
+    }
+
+    /**
+     * Токены ссылок на хранилище в разметке письма. Ссылки внутри цитаты (blockquote) не считаются:
+     * в ответе цитируется исходное письмо вместе с его блоком ссылок, а карточки нужны только
+     * файлам самого письма. Пересылка цитату не использует — там ссылки остаются.
+     *
+     * @return string[]
+     */
+    public static function tokensIn(?string $html, string $host): array
+    {
+        $host = trim($host, '/ ');
+        if ($html === null || $html === '' || $host === '' || stripos($html, $host) === false) {
+            return [];
+        }
+        // Вложенные цитаты убираем изнутри наружу, пока есть что убирать.
+        for ($i = 0; $i < 20 && preg_match('#<blockquote\b#i', $html); $i++) {
+            $stripped = preg_replace('#<blockquote\b[^>]*>(?:(?!<blockquote\b).)*?</blockquote>#is', '', $html);
+            if ($stripped === null || $stripped === $html) {
+                break;
+            }
+            $html = $stripped;
+        }
+        preg_match_all('#https?://' . preg_quote($host, '#') . '/([A-Za-z0-9_-]{20,64})(?:[/"\'\s<>?]|$)#i', $html, $m);
+
+        return array_values(array_unique($m[1] ?? []));
     }
 
     private function guardQuota(string $user, int $add): void

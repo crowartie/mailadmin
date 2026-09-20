@@ -51,10 +51,10 @@ final class Cloud
      *
      * @return array{url:string,expires:?string}
      */
-    public static function publish(string $localFile, string $name, string $user, ?string $messageId = null): array
+    public static function publish(string $localFile, string $name, string $user, ?string $messageId = null, ?string $subject = null): array
     {
         return match (self::provider()) {
-            'local' => (new LocalFiles())->publish($localFile, $name, $user, $messageId),
+            'local' => (new LocalFiles())->publish($localFile, $name, $user, $messageId, $subject),
             'nextcloud' => (new Nextcloud())->publish($localFile, $name, $user),
             default => throw \App\Exceptions\MailException::invalid('Хранилище для больших файлов не настроено'),
         };

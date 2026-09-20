@@ -29,6 +29,8 @@ class ComposeController extends Controller
         'sourceFolder' => ['nullable', 'string'],
         'sourceUid' => ['nullable', 'integer'],
         'keepAttachments' => ['nullable', 'boolean'],
+        'keepIndexes' => ['nullable', 'array', 'max:50'],       // какие вложения исходного письма оставить
+        'keepIndexes.*' => ['integer', 'min:0'],
         'draftUid' => ['nullable', 'integer'],
         'priority' => ['nullable', 'boolean'],
         'receipt' => ['nullable', 'boolean'],
@@ -97,7 +99,7 @@ class ComposeController extends Controller
 
         $store = new MailStore($imap->client());
         $out = new Outgoing($imap, $store);
-        $email = $out->build($form, $request->file('files', []), array_map('intval', $form['cloud'] ?? []));
+        $email = $out->build($form, $request->file('files', []), array_map('intval', $form['cloud'] ?? []), true);
 
         if (! empty($form['sendAt'])) {
             $at = Carbon::parse($form['sendAt']);

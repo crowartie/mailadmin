@@ -88,7 +88,13 @@ function toggleCloud(i) { const s = new Set(viaCloud.value); s.has(i) ? s.delete
 const keptSize = computed(() => (keepAttachments.value ? existing.value : []).reduce((s, a) => s + (a.size || 0), 0));
 const totalSize = computed(() => files.value.reduce((s, f) => s + f.size, 0) + keptSize.value);
 // Файлы, которые реально уйдут внутри письма (не ссылкой через облако).
-const inMailSize = computed(() => files.value.reduce((s, f, i) => s + (viaCloud.value.has(i) ? 0 : f.size), 0) + keptSize.value);
+// Унаследованное вложение крупнее порога при отправке тоже уйдёт ссылкой — сервер решает по размеру.
+const keptCloud = (a) => !!props.cloud?.enabled && (a.size || 0) >= CLOUD_FROM;
+const inMailSize = computed(() => files.value.reduce((s, f, i) => s + (viaCloud.value.has(i) ? 0 : f.size), 0)
+    + (keepAttachments.value ? existing.value : []).reduce((s, a) => s + (keptCloud(a) ? 0 : (a.size || 0)), 0));
+// Файлы, которые уйдут ссылкой, в черновик не кладём: 500 МБ в IMAP при каждом автосохранении —
+// это минуты ожидания и предел сервера. Такие файлы человек приложит заново, если вернётся к черновику.
+const draftFiles = () => files.value.filter((f, i) => !viaCloud.value.has(i));
 function dropExisting(a) {
     // Раньше унаследованные вложения снимались только все сразу: при пересылке письма
     // с десятью файлами нельзя было оставить один нужный.
@@ -123,6 +129,8 @@ function payload(extra = {}) {
         sourceFolder: c.sourceFolder,
         sourceUid: c.sourceUid,
         keepAttachments: keepAttachments.value && existing.value.length > 0,
+        // Снятые крестиком вложения исходного письма раньше всё равно уходили: сервер брал все.
+        keepIndexes: keepAttachments.value ? existing.value.map((a) => a.index) : [],
         draftUid: draftUid.value,
         priority: priority.value,
         receipt: receipt.value,
@@ -166,7 +174,7 @@ async function saveDraft(silent = false) {
     // возьмёт из прошлой версии черновика.
     const keepFiles = !!draftUid.value && key === savedFilesKey;
     try {
-        const r = await api.draft(composeForm(payload(keepFiles ? { draftKeepFiles: true } : {}), keepFiles ? [] : files.value));
+        const r = await api.draft(composeForm(payload(keepFiles ? { draftKeepFiles: true } : {}), keepFiles ? [] : draftFiles()));
         draftUid.value = r.draftUid;
         savedFilesKey = key;
         dirty.value = false;
@@ -408,9 +416,9 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
 
         <div v-if="files.length || (keepAttachments && existing.length)" class="compose__atts">
             <template v-if="keepAttachments">
-                <span v-for="a in existing" :key="'e' + a.index" class="att" :title="a.name + (viewable(a) ? ' — посмотреть' : '')">
+                <span v-for="a in existing" :key="'e' + a.index" class="att" :class="{ 'att--cloud': keptCloud(a) }" :title="keptCloud(a) ? a.name + ' — крупнее порога, уйдёт ссылкой' : a.name + (viewable(a) ? ' — посмотреть' : '')">
                     <a class="att__main" :href="api.attachmentUrl(c.sourceFolder, c.sourceUid, a.index)" @click="viewable(a) && (openExisting(a), $event.preventDefault())">
-                        <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
+                        <Icon :name="keptCloud(a) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                     </a>
                     <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openExisting(a)" aria-label="Посмотреть"><Icon name="eye" :size="13" /></button>
                     <button class="att__btn" type="button" title="Убрать это вложение" aria-label="Убрать это вложение" @click="dropExisting(a)"><Icon name="x" :size="13" /></button>

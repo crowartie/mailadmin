@@ -32,7 +32,7 @@ class MailBuilder
      * @param UploadedFile[] $files
      * @param int[] $cloud  индексы файлов, которые уходят ссылкой (своё хранилище или Nextcloud)
      */
-    public function build(array $form, array $files = [], array $cloud = []): Email
+    public function build(array $form, array $files = [], array $cloud = [], bool $forSend = false): Email
     {
         $settings = Setting::for($this->session->user());
         $fromName = trim((string) ($settings['display_name'] ?? '')) ?: $this->session->user();
@@ -56,7 +56,18 @@ class MailBuilder
         $messageId = $email->generateMessageId();
 
         $html = (string) ($form['html'] ?? '');
-        $links = $this->publishToCloud($files, $cloud, $messageId);
+        $subject = (string) ($form['subject'] ?? '');
+        $published = [];   // токены уже положенных файлов — откатить, если письмо не соберётся
+        try {
+            $links = $this->publishToCloud($files, $cloud, $messageId, $subject, $published);
+            // Вложения исходного письма (пересылка, «оставить вложения»): что крупнее порога — тоже ссылкой,
+            // иначе пересылка письма с большим файлом упиралась бы в предел почтового сервера.
+            [$kept, $keptLinks] = $this->keptAttachments($form, $forSend, $messageId, $subject, $published);
+            $links = array_merge($links, $keptLinks);
+        } catch (\Throwable $e) {
+            \App\Services\Cloud\LocalFiles::discardTokens($published);
+            throw $e;
+        }
         if ($links) {
             $html .= $this->cloudBlockHtml($links);
         }
@@ -106,28 +117,16 @@ class MailBuilder
             if (in_array((int) $i, $cloud, true) && $links) {
                 continue; // ушёл ссылкой
             }
-            if ($file instanceof UploadedFile && $file->isValid()) {
-                $email->attachFromPath($file->getRealPath(), $file->getClientOriginalName(), $file->getMimeType());
+            if (! $file instanceof UploadedFile) {
+                continue;
             }
+            // Раньше недогруженный файл просто пропускался, и письмо уходило без него — молча.
+            self::assertUploaded($file);
+            $email->attachFromPath($file->getRealPath(), $file->getClientOriginalName(), $file->getMimeType());
         }
 
-        // Вложения исходного письма при пересылке и «оставить вложения» при ответе.
-        if (! empty($form['keepAttachments']) && ! empty($form['sourceFolder']) && ! empty($form['sourceUid'])) {
-            try {
-                $src = $this->store->folder($form['sourceFolder'])->query()->getMessageByUid((int) $form['sourceUid']);
-            } catch (\Throwable) {
-                $src = null;
-            }
-            // Исходное письмо удалили или переложили, пока письмо писали. Раньше вложения просто
-            // не прикладывались, и получатель получал пересылку без файлов.
-            abort_unless($src, 409, 'Исходное письмо больше не в той папке, поэтому его вложения не приложить. Снимите галочку «Вложения исходного письма» или откройте письмо заново.');
-            if ($src) {
-                foreach ($src->getAttachments() as $i => $a) {
-                    // Имя — как показываем в веб-почте: библиотека отдаёт «=?utf-8?B?…?=» сырым, и при пересылке
-                    // получатель видел закодированную абракадабру вместо имени (обращение №20).
-                    $email->attach($a->getContent(), self::plainName(MailStore::attachmentName($a, 'attachment'), (int) $i), $a->getMimeType());
-                }
-            }
+        foreach ($kept as [$content, $name, $mime]) {
+            $email->attach($content, $name, $mime);
         }
 
         $email->getHeaders()->addTextHeader('X-Mailer', 'Почта ' . config('areas.default_domain'));
@@ -161,22 +160,98 @@ class MailBuilder
         return 'вложение-' . ($index + 1) . $ext;
     }
 
-    private function publishToCloud(array $files, array $cloud, string $messageId): array
+    private function publishToCloud(array $files, array $cloud, string $messageId, string $subject, array &$published): array
     {
         if (! $cloud || ! Cloud::enabled()) {
             return [];
         }
         $out = [];
         foreach ($files as $i => $file) {
-            if (! in_array((int) $i, $cloud, true) || ! $file instanceof UploadedFile || ! $file->isValid()) {
+            if (! in_array((int) $i, $cloud, true) || ! $file instanceof UploadedFile) {
                 continue;
             }
+            self::assertUploaded($file);
             $size = (int) $file->getSize();
-            $r = Cloud::publish($file->getRealPath(), $file->getClientOriginalName(), $this->session->user(), $messageId);
+            $r = Cloud::publish($file->getRealPath(), $file->getClientOriginalName(), $this->session->user(), $messageId, $subject);
+            if (! empty($r['token'])) {
+                $published[] = $r['token'];
+            }
             $out[] = ['name' => $file->getClientOriginalName(), 'size' => $size, 'url' => $r['url'], 'expires' => $r['expires']];
         }
 
         return $out;
+    }
+
+    /** Файл дошёл до сервера целиком? Иначе — понятная ошибка, а не письмо без вложения. */
+    private static function assertUploaded(UploadedFile $file): void
+    {
+        if ($file->isValid() && $file->getSize() > 0 && is_file($file->getRealPath())) {
+            return;
+        }
+        $name = $file->getClientOriginalName() ?: 'файл';
+        $why = match ($file->getError()) {
+            UPLOAD_ERR_PARTIAL => 'загрузка оборвалась на середине',
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'он больше, чем принимает сервер',
+            UPLOAD_ERR_NO_FILE => 'файл пустой',
+            default => $file->getSize() > 0 ? 'сервер не смог его сохранить' : 'файл пустой или не дочитался',
+        };
+        throw \App\Exceptions\MailException::invalid('«' . $name . '» не догрузился: ' . $why . '. Приложите файл заново и отправьте письмо ещё раз.');
+    }
+
+    /**
+     * Вложения исходного письма при пересылке и «оставить вложения» при ответе.
+     * keepIndexes — какие именно (снятые крестиком не берём); при отправке файлы крупнее порога
+     * хранилища уходят ссылкой. Черновик (forSend=false) хранит их как есть.
+     *
+     * @return array{0:array<int,array{0:string,1:string,2:string}>,1:array<int,array{name:string,size:int,url:string,expires:?string}>}
+     */
+    private function keptAttachments(array $form, bool $forSend, string $messageId, string $subject, array &$published): array
+    {
+        if (empty($form['keepAttachments']) || empty($form['sourceFolder']) || empty($form['sourceUid'])) {
+            return [[], []];
+        }
+        try {
+            $src = $this->store->folder($form['sourceFolder'])->query()->getMessageByUid((int) $form['sourceUid']);
+        } catch (\Throwable) {
+            $src = null;
+        }
+        // Исходное письмо удалили или переложили, пока письмо писали. Раньше вложения просто
+        // не прикладывались, и получатель получал пересылку без файлов.
+        abort_unless($src, 409, 'Исходное письмо больше не в той папке, поэтому его вложения не приложить. Снимите галочку «Вложения исходного письма» или откройте письмо заново.');
+        $only = isset($form['keepIndexes']) && is_array($form['keepIndexes']) ? array_map('intval', $form['keepIndexes']) : null;
+        $viaCloud = $forSend && Cloud::enabled();
+        $threshold = Cloud::thresholdMb() * 1048576;
+        $kept = [];
+        $links = [];
+        foreach ($src->getAttachments() as $i => $a) {
+            if ($only !== null && ! in_array((int) $i, $only, true)) {
+                continue;
+            }
+            // Имя — как показываем в веб-почте: библиотека отдаёт «=?utf-8?B?…?=» сырым, и при пересылке
+            // получатель видел закодированную абракадабру вместо имени (обращение №20).
+            $name = self::plainName(MailStore::attachmentName($a, 'attachment'), (int) $i);
+            $content = (string) $a->getContent();
+            if ($content === '') {
+                continue;   // отправитель объявил вложение, но не догрузил: пересылать нечего
+            }
+            if ($viaCloud && strlen($content) >= $threshold) {
+                $tmp = storage_path('app/private/tmp-fwd-' . bin2hex(random_bytes(6)));
+                file_put_contents($tmp, $content);
+                try {
+                    $r = Cloud::publish($tmp, $name, $this->session->user(), $messageId, $subject);
+                } finally {
+                    @unlink($tmp);
+                }
+                if (! empty($r['token'])) {
+                    $published[] = $r['token'];
+                }
+                $links[] = ['name' => $name, 'size' => strlen($content), 'url' => $r['url'], 'expires' => $r['expires']];
+                continue;
+            }
+            $kept[] = [$content, $name, (string) $a->getMimeType()];
+        }
+
+        return [$kept, $links];
     }
 
 

@@ -25,7 +25,7 @@ class CloudFile extends Model
 
     protected $guarded = [];
 
-    protected $casts = ['expires_at' => 'datetime', 'last_download_at' => 'datetime', 'size' => 'int', 'downloads' => 'int'];
+    protected $casts = ['expires_at' => 'datetime', 'last_download_at' => 'datetime', 'checked_at' => 'datetime', 'size' => 'int', 'downloads' => 'int'];
 
     public function expired(): bool
     {
@@ -57,6 +57,7 @@ class CloudFile extends Model
             'expired' => $this->expired(),
             'mine' => strcasecmp($this->user, $viewer) === 0,
             'downloads' => $this->downloads,
+            'subject' => (string) ($this->subject ?? ''),
             'preview' => \App\Services\Cloud\LocalFiles::previewable($this),
         ];
     }

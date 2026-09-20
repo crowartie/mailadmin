@@ -200,5 +200,6 @@ export function composeForm(c, files = []) {
     }
     files.forEach((file) => fd.append('files[]', file, file.name));
     (c.cloud || []).forEach((i) => fd.append('cloud[]', String(i)));
+    (c.keepIndexes || []).forEach((i) => fd.append('keepIndexes[]', String(i)));
     return fd;
 }

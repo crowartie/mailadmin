@@ -242,7 +242,9 @@ export function useCompose(ctx) {
         const form = payload.form;
         if (!form) return;
         const keep = !!form.draftUid;
-        api.draft(composeForm({ ...form, draftKeepFiles: keep }, keep ? [] : (payload.files || [])))
+        // Файлы-ссылки в страховочный черновик не кладём (см. draftFiles в окне письма).
+        const viaCloud = new Set(form.cloud || []);
+        api.draft(composeForm({ ...form, draftKeepFiles: keep }, keep ? [] : (payload.files || []).filter((f, i) => !viaCloud.has(i))))
             // Обычно ответ успевает прийти до конца отсчёта, и тогда отправка сама уберёт
             // этот черновик. Если не успел — письмо уже ушло, а черновик останется висеть;
             // это видно и поправимо, в отличие от потерянного письма.
