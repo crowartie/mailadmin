@@ -326,6 +326,7 @@ const errors = computed(() => ticket.value?.context?.errors || []);
                         <button class="btn btn--primary" type="button" :disabled="sending || (!reply.trim() && !file)" @click="send(false)"><Icon name="send" :size="15" />Ответить</button>
                     </div>
                     <p v-if="error" class="error" style="margin: 0">{{ error }}</p>
+                    <p v-if="ticket.status !== 'closed'" class="hint" style="margin: 0">Ответ уйдёт сотруднику письмом дословно — пишите так, как написали бы ему лично.</p>
                 </div>
 
                 <div class="fbadmin__bar">
@@ -353,7 +354,7 @@ const errors = computed(() => ticket.value?.context?.errors || []);
                         <input v-model="duplicateOf" class="input" type="number" min="1" placeholder="например, 12" style="max-width: 200px">
                     </div>
                     <div class="field">
-                        <label>Что написать сотруднику <span class="hint">— необязательно, но лучше объяснить</span></label>
+                        <label>Что написать сотруднику <span class="hint">— необязательно, но лучше объяснить. Текст уйдёт ему письмом дословно, вместе с итогом</span></label>
                         <textarea v-model="closeNote" class="input" rows="2" style="resize: vertical; min-height: 62px; height: auto" :placeholder="closing === 'done' ? 'Исправлено, обновите страницу' : closing === 'not_a_bug' ? 'Так и задумано: письма из рассылок складываются в отдельную папку' : 'Пока сделать не сможем: причина'" />
                     </div>
                     <div style="display: flex; justify-content: flex-end; gap: 8px">
