@@ -211,8 +211,10 @@ export function useCompose(ctx) {
         // упавший браузер или вложение тяжелее 64 КБ (столько тянет fetch с keepalive) —
         // и письма нет нигде. Поэтому сначала откладываем его в черновики: даже в худшем
         // случае человек найдёт свой текст, а не пустоту.
-        keepDraft(payload);
-        pending = { payload, seconds: secs };
+        // Ждать ответа обязательно: черновик перекладывается под новым UID, и письмо,
+        // собранное со старым, сервер отправить не сможет (вложения брать неоткуда).
+        const saving = keepDraft(payload);
+        pending = { payload, seconds: secs, saving };
         // И не обещаем того, чего ещё не случилось: письмо пока не отправлено.
         ctx.showToast({ text: 'Отправляем…', actionLabel: 'Отменить', seconds: secs }, 0);
         const tick = () => {
@@ -222,7 +224,9 @@ export function useCompose(ctx) {
                 const p = pending;
                 pending = null;
                 ctx.toast.value = null;
-                doSend(p.payload)
+                Promise.resolve(p.saving)
+                    .catch(() => {})
+                    .then(() => doSend(p.payload))
                     .then(() => ctx.showToast({ text: 'Письмо отправлено' }, 2000))
                     .catch((e) => { ctx.fail(e); ctx.compose.value = { ...formToCompose(p.payload.form), files: p.payload.files }; });
 
@@ -240,15 +244,22 @@ export function useCompose(ctx) {
      */
     function keepDraft(payload) {
         const form = payload.form;
-        if (!form) return;
+        if (!form) return Promise.resolve();
         const keep = !!form.draftUid;
+        const drafts = ctx.rolePath('drafts');
         // Файлы-ссылки в страховочный черновик не кладём (см. draftFiles в окне письма).
         const viaCloud = new Set(form.cloud || []);
-        api.draft(composeForm({ ...form, draftKeepFiles: keep }, keep ? [] : (payload.files || []).filter((f, i) => !viaCloud.has(i))))
-            // Обычно ответ успевает прийти до конца отсчёта, и тогда отправка сама уберёт
-            // этот черновик. Если не успел — письмо уже ушло, а черновик останется висеть;
-            // это видно и поправимо, в отличие от потерянного письма.
-            .then((r) => { if (r?.draftUid && pending) form.draftUid = r.draftUid; })
+
+        return api.draft(composeForm({ ...form, draftKeepFiles: keep }, keep ? [] : (payload.files || []).filter((f, i) => !viaCloud.has(i))))
+            // Отправка дожидается этого ответа: сохранённый черновик лежит под новым UID,
+            // и письмо с вложениями из черновика нужно собирать уже по нему.
+            .then((r) => {
+                if (! r?.draftUid) return;
+                form.draftUid = r.draftUid;
+                if (form.sourceFolder && form.sourceFolder === drafts) {
+                    form.sourceUid = r.draftUid;
+                }
+            })
             .catch(() => {});   // не вышло — отправку из-за этого не задерживаем
     }
 

@@ -34,6 +34,10 @@ const files = ref(Array.isArray(c.files) ? [...c.files] : []);
 const existing = ref(c.attachments || []);
 const keepAttachments = ref(c.keepAttachments ?? (c.mode === 'forward'));
 const draftUid = ref(c.draftUid || null);
+// Черновик при каждом сохранении перекладывается под новым UID. Вложения, унаследованные
+// из черновика, читаются по этому UID — поэтому ссылку на «исходное письмо» держим свежей,
+// иначе отправка падала с «Исходное письмо больше не в той папке».
+const srcUid = computed(() => (c.mode === 'draft' ? (draftUid.value || c.sourceUid) : c.sourceUid));
 const priority = ref(!!c.priority);
 const receipt = ref(!!c.receipt);
 const remindDays = ref(0);
@@ -62,7 +66,7 @@ let closed = false;      // окно закрыто штатно, при раз�
 const viewer = ref(null);
 function openExisting(a) {
     const list = existing.value.filter(viewable);
-    viewer.value = { start: Math.max(0, list.findIndex((x) => x.index === a.index)), items: viewerItems(c.sourceFolder, c.sourceUid, existing.value) };
+    viewer.value = { start: Math.max(0, list.findIndex((x) => x.index === a.index)), items: viewerItems(c.sourceFolder, srcUid.value, existing.value) };
 }
 async function openLocal(i) {
     const list = files.value.filter(localViewable);
@@ -128,7 +132,7 @@ function payload(extra = {}) {
         answeredFolder: c.answeredFolder,
         answeredUid: c.answeredUid,
         sourceFolder: c.sourceFolder,
-        sourceUid: c.sourceUid,
+        sourceUid: srcUid.value,
         keepAttachments: keepAttachments.value && existing.value.length > 0,
         // Снятые крестиком вложения исходного письма раньше всё равно уходили: сервер брал все.
         keepIndexes: keepAttachments.value ? existing.value.map((a) => a.index) : [],
@@ -418,7 +422,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         <div v-if="files.length || (keepAttachments && existing.length)" class="compose__atts">
             <template v-if="keepAttachments">
                 <span v-for="a in existing" :key="'e' + a.index" class="att" :class="{ 'att--cloud': keptCloud(a) }" :title="keptCloud(a) ? a.name + ' — крупнее порога, уйдёт ссылкой' : a.name + (viewable(a) ? ' — посмотреть' : '')">
-                    <a class="att__main" :href="api.attachmentUrl(c.sourceFolder, c.sourceUid, a.index)" @click="viewable(a) && (openExisting(a), $event.preventDefault())">
+                    <a class="att__main" :href="api.attachmentUrl(c.sourceFolder, srcUid, a.index)" @click="viewable(a) && (openExisting(a), $event.preventDefault())">
                         <Icon :name="keptCloud(a) ? 'cloud' : 'clip'" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                     </a>
                     <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openExisting(a)" aria-label="Посмотреть"><Icon name="eye" :size="13" /></button>

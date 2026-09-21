@@ -182,6 +182,19 @@ class MailBuilder
         return $out;
     }
 
+    /** Письмо-источник вложений; null, если его уже нет на месте. */
+    private function fetchSource(string $folder, int $uid): mixed
+    {
+        if ($folder === '' || $uid <= 0) {
+            return null;
+        }
+        try {
+            return $this->store->folder($folder)->query()->getMessageByUid($uid);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     /** Файл дошёл до сервера целиком? Иначе — понятная ошибка, а не письмо без вложения. */
     private static function assertUploaded(UploadedFile $file): void
     {
@@ -210,10 +223,12 @@ class MailBuilder
         if (empty($form['keepAttachments']) || empty($form['sourceFolder']) || empty($form['sourceUid'])) {
             return [[], []];
         }
-        try {
-            $src = $this->store->folder($form['sourceFolder'])->query()->getMessageByUid((int) $form['sourceUid']);
-        } catch (\Throwable) {
-            $src = null;
+        $src = $this->fetchSource((string) $form['sourceFolder'], (int) $form['sourceUid']);
+        // Черновик при сохранении перекладывается под новым UID. Если письмо собрано со старым
+        // (страховочная копия перед отправкой), берём вложения из актуального черновика.
+        if (! $src && ! empty($form['draftUid']) && (int) $form['draftUid'] !== (int) $form['sourceUid']
+            && strcasecmp((string) $form['sourceFolder'], $this->store->rolePath('drafts')) === 0) {
+            $src = $this->fetchSource((string) $form['sourceFolder'], (int) $form['draftUid']);
         }
         // Исходное письмо удалили или переложили, пока письмо писали. Раньше вложения просто
         // не прикладывались, и получатель получал пересылку без файлов.
