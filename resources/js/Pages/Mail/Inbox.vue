@@ -38,6 +38,8 @@ const props = defineProps({
     quarantine: { type: Number, default: 0 },
     // Занятое место в ящике: индикатор внизу панели папок (справка обещала его с самого начала).
     quota: { type: Object, default: null },
+    // Адрес или домен → папка, куда письма от него уже раскладываются правилом.
+    senderRules: { type: Object, default: () => ({}) },
     openUid: { type: Number, default: null },
     composeTo: { type: String, default: null },
 });
@@ -45,6 +47,18 @@ const props = defineProps({
 // ── Состояние ─────────────────────────────────────────────────
 const folders = ref(props.folders);
 const labels = ref(props.labels);
+// 34: окно «класть сюда все письма от этого отправителя?» повторялось при каждом переносе —
+// даже когда правило уже создано и даже после отказа. Теперь молчим в обоих случаях;
+// отказ помним до перезагрузки страницы, чтобы человеку не пришлось выключать подсказку совсем.
+const senderRules = ref({ ...(props.senderRules || {}) });
+const askedAndRefused = new Set();
+const ruleKey = (mail, path) => mail + ' → ' + path;
+function alreadySorted(mail, path) {
+    const m = String(mail || '').toLowerCase();
+    const domain = m.split('@')[1] || '';
+
+    return senderRules.value[m] === path || (!!domain && senderRules.value[domain] === path) || askedAndRefused.has(ruleKey(m, path));
+}
 const settings = ref(props.settings);
 const folder = ref(props.folder);
 const filter = ref(props.filter);
@@ -259,8 +273,19 @@ function askSender(kind, uids, targetFolder = null) {
     const mails = [...new Set(rows.map((m) => m.from?.mail).concat(open.value && uids.includes(open.value.uid) ? [open.value.from?.mail] : []).filter(Boolean).map((s) => s.toLowerCase()))];
     if (kind === 'folder') act('move', uids, { target: targetFolder.path }, false); else act(kind === 'ham' ? 'notspam' : kind, uids, {}, false);
     if (!mails.length) return;
+    // Все отправители уже разложены правилом в эту папку (или человек только что отказался) — молчим.
+    if (kind === 'folder' && mails.every((m) => alreadySorted(m, targetFolder.path))) return;
     const domains = [...new Set(mails.map((m) => m.split('@')[1]).filter(Boolean))];
     dialog.value = { kind: 'sender', what: kind, mails, domains, resort: true, busy: false, folder: targetFolder };
+}
+// Закрыли окно, не создав правило: про эту пару «отправитель → папка» до перезагрузки не спрашиваем,
+// иначе человек получает тот же вопрос при каждом переносе и выключает подсказку совсем (обращение №34).
+function closeSenderDialog() {
+    const d = dialog.value;
+    if (d && d.what === 'folder' && d.folder) {
+        for (const m of d.mails) askedAndRefused.add(ruleKey(m, d.folder.path));
+    }
+    dialog.value = null;
 }
 async function stopAskingOnMove() {
     settings.value.ask_rule_on_move = false;
@@ -281,6 +306,9 @@ async function markSender(match) {
         for (const r of results) {
             moved += r.moved || 0; global = global || r.global; personalOnly = personalOnly || !!r.personalOnly; if (r.threshold > 1 && !r.personalOnly) votes = `${r.votes} из ${r.threshold}`;
             if (r.folders) folders.value = r.folders;
+        }
+        if (d.what === 'folder' && d.folder) {
+            for (const v of values) senderRules.value[String(v).toLowerCase()] = d.folder.path;
         }
         dialog.value = null;
         const who = values.length === 1 ? values[0]
@@ -685,7 +713,7 @@ onBeforeUnmount(() => {
         <!-- Диалоги -->
         <!-- 368: своё окно вело себя не как общий диалог — не закрывалось по Escape
              и не ставило фокус на первую кнопку. -->
-        <div v-if="dialog && dialog.kind === 'sender'" class="overlay" @mousedown.self="dialog = null">
+        <div v-if="dialog && dialog.kind === 'sender'" class="overlay" @mousedown.self="closeSenderDialog">
             <div ref="senderBox" class="dialog" role="dialog" aria-modal="true" aria-labelledby="sender-dlg-title">
                 <h2 id="sender-dlg-title">{{ dialog.what === 'folder' ? 'В папку «' + dialog.folder.name + '»' : SENDER_TITLE[dialog.what] }}</h2>
                 <p class="hint" style="margin: 0 0 12px">
@@ -699,7 +727,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div v-if="dialog.what !== 'ham'" style="margin-top: 12px; display: flex; gap: 10px; align-items: center"><label class="toggle"><input v-model="dialog.resort" type="checkbox"><span class="toggle__track" /></label><span>Сразу разложить уже полученные письма по всем папкам</span></div>
                 <p class="hint" style="margin: 12px 0 0">{{ dialog.what === 'folder' ? 'Правило появится в Настройках → Правила, там его можно изменить или удалить.' : dialog.what === 'ham' ? 'Исключение действует для всей компании: сервер перестанет считать эти письма спамом.' : 'Правило появится в ваших «Правилах». Когда так же отметят несколько сотрудников, оно станет общим для всех ящиков.' }}</p>
-                <div class="dialog__actions"><a v-if="dialog.what === 'folder'" href="#" class="hint" style="margin-right: auto" @click.prevent="stopAskingOnMove">Больше не спрашивать</a><button class="btn" type="button" @click="dialog = null">Только это письмо</button></div>
+                <div class="dialog__actions"><a v-if="dialog.what === 'folder'" href="#" class="hint" style="margin-right: auto" @click.prevent="stopAskingOnMove">Больше не спрашивать</a><button class="btn" type="button" @click="closeSenderDialog()">Только это письмо</button></div>
             </div>
         </div>
         <Dialog v-if="dialog && dialog.kind === 'newFolder'" :title="dialog.folder ? 'Папка внутри «' + dialog.folder.name + '»' : 'Новая папка'" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты', maxlength: 80 }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />

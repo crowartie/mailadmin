@@ -31,6 +31,8 @@ class InboxController extends Controller
             'identities' => (new Outgoing($imap, $store))->identities(),
             'folders' => $store->folders(),
             'labels' => Label::where('user', $imap->user())->orderBy('sort')->orderBy('id')->get(['id', 'name', 'color']),
+            // Отправители, для которых правило уже есть: по ним окно «класть сюда всегда?» не показываем.
+            'senderRules' => \App\Models\Webmail\RuleSet::senderFolders($imap->user()),
             'folder' => $folder,
             'filter' => $filter,
             'query' => $q,
