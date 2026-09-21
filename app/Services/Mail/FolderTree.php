@@ -500,12 +500,45 @@ class FolderTree
         self::assertNoDot($renamed);
         $parts[] = self::unmangle($renamed);
         $new = implode($folder->delimiter, $parts);
+        // Вложенные папки переезжают вместе с родителем: запоминаем их до переименования,
+        // чтобы потом перенести подписки (пути меняются вместе с путём родителя).
+        $sep = $folder->delimiter;
+        $inside = [];
+        foreach ($this->folders() as $f) {
+            if (str_starts_with((string) $f['path'], $path . $sep)) {
+                $inside[] = (string) $f['path'];
+            }
+        }
         // Folder::move() шлёт старое имя в UTF-8, сервер ждёт UTF-7 — переименовываем через протокол сами.
         $this->client->getConnection()->renameFolder($path, $this->utf7($new));
+        $newPath = $this->utf7($new);
+        // Подписки сервер за переименованием не тянет: в почтовых программах (Outlook,
+        // Thunderbird) видны только подписанные папки, поэтому переименованная пропадала
+        // из списка, а старая висела призраком. Переносим подписки сами.
+        $this->resubscribe($path, $newPath);
+        foreach ($inside as $old) {
+            $this->resubscribe($old, $newPath . substr($old, strlen($path)));
+        }
         $this->folderCache = null;
         $this->statusCache = null;
 
-        return $this->utf7($new);
+        return $newPath;
+    }
+
+    /** Перенести подписку со старого пути на новый: старый отписываем, новый подписываем. */
+    private function resubscribe(string $old, string $new): void
+    {
+        $conn = $this->client->getConnection();
+        try {
+            $conn->unsubscribeFolder($old);
+        } catch (\Throwable) {
+            // не подписана — и хорошо
+        }
+        try {
+            $conn->subscribeFolder($new);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('подписка на папку ' . $new . ': ' . $e->getMessage());
+        }
     }
 
     /**
@@ -526,6 +559,12 @@ class FolderTree
     public function deleteFolder(string $path): void
     {
         $this->folder($path)->delete(false);
+        // Иначе удалённая папка остаётся в списке подписок и в почтовых программах
+        // висит призраком «папка не существует».
+        try {
+            $this->client->getConnection()->unsubscribeFolder($path);
+        } catch (\Throwable) {
+        }
         $this->folderCache = null;
         $this->statusCache = null;
     }
