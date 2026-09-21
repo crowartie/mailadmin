@@ -26,6 +26,14 @@ const props = defineProps({
     hosts: { type: Object, default: () => ({}) },
 });
 
+// Правило для папки (обращение №38): у каждой папки, куда письма вообще можно складывать,
+// есть кнопка — она открывает раздел «Правила» с готовым действием «переместить в эту папку».
+const NO_RULES = ['drafts', 'sent', 'trash', 'shared'];
+const canRule = (f) => !NO_RULES.includes(f.role) && !f.owner;
+function ruleForFolder(f) {
+    router.visit('/mail/settings/rules?folder=' + encodeURIComponent(f.path));
+}
+
 const SECTIONS = [
     ['general', 'Общие'], ['signature', 'Подпись'], ['autoreply', 'Автоответ'], ['rules', 'Правила'],
     ['folders', 'Папки и метки'], ['files', 'Мои файлы'], ['devices', 'Телефон и программы'], ['security', 'Безопасность'], ['shortcuts', 'Горячие клавиши'],
@@ -125,6 +133,7 @@ async function copyLink(f) {
 }
 if (props.section === 'files') loadFiles();
 
+
 /**
  * 196: поля, которые ждут кнопки «Сохранить». Раздел настроек — обычная ссылка,
  * и набранное имя отправителя, подпись или быстрые ответы пропадали молча.
@@ -194,6 +203,19 @@ const {
     applyRules, opsFor, onFieldChange, newRule, describeCond, describeAct, ruleName,
     saveRule, removeRule, moveRule, pushRules, saveAutoreply,
 } = useMailRules({ rules, autoreply, editing, folders, labels, busy, say, ask });
+// Пришли из «Папок» по кнопке «Правило»: открываем новое правило с уже выбранной папкой,
+// человеку остаётся вписать отправителя.
+if (props.section === 'rules') {
+    const want = new URLSearchParams(window.location.search).get('folder');
+    if (want && folders.value.some((f) => f.path === want)) {
+        newRule();
+        if (editing.value) {
+            editing.value.actions = [{ type: 'move', value: want }];
+            const name = folders.value.find((f) => f.path === want)?.name || '';
+            editing.value.name = name ? 'В папку «' + name + '»' : '';
+        }
+    }
+}
 
 // ── Папки и метки ────────────────────────────────────────────
 async function confirmDialog(value) {
@@ -438,12 +460,17 @@ const shortcuts = [
                                     <!-- 191: «Входящие» и «Отправленные» показывались дважды — свои и общего
                                          ящика — без единого намёка, чьи именно. -->
                                     <span class="grow">{{ f.name }}<span v-if="f.owner" class="chip chip--off" style="margin-left: 8px">ящик {{ f.ownerName || f.owner }}</span> <span class="sub">· {{ f.total }} {{ plural(f.total, 'письмо', 'письма', 'писем') }}{{ f.unread ? ', ' + f.unread + ' не прочитано' : '' }}</span></span>
+                                    <!-- Правило, которое кладёт письма в эту папку (обращение №38): раньше за ним
+                                         надо было идти в «Правила» и искать папку в списке из десятков. -->
+                                    <button v-if="canRule(f)" class="ib ib--sm" type="button" :title="'Правило: класть письма в «' + f.name + '»'" :aria-label="'Правило для папки ' + f.name" @click="ruleForFolder(f)"><Icon name="filter" :size="14" /></button>
+                                    <!-- Вложенную папку можно создать и внутри системной: у людей структура живёт
+                                         внутри «Входящих» (так было в Kerio), а новая папка ложилась рядом. -->
+                                    <button v-if="f.role !== 'shared'" class="ib ib--sm" type="button" title="Вложенная папка" @click="dialog = { kind: 'newFolder', parent: f.path, parentName: f.name }" aria-label="Вложенная папка"><Icon name="plus" :size="14" /></button>
                                     <template v-if="f.role === 'custom'">
-                                        <button class="ib ib--sm" type="button" title="Вложенная папка" @click="dialog = { kind: 'newFolder', parent: f.path }" aria-label="Вложенная папка"><Icon name="plus" :size="14" /></button>
                                         <button class="ib ib--sm" type="button" title="Переименовать" @click="dialog = { kind: 'renameFolder', folder: f }" aria-label="Переименовать"><Icon name="edit" :size="14" /></button>
                                         <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="dialog = { kind: 'deleteFolder', folder: f }" aria-label="Удалить"><Icon name="trash" :size="14" /></button>
                                     </template>
-                                    <span v-else class="chip chip--off">системная</span>
+                                    <span v-if="f.role !== 'custom'" class="chip chip--off">системная</span>
                                 </div>
                             </div>
                         </div>
@@ -592,7 +619,7 @@ const shortcuts = [
             </div>
         </div>
 
-        <Dialog v-if="dialog && dialog.kind === 'newFolder'" title="Новая папка" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты', maxlength: 80 }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />
+        <Dialog v-if="dialog && dialog.kind === 'newFolder'" :title="dialog.parentName ? 'Папка внутри «' + dialog.parentName + '»' : 'Новая папка'" :prompt="{ label: 'Название', placeholder: 'Например, Клиенты', maxlength: 80 }" confirm-label="Создать" @close="dialog = null" @confirm="confirmDialog" />
         <Dialog v-if="dialog && dialog.kind === 'renameFolder'" title="Переименовать папку" :prompt="{ label: 'Название', value: dialog.folder.name, maxlength: 80 }" confirm-label="Сохранить" @close="dialog = null" @confirm="confirmDialog" />
         <!-- 192, 193: диалог не называл ни число писем, ни вложенные папки, хотя точно такой же
              диалог в списке писем число показывает, и справка это обещает. -->

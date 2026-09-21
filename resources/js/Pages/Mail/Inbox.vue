@@ -710,8 +710,11 @@ onBeforeUnmount(() => {
             <div class="pop__title">{{ menu.folder.name }}</div>
             <button class="pop__item" type="button" @click="go(menu.folder.path); menu = null"><Icon name="folder" :size="15" />Открыть</button>
             <button class="pop__item" type="button" @click="act('seen', list.messages.map((m) => m.uid))" :disabled="menu.folder.path !== folder"><Icon name="eye" :size="15" />Прочитать все на странице</button>
+            <!-- Вложенная папка внутри системной («Входящие» и другие) — так устроены структуры,
+                 перенесённые из Kerio, и так их привычно продолжать. -->
+            <button v-if="menu.folder.role !== 'shared'" class="pop__item" type="button" @click="folderDialog('newFolder', menu.folder)"><Icon name="plus" :size="15" />Вложенная папка…</button>
+            <a v-if="!['drafts', 'sent', 'trash', 'shared'].includes(menu.folder.role) && !menu.folder.owner" class="pop__item" :href="'/mail/settings/rules?folder=' + encodeURIComponent(menu.folder.path)"><Icon name="filter" :size="15" />Правило для этой папки…</a>
             <template v-if="menu.folder.role === 'custom'">
-                <button class="pop__item" type="button" @click="folderDialog('newFolder', menu.folder)"><Icon name="plus" :size="15" />Вложенная папка…</button>
                 <button class="pop__item" type="button" @click="folderDialog('renameFolder', menu.folder)"><Icon name="edit" :size="15" />Переименовать…</button>
                 <button class="pop__item pop__item--danger" type="button" @click="folderDialog('deleteFolder', menu.folder)"><Icon name="trash" :size="15" />Удалить папку…</button>
             </template>
