@@ -61,6 +61,20 @@ class MailHtmlTest extends TestCase
         $this->assertSame($html, MailHtml::blockRemote($html));
     }
 
+    /** Условные комментарии Word (<![if …]>, <![endif]>) не должны показываться текстом. */
+    public function test_убирает_условные_комментарии_word(): void
+    {
+        $out = MailHtml::sanitize('<p>Добрый день!</p><![if !supportLineBreakNewLine]><br><![endif]><p>С уважением, Носков</p>'
+            . '<!--[if gte mso 9]><xml><o:shapelayout/></xml><![endif]-->');
+
+        $this->assertStringContainsString('Добрый день!', $out);
+        $this->assertStringContainsString('С уважением, Носков', $out);
+        $this->assertStringNotContainsString('supportLineBreakNewLine', $out);
+        $this->assertStringNotContainsString('endif', $out);
+        $this->assertStringNotContainsString('<![', $out);
+        $this->assertStringNotContainsString('&lt;![', $out);
+    }
+
     /** «Показать картинки» возвращает адрес ровно таким, каким он был. */
     public function test_обратная_замена_восстанавливает_адрес(): void
     {

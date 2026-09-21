@@ -43,6 +43,35 @@ final class Mime
         return self::address('', trim($first, " \t\"'"));
     }
 
+    /** Так подписываем письмо, в котором отправителя нет вовсе (черновики Outlook без From). */
+    public const NO_SENDER = ['name' => 'Без отправителя', 'mail' => ''];
+
+    /**
+     * Отправитель по заголовкам письма: From, а без него — Sender, Reply-To, Return-Path.
+     *
+     * Черновики Outlook (и письма, которые он сам сложил в папку) идут без From и Date:
+     * такие письма приехали к людям из Kerio, и в списке они стояли с отправителем «—».
+     * Ключи — строчные, как их даёт parseHeaderFields().
+     *
+     * @param  array<string,string>  $fields
+     * @return array{name:string,mail:string}|null
+     */
+    public static function senderOf(array $fields): ?array
+    {
+        foreach (['from', 'sender', 'reply-to', 'x-original-from', 'return-path'] as $name) {
+            $value = trim((string) ($fields[$name] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+            $parsed = self::firstAddress($value);
+            if ($parsed !== null && $parsed['mail'] !== '') {
+                return $parsed;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Имя и адрес из разобранного библиотекой адреса. Outlook пишет «=?utf-8?B?…?=<user@host>» без пробела —
      * библиотека тогда считает адресом всю строку; вытаскиваем адрес и имя сами.

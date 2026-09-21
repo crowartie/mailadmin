@@ -125,6 +125,19 @@ class MimeTest extends TestCase
         $this->assertSame('petrov@innotec.su', $b['mail']);
     }
 
+    /** Черновик Outlook без From: отправителя берём из Sender/Reply-To, а без них подписываем словами. */
+    public function test_отправитель_без_from(): void
+    {
+        $this->assertSame('petrov@innotec.su', Mime::senderOf(['from' => 'Пётр <petrov@innotec.su>', 'sender' => 'x@y.z'])['mail']);
+        $this->assertSame('list@innotec.su', Mime::senderOf(['sender' => 'Рассылка <list@innotec.su>'])['mail']);
+        $this->assertSame('reply@innotec.su', Mime::senderOf(['from' => '', 'reply-to' => 'reply@innotec.su'])['mail']);
+        // Return-Path «<>» у отчётов о недоставке — не адрес.
+        $this->assertNull(Mime::senderOf(['return-path' => '<>']));
+        $this->assertNull(Mime::senderOf(['to' => 'a@b.c', 'subject' => 'без From']));
+        $this->assertSame('', Mime::NO_SENDER['mail']);
+        $this->assertNotSame('—', Mime::NO_SENDER['name']);
+    }
+
     /** Отказ почтового сервера объясняем словами, а не английским хвостом протокола. */
     public function test_причина_отказа(): void
     {

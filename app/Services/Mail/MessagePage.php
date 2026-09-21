@@ -66,7 +66,7 @@ class MessagePage
     /** @return array<int,array<string,mixed>>|null */
     private function fetchPage(int|array $from, ?int $to, int $mode, int $expected): ?array
     {
-        $items = ['UID', 'FLAGS', 'RFC822.SIZE', 'INTERNALDATE', 'PREVIEW', 'BODY.PEEK[HEADER.FIELDS (FROM TO DATE SUBJECT MESSAGE-ID CONTENT-TYPE)]'];
+        $items = ['UID', 'FLAGS', 'RFC822.SIZE', 'INTERNALDATE', 'PREVIEW', 'BODY.PEEK[HEADER.FIELDS (FROM SENDER REPLY-TO RETURN-PATH TO DATE SUBJECT MESSAGE-ID CONTENT-TYPE)]'];
         // Предупреждения разборщика на длинных PREVIEW не должны превращаться в исключения (см. previews()).
         set_error_handler(fn () => true, E_WARNING | E_NOTICE | E_DEPRECATED);
         try {

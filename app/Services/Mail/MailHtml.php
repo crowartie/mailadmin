@@ -51,6 +51,10 @@ final class MailHtml
         // а вместе с ними — задуманную вёрстку. Вернём их в конце, но только внутрь письма.
         [$html, $ownCss] = MailCss::extract($html);
         $html = MailCss::cleanInlineStyles($html);
+        // Word и Outlook оставляют в письме «условные комментарии» для старого IE:
+        // <![if !supportLineBreakNewLine]> … <![endif]>. Браузер их не показывает,
+        // а HTMLPurifier не понимает и отдаёт как текст — человек видел их в письме буквально.
+        $html = (string) preg_replace('/<!\[(?:end)?if[^\]>]*\]>/i', '', $html);
 
         $config = \HTMLPurifier_Config::createDefault();
         $config->set('Cache.SerializerPath', storage_path('app/purifier'));

@@ -121,7 +121,8 @@ export function addrList(list) {
 }
 
 export function addrString(list) {
-    return (list || []).map((a) => (a.name && a.name !== a.mail ? `${quoteName(a.name)} <${a.mail}>` : a.mail)).join(', ');
+    // Письмо без отправителя («Без отправителя», адрес пустой) в «Кому» ничего не даёт.
+    return (list || []).filter((a) => a && a.mail).map((a) => (a.name && a.name !== a.mail ? `${quoteName(a.name)} <${a.mail}>` : a.mail)).join(', ');
 }
 /** Имя с запятой, кавычками или скобками — в кавычки (RFC 5322), иначе «"Фирма" - Иванов» ломает разбор адреса. */
 export function quoteName(name) {

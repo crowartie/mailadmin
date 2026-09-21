@@ -41,7 +41,7 @@ final class MessageSummary
         $subject = trim((string) Charset::header($h['subject'] ?? ''));
         // Тот же подхват имени из общей книги, что и в summary(): этот путь собирает
         // строку списка напрямую из заголовков, минуя объект письма.
-        $from = ($f = Mime::firstAddress($h['from'] ?? '')) ? Directory::fill($f) : null;
+        $from = ($f = Mime::senderOf($h)) ? Directory::fill($f) : null;
         $to = ($t = Mime::firstAddress($h['to'] ?? '')) ? Directory::fill($t) : null;
         $date = null;
         foreach ([$h['date'] ?? null, $row['INTERNALDATE'] ?? null] as $raw) {
@@ -64,7 +64,7 @@ final class MessageSummary
         return [
             'uid' => (int) $row['UID'],
             'subject' => $subject !== '' ? $subject : '(без темы)',
-            'from' => $from ?? ['name' => '—', 'mail' => ''],
+            'from' => $from ?? Mime::NO_SENDER,
             'toName' => $to['name'] ?? null,
             'date' => $date,
             'seen' => in_array('\\seen', $flags, true),
@@ -137,6 +137,9 @@ final class MessageSummary
      * В списке писем тот же заголовок разбирается нашим разборщиком и всё видно,
      * поэтому здесь просто добавляем тот же запасной путь.
      *
+     * Письмо без From вовсе (черновик Outlook) подписывается по Sender/Reply-To,
+     * а если и их нет — «Без отправителя», как и в списке (Mime::senderOf).
+     *
      * @return array{name:string,mail:string}
      */
     private static function fromOf(Message $message): array
@@ -146,12 +149,12 @@ final class MessageSummary
         if (($out['mail'] ?? '') !== '') {
             return $out;
         }
-        $raw = Mime::headerValue((string) ($message->getHeader()?->raw ?? ''), 'From');
-        if ($raw !== null && ($parsed = Mime::firstAddress($raw)) !== null) {
+        $fields = Mime::parseHeaderFields((string) ($message->getHeader()?->raw ?? ''));
+        if (($parsed = Mime::senderOf($fields)) !== null) {
             return Directory::fill($parsed);
         }
 
-        return $out ?? ['name' => '—', 'mail' => ''];
+        return $out ?? Mime::NO_SENDER;
     }
 
     /**
