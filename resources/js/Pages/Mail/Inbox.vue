@@ -406,9 +406,9 @@ async function confirmDialog(value) {
     dialog.value = { ...d, busy: true };
     try {
         if (d.kind === 'newFolder') { const r = await api.createFolder(value, d.folder?.path || null); folders.value = r.folders; showToast({ text: 'Папка создана' }); }
-        if (d.kind === 'renameFolder') { const r = await api.renameFolder(d.folder.path, value); folders.value = r.folders; if (folder.value === d.folder.path) folder.value = r.path; }
+        if (d.kind === 'renameFolder') { const r = await api.renameFolder(d.folder.path, value); folders.value = r.folders; if (folder.value === d.folder.path) folder.value = r.path; if (r.rules) showToast({ text: `Папка переименована, ${plural(r.rules, 'правило', 'правила', 'правил')} перенастроено на новое имя` }); }
         // Панель папок рисуется из этого списка: пустой ответ сервера её бы уронил.
-        if (d.kind === 'deleteFolder') { const r = await api.deleteFolder(d.folder.path); if (Array.isArray(r?.folders)) folders.value = r.folders; if (r?.moved) showToast({ text: `Папка удалена, ${plural(r.moved, 'письмо', 'письма', 'писем')} — в «Корзине»` }); if (folder.value === d.folder.path) go('INBOX'); }
+        if (d.kind === 'deleteFolder') { const r = await api.deleteFolder(d.folder.path); if (Array.isArray(r?.folders)) folders.value = r.folders; if (r?.moved || r?.rules) showToast({ text: `Папка удалена${r.moved ? `, ${plural(r.moved, 'письмо', 'письма', 'писем')} — в «Корзине»` : ''}${r.rules ? `, ${plural(r.rules, 'правило', 'правила', 'правил')}, которые клали в неё письма, выключено` : ''}` }, 8000); if (folder.value === d.folder.path) go('INBOX'); }
         if (d.kind === 'emptyFolder') { const r = await api.emptyFolder(d.folder.path); folders.value = r.folders; if (folder.value === d.folder.path) load(1); }
         if (d.kind === 'label') { labels.value = await api.createLabel(value, d.color || '#2F6FEB'); }
         if (d.kind === 'renameLabel') { labels.value = await api.updateLabel(d.label.id, value, d.label.color); }

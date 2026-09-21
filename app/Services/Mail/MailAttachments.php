@@ -100,7 +100,13 @@ class MailAttachments
         }
 
         // Структура не разобралась или часть не пришла — читаем письмо целиком, как раньше.
-        $message = $this->tree->folder($path)->query()->getMessageByUid($uid);
+        // Письмо могли переложить или удалить, пока страница была открыта: браузер продолжает
+        // запрашивать его картинки, и раньше каждая отвечала 502 с записью в журнал ошибок.
+        try {
+            $message = $this->tree->folder($path)->query()->getMessageByUid($uid);
+        } catch (\Webklex\PHPIMAP\Exceptions\MessageHeaderFetchingException) {
+            $message = null;
+        }
         if (! $message) {
             throw MailException::notFound('Письмо не найдено');
         }

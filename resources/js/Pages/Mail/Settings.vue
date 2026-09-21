@@ -222,8 +222,8 @@ async function confirmDialog(value) {
     const d = dialog.value; dialog.value = null;
     try {
         if (d.kind === 'newFolder') folders.value = (await api.createFolder(value, d.parent || null)).folders;
-        if (d.kind === 'renameFolder') folders.value = (await api.renameFolder(d.folder.path, value)).folders;
-        if (d.kind === 'deleteFolder') folders.value = (await api.deleteFolder(d.folder.path)).folders;
+        if (d.kind === 'renameFolder') { const r = await api.renameFolder(d.folder.path, value); folders.value = r.folders; if (r.rules) say(`Папка переименована, ${plural(r.rules, 'правило', 'правила', 'правил')} перенастроено на новое имя`); }
+        if (d.kind === 'deleteFolder') { const r = await api.deleteFolder(d.folder.path); folders.value = r.folders; if (r.rules) say(`Папка удалена, ${plural(r.rules, 'правило', 'правила', 'правил')}, которые клали в неё письма, выключено — см. «Правила»`); }
         if (d.kind === 'label') labels.value = await api.createLabel(value, d.color || COLORS[0]);
         if (d.kind === 'renameLabel') labels.value = await api.updateLabel(d.label.id, value, d.label.color);
         if (d.kind === 'deleteLabel') labels.value = await api.deleteLabel(d.label.id);

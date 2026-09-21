@@ -39,8 +39,10 @@ class FolderController extends Controller
         $store = new MailStore($imap->client());
         $this->guardSystem($store, $folder);
         $path = $store->renameFolder($folder, $data['name']);
+        // Правила, которые клали письма в эту папку, идут за ней: иначе sieve воскресил бы старое имя.
+        $rules = app(\App\Services\Mail\RuleFolders::class)->renamed($imap, $folder, $path);
 
-        return response()->json(['path' => $path, 'folders' => $store->folders()]);
+        return response()->json(['path' => $path, 'folders' => $store->folders(), 'rules' => $rules]);
     }
 
     public function destroy(ImapSession $imap, string $folder): JsonResponse
@@ -48,9 +50,11 @@ class FolderController extends Controller
         $store = new MailStore($imap->client());
         $this->guardSystem($store, $folder);
         $moved = $store->deleteFolder($folder);
+        // Правила «в эту папку» выключаем: иначе первое же подходящее письмо создало бы папку заново.
+        $rules = app(\App\Services\Mail\RuleFolders::class)->deleted($imap, $folder);
 
-        // Сколько писем переехало в корзину — интерфейс скажет об этом человеку.
-        return response()->json(['folders' => $store->folders(), 'moved' => $moved]);
+        // Сколько писем переехало в корзину и сколько правил выключено — интерфейс скажет об этом человеку.
+        return response()->json(['folders' => $store->folders(), 'moved' => $moved, 'rules' => $rules]);
     }
 
     /** Очистить корзину или спам. */
