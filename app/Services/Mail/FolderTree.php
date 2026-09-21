@@ -455,7 +455,7 @@ class FolderTree
             throw MailException::invalid('Название длиннее 80 символов — сократите');
         }
         self::assertNoDot($clean);
-        $name = $clean;
+        $name = self::unmangle($clean);
         // Родитель приходит в виде IMAP-пути (UTF-7), имя — в UTF-8; собираем в UTF-8, кодирует библиотека.
         $parentName = $parent ? mb_convert_encoding($parent, 'UTF-8', 'UTF7-IMAP') : null;
         $path = $parentName ? $parentName . '/' . $name : $name;
@@ -498,7 +498,7 @@ class FolderTree
             throw MailException::invalid('Введите название папки');
         }
         self::assertNoDot($renamed);
-        $parts[] = $renamed;
+        $parts[] = self::unmangle($renamed);
         $new = implode($folder->delimiter, $parts);
         // Folder::move() шлёт старое имя в UTF-8, сервер ждёт UTF-7 — переименовываем через протокол сами.
         $this->client->getConnection()->renameFolder($path, $this->utf7($new));
@@ -681,6 +681,24 @@ class FolderTree
     private function utf7(string $path): string
     {
         return mb_convert_encoding($path, 'UTF7-IMAP', 'UTF-8');
+    }
+
+    /**
+     * Имя, которое пришло уже в кодировке IMAP («&BCAENQQ6BDsEMAQ8BDA-» вместо «Реклама»), раскодируем:
+     * иначе сервер закодирует его второй раз, и почтовые программы покажут абракадабру
+     * (обращение №36: две такие папки в Thunderbird). Обычный «&» в имени («Счета & Акты») не трогаем.
+     */
+    public static function unmangle(string $name): string
+    {
+        return preg_replace_callback('/&([A-Za-z0-9+,]{3,})-/', function (array $m): string {
+            $decoded = @mb_convert_encoding($m[0], 'UTF-8', 'UTF7-IMAP');
+            if (! is_string($decoded) || $decoded === '' || $decoded === $m[0] || ! mb_check_encoding($decoded, 'UTF-8')
+                || preg_match('/[\x00-\x1F&]/', $decoded)) {
+                return $m[0];
+            }
+
+            return $decoded;
+        }, $name) ?? $name;
     }
 
     /** Папка по IMAP-пути; если нет — создаётся (для действий правил «в папку»). */
