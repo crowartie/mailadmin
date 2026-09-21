@@ -1,6 +1,6 @@
 <script setup>
 // Средняя колонка: поиск, фильтры, панель массовых действий, строки писем, страницы.
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import { dayGroup, hue, initials, plural, when } from '../../mail/format';
 
@@ -77,6 +77,24 @@ const initial = decomposeQuery(props.query);
 if (initial.scope) scope.value = initial.scope;
 const q = ref(initial.text);
 watch(() => props.query, (v) => { const d = decomposeQuery(v); if (d.scope) scope.value = d.scope; q.value = d.text; });
+
+// 40: страница менялась, а список оставался прокрученным на прежнюю высоту — человек жал
+// «Старше» и попадал в середину новой страницы, теряя место, на котором остановился.
+// Показываем новый список с начала; на узком экране список прокручивается вместе со страницей.
+const rowsBox = ref(null);
+watch(
+    () => [props.folder, props.list?.page, props.filter, props.query, props.sort, props.everywhere].join('\u0000'),
+    async (now, before) => {
+        if (now === before) return;
+        await nextTick();
+        if (rowsBox.value) rowsBox.value.scrollTop = 0;
+        // Обычное обновление списка (раз в 20 секунд и после действий) сюда не попадает:
+        // там папка, страница и отбор те же самые.
+        if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) {
+            window.scrollTo({ top: 0 });
+        }
+    },
+);
 const searchInput = ref(null);
 // Подсказка по операторам — по ссылке, а не всегда: с переключателем поля она нужна
 // только тем, кто пишет операторы руками.
@@ -187,7 +205,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             </span>
         </div>
 
-        <div class="mlist__rows" :style="loading ? 'opacity:.6' : ''">
+        <div ref="rowsBox" class="mlist__rows" :style="loading ? 'opacity:.6' : ''">
             <template v-for="(m, i) in list.messages" :key="m.uid">
             <div v-if="groupLabel(i)" class="mlist__day">{{ groupLabel(i) }}</div>
             <div
