@@ -4,7 +4,8 @@ import { computed, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import Popover from './Popover.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
-import { isEmpty, isImg, isOffice, viewable, viewerItems } from '../../mail/attachments';
+import AttachedMail from './AttachedMail.vue';
+import { isEmpty, isEml, isImg, isOffice, viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
 import { addrList, initials, size, when } from '../../mail/format';
 
@@ -93,6 +94,11 @@ function toText(m) {
 
 // Просмотр вложений (обращение №6): картинки и PDF открываются поверх письма, остальное — скачивается.
 const viewer = ref(null);   // { items, start }
+// Письмо, приложенное к письму: открываем его как письмо (обращение №39).
+const attachedMail = ref(null);   // { folder, uid, index, name }
+function openAttachedMail(m, a) {
+    attachedMail.value = { folder: m.folder, uid: m.uid, index: a.index, name: a.name };
+}
 function openAttachment(m, a) {
     const list = m.attachments.filter(viewable);
     viewer.value = { start: Math.max(0, list.findIndex((x) => x.index === a.index)), items: viewerItems(m.folder, m.uid, m.attachments) };
@@ -310,10 +316,11 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         <span v-if="isEmpty(a)" class="att__main" :title="a.name + ' · файл не дошёл: отправитель объявил вложение, но не догрузил его'">
                             <Icon name="warn" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">файл не дошёл</span>
                         </span>
-                        <a v-else class="att__main" :href="api.attachmentUrl(m.folder, m.uid, a.index)" :title="a.name + ' · ' + a.type" @click="viewable(a) && (openAttachment(m, a), $event.preventDefault())">
-                            <Icon name="clip" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
+                        <a v-else class="att__main" :href="api.attachmentUrl(m.folder, m.uid, a.index)" :title="isEml(a) ? a.name + ' · письмо во вложении — откроется в почте' : a.name + ' · ' + a.type" @click="(viewable(a) && (openAttachment(m, a), $event.preventDefault())) || (isEml(a) && (openAttachedMail(m, a), $event.preventDefault()))">
+                            <Icon :name="isEml(a) ? 'mail' : 'clip'" :size="13" /><span class="name">{{ a.name }}</span><span class="sz">{{ size(a.size) }}</span>
                         </a>
                         <button v-if="viewable(a)" class="att__btn" type="button" title="Посмотреть" @click="openAttachment(m, a)" aria-label="Посмотреть"><Icon name="eye" :size="14" /></button>
+                        <button v-if="isEml(a) && !isEmpty(a)" class="att__btn" type="button" title="Открыть письмо" aria-label="Открыть письмо" @click="openAttachedMail(m, a)"><Icon name="mail" :size="14" /></button>
                         <a v-if="!isEmpty(a)" class="att__btn" :href="api.attachmentUrl(m.folder, m.uid, a.index)" title="Скачать" aria-label="Скачать"><Icon name="download" :size="14" /></a>
                     </span>
                     <!-- Несколько вложений — одним архивом (обращение №11) -->
@@ -394,4 +401,5 @@ const isDraft = computed(() => props.folderRole === 'drafts');
     </div>
     </div>
     <AttachmentViewer v-if="viewer" :items="viewer.items" :start="viewer.start" @close="viewer = null" />
+    <AttachedMail v-if="attachedMail" :source="attachedMail" @close="attachedMail = null" />
 </template>

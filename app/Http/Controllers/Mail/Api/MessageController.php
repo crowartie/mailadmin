@@ -91,6 +91,28 @@ class MessageController extends Controller
         ]);
     }
 
+    /** Письмо, приложенное к письму: показываем его в почте как обычное письмо (обращение №39). */
+    public function attachedMessage(ImapSession $imap, string $folder, int $uid, int $index): JsonResponse
+    {
+        return response()->json((new MailStore($imap->client()))->attachedMessage($folder, $uid, $index));
+    }
+
+    /** Вложение изнутри приложенного письма. */
+    public function attachedPart(Request $request, ImapSession $imap, string $folder, int $uid, int $index, int $sub): Response
+    {
+        $a = (new MailStore($imap->client()))->attachedPart($folder, $uid, $index, $sub);
+        $type = $a->getMimeType() ?: 'application/octet-stream';
+        $name = $a->getName();
+        $svg = in_array(strtolower($type), ['image/svg+xml', 'image/svg'], true) || preg_match('/\.svgz?$/i', $name);
+        $inline = $request->boolean('inline') && ! $svg && (str_starts_with($type, 'image/') || $type === 'application/pdf');
+
+        return response($a->getContent(), 200, [
+            'Content-Type' => $svg ? 'text/plain; charset=utf-8' : $type,
+            'Content-Disposition' => ($inline ? 'inline' : 'attachment') . "; filename*=UTF-8''" . rawurlencode($name),
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     /** Предпросмотр офисного документа как PDF (LibreOffice на сервере, только показ — оригинал не меняется). */
     public function attachmentPreview(ImapSession $imap, string $folder, int $uid, int $index): Response
     {

@@ -13,6 +13,8 @@ export const ext = (a) => {
 export const isImg = (a) => String(a.type || '').startsWith('image/');
 export const isPdf = (a) => a.type === 'application/pdf' || ext(a) === 'pdf';
 export const isOffice = (a) => OFFICE.includes(ext(a));
+// Письмо, приложенное к письму: показываем его отдельным окном, а не просмотрщиком картинок.
+export const isEml = (a) => String(a.type || '').toLowerCase() === 'message/rfc822' || ext(a) === 'eml';
 
 // Пустое вложение: отправитель объявил файл, но тела не прислал.
 // Так делают мобильные клиенты, когда связь рвётся на полуслове: в письме остаются
@@ -22,7 +24,7 @@ export const EMPTY_MAX = 2;
 export const isEmpty = (a) => Number(a.size ?? 0) <= EMPTY_MAX;
 
 // Показывать нечего — ни картинку, ни PDF: смотреть пустоту предлагать не надо.
-export const viewable = (a) => !a.inline && !isEmpty(a) && (isImg(a) || isPdf(a) || isOffice(a));
+export const viewable = (a) => !a.inline && !isEmpty(a) && !isEml(a) && (isImg(a) || isPdf(a) || isOffice(a));
 
 export function viewUrl(folder, uid, a) {
     return isOffice(a) ? api.attachmentPreviewUrl(folder, uid, a.index) : api.attachmentUrl(folder, uid, a.index, true);

@@ -73,6 +73,16 @@ class MessageReader
      * письма браузер запрашивает отдельно, и выкачивать ради неё письмо целиком (а с ним
      * и все прочие вложения) — это секунды и десятки мегабайт памяти на каждый запрос.
      */
+    public function attachedMessage(string $path, int $uid, int $index): array
+    {
+        return $this->files->attachedMessage($path, $uid, $index);
+    }
+
+    public function attachedPart(string $path, int $uid, int $index, int $sub): MailPart
+    {
+        return $this->files->attachedPart($path, $uid, $index, $sub);
+    }
+
     public function attachment(string $path, int $uid, int $index): MailPart
     {
         return $this->files->attachment($path, $uid, $index);

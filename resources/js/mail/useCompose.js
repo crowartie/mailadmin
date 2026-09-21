@@ -1,5 +1,5 @@
 import { api, composeForm } from './api';
-import { addrString, escapeHtml, when } from './format';
+import { addrString, escapeHtml, plural, when } from './format';
 
 /**
  * Написание письма: новое, ответ, ответ всем, пересылка, «как новое», черновик,
@@ -78,7 +78,11 @@ export function useCompose(ctx) {
         });
     }
 
+    // Третий параметр — текст быстрого ответа; для пересылки вложением там приходит
+    // список писем ({ messages: [...] }), поэтому разбираем оба случая.
     function startCompose(mode = 'new', m = null, text = '') {
+        const extra = text && typeof text === 'object' ? text : null;
+        if (extra) text = '';
         ctx.menu.value = null;
         if (mode === 'draft') { openDraft(m.uid); return; }
         const c = { token: ++seq, mode, to: [], cc: [], bcc: [], subject: '', html: '', from: sharedFrom(m) || '' };
@@ -103,6 +107,15 @@ export function useCompose(ctx) {
             c.attachments = m.attachments || [];
             c.sourceFolder = m.folder;
             c.sourceUid = m.uid;
+            c.keepAttachments = false;
+        } else if (mode === 'forwardAttach') {
+            // Пересылка вложением, как в Kerio (обращение №39): исходные письма уходят
+            // файлами .eml, тело нового письма остаётся пустым — цитаты и шапки не нужно.
+            const all = Array.isArray(extra?.messages) && extra.messages.length ? extra.messages : [m];
+            c.subject = all.length === 1 ? answerSubject('Fwd', all[0].subject) : `Fwd: ${all.length} ${plural(all.length, 'письмо', 'письма', 'писем')}`;
+            c.html = `<p><br></p>${signature(true, c.from)}`;
+            c.attachMessages = all.map((x) => ({ folder: x.folder, uid: x.uid, name: x.subject || 'письмо' }));
+            c.attachments = [];
             c.keepAttachments = false;
         } else if (mode === 'forward') {
             c.subject = answerSubject('Fwd', m.subject);

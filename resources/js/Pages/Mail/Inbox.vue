@@ -319,6 +319,21 @@ async function markSender(match) {
     } catch (e) { d.busy = false; fail(e); }
 }
 
+// Переслать выбранные письма вложением (обращение №39): в новом письме они уходят
+// файлами .eml, и получатель открывает исходное письмо со всеми заголовками.
+function forwardAsAttachment(uids) {
+    const ids = Array.isArray(uids) ? uids : [uids];
+    const rows = (list.value.messages || []).filter((m) => ids.includes(m.uid))
+        .map((m) => ({ folder: folder.value, uid: m.uid, subject: m.subject }));
+    // Открытое письмо может быть из другой папки (переписка) — берём его как есть.
+    if (!rows.length && open.value && ids.includes(open.value.uid)) {
+        rows.push({ folder: open.value.folder || folder.value, uid: open.value.uid, subject: open.value.subject });
+    }
+    menu.value = null;
+    if (!rows.length) { showToast({ text: 'Не нашли письмо для пересылки — обновите страницу', error: true }); return; }
+    startCompose('forwardAttach', rows[0], { messages: rows });
+}
+
 // Ширина колонок «папки» и «список» — в useColumns.
 const { colStyle, resizing, startResize, resetCol } = useColumns();
 
@@ -596,12 +611,15 @@ onBeforeUnmount(() => {
             <template v-if="menuRow && folderInfo.role !== 'drafts'">
                 <button class="pop__item" type="button" @click="openThen('reply')"><Icon name="reply" :size="16" />Ответить<span class="k">r</span></button>
                 <button class="pop__item" type="button" @click="openThen('forward')"><Icon name="fwd" :size="16" />Переслать<span class="k">f</span></button>
+                <!-- Как в Kerio (обращение №39): письма уходят файлами .eml, получатель открывает исходное письмо целиком -->
+                <button class="pop__item" type="button" title="Письма уйдут файлами, получатель откроет их как письма" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
                 <button class="pop__item" type="button" title="Открыть как новое письмо: те же получатели, тема, текст и вложения" @click="openThen('again')"><Icon name="edit" :size="16" />Изменить как новое</button>
                 <div class="pop__sep" />
             </template>
             <!-- Для пачки писем показываем оба действия: раньше предлагался единственный пункт
                  «Непрочитано», то есть ровно противоположный ожидаемому. -->
             <template v-if="menu.uids.length > 1">
+                <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Все выбранные письма уйдут вложениями в одном письме" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением ({{ menu.uids.length }})</button>
                 <button class="pop__item" type="button" @click="act('seen', menu.uids)"><Icon name="eye" :size="16" />Прочитано</button>
                 <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Непрочитано</button>
             </template>
@@ -674,6 +692,7 @@ onBeforeUnmount(() => {
                 <button class="pop__item mobile-only" type="button" @click="menu = null; printOpen(open)"><Icon name="print" :size="16" />Печать</button>
                 <div class="pop__sep mobile-only" />
             </template>
+            <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Письмо уйдёт файлом, получатель откроет его как письмо" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
             <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Пометить непрочитанным</button>
             <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'remind' }"><Icon name="bell" :size="16" />Напомнить, если не ответят…</button>
             <!-- Оба пункта работают с одним письмом: при выделенной пачке честно говорим, с каким именно. -->

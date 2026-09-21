@@ -32,6 +32,9 @@ const html = ref(c.html || '');
 // Раньше список всегда создавался пустым, и вложения молча пропадали.
 const files = ref(Array.isArray(c.files) ? [...c.files] : []);
 const existing = ref(c.attachments || []);
+// Письма, приложенные целиком (обращение №39): их содержимое берёт сервер, заливать нечего.
+const attachedMails = ref([...(c.attachMessages || [])]);
+function dropMail(i) { attachedMails.value.splice(i, 1); dirty.value = true; }
 const keepAttachments = ref(c.keepAttachments ?? (c.mode === 'forward'));
 const draftUid = ref(c.draftUid || null);
 // Черновик при каждом сохранении перекладывается под новым UID. Вложения, унаследованные
@@ -136,6 +139,7 @@ function payload(extra = {}) {
         keepAttachments: keepAttachments.value && existing.value.length > 0,
         // Снятые крестиком вложения исходного письма раньше всё равно уходили: сервер брал все.
         keepIndexes: keepAttachments.value ? existing.value.map((a) => a.index) : [],
+        attachMessages: attachedMails.value.map((x) => ({ folder: x.folder, uid: x.uid, name: x.name })),
         draftUid: draftUid.value,
         priority: priority.value,
         receipt: receipt.value,
@@ -419,7 +423,12 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             </template>
         </Editor>
 
-        <div v-if="files.length || (keepAttachments && existing.length)" class="compose__atts">
+        <div v-if="files.length || attachedMails.length || (keepAttachments && existing.length)" class="compose__atts">
+            <!-- Письмо, приложенное целиком: уйдёт файлом .eml, получатель откроет его как письмо -->
+            <span v-for="(x, i) in attachedMails" :key="'m' + x.folder + x.uid" class="att att--mail" :title="'Письмо «' + x.name + '» уйдёт вложением'">
+                <span class="att__main"><Icon name="mail" :size="13" /><span class="name">{{ x.name }}</span><span class="sz">письмо</span></span>
+                <button class="att__btn" type="button" title="Убрать это письмо" aria-label="Убрать это письмо" @click="dropMail(i)"><Icon name="x" :size="13" /></button>
+            </span>
             <template v-if="keepAttachments">
                 <span v-for="a in existing" :key="'e' + a.index" class="att" :class="{ 'att--cloud': keptCloud(a) }" :title="keptCloud(a) ? a.name + ' — крупнее порога, уйдёт ссылкой' : a.name + (viewable(a) ? ' — посмотреть' : '')">
                     <a class="att__main" :href="api.attachmentUrl(c.sourceFolder, srcUid, a.index)" @click="viewable(a) && (openExisting(a), $event.preventDefault())">

@@ -104,6 +104,9 @@ export const api = {
     feedbackPoll: (id, after) => request('GET', `/mail/api/feedback/${id}?after=${after || 0}`),
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
     attachmentPreviewUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/preview.pdf`,
+    // Письмо, приложенное к письму (.eml): разобранное письмо и его собственные вложения.
+    attachedMessage: (folder, uid, index) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message`),
+    attachedPartUrl: (folder, uid, index, sub, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message/${sub}${inline ? '?inline=1' : ''}`,
     attachmentsZipUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/attachments.zip`,
     // Своё хранилище больших вложений
     files: () => request('GET', '/mail/api/files'),
@@ -201,5 +204,11 @@ export function composeForm(c, files = []) {
     files.forEach((file) => fd.append('files[]', file, file.name));
     (c.cloud || []).forEach((i) => fd.append('cloud[]', String(i)));
     (c.keepIndexes || []).forEach((i) => fd.append('keepIndexes[]', String(i)));
+    // Письма, приложенные целиком: сервер возьмёт их исходники сам, заливать нечего.
+    (c.attachMessages || []).forEach((m, i) => {
+        fd.append(`attachMessages[${i}][folder]`, m.folder);
+        fd.append(`attachMessages[${i}][uid]`, String(m.uid));
+        if (m.name) fd.append(`attachMessages[${i}][name]`, m.name);
+    });
     return fd;
 }

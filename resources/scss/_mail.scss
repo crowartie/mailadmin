@@ -1377,6 +1377,25 @@ select.input { padding-right: 28px; }
     .att__main { cursor: default; }
     .sz { color: v.$c-warn-ink; }
 }
+// Письмо, приложенное к письму: чип в окне письма и в списке вложений.
+.att--mail { border-color: color-mix(in srgb, var(--acc) 45%, var(--border)); background: color-mix(in srgb, var(--acc) 7%, transparent); }
+// Окно «Письмо во вложении» (обращение №39): шапка, тело письма, свои вложения.
+.dialog--eml {
+    width: min(920px, 96vw);
+    max-height: 90vh;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+
+    .eml__bar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid v.$c-border; }
+    .eml__bar h2 { margin: 0; font-size: 16px; }
+    .eml__body { padding: 16px; overflow: auto; }
+    .eml__subject { margin: 0 0 10px; font-size: 17px; }
+    .eml__head { display: grid; gap: 4px; font-size: 13px; color: v.$c-text; margin-bottom: 4px; }
+    .eml__label { display: inline-block; min-width: 76px; color: v.$c-muted; }
+    .eml__text { white-space: pre-wrap; font: inherit; margin: 12px 0 0; }
+    .msg__body { padding: 0; }
+}
 .msg__cloud { align-items: center; }
 // Длинная ссылка в теле письма (в том числе на файл из хранилища) не должна вылезать за рамку:
 // чистка HTML отбрасывает word-break из письма, поэтому правило своё.

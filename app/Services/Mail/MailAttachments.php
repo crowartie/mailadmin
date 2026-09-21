@@ -23,6 +23,33 @@ class MailAttachments
      *
      * @return array{path:string,name:string,count:int}
      */
+    /**
+     * Письмо, приложенное к письму (.eml): разобранная шапка, тело и его вложения —
+     * чтобы показать переписку прямо в почте, а не скачивать файл (обращение №39).
+     *
+     * @return array<string,mixed>
+     */
+    public function attachedMessage(string $path, int $uid, int $index): array
+    {
+        $a = $this->attachment($path, $uid, $index);
+        if (! AttachedMessage::looksLikeMail($a->getMimeType(), $a->getName())) {
+            throw MailException::unsupported('Это вложение — не письмо');
+        }
+
+        return AttachedMessage::parse((string) $a->getContent(), $a->getName()) + ['index' => $index];
+    }
+
+    /** Вложение изнутри приложенного письма. */
+    public function attachedPart(string $path, int $uid, int $index, int $sub): MailPart
+    {
+        $a = $this->attachment($path, $uid, $index);
+        if (! AttachedMessage::looksLikeMail($a->getMimeType(), $a->getName())) {
+            throw MailException::unsupported('Это вложение — не письмо');
+        }
+
+        return AttachedMessage::part((string) $a->getContent(), $sub);
+    }
+
     /** Расширение файла по типу — для вложений, у которых нет имени. */
     private const EXT_BY_TYPE = [
         'image/png' => 'png', 'image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/gif' => 'gif',

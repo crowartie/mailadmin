@@ -129,6 +129,12 @@ class MailBuilder
             $email->attach($content, $name, $mime);
         }
 
+        // Письма, приложенные целиком (обращение №39): получатель открывает исходное письмо
+        // со всеми заголовками, а не пересказ в цитате.
+        foreach ($this->attachedMails($form) as [$raw, $name]) {
+            $email->attach($raw, $name, 'message/rfc822');
+        }
+
         $email->getHeaders()->addTextHeader('X-Mailer', 'Почта ' . config('areas.default_domain'));
         // Message-ID фиксируем сами: иначе у отправленного письма и копии в «Отправленных» он разный.
         $email->getHeaders()->addIdHeader('Message-ID', $messageId);
@@ -193,6 +199,37 @@ class MailBuilder
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Исходники писем, которые приложены к новому письму как файлы .eml.
+     *
+     * @return array<int,array{0:string,1:string}>
+     */
+    private function attachedMails(array $form): array
+    {
+        $out = [];
+        foreach ((array) ($form['attachMessages'] ?? []) as $one) {
+            $folder = (string) ($one['folder'] ?? '');
+            $uid = (int) ($one['uid'] ?? 0);
+            if ($folder === '' || $uid <= 0) {
+                continue;
+            }
+            try {
+                $raw = $this->store->raw($folder, $uid);
+            } catch (\Throwable) {
+                $raw = '';
+            }
+            // Письмо могли удалить или переложить, пока человек писал. Молча отправить без него нельзя:
+            // получатель ждёт именно пересылаемую переписку.
+            if (trim($raw) === '') {
+                throw \App\Exceptions\MailException::notFound('Письмо «' . mb_substr((string) ($one['name'] ?? 'без темы'), 0, 60) . '» больше не найти в папке — уберите его из вложений и отправьте снова.');
+            }
+            $name = trim((string) ($one['name'] ?? ''));
+            $out[] = [$raw, $name !== '' ? AttachedMessage::fileName($name) : AttachedMessage::fileName('письмо')];
+        }
+
+        return $out;
     }
 
     /** Файл дошёл до сервера целиком? Иначе — понятная ошибка, а не письмо без вложения. */

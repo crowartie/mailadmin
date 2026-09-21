@@ -201,6 +201,18 @@ class MailStore
         return $moved;
     }
 
+    /** @see MailAttachments::attachedMessage() */
+    public function attachedMessage(string $path, int $uid, int $index): array
+    {
+        return $this->reader->attachedMessage($path, $uid, $index);
+    }
+
+    /** @see MailAttachments::attachedPart() */
+    public function attachedPart(string $path, int $uid, int $index, int $sub): MailPart
+    {
+        return $this->reader->attachedPart($path, $uid, $index, $sub);
+    }
+
     /** @see FolderTree::ensureFolder() */
     public function ensureFolder(string $path): string
     {

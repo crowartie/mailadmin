@@ -31,6 +31,11 @@ class ComposeController extends Controller
         'keepAttachments' => ['nullable', 'boolean'],
         'keepIndexes' => ['nullable', 'array', 'max:50'],       // какие вложения исходного письма оставить
         'keepIndexes.*' => ['integer', 'min:0'],
+        // Письма, приложенные целиком (обращение №39): [{folder, uid, name}]
+        'attachMessages' => ['nullable', 'array', 'max:20'],
+        'attachMessages.*.folder' => ['required', 'string', 'max:500'],
+        'attachMessages.*.uid' => ['required', 'integer', 'min:1'],
+        'attachMessages.*.name' => ['nullable', 'string', 'max:255'],
         'draftUid' => ['nullable', 'integer'],
         'priority' => ['nullable', 'boolean'],
         'receipt' => ['nullable', 'boolean'],

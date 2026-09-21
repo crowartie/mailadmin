@@ -95,6 +95,9 @@ Route::middleware('area:mail')->group(function () {
             Route::get('message/{folder}/{uid}/attachment/{index}', [MessageController::class, 'attachment'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
             Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 'attachmentsZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
             Route::get('message/{folder}/{uid}/attachment/{index}/preview.pdf', [MessageController::class, 'attachmentPreview'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
+            // Письмо, приложенное к письму (.eml): разобранное письмо и его собственные вложения.
+            Route::get('message/{folder}/{uid}/attachment/{index}/message', [MessageController::class, 'attachedMessage'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
+            Route::get('message/{folder}/{uid}/attachment/{index}/message/{sub}', [MessageController::class, 'attachedPart'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index')->whereNumber('sub');
             // Своё хранилище больших вложений: мои файлы, продление, удаление, предпросмотр в почте.
             Route::get('files', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'index']);
             Route::get('files/{token}', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'show'])->where('token', '[A-Za-z0-9_-]{20,64}');
