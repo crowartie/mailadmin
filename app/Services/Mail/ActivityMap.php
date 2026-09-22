@@ -18,7 +18,7 @@ final class ActivityMap
         'page.feedback' => 'Открыл обращения', 'page.quarantine' => 'Открыл карантин', 'print' => 'Печать письма',
         'list' => 'Листал список', 'search' => 'Искал', 'open' => 'Открыл письмо', 'thread' => 'Открыл переписку',
         'raw' => 'Исходник письма', 'attachment' => 'Скачал вложение', 'attachment.preview' => 'Просмотр вложения',
-        'attachment.zip' => 'Скачал все вложения', 'attachment.mail' => 'Открыл вложенное письмо',
+        'attachment.zip' => 'Скачал все вложения', 'attachment.mail' => 'Открыл вложенное письмо', 'image' => 'Картинка в тексте письма',
         'send' => 'Отправил письмо', 'send.cancel' => 'Отменил отправку', 'draft.save' => 'Сохранил черновик',
         'draft.open' => 'Открыл черновик', 'msg.move' => 'Перенёс письма', 'msg.delete' => 'Удалил письма',
         'msg.seen' => 'Отметил прочитанным', 'msg.unseen' => 'Отметил непрочитанным', 'msg.flag' => 'Поставил флажок',
@@ -70,7 +70,8 @@ final class ActivityMap
             $is('message/.+/attachment/\d+/preview\.pdf') => ['attachment.preview', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/attachment/\d+/message(/\d+)?') => ['attachment.mail', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/attachments\.zip') => ['attachment.zip', self::role(self::folderOf($p, 'message')), null],
-            $is('message/.+/attachment/\d+') => ['attachment', self::role(self::folderOf($p, 'message')), null],
+            // Картинки, встроенные в текст письма (cid), браузер тянет сам при открытии — это не «скачал вложение».
+            $is('message/.+/attachment/\d+') => [! empty($query['inline']) ? 'image' : 'attachment', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/raw') => ['raw', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/thread') => ['thread', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/\d+') => ['open', self::role(self::folderOf($p, 'message')), null],

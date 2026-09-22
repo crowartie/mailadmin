@@ -43,6 +43,8 @@ class ActivityMapTest extends TestCase
     {
         $this->assertSame(['open', 'inbox', null], ActivityMap::describe('GET', 'mail/api/message/INBOX/1141'));
         $this->assertSame(['attachment', 'sent', null], ActivityMap::describe('GET', 'mail/api/message/Sent/12/attachment/0'));
+        // Встроенная картинка письма грузится браузером сама — отдельное действие, не скачивание.
+        $this->assertSame(['image', 'inbox', null], ActivityMap::describe('GET', 'mail/api/message/INBOX/12/attachment/3', ['inline' => '1']));
         $this->assertSame(['attachment.preview', 'own', null], ActivityMap::describe('GET', 'mail/api/message/Проекты%2F2026/7/attachment/2/preview.pdf'));
         $this->assertSame(['attachment.mail', 'inbox', null], ActivityMap::describe('GET', 'mail/api/message/INBOX/7/attachment/1/message/0'));
         $this->assertSame(['thread', 'inbox', null], ActivityMap::describe('GET', 'mail/api/message/INBOX/7/thread'));

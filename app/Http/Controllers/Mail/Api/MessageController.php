@@ -88,6 +88,9 @@ class MessageController extends Controller
             'Content-Type' => $svg ? 'text/plain; charset=utf-8' : $type,
             'Content-Disposition' => ($inline ? 'inline' : 'attachment') . "; filename*=UTF-8''" . rawurlencode($name),
             'X-Content-Type-Options' => 'nosniff',
+            // Встроенные картинки (логотипы в подписях, снимки в теле) одинаковы при каждом открытии:
+            // по журналу действий одно письмо тянуло их по 50 штук за секунду. Сутки в кэше браузера.
+            'Cache-Control' => $inline ? 'private, max-age=86400' : 'private, no-store',
         ]);
     }
 
