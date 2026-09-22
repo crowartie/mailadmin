@@ -51,7 +51,7 @@ sudo grep -ah "^$D1" $ML | grep -aE "status=(deferred|bounced)" | sed -E 's/.*to
 echo
 echo "### хранилище файлов и ночные задания"
 cd /opt/mailadmin && sudo -u www-data env HOME=/tmp php artisan tinker --execute='
-$t=DB::table("webmail_files"); echo "файлов всего: ".$t->count().", за сутки: ".$t->where("created_at",">=",now()->subDay())->count().", проверено сегодня: ".DB::table("webmail_files")->where("checked_at",">=",now()->startOfDay())->count().", с ошибкой: ".DB::table("webmail_files")->whereNotNull("error")->count()."\n";
+$t=DB::table("webmail_files"); echo "файлов всего: ".$t->count().", за сутки: ".$t->where("created_at",">=",now()->subDay())->count().", проверено сегодня: ".DB::table("webmail_files")->where("checked_at",">=",now()->startOfDay())->count().", не проверялись ни разу: ".DB::table("webmail_files")->whereNull("checked_at")->count()."\n";
 ' 2>/dev/null | tail -1
 sudo grep -ahE "files:(check|purge)|ФайлыПроверка|files check" /opt/mailadmin/storage/logs/laravel-$D0.log /opt/mailadmin/storage/logs/laravel.log 2>/dev/null | tail -3 | cut -c1-160
 sudo journalctl --since "$D0 04:00" --until "$D0 05:00" --no-pager 2>/dev/null | grep -iE "artisan|schedule" | tail -3 | cut -c1-160
