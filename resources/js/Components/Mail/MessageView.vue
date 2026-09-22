@@ -349,6 +349,9 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         <a v-if="!f.expired" class="att__btn" :href="f.url" title="Скачать" aria-label="Скачать"><Icon name="download" :size="14" /></a>
                         <button v-if="f.mine" class="att__btn" type="button" title="Продлить ссылку" aria-label="Продлить ссылку" @click="renewFile(f)"><Icon name="refresh" :size="14" /></button>
                     </span>
+                    <a v-if="cloudLive(m).length > 1" class="att att--all" :href="api.cloudZipUrl(m.folder, m.uid)" title="Все файлы из облака одним ZIP-архивом">
+                        <Icon name="download" :size="13" /><span class="name">Скачать все ({{ cloudLive(m).length }})</span>
+                    </a>
                     <span class="msg__cloud-note">{{ cloudNote(m) }}</span>
                 </div>
                 <!-- Объясняем, что произошло, и что с этим делать: иначе пустой файл читается

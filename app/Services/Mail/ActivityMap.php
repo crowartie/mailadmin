@@ -31,7 +31,7 @@ final class ActivityMap
         'label.create' => 'Создал метку', 'label.rename' => 'Изменил метку', 'label.delete' => 'Удалил метку',
         'security.2fa' => 'Двухфакторный вход', 'security.app-password' => 'Пароль приложения', 'security.kick' => 'Завершил сеансы',
         'sender.mark' => 'Отметил отправителя', 'files.list' => 'Открыл «Мои файлы»', 'file.open' => 'Скачал файл из облака',
-        'file.preview' => 'Просмотр файла из облака', 'file.renew' => 'Продлил ссылку', 'file.delete' => 'Удалил файл из облака',
+        'file.preview' => 'Просмотр файла из облака', 'file.renew' => 'Продлил ссылку', 'file.zip' => 'Скачал все файлы из облака', 'file.delete' => 'Удалил файл из облака',
         'contacts.import' => 'Загрузил контакты', 'contacts.export' => 'Выгрузил контакты', 'contacts.forget' => 'Забыл адрес',
         'task.create' => 'Создал задачу', 'task.update' => 'Изменил задачу', 'task.delete' => 'Удалил задачу',
         'quarantine.release' => 'Выпустил из карантина', 'quarantine.delete' => 'Удалил из карантина',
@@ -70,6 +70,7 @@ final class ActivityMap
             $is('message/.+/attachment/\d+/preview\.pdf') => ['attachment.preview', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/attachment/\d+/message(/\d+)?') => ['attachment.mail', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/attachments\.zip') => ['attachment.zip', self::role(self::folderOf($p, 'message')), null],
+            $is('message/.+/cloud\.zip') => ['file.zip', self::role(self::folderOf($p, 'message')), null],
             // Картинки, встроенные в текст письма (cid), браузер тянет сам при открытии — это не «скачал вложение».
             $is('message/.+/attachment/\d+') => [! empty($query['inline']) ? 'image' : 'attachment', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/raw') => ['raw', self::role(self::folderOf($p, 'message')), null],

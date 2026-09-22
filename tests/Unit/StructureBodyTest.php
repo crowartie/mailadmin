@@ -16,9 +16,9 @@ use PHPUnit\Framework\TestCase;
 class StructureBodyTest extends TestCase
 {
     /** @return array<string,mixed> */
-    private function part(string $no, string $mime, string $name = '', ?string $disposition = null): array
+    private function part(string $no, string $mime, string $name = '', ?string $disposition = null, ?array $chain = null): array
     {
-        return [
+        return ($chain === null ? [] : ['chain' => $chain]) + [
             'no' => $no,
             'mime' => $mime,
             'type' => explode('/', $mime)[0],
@@ -117,5 +117,29 @@ class StructureBodyTest extends TestCase
     {
         $this->assertSame([], Structure::bodyParts([$this->part('1', 'application/pdf', 'счёт.pdf', 'attachment')]));
         $this->assertSame([], Structure::bodyParts([]));
+    }
+
+    /** Outlook и Kerio: alternative(текст, related(html, картинки)) — разметка принадлежит письму. */
+    public function test_html_inside_related_next_to_top_text_is_taken(): void
+    {
+        $parts = [
+            $this->part('1', 'text/plain', chain: ['alternative']),
+            $this->part('2.1', 'text/html', chain: ['alternative', 'related']),
+            $this->part('2.2', 'image/png', 'image001.png', 'inline', ['alternative', 'related']),
+        ];
+
+        $this->assertSame(['1', '2.1'], array_column(Structure::bodyParts($parts), 'no'));
+    }
+
+    /** А вот вложенное письмо через mixed — по-прежнему не тело. */
+    public function test_nested_mixed_letter_with_chains_is_not_glued(): void
+    {
+        $parts = [
+            $this->part('1', 'text/plain', chain: ['mixed']),
+            $this->part('2.1', 'text/plain', chain: ['mixed', 'mixed']),
+            $this->part('2.2', 'text/html', chain: ['mixed', 'mixed']),
+        ];
+
+        $this->assertSame(['1'], array_column(Structure::bodyParts($parts), 'no'));
     }
 }

@@ -108,6 +108,7 @@ export const api = {
     attachedMessage: (folder, uid, index) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message`),
     attachedPartUrl: (folder, uid, index, sub, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message/${sub}${inline ? '?inline=1' : ''}`,
     attachmentsZipUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/attachments.zip`,
+    cloudZipUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/cloud.zip`,
     // Своё хранилище больших вложений
     files: () => request('GET', '/mail/api/files'),
     fileRenew: (token) => request('POST', `/mail/api/files/${token}/renew`),

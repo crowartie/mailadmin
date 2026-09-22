@@ -202,7 +202,7 @@ final class Structure
      *
      * @param  array<int,array<string,mixed>>  $out
      */
-    private static function walk(array $node, string $prefix, array &$out): void
+    private static function walk(array $node, string $prefix, array &$out, array $chain = []): void
     {
         if (isset($node[0]) && is_array($node[0])) {
             // Составная часть: сначала вложенные части, потом её собственный подтип.
@@ -212,7 +212,18 @@ final class Structure
                     break;
                 }
                 $k++;
-                self::walk($child, $prefix === '' ? (string) $k : $prefix . '.' . $k, $out);
+            }
+            // Подтип контейнера (mixed, alternative, related…) стоит сразу за списком частей.
+            // Цепочка контейнеров нужна bodyParts(): разметка внутри alternative/related — это
+            // то же письмо, а внутри ещё одного mixed — уже вложенное пересланное.
+            $sub = strtolower((string) (is_string($node[$k] ?? null) ? $node[$k] : 'mixed'));
+            $k = 0;
+            foreach ($node as $child) {
+                if (! is_array($child)) {
+                    break;
+                }
+                $k++;
+                self::walk($child, $prefix === '' ? (string) $k : $prefix . '.' . $k, $out, [...$chain, $sub]);
             }
 
             return;
@@ -255,6 +266,7 @@ final class Structure
             'id' => $id,
             'disposition' => $disposition,
             'name' => $name,
+            'chain' => $chain,
         ];
     }
 
@@ -405,10 +417,18 @@ final class Structure
         foreach (['plain', 'html'] as $subtype) {
             $level = null;
             foreach ($candidates as $p) {
-                if ($p['subtype'] === $subtype) {
-                    $level = $atTop ? '' : self::levelOf((string) $p['no']);
-                    break;
+                if ($p['subtype'] !== $subtype) {
+                    continue;
                 }
+                // Разметка глубже верхнего текста — это то же письмо, если между ними только
+                // alternative/related: так устроено «alternative(текст, related(html, картинки))»
+                // у Outlook и Kerio. Раньше такая разметка отбрасывалась, письмо показывалось
+                // простым текстом, а логотипы из подписи попадали во вложения.
+                if ($atTop && self::levelOf((string) $p['no']) !== '' && ! self::sameLetter($candidates[0], $p)) {
+                    continue;
+                }
+                $level = $atTop && self::levelOf((string) $p['no']) === '' ? '' : self::levelOf((string) $p['no']);
+                break;
             }
             if ($level === null) {
                 continue;
@@ -421,6 +441,29 @@ final class Structure
         }
 
         return $out;
+    }
+
+    /**
+     * Лежит ли часть $p в том же письме, что и $top: путь от общего контейнера к $p состоит
+     * только из alternative и related. Любой mixed на этом пути — вложенное письмо.
+     * Без цепочек (части не от разборщика) — не судим, отвечаем «нет», как раньше.
+     */
+    private static function sameLetter(array $top, array $p): bool
+    {
+        if (! isset($top['chain'], $p['chain'])) {
+            return false;
+        }
+        $common = 0;
+        while ($common < count($top['chain']) && $common < count($p['chain']) && $top['chain'][$common] === $p['chain'][$common]) {
+            $common++;
+        }
+        foreach (array_slice($p['chain'], $common) as $c) {
+            if (! in_array($c, ['alternative', 'related'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

@@ -95,6 +95,7 @@ Route::middleware('area:mail')->group(function () {
             Route::get('list/{folder}', [MessageController::class, 'list'])->where('folder', '.*');
             Route::get('message/{folder}/{uid}/attachment/{index}', [MessageController::class, 'attachment'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
             Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 'attachmentsZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
+            Route::get('message/{folder}/{uid}/cloud.zip', [MessageController::class, 'cloudZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
             Route::get('message/{folder}/{uid}/attachment/{index}/preview.pdf', [MessageController::class, 'attachmentPreview'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
             // Письмо, приложенное к письму (.eml): разобранное письмо и его собственные вложения.
             Route::get('message/{folder}/{uid}/attachment/{index}/message', [MessageController::class, 'attachedMessage'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
