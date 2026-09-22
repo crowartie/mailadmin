@@ -179,6 +179,11 @@ function hasExternalImages(m) {
 function imagesShown(m) {
     return !!showImages.value[key(m)] || props.settings.show_images === 'always';
 }
+// Своё письмо (в «Отправленных» или черновик): предупреждать, что «отправитель узнал об открытии»,
+// нечего — отправитель и есть читающий. Обращение №46: полоска сбивала с толку в «Отправленных».
+function ownLetter(m) {
+    return ['sent', 'drafts'].includes(m.folderRole || props.folderRole);
+}
 
 function body(m) {
     if (!m.html) return null;
@@ -354,10 +359,10 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                     <template v-else>{{ attsEmpty(m).length }} из {{ atts(m).length }} вложений пришли пустыми</template>
                     — отправитель их не догрузил, чаще всего из-за плохой связи на телефоне. Попросите прислать файлы заново.
                 </div>
-                <div v-if="hasExternalImages(m)" class="msg__notice">
+                <div v-if="hasExternalImages(m) && !(ownLetter(m) && imagesShown(m))" class="msg__notice">
                     <Icon name="img" :size="16" />
                     <template v-if="imagesShown(m)">
-                        Картинки из интернета показаны — отправитель узнал, что письмо открыли
+                        Картинки из интернета показаны — их сервер мог отметить, что письмо открыли
                         <button v-if="settings.show_images !== 'always'" type="button" class="linklike" style="font-weight: 600" @click="showImages[key(m)] = false">Скрыть</button>
                     </template>
                     <template v-else>
