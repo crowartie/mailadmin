@@ -71,7 +71,7 @@ const short = (u) => (u || '').replace(/@.*/, '');
             <div class="thead" style="padding: 0 0 8px"><span>Ход по времени{{ period === 'day' ? ' (по часам)' : ' (по дням)' }}</span></div>
             <div v-if="timeline.length" style="display: flex; gap: 3px; align-items: flex-end; height: 90px">
                 <div v-for="t in timeline" :key="t.b" :title="`${t.b}: действий ${t.n}, сотрудников ${t.users}`" style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0">
-                    <div style="width: 100%; background: var(--acc); border-radius: 3px 3px 0 0; opacity: .85" :style="{ height: Math.max(2, Math.round((t.n / maxT) * 70)) + 'px' }" />
+                    <div style="width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; opacity: .85" :style="{ height: Math.max(2, Math.round((t.n / maxT) * 70)) + 'px' }" />
                     <span class="row__sub" style="font-size: 10px; white-space: nowrap; overflow: hidden">{{ t.b }}</span>
                 </div>
             </div>
