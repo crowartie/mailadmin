@@ -19,9 +19,11 @@ case "$cmd" in
   queue-headers)  qid "$1"; exec postcat -qh "$1" ;;
   queue-flush)    exec postqueue -f ;;
   queue-retry)    for id in "$@"; do qid "$id"; postqueue -i "$id"; done ;;
-  queue-hold)     for id in "$@"; do qid "$id"; done; exec postsuper -h "$@" ;;
-  queue-release)  for id in "$@"; do qid "$id"; done; exec postsuper -H "$@" ;;
-  queue-delete)   for id in "$@"; do qid "$id"; done; exec postsuper -d "$@" ;;
+  # postsuper принимает один ID за раз: второй позиционный аргумент он считает именем очереди
+  # («fatal: invalid directory name»), поэтому удаление нескольких писем из админки падало.
+  queue-hold)     for id in "$@"; do qid "$id"; done; for id in "$@"; do postsuper -h "$id"; done ;;
+  queue-release)  for id in "$@"; do qid "$id"; done; for id in "$@"; do postsuper -H "$id"; done ;;
+  queue-delete)   for id in "$@"; do qid "$id"; done; for id in "$@"; do postsuper -d "$id"; done ;;
   # ── журналы ─────────────────────────────────────────────────────
   log-tail)       num "$1"; exec tail -n "$1" /var/log/mail.log ;;
   log-grep)       [[ ${#1} -ge 3 && ${#1} -le 200 ]] || die "bad pattern"; exec grep -h -F -- "$1" /var/log/mail.log.1 /var/log/mail.log 2>/dev/null || true ;;
