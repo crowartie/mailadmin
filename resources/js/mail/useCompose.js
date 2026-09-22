@@ -1,5 +1,6 @@
 import { api, composeForm } from './api';
 import { addrString, escapeHtml, plural, when } from './format';
+import { track } from './track';
 
 /**
  * Написание письма: новое, ответ, ответ всем, пересылка, «как новое», черновик,
@@ -81,6 +82,7 @@ export function useCompose(ctx) {
     // Третий параметр — текст быстрого ответа; для пересылки вложением там приходит
     // список писем ({ messages: [...] }), поэтому разбираем оба случая.
     function startCompose(mode = 'new', m = null, text = '') {
+        track('compose.open', mode);
         const extra = text && typeof text === 'object' ? text : null;
         if (extra) text = '';
         ctx.menu.value = null;

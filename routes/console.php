@@ -66,3 +66,5 @@ Schedule::command('threads:sync --all')->everyTenMinutes()->withoutOverlapping()
 // Резервная копия по расписанию из настроек и чистка карантина по сроку хранения.
 Schedule::command('backup:run --if-due')->everyMinute()->withoutOverlapping()->runInBackground();
 Schedule::command('backup:run --purge-quarantine')->dailyAt('04:10');
+// Журнал действий сотрудников хранится 90 дней.
+Schedule::command('activity:prune')->dailyAt('04:40')->withoutOverlapping();

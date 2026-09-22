@@ -47,6 +47,7 @@ const groups = [
         { href: '/queue', icon: 'queue', label: 'Очередь', count: 'queue' },
         { href: '/antispam', icon: 'spam', label: 'Антиспам' },
         { href: '/logs', icon: 'log', label: 'Журналы' },
+        { href: '/activity', icon: 'pulse', label: 'Активность' },
         { href: '/reports', icon: 'file', label: 'Отчёты' },
         { href: '/security', icon: 'shield', label: 'Безопасность' },
         { href: '/settings', icon: 'gear', label: 'Настройки' },

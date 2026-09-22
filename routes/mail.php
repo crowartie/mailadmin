@@ -55,7 +55,7 @@ Route::middleware('area:mail')->group(function () {
     Route::match(['GET', 'HEAD', 'OPTIONS', 'PROPFIND'], '/.well-known/carddav', [DavController::class, 'wellKnown']);
 
     // Корень «/» здесь не объявляем: он есть у админки, а на почтовом порту его перенаправляет nginx.
-    Route::middleware('mail.auth')->group(function () {
+    Route::middleware(['mail.auth', 'mail.activity'])->group(function () {
         Route::get('/mail', [InboxController::class, 'index']);
         Route::get('/mail/quarantine', [\App\Http\Controllers\Mail\QuarantineController::class, 'index']);
         // «Сообщить о проблеме»: форма и свои обращения — только для вошедшего сотрудника.
@@ -73,6 +73,7 @@ Route::middleware('area:mail')->group(function () {
 
         // Живые данные для интерфейса.
         Route::prefix('/mail/api')->group(function () {
+            Route::post('activity', [\App\Http\Controllers\Mail\Api\ActivityController::class, 'store'])->middleware('throttle:30,1');
             Route::get('folders', [FolderController::class, 'index']);
             Route::get('status', [FolderController::class, 'status']);
             Route::get('tasks', [\App\Http\Controllers\Mail\Api\TasksController::class, 'index']);

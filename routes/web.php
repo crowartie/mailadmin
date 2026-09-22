@@ -93,6 +93,7 @@ Route::middleware('area:admin')->group(function () {
         Route::get('/logs/tail', [LogsController::class, 'tail']);
         Route::get('/logs/path', [LogsController::class, 'path']);
         Route::get('/logs/export', [LogsController::class, 'export']);
+        Route::get('/activity', [\App\Http\Controllers\ActivityController::class, 'index']);
 
         Route::get('/aliases', [AliasController::class, 'index']);
         Route::get('/aliases/create', [AliasController::class, 'create']);

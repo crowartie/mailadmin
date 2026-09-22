@@ -2,6 +2,7 @@
 // Форма «Написать»: адресаты, тема, редактор, вложения, отправить позже, напоминание, черновик.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
+import { track } from '../../mail/track';
 import RecipientInput from './RecipientInput.vue';
 import Editor from './Editor.vue';
 import Popover from './Popover.vue';
@@ -221,11 +222,13 @@ function discard() {
     const something = to.value.length || subject.value.trim() || files.value.length
         || (html.value || '').replace(/<[^>]+>/g, '').trim();
     if (something && !window.confirm('Удалить письмо вместе с черновиком? Восстановить его будет нельзя.')) return;
+    track('compose.discard', something ? 'с текстом' : 'пустое');
     emit('close', { discard: true, draftUid: draftUid.value });
 }
 
 function close() {
     closed = true;
+    track('compose.close', dirty.value && worthSaving() ? 'черновик сохранён' : 'без изменений');
     if (dirty.value && worthSaving()) {
         saveDraft(true);
         // Окно закрывается, и надпись «Черновик сохранён» внутри него пропадает вместе с ним —

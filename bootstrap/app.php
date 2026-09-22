@@ -30,7 +30,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // Список читает наш TrustProxies из config (env() здесь пуст при закэшированной конфигурации).
         $middleware->replace(\Illuminate\Http\Middleware\TrustProxies::class, \App\Http\Middleware\TrustProxies::class);
         // DAV-клиенты (телефон, Outlook) токенов CSRF не знают — авторизация там своя, Basic.
-        $middleware->validateCsrfTokens(except: ['dav', 'dav/*', 'autodiscover/*', 'Autodiscover/*', '.well-known/*']);
+        // mail/api/activity — маячок действий: уходит sendBeacon без заголовков, пишет только строку
+        // журнала для уже вошедшего человека и ограничен по частоте.
+        $middleware->validateCsrfTokens(except: ['dav', 'dav/*', 'autodiscover/*', 'Autodiscover/*', '.well-known/*', 'mail/api/activity']);
         // Зону проверяем раньше всего: Laravel сам двигает «auth» в начало цепочки,
         // и без этого запрос админского адреса через порт веб-почты заводил сессию и уводил
         // на страницу входа вместо честного «такого адреса здесь нет».
@@ -42,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'area' => EnsureArea::class,
             '2fa' => EnsureTwoFactorVerified::class,
             'mail.auth' => EnsureMailSession::class,
+            'mail.activity' => \App\Http\Middleware\RecordActivity::class,
             'role' => EnforceRole::class,
         ]);
         // Неавторизованных ведём на вход своей зоны.

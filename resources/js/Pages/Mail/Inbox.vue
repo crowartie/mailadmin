@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, nextTick, watch } from 'vue'
 import { Head, router } from '@inertiajs/vue3';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
+import { track } from '../../mail/track';
 import FolderNav from '../../Components/Mail/FolderNav.vue';
 import MessageList from '../../Components/Mail/MessageList.vue';
 import MessageView from '../../Components/Mail/MessageView.vue';
@@ -346,6 +347,7 @@ function openMenu(e, uid, kind = 'context') {
     const x = e.clientX || (r ? r.left : 100);
     const y = e.clientY || (r ? r.bottom + 4 : 100);
     menu.value = { kind, x, y, uids };
+    track('menu.open', kind + ', писем ' + uids.length);
 }
 const menuRow = computed(() => (menu.value?.uids?.length === 1 ? list.value.messages.find((m) => m.uid === menu.value.uids[0]) || open.value : null));
 
