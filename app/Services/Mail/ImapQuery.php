@@ -135,7 +135,7 @@ class ImapQuery
      *
      * @return int[]
      */
-    public function searchUids(WhereQuery $q, string $path, bool $searching = true): array
+    public function searchUids(WhereQuery $q, string $path, bool $searching = true, int $attempt = 0): array
     {
         try {
             $this->client->openFolder($path, true);
@@ -143,6 +143,14 @@ class ImapQuery
             return array_map('intval', $q->search()->all());
         } catch (\Throwable $e) {
             $this->reconnect();
+            // «SERVERBUG» — Dovecot не смог открыть поисковый индекс, который в эту секунду дописывает
+            // индексатор (в журнале рядом «FTS Xapian: Can not open RO index»). Через пару секунд он
+            // свободен: одна повторная попытка вместо ошибки 502 человеку.
+            if ($attempt === 0 && str_contains(mb_strtolower($e->getMessage()), 'serverbug')) {
+                usleep(1500000);
+
+                return $this->searchUids($q, $path, $searching, 1);
+            }
             // Библиотека заворачивает настоящую причину в своё «failed to fetch messages»,
             // поэтому смотрим всю цепочку: там и таймаут, и разбор ответа.
             $why = '';
@@ -150,7 +158,7 @@ class ImapQuery
                 $why .= ' ' . mb_strtolower($x->getMessage());
             }
             // «empty response» — библиотека не дождалась ответа: для сервера это та же индексация.
-            if (str_contains($why, 'timed out') || str_contains($why, 'timeout') || str_contains($why, 'indexing') || str_contains($why, 'empty response')) {
+            if (str_contains($why, 'timed out') || str_contains($why, 'timeout') || str_contains($why, 'indexing') || str_contains($why, 'empty response') || str_contains($why, 'serverbug')) {
                 throw MailException::busy($searching ? 'Поиск по этой папке ещё готовится (сервер достраивает индекс) — попробуйте через минуту' : 'Папка занята индексацией — попробуйте через минуту');
             }
             if (str_contains($why, 'bad') || str_contains($why, 'parse') || str_contains($why, 'syntax')) {
