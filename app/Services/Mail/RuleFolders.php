@@ -71,7 +71,7 @@ final class RuleFolders
         foreach ($rules as &$rule) {
             $hit = false;
             foreach ((array) ($rule['actions'] ?? []) as $i => $a) {
-                if (! in_array($a['type'] ?? '', ['move', 'copy'], true) || ! is_string($a['value'] ?? null) || $a['value'] === '') {
+                if (! in_array($a['type'] ?? '', ['move', 'copy', 'move_by_sender', 'move_by_domain'], true) || ! is_string($a['value'] ?? null) || $a['value'] === '') {
                     continue;
                 }
                 $to = $map($a['value']);

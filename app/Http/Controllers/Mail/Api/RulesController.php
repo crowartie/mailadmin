@@ -38,7 +38,7 @@ class RulesController extends Controller
             'rules.*.conditions.*.op' => ['required', 'in:contains,not_contains,is,starts,ends,matches,over,under'],
             'rules.*.conditions.*.value' => ['nullable', 'string', 'max:500'],
             'rules.*.actions' => ['required', 'array', 'min:1', 'max:6'],
-            'rules.*.actions.*.type' => ['required', 'in:move,copy,label,flag,seen,forward,forward_copy,discard,reply,stop'],
+            'rules.*.actions.*.type' => ['required', 'in:move,copy,move_by_sender,move_by_domain,label,flag,seen,forward,forward_copy,discard,reply,stop'],
             'rules.*.actions.*.value' => ['nullable', 'string', 'max:2000'],
             'autoreply' => ['nullable', 'array'],
             'autoreply.enabled' => ['nullable', 'boolean'],

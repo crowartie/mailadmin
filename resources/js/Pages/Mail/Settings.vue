@@ -435,6 +435,10 @@ const shortcuts = [
                                         <option value="">— выберите папку —</option>
                                         <option v-for="f in folders" :key="f.path" :value="f.path">{{ '— '.repeat(f.depth) + f.name }}</option>
                                     </select>
+                                    <select v-else-if="a.type === 'move_by_sender' || a.type === 'move_by_domain'" v-model="a.value" class="input" :title="a.type === 'move_by_sender' ? 'Папка получит имя по части адреса до «@»: ivanov@polyus.com → «ivanov». Точки заменяются на «-». Папка создаётся сама при первом письме.' : 'Папка получит имя по домену без зоны: polyus.com → «polyus». Папка создаётся сама при первом письме.'">
+                                        <option value="">— среди своих папок (в корне) —</option>
+                                        <option v-for="f in folders" :key="f.path" :value="f.path">внутри: {{ '— '.repeat(f.depth) + f.name }}</option>
+                                    </select>
                                     <select v-else-if="a.type === 'label'" v-model="a.value" class="input">
                                         <option value="">— выберите метку —</option>
                                         <option v-for="l in labels" :key="l.id" :value="String(l.id)">{{ l.name }}</option>
@@ -444,6 +448,7 @@ const shortcuts = [
                                     <button class="ib ib--sm" type="button" title="Убрать" @click="editing.actions.splice(ai, 1)" aria-label="Убрать"><Icon name="x" :size="14" /></button>
                                 </div>
                                 <a style="cursor: pointer; font-size: 13px" @click="editing.actions.push({ type: 'label', value: '' })">+ ещё действие</a>
+                                <p v-if="editing.actions.some((a) => a.type === 'move_by_sender' || a.type === 'move_by_domain')" class="hint" style="margin: 6px 0 0">Папка для каждого отправителя создаётся сама при первом письме: по адресу — «ivanov» из ivanov@polyus.com, по домену — «polyus». Точки в имени заменяются на «-». Так одно правило «От содержит @polyus.com» раскладывает письма всех сотрудников этой компании по персональным папкам.</p>
                             </div>
                             <label class="toggle"><input v-model="editing.stop" type="checkbox"><span class="toggle__track" />Не применять следующие правила к этому письму</label>
                             <div style="display: flex; gap: 8px"><button class="btn btn--primary" type="submit" :disabled="busy">Сохранить</button><button class="btn" type="button" @click="editing = null">Отмена</button></div>

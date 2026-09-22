@@ -50,7 +50,7 @@ export function useMailRules(ctx) {
         if (!allowed.includes(c.op)) c.op = allowed[0];
         if (c.field === 'size' && !/^\d*$/.test(String(c.value ?? ''))) c.value = '';
     }
-    const ACTIONS = { move: 'Переместить в папку', copy: 'Копию в папку', label: 'Поставить метку', flag: 'Флажок', seen: 'Пометить прочитанным', forward: 'Переслать на адрес', forward_copy: 'Переслать копию на адрес', discard: 'Уничтожить письмо (без «Корзины»)', reply: 'Ответить текстом', stop: 'Остановить обработку' };
+    const ACTIONS = { move: 'Переместить в папку', copy: 'Копию в папку', move_by_sender: 'В папку по адресу отправителя', move_by_domain: 'В папку по домену отправителя', label: 'Поставить метку', flag: 'Флажок', seen: 'Пометить прочитанным', forward: 'Переслать на адрес', forward_copy: 'Переслать копию на адрес', discard: 'Уничтожить письмо (без «Корзины»)', reply: 'Ответить текстом', stop: 'Остановить обработку' };
 
     function newRule() {
         editing.value = { id: Date.now(), name: '', enabled: true, match: 'all', stop: false, conditions: [{ field: 'from', op: 'contains', value: '' }], actions: [{ type: 'move', value: '' }] };
@@ -66,6 +66,8 @@ export function useMailRules(ctx) {
         switch (a.type) {
             case 'move': return `в папку «${folderName(a.value)}»`;
             case 'copy': return `копия в «${folderName(a.value)}»`;
+            case 'move_by_sender': return a.value ? `в папку отправителя внутри «${folderName(a.value)}»` : 'в папку отправителя';
+            case 'move_by_domain': return a.value ? `в папку домена отправителя внутри «${folderName(a.value)}»` : 'в папку домена отправителя';
             case 'label': return `метка «${labelName(a.value)}»`;
             case 'forward': case 'forward_copy': return `${ACTIONS[a.type].toLowerCase()} ${a.value}`;
             case 'reply': return 'автоответ';
@@ -88,7 +90,7 @@ export function useMailRules(ctx) {
         // Правило без условий совпадает с каждым письмом. Вместе с «Переместить» или
         // «Уничтожить письмо» это разом уводит всю входящую почту — спрашиваем прямо.
         if (!r.conditions.length) {
-            const harsh = r.actions.some((a) => ['move', 'discard', 'forward'].includes(a.type));
+            const harsh = r.actions.some((a) => ['move', 'move_by_sender', 'move_by_domain', 'discard', 'forward'].includes(a.type));
             const q = harsh
                 ? 'Оно сработает на каждое входящее письмо, включая нужные.'
                 : 'Оно будет срабатывать на каждое письмо.';

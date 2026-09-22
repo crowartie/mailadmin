@@ -140,6 +140,8 @@ class SieveBuilder
         return match ($a['type'] ?? '') {
             'move' => $v !== '' ? 'fileinto :create ' . $this->str($this->folderName($v)) . ';' : null,
             'copy' => $v !== '' ? 'fileinto :copy :create ' . $this->str($this->folderName($v)) . ';' : null,
+            'move_by_sender' => $this->bySender('localpart', $v),
+            'move_by_domain' => $this->bySender('domain', $v),
             'label' => $v !== '' ? 'addflag "Lbl_' . (int) $v . '";' : null,
             'flag' => 'addflag "\\\\Flagged";',
             'seen' => 'addflag "\\\\Seen";',
@@ -163,6 +165,31 @@ class SieveBuilder
     }
 
     /** Путь папки из IMAP (UTF7) → имя для Sieve (UTF-8, разделитель как у сервера). */
+    /**
+     * Папка по отправителю: «Родитель/<часть адреса до @>» (или по домену — «polyus» из polyus.com).
+     *
+     * Точка в имени папки — служебный разделитель Dovecot: «ivan.ivanov» дал бы папку «ivan»
+     * с вложенной «ivanov». Sieve не умеет заменять символы, поэтому части адреса собираются
+     * заново через «-»: до трёх частей, что покрывает почти все адреса. Для домена последняя
+     * часть (зона .com/.ru) отбрасывается — «polyus.com» → «polyus», «mail.polyus.com» → «mail-polyus».
+     * Переменная ${n} задаётся внутри блока правила, поэтому на другие правила не влияет.
+     */
+    private function bySender(string $part, string $parent): string
+    {
+        $prefix = $parent !== '' ? $this->folderName($parent) . '/' : '';
+        $joined = $part === 'domain'
+            ? ['*.*.*' => '${1}-${2}', '*.*' => '${1}', '*' => '${1}']
+            : ['*.*.*' => '${1}-${2}-${3}', '*.*' => '${1}-${2}', '*' => '${1}'];
+        $script = '';
+        foreach ($joined as $pattern => $value) {
+            $script .= ($script === '' ? 'if ' : ' elsif ') . "address :matches :{$part} \"from\" \"{$pattern}\" { set \"n\" \"{$value}\"; }";
+        }
+        // Внутри строки Sieve ${n} подставляется в момент выполнения; кавычки родителя экранирует str().
+        $target = substr($this->str($prefix), 0, -1) . '${n}"';
+
+        return $script . ' fileinto :create ' . $target . ';';
+    }
+
     private function folderName(string $path): string
     {
         return mb_convert_encoding($path, 'UTF-8', 'UTF7-IMAP') ?: $path;
