@@ -106,12 +106,16 @@ function openAttachment(m, a) {
 // Файлы из своего хранилища (ссылки в теле письма) — карточками рядом с вложениями.
 const cloudFiles = (m) => (m.cloudFiles || []);
 const cloudLive = (m) => cloudFiles(m).filter((f) => !f.expired);
+// Продлить из письма можно свой большой файл; ссылку на файл из облака — в разделе «Облако».
+const renewable = (f) => f.mine && !f.cloud;
+// В ZIP идут только файлы с сервера почты: файлы из облака бывают по нескольку гигабайт.
+const cloudZipped = (m) => cloudLive(m).filter((f) => !f.cloud);
 const fmtDay = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU') : '');
 function cloudNote(m) {
     const live = cloudLive(m);
-    if (!live.length) return 'Срок ссылок истёк' + (cloudFiles(m).some((f) => f.mine) ? ' — продлите их кнопкой у файла' : ' — попросите отправителя продлить');
+    if (!live.length) return 'Срок ссылок истёк' + (cloudFiles(m).some(renewable) ? ' — продлите их кнопкой у файла' : ' — попросите отправителя продлить');
     const until = live.map((f) => f.expires).filter(Boolean).sort()[0];
-    return 'Файлы лежат на сервере почты' + (until ? ', ссылки действуют до ' + fmtDay(until) : '') + (live.some((f) => f.mine) ? ' — можно продлить' : '');
+    return 'Файлы лежат на сервере почты' + (until ? ', ссылки действуют до ' + fmtDay(until) : '') + (live.some(renewable) ? ' — можно продлить' : '');
 }
 function openCloudFile(m, f) {
     const list = cloudLive(m).filter((x) => x.preview);
@@ -347,10 +351,10 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         <span v-else class="att__main"><Icon name="cloud" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">срок истёк</span></span>
                         <button v-if="f.preview && !f.expired" class="att__btn" type="button" title="Посмотреть" aria-label="Посмотреть" @click="openCloudFile(m, f)"><Icon name="eye" :size="14" /></button>
                         <a v-if="!f.expired" class="att__btn" :href="f.url" title="Скачать" aria-label="Скачать"><Icon name="download" :size="14" /></a>
-                        <button v-if="f.mine" class="att__btn" type="button" title="Продлить ссылку" aria-label="Продлить ссылку" @click="renewFile(f)"><Icon name="refresh" :size="14" /></button>
+                        <button v-if="renewable(f)" class="att__btn" type="button" title="Продлить ссылку" aria-label="Продлить ссылку" @click="renewFile(f)"><Icon name="refresh" :size="14" /></button>
                     </span>
-                    <a v-if="cloudLive(m).length > 1" class="att att--all" :href="api.cloudZipUrl(m.folder, m.uid)" title="Все файлы из облака одним ZIP-архивом">
-                        <Icon name="download" :size="13" /><span class="name">Скачать все ({{ cloudLive(m).length }})</span>
+                    <a v-if="cloudZipped(m).length > 1" class="att att--all" :href="api.cloudZipUrl(m.folder, m.uid)" title="Все файлы из облака одним ZIP-архивом">
+                        <Icon name="download" :size="13" /><span class="name">Скачать все ({{ cloudZipped(m).length }})</span>
                     </a>
                     <span class="msg__cloud-note">{{ cloudNote(m) }}</span>
                 </div>

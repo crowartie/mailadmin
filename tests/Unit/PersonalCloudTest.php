@@ -31,11 +31,12 @@ class PersonalCloudTest extends TestCase
         $this->sent = [];
     }
 
-    private function cloud(string $user = 'ivanov@example.ru', float $quotaGb = 1): PersonalCloud
+    private function cloud(string $user = 'ivanov@example.ru', float $quotaGb = 1, bool $filesHost = false): PersonalCloud
     {
         return new PersonalCloud($user, [
             'url' => self::BASE, 'login' => 'mailcloud', 'app_password' => 'secret', 'uid' => 'mailcloud',
             'personal_root' => 'Облако сотрудников', 'personal_quota_gb' => $quotaGb, 'personal_link_days' => 30,
+            'files_host' => $filesHost,
         ], $this->ledger);
     }
 
@@ -351,5 +352,98 @@ class PersonalCloudTest extends TestCase
         $this->expectException(MailException::class);
         $this->expectExceptionMessage('Облако сейчас недоступно');
         $this->cloud()->list('');
+    }
+
+    // ── ссылки через files-хост почты ──
+
+    public function test_ссылка_files_хоста_без_nextcloud_share(): void
+    {
+        $this->fake([['PROPFIND', '/Цех.mp4', Http::response(self::multistatus([['Цех.mp4', false, 100]]), 207)]]);
+        $c = $this->cloud(filesHost: true);
+
+        $l = $c->link('Цех.mp4', 30, false);
+
+        $this->assertMatchesRegularExpression('/^f\d+$/', $l['share_id']);
+        $this->assertSame('https://files.test/' . $this->ledger->files[(int) substr($l['share_id'], 1)]['token'] . '/' . rawurlencode('Цех.mp4'), $l['url']);
+        $this->assertSame(['PROPFIND'], array_column($this->sent, 0), 'в Nextcloud публичная ссылка создаваться не должна');
+        $f = $this->ledger->files[(int) substr($l['share_id'], 1)];
+        $this->assertSame(['Цех.mp4', 100, 'video/mp4', date('Y-m-d', strtotime('+30 days')), ''], [$f['name'], $f['size'], $f['mime'], $f['expires_at'], $f['password']]);
+        $this->assertSame('Цех.mp4', $c->pathOfFile((int) substr($l['share_id'], 1)));
+    }
+
+    public function test_пароль_ссылки_files_хоста_хранится_хэшем_и_снимается(): void
+    {
+        $this->fake([['PROPFIND', '/Цех.mp4', Http::response(self::multistatus([['Цех.mp4', false, 100]]), 207)]]);
+        $c = $this->cloud(filesHost: true);
+        $l = $c->link('Цех.mp4', 30, true);
+        $id = (int) substr($l['share_id'], 1);
+
+        $this->assertTrue($l['has_password']);
+        $this->assertNotSame($l['password'], $this->ledger->files[$id]['password'], 'пароль в открытом виде хранить нельзя');
+        $this->assertTrue(password_verify($l['password'], $this->ledger->files[$id]['password']));
+
+        $l2 = $c->link('Цех.mp4', 7, null);
+        $this->assertSame($l['url'], $l2['url'], 'при изменении адрес ссылки не должен меняться');
+        $this->assertTrue($l2['has_password'], 'null — пароль оставить');
+        $this->assertTrue(password_verify($l['password'], $this->ledger->files[$id]['password']));
+
+        $l3 = $c->link('Цех.mp4', 7, false);
+        $this->assertFalse($l3['has_password']);
+        $this->assertSame('', $this->ledger->files[$id]['password']);
+        $this->assertCount(1, $this->ledger->files);
+    }
+
+    public function test_старая_ссылка_nextcloud_заменяется_ссылкой_files_хоста(): void
+    {
+        $this->ledger->saveLink('ivanov@example.ru', ['path' => 'Цех.mp4', 'share_id' => '7', 'url' => 'https://nc/s/abc', 'expires_at' => date('Y-m-d', strtotime('+5 days')), 'has_password' => false]);
+        $this->fake([
+            ['PROPFIND', '/Цех.mp4', Http::response(self::multistatus([['Цех.mp4', false, 2500]]), 207)],
+            ['DELETE', '/shares/7', Http::response(['ocs' => ['meta' => ['statuscode' => 200]]], 200)],
+        ]);
+
+        $out = $this->cloud(filesHost: true)->attach(['Цех.mp4']);
+
+        $this->assertStringStartsWith('https://files.test/', $out[0]['url']);
+        $this->assertContains(['DELETE', '/ocs/v2.php/apps/files_sharing/api/v1/shares/7'], array_map(fn ($x) => [$x[0], $x[1]], $this->sent), 'старая ссылка в Nextcloud должна быть отозвана');
+        $this->assertStringStartsWith('f', $this->ledger->link('ivanov@example.ru', 'Цех.mp4')['share_id']);
+    }
+
+    public function test_переименование_меняет_имя_в_ссылке_files_хоста(): void
+    {
+        $this->fake([
+            ['PROPFIND', '/Видео/Цех.mp4', Http::response(self::multistatus([['Видео/Цех.mp4', false, 100]]), 207)],
+            ['MOVE', '/Видео/Цех.mp4', Http::response('', 201)],
+        ]);
+        $c = $this->cloud(filesHost: true);
+        $l = $c->link('Видео/Цех.mp4', 30, false);
+        $id = (int) substr($l['share_id'], 1);
+
+        $c->rename('Видео/Цех.mp4', 'Цех, смена 2.mp4');
+
+        $this->assertSame('Цех, смена 2.mp4', $this->ledger->files[$id]['name']);
+        $moved = $this->ledger->link('ivanov@example.ru', 'Видео/Цех, смена 2.mp4');
+        $this->assertStringEndsWith('/' . rawurlencode('Цех, смена 2.mp4'), $moved['url']);
+        $this->assertSame('Видео/Цех, смена 2.mp4', $c->pathOfFile($id));
+    }
+
+    public function test_удаление_и_отзыв_убирают_запись_files_хоста(): void
+    {
+        $this->fake([
+            ['PROPFIND', '/Цех.mp4', Http::response(self::multistatus([['Цех.mp4', false, 100]]), 207)],
+            ['PROPFIND', '/Смета.pdf', Http::response(self::multistatus([['Смета.pdf', false, 100]]), 207)],
+            ['PROPFIND', '~ivanov@example.ru$~', Http::response(self::multistatus([['', true, 1]]), 207)],
+            ['MKCOL', '/.Корзина', Http::response('', 405)],
+            ['MOVE', '/Цех.mp4', Http::response('', 201)],
+        ]);
+        $c = $this->cloud(filesHost: true);
+        $a = (int) substr($c->link('Цех.mp4', 30, false)['share_id'], 1);
+        $b = (int) substr($c->link('Смета.pdf', 30, false)['share_id'], 1);
+
+        $c->delete('Цех.mp4');
+        $c->unlink('Смета.pdf');
+
+        $this->assertArrayNotHasKey($a, $this->ledger->files, 'по ссылке на удалённый файл скачать нельзя');
+        $this->assertArrayNotHasKey($b, $this->ledger->files, 'отозванная ссылка должна перестать работать');
+        $this->assertNotContains('DELETE', array_column($this->sent, 0), 'Nextcloud share тут ни при чём');
     }
 }

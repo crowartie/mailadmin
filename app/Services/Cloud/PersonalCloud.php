@@ -16,7 +16,9 @@ use Illuminate\Support\Facades\Http;
  * Файлы и облако»), в папке «<корень>/<адрес ящика>». Сотрудник в Nextcloud не заходит:
  * всё идёт через веб-почту, и каждый путь из браузера проходит PersonalPath — выйти из своей
  * папки нельзя. Общего доступа между сотрудниками нет; наружу — только публичная ссылка
- * на один файл (OCS share), со сроком и по желанию с паролем.
+ * на один файл, со сроком и по желанию с паролем. Если настроен files-хост почты, ссылка —
+ * его (https://files.<домен>/<токен>/<имя>, как у больших вложений: получатель не видит
+ * облака, файл по щелчку сразу скачивается); иначе — публичная ссылка Nextcloud (OCS share).
  *
  * Большие файлы загружаются частями (WebDAV chunking v2 Nextcloud): часть за частью
  * в папку загрузки, потом Nextcloud сам собирает файл. После обрыва связи браузер спрашивает,
@@ -50,7 +52,7 @@ class PersonalCloud
             throw MailException::unsupported('Облако не подключено. Обратитесь к администратору.');
         }
 
-        return new self($user, self::settings(), new DbCloudLedger());
+        return new self($user, self::settings() + ['files_host' => LocalFiles::enabled()], new DbCloudLedger());
     }
 
     public static function settings(): array
@@ -350,6 +352,15 @@ class PersonalCloud
         };
         // Ссылка в Nextcloud привязана к файлу и переезжает с ним сама; поправить надо свой учёт.
         $this->ledger->movePrefix($this->user, $from, $to);
+        // У ссылки files-хоста в адресе и при скачивании — имя файла: переименовали — меняем и там.
+        foreach ($this->ledger->linksUnder($this->user, $to) as $l) {
+            if (self::fileId($l['share_id']) !== null) {
+                $url = $this->ledger->updateFile(self::fileId($l['share_id']), ['name' => PersonalPath::base($l['path'])]);
+                if ($url !== null && $url !== $l['url']) {
+                    $this->ledger->saveLink($this->user, ['url' => $url] + $l);
+                }
+            }
+        }
 
         return $to;
     }
@@ -610,8 +621,52 @@ class PersonalCloud
             throw MailException::invalid('Ссылку можно дать только на файл, не на папку');
         }
         $expires = $days > 0 ? date('Y-m-d', strtotime('+' . $days . ' days')) : null;
-        $pwd = $password === true ? self::password() : null;
         $old = $this->ledger->link($this->user, $rel);
+        if ($old && (self::fileId($old['share_id']) !== null) !== $this->filesHost()) {
+            // Ссылка другого вида (files-хост включили или выключили) — выпускаем новую.
+            // Пароль был — будет новый: старый хранится хэшем, его не вернуть.
+            $this->dropShare($old['share_id']);
+            $this->ledger->forgetLink($this->user, $rel);
+            $password ??= (bool) $old['has_password'];
+            $old = null;
+        }
+        $pwd = $password === true ? self::password() : null;
+        $link = $this->filesHost() ? $this->fileLink($rel, $st, $expires, $password, $pwd, $old) : $this->shareLink($rel, $expires, $password, $pwd, $old);
+        if ($link === null) {
+            // Ссылку удалили мимо почты (в Nextcloud или из базы) — выпускаем заново.
+            $this->ledger->forgetLink($this->user, $rel);
+
+            return $this->link($rel, $days, $password);
+        }
+        $this->ledger->saveLink($this->user, $link);
+
+        return $link + ($pwd ? ['password' => $pwd] : []);
+    }
+
+    /** Ссылка files-хоста почты: запись в webmail_files, файл отдаёт nginx из облака. */
+    private function fileLink(string $rel, array $st, ?string $expires, ?bool $password, ?string $pwd, ?array $old): ?array
+    {
+        $file = ['name' => $st['name'], 'size' => $st['size'], 'mime' => $st['type'] ?: 'application/octet-stream', 'expires_at' => $expires];
+        if ($password !== null) {
+            $file['password'] = $pwd !== null ? password_hash($pwd, PASSWORD_DEFAULT) : '';
+        }
+        if ($old) {
+            $url = $this->ledger->updateFile((int) self::fileId($old['share_id']), $file);
+            if ($url === null) {
+                return null;
+            }
+
+            return ['path' => $rel, 'share_id' => $old['share_id'], 'url' => $url, 'expires_at' => $expires,
+                'has_password' => $password === null ? (bool) $old['has_password'] : $password];
+        }
+        $f = $this->ledger->issueFile($this->user, $file);
+
+        return ['path' => $rel, 'share_id' => 'f' . $f['id'], 'url' => $f['url'], 'expires_at' => $expires, 'has_password' => (bool) $pwd];
+    }
+
+    /** Публичная ссылка Nextcloud — когда files-хоста нет. */
+    private function shareLink(string $rel, ?string $expires, ?bool $password, ?string $pwd, ?array $old): ?array
+    {
         if ($old) {
             $form = ['expireDate' => $expires ?? ''];
             if ($password !== null) {
@@ -619,29 +674,36 @@ class PersonalCloud
             }
             $r = $this->ocs('PUT', 'shares/' . rawurlencode($old['share_id']), $form);
             if ($r->status() === 404 || (int) ($r['ocs']['meta']['statuscode'] ?? 0) === 404) {
-                $this->ledger->forgetLink($this->user, $rel);
-
-                return $this->link($rel, $days, $password);
+                return null;
             }
             $this->ocsOk($r, 'Ссылка не изменена');
-            $link = ['path' => $rel, 'share_id' => $old['share_id'], 'url' => $old['url'], 'expires_at' => $expires,
-                'has_password' => $password === null ? $old['has_password'] : $password];
-        } else {
-            $form = ['path' => '/' . PersonalPath::join($this->home(), $rel), 'shareType' => 3, 'permissions' => 1];
-            if ($expires) {
-                $form['expireDate'] = $expires;
-            }
-            if ($pwd) {
-                $form['password'] = $pwd;
-            }
-            $r = $this->ocs('POST', 'shares', $form);
-            $this->ocsOk($r, 'Ссылка не создана');
-            $link = ['path' => $rel, 'share_id' => (string) $r['ocs']['data']['id'], 'url' => (string) $r['ocs']['data']['url'], 'expires_at' => $expires,
-                'has_password' => (bool) $pwd];
-        }
-        $this->ledger->saveLink($this->user, $link);
 
-        return $link + ($pwd ? ['password' => $pwd] : []);
+            return ['path' => $rel, 'share_id' => $old['share_id'], 'url' => $old['url'], 'expires_at' => $expires,
+                'has_password' => $password === null ? $old['has_password'] : $password];
+        }
+        $form = ['path' => '/' . PersonalPath::join($this->home(), $rel), 'shareType' => 3, 'permissions' => 1];
+        if ($expires) {
+            $form['expireDate'] = $expires;
+        }
+        if ($pwd) {
+            $form['password'] = $pwd;
+        }
+        $r = $this->ocs('POST', 'shares', $form);
+        $this->ocsOk($r, 'Ссылка не создана');
+
+        return ['path' => $rel, 'share_id' => (string) $r['ocs']['data']['id'], 'url' => (string) $r['ocs']['data']['url'], 'expires_at' => $expires,
+            'has_password' => (bool) $pwd];
+    }
+
+    private function filesHost(): bool
+    {
+        return ! empty($this->settings['files_host']);
+    }
+
+    /** id записи в webmail_files, если ссылка — files-хоста («f<id>»); иначе это id ссылки Nextcloud. */
+    private static function fileId(string $shareId): ?int
+    {
+        return preg_match('/^f(\d+)$/', $shareId, $m) ? (int) $m[1] : null;
     }
 
     public function unlink(string $rel): void
@@ -656,6 +718,11 @@ class PersonalCloud
 
     private function dropShare(string $shareId): void
     {
+        if (($id = self::fileId($shareId)) !== null) {
+            $this->ledger->dropFile($id);
+
+            return;
+        }
         $r = $this->ocs('DELETE', 'shares/' . rawurlencode($shareId));
         if (! $r->ok() && $r->status() !== 404) {
             throw MailException::upstream('Облако не отозвало ссылку (ответ ' . $r->status() . ')');
@@ -695,7 +762,8 @@ class PersonalCloud
                 throw MailException::notFound('Файла «' . PersonalPath::base($p) . '» уже нет');
             }
             $l = $this->ledger->link($this->user, $p);
-            if (! $l || ($l['expires_at'] && $l['expires_at'] < date('Y-m-d'))) {
+            $stale = $l && (self::fileId($l['share_id']) !== null) !== $this->filesHost();
+            if (! $l || $stale || ($l['expires_at'] && $l['expires_at'] < date('Y-m-d'))) {
                 $l = $this->link($p, (int) ($this->settings['personal_link_days'] ?? 30), $l ? null : false);
             }
             $out[] = ['name' => $st['name'], 'size' => $st['size'], 'url' => $l['url'], 'expires' => $l['expires_at'], 'password' => (bool) $l['has_password']];
@@ -721,5 +789,11 @@ class PersonalCloud
             'X-Nc-Auth' => 'Basic ' . base64_encode($this->settings['login'] . ':' . $this->settings['app_password']),
             'X-Accel-Buffering' => 'no',
         ];
+    }
+
+    /** Где в облаке лежит файл записи webmail_files (ссылка files-хоста); null — ссылку уже отозвали. */
+    public function pathOfFile(int $fileId): ?string
+    {
+        return $this->ledger->filePath($this->user, $fileId);
     }
 }

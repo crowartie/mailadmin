@@ -28,7 +28,8 @@ Route::middleware('area:mail')->group(function () {
     // Выпуск письма из карантина по подписанной ссылке из сводки (вход не нужен).
     Route::get('/mail/quarantine/release/{id}/{secret}', [\App\Http\Controllers\Mail\QuarantineController::class, 'releaseSigned'])->name('mail.quarantine.release')->middleware('signed:relative');
     // Файл по ссылке из письма (https://files.<домен>/<токен>/<имя> → nginx переписывает в /f/…). Входа нет.
-    Route::match(['GET', 'HEAD'], '/f/{token}/{name?}', [\App\Http\Controllers\Mail\FilesController::class, 'download'])
+    // POST — ввод пароля ссылки на файл из облака.
+    Route::match(['GET', 'HEAD', 'POST'], '/f/{token}/{name?}', [\App\Http\Controllers\Mail\FilesController::class, 'download'])
         ->where('token', '[A-Za-z0-9_-]{20,64}')->where('name', '.*')->middleware('throttle:120,1');
 
     // CalDAV/CardDAV для телефонов и почтовых программ (Basic-авторизация паролем от почты).

@@ -24,6 +24,20 @@ interface CloudLedger
     /** Ссылки на сам путь и на всё внутри него. @return array<int,array> */
     public function linksUnder(string $user, string $path): array;
 
+    // ── ссылки через files-хост ──
+    // Запись в webmail_files (как у больших вложений): получатель видит https://files.<домен>/<токен>/<имя>,
+    // а сам файл остаётся в облаке. В ссылке учёта такая запись — share_id «f<id>».
+    /** $file: name, size, mime, expires_at (Y-m-d|null), password (хэш|''). @return array{id:int,url:string} */
+    public function issueFile(string $user, array $file): array;
+
+    /** Поменять имя, размер, срок, пароль (ключ password нет — не трогать). @return ?string новый адрес; null — записи уже нет */
+    public function updateFile(int $id, array $file): ?string;
+
+    public function dropFile(int $id): void;
+
+    /** Путь в облаке по записи файла: через ссылку учёта (она переезжает вместе с файлом). */
+    public function filePath(string $user, int $id): ?string;
+
     // ── загрузки ──
     public function saveUpload(array $upload): void;
 

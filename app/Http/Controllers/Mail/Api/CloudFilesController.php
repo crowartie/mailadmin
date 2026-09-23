@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Mail\FilesController;
 use App\Models\Webmail\CloudFile;
 use App\Services\Cloud\LocalFiles;
+use App\Services\Cloud\PersonalCloud;
 use App\Services\Mail\ImapSession;
 use App\Services\Mail\OfficePdf;
 use Illuminate\Http\JsonResponse;
@@ -22,7 +23,8 @@ class CloudFilesController extends Controller
     {
         $user = $imap->user();
         $s = LocalFiles::settings();
-        $files = CloudFile::query()->where('user', $user)->orderByDesc('created_at')->limit(500)->get()
+        // Ссылки на файлы облака живут в разделе «Облако» — здесь только большие вложения.
+        $files = CloudFile::query()->where('user', $user)->where('source', 'local')->orderByDesc('created_at')->limit(500)->get()
             ->map(fn (CloudFile $f) => $f->toCard($user) + ['created' => $f->created_at?->toIso8601String()])->values();
 
         return response()->json([
@@ -70,6 +72,9 @@ class CloudFilesController extends Controller
     {
         $f = $this->any($token);
         abort_unless(LocalFiles::previewable($f), 422, 'Файл слишком большой или такого вида, что показать его нельзя — скачайте');
+        if ($f->isCloud()) {
+            return $this->cloudContent($f);
+        }
         if (! is_file($f->fullPath())) {
             abort(404, 'Файла больше нет');
         }
@@ -94,9 +99,26 @@ class CloudFilesController extends Controller
         return response()->file($pdf, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="preview.pdf"', 'X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'private, max-age=3600']);
     }
 
+    /** Картинка или PDF из облака сотрудника — nginx берёт из Nextcloud. */
+    private function cloudContent(CloudFile $f): Response
+    {
+        abort_if($f->expired(), 410, 'Срок ссылки истёк');
+        $cloud = PersonalCloud::forUser($f->user);
+        $path = $cloud->pathOfFile((int) $f->id);
+        abort_if($path === null, 404, 'Файла больше нет');
+
+        return response('', 200, $cloud->accel($path) + [
+            'Content-Type' => $f->mime,
+            'Content-Disposition' => 'inline; filename*=UTF-8\'\'' . rawurlencode($f->name),
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
+    /** Свой файл хранилища. Ссылки облака продлевают и удаляют в разделе «Облако». */
     private function mine(ImapSession $imap, string $token): CloudFile
     {
-        $f = CloudFile::query()->where('token', $token)->first();
+        $f = CloudFile::query()->where('token', $token)->where('source', 'local')->first();
         abort_unless($f && strcasecmp($f->user, $imap->user()) === 0, 404, 'Файл не найден');
 
         return $f;

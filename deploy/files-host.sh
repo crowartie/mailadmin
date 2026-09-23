@@ -46,6 +46,8 @@ if [ -f "$MW" ] && ! grep -q 'listen 443 ssl http2 default_server' "$MW"; then
 fi
 
 nginx -t && systemctl reload nginx
+# Ссылки на файлы облака сотрудника отдаются этим же хостом — нужен закрытый location /_nccloud/.
+bash "$HERE/nccloud-accel.sh" || true
 
 echo "== сертификат"
 IP="$(dig +short @8.8.8.8 "$HOST" 2>/dev/null | tail -1 || true)"

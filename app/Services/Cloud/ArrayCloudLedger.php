@@ -11,6 +11,8 @@ final class ArrayCloudLedger implements CloudLedger
 
     public array $trash = [];
 
+    public array $files = [];
+
     private int $seq = 0;
 
     public function links(string $user): array
@@ -41,6 +43,41 @@ final class ArrayCloudLedger implements CloudLedger
     public function linksUnder(string $user, string $path): array
     {
         return array_values(array_filter($this->links[$user] ?? [], fn ($l) => PersonalPath::within($l['path'], $path)));
+    }
+
+    public function issueFile(string $user, array $file): array
+    {
+        $id = ++$this->seq;
+        $token = 'tok' . str_pad((string) $id, 20, '0', STR_PAD_LEFT);
+        $this->files[$id] = $file + ['user' => $user, 'token' => $token, 'password' => ''];
+
+        return ['id' => $id, 'url' => 'https://files.test/' . $token . '/' . rawurlencode($file['name'])];
+    }
+
+    public function updateFile(int $id, array $file): ?string
+    {
+        if (! isset($this->files[$id])) {
+            return null;
+        }
+        $this->files[$id] = $file + $this->files[$id];
+
+        return 'https://files.test/' . $this->files[$id]['token'] . '/' . rawurlencode($this->files[$id]['name']);
+    }
+
+    public function dropFile(int $id): void
+    {
+        unset($this->files[$id]);
+    }
+
+    public function filePath(string $user, int $id): ?string
+    {
+        foreach ($this->links[$user] ?? [] as $l) {
+            if ($l['share_id'] === 'f' . $id) {
+                return $l['path'];
+            }
+        }
+
+        return null;
     }
 
     public function saveUpload(array $upload): void

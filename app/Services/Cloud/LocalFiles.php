@@ -73,6 +73,10 @@ final class LocalFiles
     /** Показывать ли файл в почте (картинка, PDF или офисный документ разумного размера). */
     public static function previewable(CloudFile $f): bool
     {
+        // Офисный файл из облака в PDF не переводим (нужна копия на диске) — только картинки и PDF.
+        if ($f->isCloud() && ! (str_starts_with($f->mime, 'image/') || $f->mime === 'application/pdf')) {
+            return false;
+        }
         if ($f->size > max(1, (int) self::settings()['preview_mb']) * 1048576) {
             return false;
         }
@@ -105,7 +109,7 @@ final class LocalFiles
         $this->guardQuota($user, $size);
         $this->scan($localFile, $name);
 
-        $token = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+        $token = self::token();
         $rel = date('Y/m') . '/' . $token;
         $dir = self::root() . '/' . dirname($rel);
         if (! is_dir($dir) && ! mkdir($dir, 0750, true) && ! is_dir($dir)) {
@@ -146,6 +150,12 @@ final class LocalFiles
         return ['url' => $f->url(), 'expires' => $f->expires_at?->toDateString(), 'token' => $token];
     }
 
+    /** Часть ссылки: 256 случайных бит, подобрать нельзя. */
+    public static function token(): string
+    {
+        return rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    }
+
     /** Убрать файлы по токенам (откат, когда письмо не ушло). @param string[] $tokens */
     public static function discardTokens(array $tokens): int
     {
@@ -153,7 +163,7 @@ final class LocalFiles
             return 0;
         }
         $n = 0;
-        foreach (CloudFile::query()->whereIn('token', $tokens)->get() as $f) {
+        foreach (CloudFile::query()->whereIn('token', $tokens)->where('source', 'local')->get() as $f) {
             @unlink($f->fullPath());
             $f->delete();
             $n++;
@@ -187,7 +197,8 @@ final class LocalFiles
         $broken = [];
         $checked = 0;
         $known = [];
-        foreach (CloudFile::query()->orderBy('id')->cursor() as $f) {
+        // Файлы облака лежат в Nextcloud — их целостность здесь не проверить.
+        foreach (CloudFile::query()->where('source', 'local')->orderBy('id')->cursor() as $f) {
             $known[$f->path] = true;
             $checked++;
             $p = $f->fullPath();
@@ -246,7 +257,7 @@ final class LocalFiles
             return 0;
         }
         $n = 0;
-        foreach (CloudFile::query()->whereNotNull('expires_at')->where('expires_at', '<', now()->subDays($keep))->cursor() as $f) {
+        foreach (CloudFile::query()->where('source', 'local')->whereNotNull('expires_at')->where('expires_at', '<', now()->subDays($keep))->cursor() as $f) {
             @unlink($f->fullPath());
             $f->delete();
             $n++;
@@ -258,7 +269,7 @@ final class LocalFiles
     /** Сколько места занято файлами человека. */
     public static function usedBy(string $user): int
     {
-        return (int) CloudFile::query()->where('user', $user)->sum('size');
+        return (int) CloudFile::query()->where('user', $user)->where('source', 'local')->sum('size');
     }
 
     /**

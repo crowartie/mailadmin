@@ -2,6 +2,7 @@
 
 namespace App\Services\Cloud;
 
+use App\Models\Webmail\CloudFile;
 use Illuminate\Support\Facades\DB;
 
 /** Учёт личного облака в MariaDB (webmail_cloud_links, _uploads, _trash). */
@@ -54,6 +55,66 @@ final class DbCloudLedger implements CloudLedger
         return DB::table('webmail_cloud_links')->where('user', $user)
             ->where(fn ($q) => $q->where('path', $path)->orWhere('path', 'like', addcslashes($path, '%_\\') . '/%'))
             ->get()->map(fn ($r) => $this->linkRow($r))->all();
+    }
+
+    public function issueFile(string $user, array $file): array
+    {
+        $f = CloudFile::create([
+            'user' => $user,
+            'token' => LocalFiles::token(),
+            'name' => mb_substr($file['name'], 0, 255),
+            'size' => (int) $file['size'],
+            'mime' => mb_substr((string) $file['mime'], 0, 120),
+            'path' => '',
+            'source' => CloudFile::SOURCE_CLOUD,
+            'password' => ($file['password'] ?? '') !== '' ? $file['password'] : null,
+            'expires_at' => $this->until($file['expires_at'] ?? null),
+        ]);
+
+        return ['id' => (int) $f->id, 'url' => $f->url()];
+    }
+
+    public function updateFile(int $id, array $file): ?string
+    {
+        $f = CloudFile::query()->where('id', $id)->where('source', CloudFile::SOURCE_CLOUD)->first();
+        if (! $f) {
+            return null;
+        }
+        foreach (['name' => 255, 'mime' => 120] as $k => $max) {
+            if (isset($file[$k])) {
+                $f->{$k} = mb_substr((string) $file[$k], 0, $max);
+            }
+        }
+        if (isset($file['size'])) {
+            $f->size = (int) $file['size'];
+        }
+        if (array_key_exists('expires_at', $file)) {
+            $f->expires_at = $this->until($file['expires_at']);
+        }
+        if (array_key_exists('password', $file)) {
+            $f->password = ($file['password'] ?? '') !== '' ? $file['password'] : null;
+        }
+        $f->save();
+
+        return $f->url();
+    }
+
+    public function dropFile(int $id): void
+    {
+        CloudFile::query()->where('id', $id)->where('source', CloudFile::SOURCE_CLOUD)->delete();
+    }
+
+    public function filePath(string $user, int $id): ?string
+    {
+        $p = DB::table('webmail_cloud_links')->where('user', $user)->where('share_id', 'f' . $id)->value('path');
+
+        return $p === null ? null : (string) $p;
+    }
+
+    /** Ссылка действует до конца дня — как у больших вложений. */
+    private function until(?string $date): ?\Illuminate\Support\Carbon
+    {
+        return $date ? \Illuminate\Support\Carbon::parse($date)->endOfDay() : null;
     }
 
     public function saveUpload(array $upload): void

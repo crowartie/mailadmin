@@ -153,7 +153,8 @@ class MessageController extends Controller
         $m = (new MailStore($imap->client()))->message($folder, $uid, false);
         $cards = LocalFiles::cardsIn($m['html'] ?? null, $imap->user());
         $tokens = array_column(array_filter($cards, fn ($c) => empty($c['expired'])), 'token');
-        $files = \App\Models\Webmail\CloudFile::query()->whereIn('token', $tokens)->get()
+        // Файлы из облака сотрудника (source = nc) в архив не берём: они бывают по нескольку гигабайт.
+        $files = \App\Models\Webmail\CloudFile::query()->whereIn('token', $tokens)->where('source', 'local')->get()
             ->filter(fn ($f) => is_file($f->fullPath()));
         abort_if($files->isEmpty(), 404, 'У письма нет файлов из облака с живой ссылкой');
 

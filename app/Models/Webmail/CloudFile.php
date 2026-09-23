@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $size
  * @property string $mime
  * @property string $path
+ * @property string $source    local — файл на диске почты; nc — в облаке сотрудника (Nextcloud)
+ * @property ?string $password хэш пароля ссылки (только у файлов облака)
  * @property ?string $message_id
  * @property ?\Carbon\Carbon $expires_at
  * @property int $downloads
@@ -21,15 +23,25 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CloudFile extends Model
 {
+    /** Файл лежит в облаке сотрудника, а не на диске почты. */
+    public const SOURCE_CLOUD = 'nc';
+
     protected $table = 'webmail_files';
 
     protected $guarded = [];
+
+    protected $hidden = ['password'];
 
     protected $casts = ['expires_at' => 'datetime', 'last_download_at' => 'datetime', 'checked_at' => 'datetime', 'size' => 'int', 'downloads' => 'int'];
 
     public function expired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    public function isCloud(): bool
+    {
+        return $this->source === self::SOURCE_CLOUD;
     }
 
     /** Полный путь на диске. */
@@ -59,6 +71,8 @@ class CloudFile extends Model
             'downloads' => $this->downloads,
             'subject' => (string) ($this->subject ?? ''),
             'preview' => \App\Services\Cloud\LocalFiles::previewable($this),
+            // Файл из облака продлевают и удаляют в разделе «Облако», в архив «Скачать все» он не идёт.
+            'cloud' => $this->isCloud(),
         ];
     }
 }
