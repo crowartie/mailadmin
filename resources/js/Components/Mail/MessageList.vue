@@ -127,6 +127,7 @@ function checkEdges(scrolled = false) {
     else if (scrolled && above < 150 && (props.list.offset || 0) > 0) emit('newer');
 }
 let raf = 0;
+// Колесо вверх в самом верху списка прокрутки не даёт (scrollTop уже 0) — ловим его отдельно (см. @wheel).
 const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; checkEdges(Date.now() > quietUntil); }); };
 onMounted(() => { window.addEventListener('scroll', onScroll, { passive: true }); nextTick(() => checkEdges()); });
 onBeforeUnmount(() => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); });
@@ -300,7 +301,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
             </span>
         </div>
 
-        <div ref="rowsBox" class="mlist__rows" :style="loading ? 'opacity:.6' : ''" @scroll.passive="onScroll">
+        <div ref="rowsBox" class="mlist__rows" :style="loading ? 'opacity:.6' : ''" @scroll.passive="onScroll" @wheel.passive="$event.deltaY < 0 && checkEdges(true)">
             <div v-if="edge === 'newer'" class="mlist__more">Загружаю более новые…</div>
             <button v-else-if="(list.offset || 0) > 0 && list.messages.length" type="button" class="mlist__more mlist__more--btn" @click="$emit('newer')">Показать более новые</button>
             <template v-for="(m, i) in list.messages" :key="rowKey(m)">
