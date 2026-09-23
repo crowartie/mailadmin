@@ -57,7 +57,7 @@ final class MessageSummary
         }
         $preview = null;
         if (isset($row['PREVIEW']) && is_string($row['PREVIEW'])) {
-            $text = trim(preg_replace('/\s+/u', ' ', (string) Charset::fix($row['PREVIEW'])) ?? '');
+            $text = self::withoutLinksBlock(trim(preg_replace('/\s+/u', ' ', (string) Charset::fix($row['PREVIEW'])) ?? ''));
             $preview = $text !== '' ? mb_substr($text, 0, 160) : null;
         }
 
@@ -107,7 +107,7 @@ final class MessageSummary
             restore_error_handler();
         }
         foreach ($out as $uid => $text) {
-            $text = trim(preg_replace('/\s+/u', ' ', (string) Charset::fix($text)) ?? '');
+            $text = self::withoutLinksBlock(trim(preg_replace('/\s+/u', ' ', (string) Charset::fix($text)) ?? ''));
             if ($text === '') {
                 unset($out[$uid]);
             } else {
@@ -116,6 +116,38 @@ final class MessageSummary
         }
 
         return $out;
+    }
+
+    /**
+     * Превью без блока «К этому письму приложены ссылки…» (MailBuilder::linksBlock): в списке
+     * вместо текста письма стояли заголовок блока и длинные адреса. Текст до блока остаётся;
+     * если его нет — «Файлы: имя, имя». Превью от Dovecot — сплошная строка, адрес в блоке
+     * показан раскодированным (с пробелами), поэтому имена идём по порядку: имя (размер) Ссылка…
+     * адрес/токен/то же имя.
+     */
+    public static function withoutLinksBlock(string $text): string
+    {
+        $title = 'К этому письму приложены ссылки на следующие файлы:';
+        $at = strpos($text, $title);
+        if ($at === false) {
+            return $text;
+        }
+        $before = trim(substr($text, 0, $at));
+        if ($before !== '') {
+            return $before;
+        }
+        $s = ltrim(substr($text, $at + strlen($title)));
+        $names = [];
+        while (count($names) < 20 && preg_match('#^(.+?) \(\d[\d.,]* ?(?:Б|КБ|МБ|ГБ)\) ?Ссылка для скачивания: ?https?://\S+?/[A-Za-z0-9_-]{20,64}/#u', $s, $m)) {
+            $names[] = $m[1];
+            $s = ltrim(substr($s, strlen($m[0])));
+            if (str_starts_with($s, $m[1])) {
+                $s = ltrim(substr($s, strlen($m[1])));
+            }
+            $s = (string) preg_replace('/^Ссылка защищена паролем[^.]*\.\s*/u', '', $s);
+        }
+
+        return $names ? 'Файлы: ' . implode(', ', $names) : 'Файлы по ссылкам';
     }
 
     /** Размер письма; если сервер не ответил — 0, а не 500 на весь список. */
