@@ -310,11 +310,7 @@ final class ThreadIndex
         $refs = array_merge($ids($field('In-Reply-To')), $ids($field('References')));
         $date = null;
         if (($d = $field('Date')) !== '') {
-            try {
-                $date = Carbon::parse($d)->utc();
-            } catch (\Throwable) {
-                $date = null;
-            }
+            $date = Mime::parseDate($d)?->utc();
         }
 
         return ['id' => $id, 'refs' => $refs, 'date' => $date];

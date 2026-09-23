@@ -238,4 +238,34 @@ final class Mime
             throw MailException::denied($what . ($reason !== '' ? ': ' . self::imapReason($reason) : ''));
         }
     }
+
+    /**
+     * Дата из заголовка Date — или null, если её нельзя принять всерьёз.
+     *
+     * Спамеры и кривые программы пишут «17 September 2026 19:31:14 0200»: у пояса нет знака,
+     * и разборщик принимал «0200» за год — письмо оказывалось в «Сентябре 200 года» и путало
+     * разделители в списке. Пояс без знака понимаем как «+», а дату раньше 1990 года или
+     * больше чем на сутки в будущем не принимаем: тогда вызывающий берёт время получения.
+     */
+    public static function parseDate(?string $raw): ?\Carbon\Carbon
+    {
+        $raw = trim(preg_replace('/\s*\([^)]*\)\s*$/', '', (string) $raw) ?? '');
+        if ($raw === '') {
+            return null;
+        }
+        $raw = preg_replace('/(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{4})$/', '$1 +$2', $raw) ?? $raw;
+        try {
+            $d = \Carbon\Carbon::parse($raw);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return self::plausible($d) ? $d : null;
+    }
+
+    /** Дата похожа на правду: не раньше 1990 года и не дальше суток в будущем. */
+    public static function plausible(?\DateTimeInterface $d): bool
+    {
+        return $d !== null && (int) $d->format('Y') >= 1990 && $d->getTimestamp() <= time() + 86400;
+    }
 }

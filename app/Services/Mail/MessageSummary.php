@@ -44,15 +44,11 @@ final class MessageSummary
         $from = ($f = Mime::senderOf($h)) ? Directory::fill($f) : null;
         $to = ($t = Mime::firstAddress($h['to'] ?? '')) ? Directory::fill($t) : null;
         $date = null;
+        // Кривой или невозможный Date: — берём время получения (INTERNALDATE).
         foreach ([$h['date'] ?? null, $row['INTERNALDATE'] ?? null] as $raw) {
-            if ($raw === null || trim((string) $raw) === '') {
-                continue;
-            }
-            try {
-                $date = \Carbon\Carbon::parse(preg_replace('/\s*\([^)]*\)\s*$/', '', trim((string) $raw)))->toIso8601String();
+            if (($d = Mime::parseDate($raw === null ? null : (string) $raw)) !== null) {
+                $date = $d->toIso8601String();
                 break;
-            } catch (\Throwable) {
-                // кривой Date: — возьмём время получения (INTERNALDATE)
             }
         }
         $preview = null;
@@ -244,7 +240,9 @@ final class MessageSummary
             // иначе в списке стоит «popovav@innotec.su» вместо «Попов Андрей Викторович».
             'from' => self::fromOf($message),
             'toName' => $to ? Directory::fill(Mime::address($to->personal, $to->mail))['name'] : null,
-            'date' => $date ? $date->toIso8601String() : self::receivedAt($this->client, (int) $message->getUid()),
+            // Дата библиотеки бывает невозможной («0200» из пояса без знака) — тогда время получения.
+            'date' => $date && Mime::plausible($date) ? $date->toIso8601String()
+                : (($d = Mime::parseDate((string) $date)) ? $d->toIso8601String() : self::receivedAt($this->client, (int) $message->getUid())),
             'seen' => $flags->has('seen'),
             'flagged' => $flags->has('flagged'),
             'answered' => $flags->has('answered'),
