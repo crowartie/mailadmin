@@ -58,6 +58,8 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
             ],
             'mailUser' => fn () => $request->session()->get('mail.user'),
+            // Пункт «Облако» в рельсе — только когда облако сотрудников включено в админке.
+            'cloudPersonal' => fn () => ! $isAdminArea && \App\Services\Cloud\PersonalCloud::enabled(),
             // Новые ответы по обращениям — точка на значке «Поддержка» в рельсе веб-почты.
             'feedbackNew' => fn () => $isAdminArea || ! $request->session()->get('mail.user') ? 0
                 : \App\Models\FeedbackTicket::query()->where('user', strtolower((string) $request->session()->get('mail.user')))->where('new_for_user', 1)->count(),

@@ -26,12 +26,12 @@ onMounted(() => { feedbackTimer = setInterval(checkFeedback, 60000); });
 onBeforeUnmount(() => clearInterval(feedbackTimer));
 
 // Почта, календарь и контакты — один интерфейс; рельс переключает разделы.
-const services = [
+const services = computed(() => [
     { href: '/mail', icon: 'mail', label: 'Почта' },
     { href: '/calendar', icon: 'cal', label: 'Календарь' },
     { href: '/contacts', icon: 'users', label: 'Контакты' },
-    { href: '/cloud', icon: 'cloud', label: 'Облако' },
-];
+    ...(page.props.cloudPersonal ? [{ href: '/cloud', icon: 'cloud', label: 'Облако' }] : []),
+]);
 
 // «Ещё» на телефоне: в нижней панели помещается только четыре пункта.
 const more = ref(false);
