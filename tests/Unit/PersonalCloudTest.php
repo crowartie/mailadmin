@@ -331,7 +331,7 @@ class PersonalCloudTest extends TestCase
 
         $out = $this->cloud()->attach(['Цех.mp4']);
 
-        $this->assertSame([['name' => 'Цех.mp4', 'size' => 2500, 'url' => 'https://nc/s/abc', 'expires' => date('Y-m-d', strtotime('+5 days')), 'password' => true]], $out);
+        $this->assertSame([['path' => 'Цех.mp4', 'name' => 'Цех.mp4', 'size' => 2500, 'url' => 'https://nc/s/abc', 'expires' => date('Y-m-d', strtotime('+5 days')), 'password' => true]], $out);
         $this->assertCount(1, $this->sent, 'новая ссылка создаваться не должна');
         $html = \App\Services\Mail\MailBuilder::linksBlock($out);
         $this->assertStringContainsString('https://nc/s/abc', $html);
@@ -445,5 +445,24 @@ class PersonalCloudTest extends TestCase
         $this->assertArrayNotHasKey($a, $this->ledger->files, 'по ссылке на удалённый файл скачать нельзя');
         $this->assertArrayNotHasKey($b, $this->ledger->files, 'отозванная ссылка должна перестать работать');
         $this->assertNotContains('DELETE', array_column($this->sent, 0), 'Nextcloud share тут ни при чём');
+    }
+
+    public function test_выбранные_файлы_облака_переживают_черновик(): void
+    {
+        $picked = \App\Services\Mail\MailBuilder::pickedCloud(['cloudFiles' => [
+            ['path' => 'Видео/Цех.mp4', 'name' => 'Цех.mp4', 'size' => 2500],
+            ['path' => 'Видео/Цех.mp4', 'name' => 'повтор', 'size' => 1],
+            ['name' => 'без пути'],
+            'мусор',
+        ]]);
+        $this->assertSame([['path' => 'Видео/Цех.mp4', 'name' => 'Цех.mp4', 'size' => 2500]], $picked);
+
+        $head = "Subject: x
+" . \App\Services\Mail\MailBuilder::CLOUD_HEADER . ': ' . base64_encode(json_encode($picked[0], JSON_UNESCAPED_UNICODE)) . "
+X-Other: y
+";
+        $this->assertSame($picked, \App\Services\Mail\MailBuilder::draftCloudFiles($head));
+        $this->assertSame([], \App\Services\Mail\MailBuilder::draftCloudFiles("Subject: x
+"));
     }
 }

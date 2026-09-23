@@ -57,6 +57,7 @@ class MailBuilder
 
         $html = (string) ($form['html'] ?? '');
         $subject = (string) ($form['subject'] ?? '');
+        $picked = self::pickedCloud($form);
         $published = [];   // токены уже положенных файлов — откатить, если письмо не соберётся
         try {
             $links = $this->publishToCloud($files, $cloud, $messageId, $subject, $published);
@@ -64,12 +65,26 @@ class MailBuilder
             // иначе пересылка письма с большим файлом упиралась бы в предел почтового сервера.
             [$kept, $keptLinks] = $this->keptAttachments($form, $forSend, $messageId, $subject, $published);
             $links = array_merge($links, $keptLinks);
+            // Файлы из облака сотрудника: ссылки берутся в момент отправки — действующие, с продлённым
+            // сроком, если истёк. Файл успели удалить — письмо не уходит, человек видит, какого файла нет.
+            if ($forSend && $picked) {
+                $links = array_merge($links, \App\Services\Cloud\PersonalCloud::forUser($this->session->user())->attach(array_column($picked, 'path')));
+            }
         } catch (\Throwable $e) {
             \App\Services\Cloud\LocalFiles::discardTokens($published);
             throw $e;
         }
         if ($links) {
-            $html .= $this->cloudBlockHtml($links);
+            // Перед подписью, если она есть: так блок читается как часть письма, а не приписка после неё.
+            $block = $this->cloudBlockHtml($links);
+            $at = strpos($html, '<div class="sig"');
+            $html = $at === false ? $html . $block : substr($html, 0, $at) . $block . substr($html, $at);
+        }
+        if (! $forSend) {
+            // В черновике ссылок ещё нет — только отметка, какие файлы облака выбраны (вернутся карточками).
+            foreach ($picked as $f) {
+                $email->getHeaders()->addTextHeader(self::CLOUD_HEADER, base64_encode((string) json_encode($f, JSON_UNESCAPED_UNICODE)));
+            }
         }
         // Картинки, встроенные редактором как data: (логотип в подписи, снимок из буфера) — во вложения с cid:
         // Gmail и часть клиентов data:-картинки в письмах не показывают, cid показывают все.
@@ -306,6 +321,39 @@ class MailBuilder
         return [$kept, $links];
     }
 
+
+    /** Заголовок черновика с выбранным файлом облака (base64 от JSON {path, name, size}). */
+    public const CLOUD_HEADER = 'X-Mailadmin-Cloud';
+
+    /** Файлы облака из формы: путь обязателен, повторы убраны, не больше 20. @return array<int,array{path:string,name:string,size:int}> */
+    public static function pickedCloud(array $form): array
+    {
+        $out = [];
+        foreach ((array) ($form['cloudFiles'] ?? []) as $f) {
+            $path = is_array($f) ? trim((string) ($f['path'] ?? '')) : '';
+            if ($path === '' || isset($out[$path])) {
+                continue;
+            }
+            $out[$path] = ['path' => $path, 'name' => (string) ($f['name'] ?? basename($path)), 'size' => (int) ($f['size'] ?? 0)];
+        }
+
+        return array_slice(array_values($out), 0, 20);
+    }
+
+    /** Выбранные файлы облака из заголовков черновика. */
+    public static function draftCloudFiles(string $head): array
+    {
+        preg_match_all('/^' . self::CLOUD_HEADER . ':\s*([A-Za-z0-9+\/=]+)/mi', $head, $m);
+        $files = [];
+        foreach ($m[1] as $b64) {
+            $f = json_decode((string) base64_decode($b64, true), true);
+            if (is_array($f)) {
+                $files[] = $f;
+            }
+        }
+
+        return self::pickedCloud(['cloudFiles' => $files]);
+    }
 
     /**
      * Блок ссылок в письме — как у Mail.ru: заголовок, по файлу имя и «Ссылка для скачивания»,

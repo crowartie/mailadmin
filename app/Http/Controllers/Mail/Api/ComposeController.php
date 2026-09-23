@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Webmail\Outbox;
 use App\Models\Webmail\Reminder;
 use App\Services\Mail\ImapSession;
+use App\Services\Mail\MailBuilder;
 use App\Services\Mail\MailStore;
 use App\Services\Mail\Outgoing;
 use Carbon\Carbon;
@@ -48,6 +49,11 @@ class ComposeController extends Controller
         'files.*' => ['file', 'max:512000'],
         'cloud' => ['nullable', 'array'],
         'cloud.*' => ['integer', 'min:0', 'max:19'],
+        // Файлы из облака сотрудника: в окне письма — карточки, в письмо при отправке — блок ссылок.
+        'cloudFiles' => ['nullable', 'array', 'max:20'],
+        'cloudFiles.*.path' => ['required', 'string', 'max:2000'],
+        'cloudFiles.*.name' => ['nullable', 'string', 'max:255'],
+        'cloudFiles.*.size' => ['nullable', 'integer', 'min:0'],
     ];
 
     /**
@@ -186,6 +192,7 @@ class ComposeController extends Controller
             'inReplyTo' => $m['inReplyTo'],
             'references' => $m['references'],
             'attachments' => $m['attachments'],
+            'cloudFiles' => MailBuilder::draftCloudFiles($head),
         ]);
     }
 

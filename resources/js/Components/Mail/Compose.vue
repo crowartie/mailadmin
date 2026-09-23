@@ -4,7 +4,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import { track } from '../../mail/track';
 import CloudPicker from './CloudPicker.vue';
-import { insertLinks } from '../../mail/format';
 import RecipientInput from './RecipientInput.vue';
 import Editor from './Editor.vue';
 import Popover from './Popover.vue';
@@ -38,6 +37,9 @@ const existing = ref(c.attachments || []);
 // Письма, приложенные целиком (обращение №39): их содержимое берёт сервер, заливать нечего.
 const attachedMails = ref([...(c.attachMessages || [])]);
 function dropMail(i) { attachedMails.value.splice(i, 1); dirty.value = true; }
+// Файлы из облака сотрудника: здесь — карточки, как вложения; ссылки на них сервер вставит при отправке.
+const cloudPicked = ref(Array.isArray(c.cloudFiles) ? c.cloudFiles.map((f) => ({ path: f.path, name: f.name, size: f.size || 0 })) : []);
+function dropCloud(i) { cloudPicked.value.splice(i, 1); dirty.value = true; }
 const keepAttachments = ref(c.keepAttachments ?? (c.mode === 'forward'));
 const draftUid = ref(c.draftUid || null);
 // Черновик при каждом сохранении перекладывается под новым UID. Вложения, унаследованные
@@ -92,7 +94,7 @@ const MAX_FILES = props.limits?.maxFiles || 20;
 const MAX_MESSAGE = (props.limits?.messageMb || 25) * 1024 * 1024;
 const viaCloud = ref(new Set());   // индексы файлов, которые уйдут ссылкой
 // Считаем и унаследованные вложения крупнее порога: они тоже уйдут ссылкой.
-const cloudCount = computed(() => viaCloud.value.size + (keepAttachments.value ? existing.value.filter((a) => keptCloud(a)).length : 0));
+const cloudCount = computed(() => viaCloud.value.size + cloudPicked.value.length + (keepAttachments.value ? existing.value.filter((a) => keptCloud(a)).length : 0));
 function toggleCloud(i) { const s = new Set(viaCloud.value); s.has(i) ? s.delete(i) : s.add(i); viaCloud.value = s; dirty.value = true; }
 // Вес письма — свои файлы плюс унаследованные от пересылаемого. Раньше предупреждение
 // считало только свои, и пересылка с 40 МБ уходила молча.
@@ -133,6 +135,7 @@ function payload(extra = {}) {
         subject: subject.value,
         html: html.value,
         cloud: props.cloud?.enabled ? [...viaCloud.value] : [],
+        cloudFiles: cloudPicked.value.map((f) => ({ ...f })),
         inReplyTo: c.inReplyTo,
         references: c.references,
         answeredFolder: c.answeredFolder,
@@ -248,13 +251,18 @@ function close() {
     emit('close');
 }
 
-// Файлы из личного облака: в письмо вставляется блок ссылок (перед подписью).
+// Файлы из личного облака: карточками во вложения; уже выбранный второй раз не добавляется.
 const picker = ref(false);
 function onCloudAttach(r) {
     picker.value = false;
-    html.value = insertLinks(html.value, r.html);
+    const had = new Set(cloudPicked.value.map((f) => f.path));
+    const add = r.links.filter((l) => !had.has(l.path)).map((l) => ({ path: l.path, name: l.name, size: l.size }));
+    if (cloudPicked.value.length + add.length > 20) {
+        emit('toast', { text: 'Из облака можно приложить не больше 20 файлов', error: true });
+        return;
+    }
+    cloudPicked.value.push(...add);
     dirty.value = true;
-    emit('toast', { text: r.links.length === 1 ? 'Ссылка на файл добавлена в письмо' : 'Ссылки на файлы добавлены в письмо: ' + r.links.length });
 }
 
 function addFiles(list) {
@@ -445,7 +453,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             </template>
         </Editor>
 
-        <div v-if="files.length || attachedMails.length || (keepAttachments && existing.length)" class="compose__atts">
+        <div v-if="files.length || cloudPicked.length || attachedMails.length || (keepAttachments && existing.length)" class="compose__atts">
             <!-- Письмо, приложенное целиком: уйдёт файлом .eml, получатель откроет его как письмо -->
             <span v-for="(x, i) in attachedMails" :key="'m' + x.folder + x.uid" class="att att--mail" :title="'Письмо «' + x.name + '» уйдёт вложением'">
                 <span class="att__main"><Icon name="mail" :size="13" /><span class="name">{{ x.name }}</span><span class="sz">письмо</span></span>
@@ -467,7 +475,12 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                 <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой, а не вложением'" @click="toggleCloud(i)" :aria-label="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой, а не вложением'"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
                 <button type="button" title="Убрать" @click="removeFile(i)" aria-label="Убрать"><Icon name="x" :size="13" /></button>
             </span>
-            <span v-if="cloud.enabled && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель скачает по ссылке из письма</span>
+            <!-- Файлы из облака: уйдут ссылкой, получатель скачает по щелчку -->
+            <span v-for="(f, i) in cloudPicked" :key="'c' + f.path" class="att att--cloud" :title="f.name + ' — из облака, уйдёт ссылкой'">
+                <span class="att__main"><Icon name="cloud" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></span>
+                <button class="att__btn" type="button" title="Убрать" aria-label="Убрать" @click="dropCloud(i)"><Icon name="x" :size="13" /></button>
+            </span>
+            <span v-if="(cloud.enabled || cloudPicked.length) && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель скачает по ссылке из письма</span>
             <!-- Предупреждение показываем и при включённом облаке: часть файлов всё равно
                  уходит внутри письма, а вес считаем вместе с унаследованными. -->
             <span v-if="inMailSize > MAX_MESSAGE" class="chip chip--no" style="height: 28px">{{ size(inMailSize) }} — больше предела почты ({{ Math.round(MAX_MESSAGE / 1048576) }} МБ), письмо не уйдёт</span>

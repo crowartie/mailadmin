@@ -750,7 +750,7 @@ class PersonalCloud
 
     /**
      * Приложить к письму: для каждого файла — действующая ссылка (есть — берём её, нет — новая
-     * на срок из настроек). @return array<int,array{name:string,size:int,url:string,expires:?string,password:bool}>
+     * на срок из настроек). @return array<int,array{path:string,name:string,size:int,url:string,expires:?string,password:bool}>
      */
     public function attach(array $paths): array
     {
@@ -766,7 +766,7 @@ class PersonalCloud
             if (! $l || $stale || ($l['expires_at'] && $l['expires_at'] < date('Y-m-d'))) {
                 $l = $this->link($p, (int) ($this->settings['personal_link_days'] ?? 30), $l ? null : false);
             }
-            $out[] = ['name' => $st['name'], 'size' => $st['size'], 'url' => $l['url'], 'expires' => $l['expires_at'], 'password' => (bool) $l['has_password']];
+            $out[] = ['path' => $p, 'name' => $st['name'], 'size' => $st['size'], 'url' => $l['url'], 'expires' => $l['expires_at'], 'password' => (bool) $l['has_password']];
         }
 
         return $out;

@@ -226,6 +226,12 @@ export function composeForm(c, files = []) {
     files.forEach((file) => fd.append('files[]', file, file.name));
     (c.cloud || []).forEach((i) => fd.append('cloud[]', String(i)));
     (c.keepIndexes || []).forEach((i) => fd.append('keepIndexes[]', String(i)));
+    // Файлы из облака: сервер при отправке сам вставит ссылки на них.
+    (c.cloudFiles || []).forEach((f, i) => {
+        fd.append(`cloudFiles[${i}][path]`, f.path);
+        if (f.name) fd.append(`cloudFiles[${i}][name]`, f.name);
+        if (f.size !== undefined && f.size !== null) fd.append(`cloudFiles[${i}][size]`, String(f.size));
+    });
     // Письма, приложенные целиком: сервер возьмёт их исходники сам, заливать нечего.
     (c.attachMessages || []).forEach((m, i) => {
         fd.append(`attachMessages[${i}][folder]`, m.folder);
