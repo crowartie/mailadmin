@@ -27,6 +27,7 @@ class Setting extends Model
         'reply_all' => false,
         'notify_browser' => false,
         'ask_rule_on_move' => true,
+        'shared_mark_seen' => false,  // в чужой (общей) папке открытие письма не отмечает его прочитанным
         'undo_seconds' => 5,
         'quick_replies' => ['Спасибо, получил.', 'Принято, сделаю.', 'Давайте обсудим по телефону.'],
         'shortcuts' => true,

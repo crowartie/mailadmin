@@ -50,7 +50,10 @@ class MessageController extends Controller
     public function show(Request $request, ImapSession $imap, string $folder, int $uid): JsonResponse
     {
         $store = new MailStore($imap->client());
-        $m = $store->message($folder, $uid, ! $request->boolean('peek'));
+        $markSeen = MailStore::marksSeenOnOpen($folder, \App\Models\Webmail\Setting::for($imap->user()), $request->boolean('peek'));
+        $m = $store->message($folder, $uid, $markSeen);
+        // Клиент по этому признаку решает, гасить ли «непрочитанное» в строке списка.
+        $m['markedSeen'] = $markSeen;
         // Ссылки на своё хранилище в теле письма — карточками: посмотреть, скачать, продлить.
         $m['cloudFiles'] = LocalFiles::cardsIn($m['html'] ?? null, $imap->user());
         // История общения: отправитель прочитанного письма — тоже контакт (кроме своих, рассылок и роботов).

@@ -197,7 +197,8 @@ async function openMessage(uid, e) {
         if (want !== openSeq) return;
         open.value = m;
         mobileRead.value = true;
-        if (row && !row.seen) { row.seen = true; bump(folder.value, -1); }
+        // В общей папке сервер по умолчанию не отмечает письмо прочитанным (флаг там один на всех).
+        if (row && !row.seen && m.markedSeen !== false) { row.seen = true; bump(folder.value, -1); }
         // Цепочка ответов — фоном, чтобы письмо показывалось сразу.
         api.thread(folder.value, uid).then((t) => {
             if (!open.value || open.value.uid !== m.uid || open.value.folder !== m.folder) return;
