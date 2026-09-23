@@ -87,11 +87,14 @@ watch(() => props.query, (v) => { const d = decomposeQuery(v); if (d.scope) scop
 // при прокрутке и тихое обновление место не сбивают. На узком экране список прокручивается
 // вместе со страницей.
 const rowsBox = ref(null);
+let quietUntil = 0;
 watch(
     () => [props.folder, props.list?.seq, props.filter, props.query, props.sort, props.everywhere].join('\u0000'),
     async (now, before) => {
         if (now === before) return;
         await nextTick();
+        // Сброс прокрутки — не прокрутка человека: иначе после перехода к дате сразу грузились письма новее.
+        quietUntil = Date.now() + 500;
         if (rowsBox.value) rowsBox.value.scrollTop = 0;
         // Обычное обновление списка (раз в 20 секунд и после действий) сюда не попадает:
         // там папка, страница и отбор те же самые.
@@ -105,7 +108,9 @@ watch(
 // На компьютере прокручивается сам список, на телефоне — вся страница: считаем для обоих.
 const ownScroll = () => !!rowsBox.value && rowsBox.value.scrollHeight > rowsBox.value.clientHeight + 1;
 const atEnd = computed(() => (props.list.offset || 0) + props.list.messages.length >= props.list.total);
-function checkEdges() {
+// Вверх дочитываем только по прокрутке человека: сразу после перехода к дате список стоит
+// в самом верху, и без этого над выбранным днём тут же появлялись более новые письма.
+function checkEdges(scrolled = false) {
     const box = rowsBox.value;
     if (!box || props.loading || props.edge) return;
     let above; let below;
@@ -119,14 +124,14 @@ function checkEdges() {
     }
     // Дочитываем заранее, за пару экранов до края, — чтобы человек не упирался в «Загружаю».
     if (below < 900 && !atEnd.value) emit('more');
-    else if (above < 150 && (props.list.offset || 0) > 0) emit('newer');
+    else if (scrolled && above < 150 && (props.list.offset || 0) > 0) emit('newer');
 }
 let raf = 0;
-const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; checkEdges(); }); };
-onMounted(() => { window.addEventListener('scroll', onScroll, { passive: true }); nextTick(checkEdges); });
+const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; checkEdges(Date.now() > quietUntil); }); };
+onMounted(() => { window.addEventListener('scroll', onScroll, { passive: true }); nextTick(() => checkEdges()); });
 onBeforeUnmount(() => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); });
 // Список пришёл короче экрана (или дочитался) — проверить края ещё раз, иначе прокрутки не будет вовсе.
-watch(() => [props.list.messages.length, props.list.seq, props.edge, props.loading].join('|'), () => nextTick(checkEdges));
+watch(() => [props.list.messages.length, props.list.seq, props.edge, props.loading].join('|'), () => nextTick(() => checkEdges()));
 
 /**
  * Изменить список, не сдвинув видимое: запоминаем первую строку на экране и где она стоит,
