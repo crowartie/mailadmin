@@ -148,30 +148,57 @@ class MessageController extends Controller
      * Все файлы из облака, на которые ссылается письмо, одним архивом. Только свои файлы
      * (лежат в хранилище этого сервера) и только с живой ссылкой — как и карточки в письме.
      */
+    /** Сколько файлов из облака сотрудника можно собрать в один ZIP: их качаем из Nextcloud по сети. */
+    public const ZIP_CLOUD_MAX = 2 * 1073741824;
+
     public function cloudZip(ImapSession $imap, string $folder, int $uid)
     {
         $m = (new MailStore($imap->client()))->message($folder, $uid, false);
         $cards = LocalFiles::cardsIn($m['html'] ?? null, $imap->user());
         $tokens = array_column(array_filter($cards, fn ($c) => empty($c['expired'])), 'token');
-        // Файлы из облака сотрудника (source = nc) в архив не берём: они бывают по нескольку гигабайт.
-        $files = \App\Models\Webmail\CloudFile::query()->whereIn('token', $tokens)->where('source', 'local')->get()
-            ->filter(fn ($f) => is_file($f->fullPath()));
+        // Порядок — как в письме.
+        $rows = \App\Models\Webmail\CloudFile::query()->whereIn('token', $tokens)->get()->keyBy('token');
+        $files = collect($tokens)->map(fn ($t) => $rows[$t] ?? null)->filter()
+            ->filter(fn ($f) => $f->isCloud() || is_file($f->fullPath()))->values();
         abort_if($files->isEmpty(), 404, 'У письма нет файлов из облака с живой ссылкой');
+        $remote = (int) $files->filter(fn ($f) => $f->isCloud())->sum('size');
+        abort_if($remote > self::ZIP_CLOUD_MAX, 422, 'Файлы из облака весят ' . \App\Support\Format::size($remote)
+            . ' — одним архивом больше ' . \App\Support\Format::size(self::ZIP_CLOUD_MAX) . ' не собираем, скачайте их по одному');
+        set_time_limit(600);
 
         $tmp = tempnam(sys_get_temp_dir(), 'cloud');
+        $parts = [];   // временные копии файлов из облака — убрать после сборки
         $zip = new \ZipArchive();
         abort_if($zip->open($tmp, \ZipArchive::OVERWRITE) !== true, 500, 'Не удалось создать архив');
         $used = [];
-        foreach ($files as $f) {
-            $name = preg_replace('#[\\\\/:*?"<>|\x00-\x1f]+#', '_', (string) $f->name) ?: 'файл';
-            if (isset($used[$name])) {
-                $name = preg_replace('/(\.[^.]+)?$/', '-' . (++$used[$name]) . '$1', $name, 1);
-            } else {
-                $used[$name] = 1;
+        try {
+            foreach ($files as $f) {
+                $name = preg_replace('#[\\\\/:*?"<>|\x00-\x1f]+#', '_', (string) $f->name) ?: 'файл';
+                if (isset($used[$name])) {
+                    $name = preg_replace('/(\.[^.]+)?$/', '-' . (++$used[$name]) . '$1', $name, 1);
+                } else {
+                    $used[$name] = 1;
+                }
+                if ($f->isCloud()) {
+                    $cloud = \App\Services\Cloud\PersonalCloud::forUser($f->user);
+                    $path = $cloud->pathOfFile((int) $f->id);
+                    abort_if($path === null, 404, 'Файла «' . $f->name . '» уже нет в облаке');
+                    $part = tempnam(sys_get_temp_dir(), 'ncz');
+                    $parts[] = $part;
+                    $cloud->fetchTo($path, $part);
+                    $zip->addFile($part, $name);
+                    // Видео и фото уже сжаты: упаковка без сжатия быстрее и почти не больше.
+                    $zip->setCompressionName($name, \ZipArchive::CM_STORE);
+                } else {
+                    $zip->addFile($f->fullPath(), $name);
+                }
             }
-            $zip->addFile($f->fullPath(), $name);
+            $zip->close();
+        } finally {
+            foreach ($parts as $part) {
+                @unlink($part);
+            }
         }
-        $zip->close();
         $subject = trim(preg_replace('#[\\\\/:*?"<>|\x00-\x1f]+#', ' ', (string) ($m['subject'] ?? '')));
 
         return response()->download($tmp, 'файлы' . ($subject !== '' ? ' — ' . mb_substr($subject, 0, 60) : '') . '.zip', [

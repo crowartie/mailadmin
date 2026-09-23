@@ -796,4 +796,21 @@ class PersonalCloud
     {
         return $this->ledger->filePath($this->user, $fileId);
     }
+
+    /** Скачать файл из облака в локальный файл — для ZIP «Скачать все» (Nextcloud в той же сети). */
+    public function fetchTo(string $rel, string $dest): void
+    {
+        $rel = PersonalPath::clean($rel);
+        try {
+            $r = $this->http()->timeout(540)->withOptions(['sink' => $dest])->get($this->url($rel));
+        } catch (ConnectionException) {
+            throw MailException::upstream('Облако сейчас недоступно — попробуйте позже');
+        }
+        if ($r->status() === 404) {
+            throw MailException::notFound('Файла «' . PersonalPath::base($rel) . '» уже нет в облаке');
+        }
+        if (! $r->successful()) {
+            throw MailException::upstream('Облако не отдало «' . PersonalPath::base($rel) . '» (ответ ' . $r->status() . ')');
+        }
+    }
 }

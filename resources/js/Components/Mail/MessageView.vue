@@ -108,8 +108,12 @@ const cloudFiles = (m) => (m.cloudFiles || []);
 const cloudLive = (m) => cloudFiles(m).filter((f) => !f.expired);
 // Продлить из письма можно свой большой файл; ссылку на файл из облака — в разделе «Облако».
 const renewable = (f) => f.mine && !f.cloud;
-// В ZIP идут только файлы с сервера почты: файлы из облака бывают по нескольку гигабайт.
-const cloudZipped = (m) => cloudLive(m).filter((f) => !f.cloud);
+// В ZIP идут все живые файлы; файлы из облака сервер качает из Nextcloud — не больше 2 ГБ за раз.
+const ZIP_CLOUD_MAX = 2 * 1073741824;
+const cloudZipped = (m) => {
+    const live = cloudLive(m);
+    return live.filter((f) => f.cloud).reduce((s, f) => s + (f.size || 0), 0) > ZIP_CLOUD_MAX ? [] : live;
+};
 const fmtDay = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU') : '');
 function cloudNote(m) {
     const live = cloudLive(m);
