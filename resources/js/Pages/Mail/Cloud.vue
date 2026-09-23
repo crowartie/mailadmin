@@ -18,6 +18,7 @@ const props = defineProps({
     enabled: Boolean,
     linkDays: { type: Number, default: 30 },
     trashDays: { type: Number, default: 30 },
+    fileDays: { type: Number, default: 28 },
     chunkSize: { type: Number, default: 10485760 },
 });
 
@@ -29,6 +30,8 @@ const loading = ref(false);
 const error = ref('');
 const used = ref(0);
 const quota = ref(0);
+// Срок хранения: сколько дней живёт файл после обращения, сколько закреплено и сколько можно.
+const keep = ref({ days: props.fileDays, pinned: 0, cap: 0 });
 const filter = ref('');
 const selected = ref(null);
 const checked = ref(new Set());
@@ -100,6 +103,7 @@ async function load() {
         items.value = r.items || [];
         used.value = r.used ?? used.value;
         quota.value = r.quota ?? quota.value;
+        if (r.fileDays !== undefined) keep.value = { days: r.fileDays, pinned: r.pinned || 0, cap: r.pinCap || 0 };
         if (selected.value) selected.value = items.value.find((i) => i.path === selected.value.path) || null;
         checked.value = new Set();
     } catch (e) {
@@ -147,6 +151,39 @@ async function go(p, v = 'folder') {
         if (!tree[parent]) await loadTree(parent);
     }
     await load();
+}
+
+// ── срок хранения ──
+/** Подпись у файла: сколько до удаления или почему не удалится. */
+function lifeText(it) {
+    const l = it.life;
+    if (!l) return '';
+    if (l.pinned) return l.pinnedBy ? 'в закреплённой папке' : 'закреплён';
+    if (l.reason === 'link-forever') return 'пока есть ссылка';
+    if (l.days === null || l.days === undefined) return '';
+    if (l.days <= 0) return 'удалится этой ночью';
+    return 'удалится через ' + l.days + ' ' + plural(l.days, 'день', 'дня', 'дней');
+}
+const lifeWarn = (it) => !!it.life && !it.life.pinned && it.life.days !== null && it.life.days !== undefined && it.life.days <= 3;
+function lifeLong(it) {
+    const l = it.life;
+    if (!l) return '';
+    if (l.pinned) return l.pinnedBy ? 'Закреплена папка «' + l.pinnedBy.split('/').pop() + '» — всё в ней хранится без срока.' : 'Закреплён — хранится без срока, пока не открепите.';
+    if (l.reason === 'off') return 'Файлы хранятся без срока.';
+    if (l.reason === 'link-forever') return 'Есть бессрочная ссылка — файл не удалится, пока она действует. Отзовёте — пойдёт срок ' + keep.value.days + ' дн.';
+    const date = new Date(l.expires).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    return (l.reason === 'link' ? 'Срок пойдёт после окончания ссылки: ' : 'Если не открывать: ') + 'в корзину ' + date + '. Открыть, скачать, приложить к письму или дать ссылку — и отсчёт ' + keep.value.days + ' дн. начнётся заново.';
+}
+async function togglePin(it) {
+    if (it.life?.pinnedBy) { say('Закреплена папка «' + it.life.pinnedBy.split('/').pop() + '» — открепите её', true); return; }
+    const on = !it.life?.pinned;
+    try {
+        const r = await api.cloudPin(it.path, on);
+        it.life = r.life;
+        keep.value = { ...keep.value, pinned: r.pinned, cap: r.pinCap };
+        say(on ? '«' + it.name + '» закреплён — хранится без срока' : '«' + it.name + '» откреплён — хранится ' + keep.value.days + ' дн. с сегодняшнего дня');
+        if (it.dir) await load();   // у файлов внутри поменялся срок
+    } catch (e) { say(e.message, true); }
 }
 
 function activate(it) {
@@ -347,6 +384,7 @@ onMounted(async () => {
                     <b v-else>{{ titles[view] }}</b>
                     <span class="grow" />
                     <span v-if="view === 'folder'" class="cl-muted">{{ totals.n }} {{ plural(totals.n, 'файл', 'файла', 'файлов') }} · {{ size(totals.bytes) }}</span>
+                    <span v-if="view !== 'trash' && keep.days" class="cl-muted cl-hide-sm" :title="'Файл хранится ' + keep.days + ' дн. с последнего обращения (открыть, скачать, приложить, дать ссылку); при ссылке — после её срока. Потом уходит в корзину. Закреплённое хранится без срока.'">· хранится {{ keep.days }} дн. с последнего обращения<template v-if="keep.cap">, закреплено {{ size(keep.pinned) }} из {{ size(keep.cap) }}</template></span>
                     <span v-if="view === 'trash'" class="cl-muted">Через {{ trashDays }} дней удаляется само</span>
                 </div>
 
@@ -393,7 +431,12 @@ onMounted(async () => {
                         </span>
                         <span class="cl-name">
                             <span class="cl-ico" :class="'cl-ico--' + kind(it)"><Icon :name="ICON[kind(it)]" :size="17" /></span>
-                            <span class="cl-ell" :class="{ 'cl-dirname': it.dir }">{{ it.name }}</span>
+                            <span class="cl-namebox">
+                                <span class="cl-ell" :class="{ 'cl-dirname': it.dir }">{{ it.name }}</span>
+                                <span v-if="view !== 'trash' && lifeText(it)" class="cl-life" :class="{ 'cl-life--warn': lifeWarn(it), 'cl-life--pin': it.life && it.life.pinned }">
+                                    <Icon v-if="it.life && it.life.pinned" name="pin" :size="11" />{{ lifeText(it) }}
+                                </span>
+                            </span>
                         </span>
                         <span class="cl-muted">{{ it.size != null ? size(it.size) : '' }}</span>
                         <span class="cl-muted cl-hide-sm">{{ view === 'trash' ? when(it.deleted, true) : (it.modified ? when(it.modified, true) : '') }}</span>
@@ -410,6 +453,7 @@ onMounted(async () => {
                                 <button class="ib ib--danger" type="button" title="Удалить навсегда" aria-label="Удалить навсегда" @click="purge(it)"><Icon name="trash" :size="16" /></button>
                             </template>
                             <template v-else>
+                                <button class="ib" :class="{ 'ib--on': it.life && it.life.pinned }" type="button" :title="it.life && it.life.pinned ? 'Открепить' : 'Закрепить — хранить без срока'" :aria-label="it.life && it.life.pinned ? 'Открепить' : 'Закрепить'" :aria-pressed="!!(it.life && it.life.pinned)" @click="togglePin(it)"><Icon name="pin" :size="15" /></button>
                                 <button class="ib" type="button" title="Переименовать" aria-label="Переименовать" @click="rename(it)"><Icon name="edit" :size="15" /></button>
                                 <button class="ib ib--danger" type="button" title="Удалить" aria-label="Удалить" @click="remove([it])"><Icon name="trash" :size="15" /></button>
                             </template>
@@ -454,6 +498,12 @@ onMounted(async () => {
                         <button class="btn" type="button" @click="editLink(selected)"><Icon name="link" :size="15" />Создать ссылку</button>
                     </template>
                     <p class="cl-note">По ссылке открывается только этот файл. Папки и остальные файлы не видны никому.</p>
+                </div>
+                <div class="cl-link">
+                    <div class="cl-link__head"><Icon name="clock" :size="17" /><b>Хранение</b><span class="grow" /><span v-if="lifeText(selected)" class="chip" :class="selected.life && selected.life.pinned ? 'chip--acc' : lifeWarn(selected) ? 'chip--warn' : ''">{{ lifeText(selected) }}</span></div>
+                    <p class="cl-note">{{ lifeLong(selected) }}</p>
+                    <button class="btn" type="button" @click="togglePin(selected)"><Icon name="pin" :size="15" />{{ selected.life && selected.life.pinned ? (selected.life.pinnedBy ? 'Закреплена папка' : 'Открепить') : 'Закрепить — хранить без срока' }}</button>
+                    <p v-if="keep.cap" class="cl-note">Закреплено {{ size(keep.pinned) }} из {{ size(keep.cap) }}.</p>
                 </div>
                 <span class="grow" />
                 <button class="btn btn--primary" type="button" @click="attachToMail([selected])"><Icon name="clip" :size="15" />Приложить к письму</button>

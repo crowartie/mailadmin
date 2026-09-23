@@ -92,6 +92,8 @@ export const api = {
     cloudLink: (path, days, password) => request('POST', '/mail/api/cloud/link', password === undefined ? { path, days } : { path, days, password }),
     cloudUnlink: (path) => request('POST', '/mail/api/cloud/unlink', { path }),
     cloudAttach: (paths) => request('POST', '/mail/api/cloud/attach', { paths }),
+    // Закрепить: срок хранения на файл (папку) не действует.
+    cloudPin: (path, on) => request('POST', '/mail/api/cloud/pin', { path, on }),
     cloudFileUrl: (path, inline = false) => `/mail/api/cloud/file?path=${enc(path)}${inline ? '&inline=1' : ''}`,
     quarantineList: () => request('GET', '/mail/api/quarantine'),
     quarantineRelease: (id) => request('POST', `/mail/api/quarantine/${enc(id)}/release`),

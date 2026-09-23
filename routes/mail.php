@@ -126,6 +126,7 @@ Route::middleware('area:mail')->group(function () {
                 Route::post('link', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'link']);
                 Route::post('unlink', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'unlink']);
                 Route::post('attach', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'attach']);
+                Route::post('pin', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'pin']);
                 Route::get('file', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'file']);
             });
             Route::get('files/{token}', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'show'])->where('token', '[A-Za-z0-9_-]{20,64}');

@@ -62,6 +62,22 @@ interface CloudLedger
     /** @return array<int,array> всё старше срока, у всех */
     public function trashOlderThan(\DateTimeInterface $before): array;
 
+    // ── срок хранения ──
+    /** Отметки: путь => ['last' => 'Y-m-d H:i:s'|null, 'pinned' => bool]. Все отметки сотрудника. */
+    public function marks(string $user): array;
+
+    /** Обращение к файлу — срок считается заново. $onlyNew: завести отметку, только если её ещё нет. */
+    public function touch(string $user, string $path, bool $onlyNew = false): void;
+
+    /** Закрепить или открепить. Открепление запускает отсчёт заново — для пути и всего внутри. */
+    public function setPinned(string $user, string $path, bool $on): void;
+
+    /** Убрать отметки пути и всего внутри (ушло в корзину). */
+    public function forgetMarks(string $user, string $path): void;
+
+    /** У кого вообще есть облако (загружали или есть отметки) — для ночной уборки. @return string[] */
+    public function cloudUsers(): array;
+
     // ── перенос: пути в учёте следуют за папкой ──
     public function movePrefix(string $user, string $from, string $to): void;
 }

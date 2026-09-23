@@ -127,7 +127,7 @@ const cloudWaiting = ref(false);
 const cloudError = ref('');
 const manual = ref(false);
 const cloudForm = useForm({ enabled: !!props.cloud?.enabled, folder: props.cloud?.folder || 'Почта', threshold_mb: props.cloud?.threshold_mb ?? 10, expire_days: props.cloud?.expire_days ?? 30, link_password: props.cloud?.link_password || '',
-    personal_enabled: !!props.cloud?.personal_enabled, personal_root: props.cloud?.personal_root || 'Облако сотрудников', personal_quota_gb: props.cloud?.personal_quota_gb ?? 15, personal_total_gb: props.cloud?.personal_total_gb ?? 100,
+    personal_enabled: !!props.cloud?.personal_enabled, personal_root: props.cloud?.personal_root || 'Облако сотрудников', personal_quota_gb: props.cloud?.personal_quota_gb ?? 15, personal_total_gb: props.cloud?.personal_total_gb ?? 100, personal_file_days: props.cloud?.personal_file_days ?? 28, personal_pin_gb: props.cloud?.personal_pin_gb ?? 5,
     personal_link_days: props.cloud?.personal_link_days ?? 30, personal_trash_days: props.cloud?.personal_trash_days ?? 30 });
 const manualForm = useForm({ url: props.cloud?.url || '', login: '', app_password: '' });
 const filesForm = useForm({
@@ -610,6 +610,8 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                                     <label class="field"><span>Всего на всех, ГБ</span><input v-model.number="cloudForm.personal_total_gb" class="input" type="number" min="0" step="1"><span class="hint">{{ cloud.personal_used != null ? 'Занято сейчас: ' + mb(cloud.personal_used) + '. ' : '' }}0 — без предела. Держите меньше свободного места на диске Nextcloud.</span></label>
                                     <label class="field"><span>Ссылка по умолчанию, дней</span><input v-model.number="cloudForm.personal_link_days" class="input" type="number" min="0" max="3650"><span class="hint">0 — бессрочно</span></label>
                                     <label class="field"><span>Корзина хранит, дней</span><input v-model.number="cloudForm.personal_trash_days" class="input" type="number" min="1" max="3650"></label>
+                                    <label class="field"><span>Файл хранится, дней</span><input v-model.number="cloudForm.personal_file_days" class="input" type="number" min="0" max="3650"><span class="hint">С последнего обращения (открыл, скачал, приложил, дал ссылку); при ссылке — после её срока. Потом — в корзину. 0 — бессрочно.</span></label>
+                                    <label class="field"><span>Закрепить можно, ГБ</span><input v-model.number="cloudForm.personal_pin_gb" class="input" type="number" min="0" step="0.5"><span class="hint">Закреплённое хранится без срока. 0 — без предела.</span></label>
                                 </div>
                                 <label class="field" style="margin-top: 8px"><span>Папка сотрудников в облаке</span><input v-model="cloudForm.personal_root" class="input"><span class="hint">{{ cloudForm.personal_root }}/ivanov@…/ — по папке на ящик</span></label>
                             </div>

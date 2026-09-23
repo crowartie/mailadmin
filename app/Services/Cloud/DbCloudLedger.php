@@ -117,6 +117,57 @@ final class DbCloudLedger implements CloudLedger
         return $date ? \Illuminate\Support\Carbon::parse($date)->endOfDay() : null;
     }
 
+    public function marks(string $user): array
+    {
+        $out = [];
+        foreach (DB::table('webmail_cloud_marks')->where('user', $user)->get(['path', 'last_access_at', 'pinned']) as $r) {
+            $out[$r->path] = ['last' => $r->last_access_at ? (string) $r->last_access_at : null, 'pinned' => (bool) $r->pinned];
+        }
+
+        return $out;
+    }
+
+    public function touch(string $user, string $path, bool $onlyNew = false): void
+    {
+        $key = ['user' => $user, 'path_hash' => sha1($path)];
+        if ($onlyNew) {
+            DB::table('webmail_cloud_marks')->insertOrIgnore($key + ['path' => $path, 'last_access_at' => now(), 'pinned' => false, 'created_at' => now(), 'updated_at' => now()]);
+
+            return;
+        }
+        DB::table('webmail_cloud_marks')->updateOrInsert($key, ['path' => $path, 'last_access_at' => now(), 'updated_at' => now()]);
+    }
+
+    public function setPinned(string $user, string $path, bool $on): void
+    {
+        $key = ['user' => $user, 'path_hash' => sha1($path)];
+        if (! DB::table('webmail_cloud_marks')->where($key)->exists()) {
+            DB::table('webmail_cloud_marks')->insert($key + ['path' => $path, 'last_access_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        }
+        DB::table('webmail_cloud_marks')->where($key)->update(['pinned' => $on, 'pinned_at' => $on ? now() : null, 'updated_at' => now()]);
+        if (! $on) {
+            $this->under($user, $path)->update(['last_access_at' => now(), 'updated_at' => now()]);
+        }
+    }
+
+    public function forgetMarks(string $user, string $path): void
+    {
+        $this->under($user, $path)->delete();
+    }
+
+    public function cloudUsers(): array
+    {
+        return DB::table('webmail_cloud_uploads')->distinct()->pluck('user')
+            ->merge(DB::table('webmail_cloud_marks')->distinct()->pluck('user'))->unique()->values()->all();
+    }
+
+    /** Сам путь и всё внутри него. */
+    private function under(string $user, string $path): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('webmail_cloud_marks')->where('user', $user)
+            ->where(fn ($q) => $q->where('path', $path)->orWhere('path', 'like', addcslashes($path, '%_\\') . '/%'));
+    }
+
     public function saveUpload(array $upload): void
     {
         DB::table('webmail_cloud_uploads')->insert($upload + ['created_at' => now(), 'updated_at' => now()]);
@@ -180,6 +231,10 @@ final class DbCloudLedger implements CloudLedger
                 $new = $r->path === $from ? $to : $to . substr($r->path, strlen($from));
                 DB::table($table)->where('id', $r->id)->update(['path' => $new, 'updated_at' => now()]);
             }
+        }
+        foreach ($this->under($user, $from)->get(['id', 'path']) as $r) {
+            $new = $r->path === $from ? $to : $to . substr($r->path, strlen($from));
+            DB::table('webmail_cloud_marks')->where('id', $r->id)->update(['path' => $new, 'path_hash' => sha1($new), 'updated_at' => now()]);
         }
     }
 }

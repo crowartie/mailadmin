@@ -482,4 +482,98 @@ X-Other: y
         $this->assertSame([], \App\Services\Mail\MailBuilder::draftCloudFiles("Subject: x
 "));
     }
+
+    // ── срок хранения ──
+
+    private function marks(array $m): void
+    {
+        $this->ledger->marks['ivanov@example.ru'] = $m;
+    }
+
+    public function test_срок_считается_от_последнего_обращения(): void
+    {
+        $c = $this->cloud();
+        $ten = date('Y-m-d H:i:s', time() - 10 * 86400);
+        $life = $c->lifeOf('Цех.mp4', false, ['Цех.mp4' => ['last' => $ten, 'pinned' => false]], []);
+        $this->assertSame('access', $life['reason']);
+        $this->assertSame(18, $life['days'], '28 дней минус 10 прошедших');
+        $this->assertSame(date(DATE_ATOM, strtotime($ten) + 28 * 86400), $life['expires']);
+    }
+
+    public function test_при_ссылке_срок_идёт_после_её_окончания(): void
+    {
+        $c = $this->cloud();
+        $old = date('Y-m-d H:i:s', time() - 40 * 86400);
+        $until = date('Y-m-d', strtotime('+5 days'));
+        $life = $c->lifeOf('Цех.mp4', false, ['Цех.mp4' => ['last' => $old, 'pinned' => false]], ['Цех.mp4' => ['expires_at' => $until]]);
+        $this->assertSame('link', $life['reason']);
+        $this->assertSame(date(DATE_ATOM, strtotime($until . ' 23:59:59') + 28 * 86400), $life['expires']);
+
+        $forever = $c->lifeOf('Цех.mp4', false, ['Цех.mp4' => ['last' => $old, 'pinned' => false]], ['Цех.mp4' => ['expires_at' => null]]);
+        $this->assertSame('link-forever', $forever['reason']);
+        $this->assertNull($forever['expires']);
+    }
+
+    public function test_закреплённая_папка_держит_всё_внутри(): void
+    {
+        $c = $this->cloud();
+        $old = date('Y-m-d H:i:s', time() - 400 * 86400);
+        $life = $c->lifeOf('Документы/2025/Акт.pdf', false, ['Документы' => ['last' => $old, 'pinned' => true], 'Документы/2025/Акт.pdf' => ['last' => $old, 'pinned' => false]], []);
+        $this->assertTrue($life['pinned']);
+        $this->assertSame('Документы', $life['pinnedBy']);
+        $this->assertNull($life['expires']);
+    }
+
+    public function test_открепление_запускает_отсчёт_заново(): void
+    {
+        $old = date('Y-m-d H:i:s', time() - 100 * 86400);
+        $this->marks(['Документы' => ['last' => $old, 'pinned' => true], 'Документы/Акт.pdf' => ['last' => $old, 'pinned' => false]]);
+        $this->ledger->setPinned('ivanov@example.ru', 'Документы', false);
+        $m = $this->ledger->marks('ivanov@example.ru');
+        $this->assertFalse($m['Документы']['pinned']);
+        $this->assertGreaterThan(time() - 60, strtotime($m['Документы/Акт.pdf']['last']), 'иначе файл удалился бы в ту же ночь');
+    }
+
+    public function test_закрепить_больше_предела_нельзя(): void
+    {
+        $this->fake([['PROPFIND', '/Видео', Http::response(self::multistatus([['Видео', true, 6 * 1073741824]]), 207)]]);
+        $c = new PersonalCloud('ivanov@example.ru', ['url' => self::BASE, 'login' => 'mailcloud', 'app_password' => 'secret', 'uid' => 'mailcloud',
+            'personal_root' => 'Облако сотрудников', 'personal_pin_gb' => 5], $this->ledger);
+        $this->expectException(MailException::class);
+        $this->expectExceptionMessage('Закрепить можно до');
+        $c->pin('Видео', true);
+    }
+
+    public function test_ночная_уборка_убирает_просроченное_и_не_трогает_закреплённое(): void
+    {
+        $old = date('Y-m-d H:i:s', time() - 30 * 86400);
+        $this->marks([
+            'Старое.mp4' => ['last' => $old, 'pinned' => false],
+            'Нужное.pdf' => ['last' => $old, 'pinned' => true],
+            'Свежее.jpg' => ['last' => date('Y-m-d H:i:s'), 'pinned' => false],
+        ]);
+        $moved = [];
+        $this->fake([
+            ['PROPFIND', '~ivanov@example.ru$~', function (Request $r) {
+                return $r->header('Depth')[0] === '1'
+                    ? Http::response(self::multistatus([['', true, 3], ['Старое.mp4', false, 1], ['Нужное.pdf', false, 1], ['Свежее.jpg', false, 1], ['Новое.txt', false, 1]]), 207)
+                    : Http::response(self::multistatus([['', true, 3]]), 207);
+            }],
+            ['PROPFIND', '/Старое.mp4', Http::response(self::multistatus([['Старое.mp4', false, 1]]), 207)],
+            ['MKCOL', '/.Корзина', Http::response('', 405)],
+            ['MOVE', '~.~', function (Request $r) use (&$moved) {
+                $moved[] = rawurldecode((string) parse_url($r->url(), PHP_URL_PATH));
+
+                return Http::response('', 201);
+            }],
+        ]);
+
+        $gone = $this->cloud()->expire();
+
+        $this->assertSame(['Старое.mp4'], $gone);
+        $this->assertCount(1, $moved);
+        $this->assertStringEndsWith('/Старое.mp4', $moved[0]);
+        $this->assertArrayHasKey('Новое.txt', $this->ledger->marks('ivanov@example.ru'), 'файлу без отметки срок заводится с сегодня');
+        $this->assertArrayNotHasKey('Старое.mp4', $this->ledger->marks('ivanov@example.ru'));
+    }
 }

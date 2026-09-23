@@ -28,14 +28,14 @@ class PersonalCloudController extends Controller
     {
         $c = $this->cloud($imap);
         $path = PersonalPath::clean((string) $request->query('path', ''));
-        $items = $c->list($path);
+        $items = $c->withLife($c->list($path));
         $links = $c->links();
         foreach ($items as &$it) {
             $it['link'] = $links[$it['path']] ?? null;
         }
         unset($it);
 
-        return response()->json(['path' => $path, 'items' => $items, 'used' => $c->usage(), 'quota' => $c->quota()]);
+        return response()->json(['path' => $path, 'items' => $items, 'used' => $c->usage(), 'quota' => $c->quota()] + $this->lifeInfo($c));
     }
 
     /** Только папки — для дерева слева и выбора, куда перенести. */
@@ -50,9 +50,9 @@ class PersonalCloudController extends Controller
     {
         $c = $this->cloud($imap);
         $links = $c->links();
-        $items = array_map(fn ($i) => $i + ['link' => $links[$i['path']] ?? null], $c->recent());
+        $items = array_map(fn ($i) => $i + ['link' => $links[$i['path']] ?? null], $c->withLife($c->recent()));
 
-        return response()->json(['items' => $items, 'used' => $c->usage(), 'quota' => $c->quota()]);
+        return response()->json(['items' => $items, 'used' => $c->usage(), 'quota' => $c->quota()] + $this->lifeInfo($c));
     }
 
     public function withLinks(ImapSession $imap): JsonResponse
@@ -63,7 +63,22 @@ class PersonalCloudController extends Controller
             $items[] = ['name' => PersonalPath::base($path), 'path' => $path, 'dir' => false, 'size' => null, 'modified' => null, 'type' => '', 'link' => $l];
         }
 
-        return response()->json(['items' => $items, 'used' => $c->usage(), 'quota' => $c->quota()]);
+        return response()->json(['items' => $c->withLife($items), 'used' => $c->usage(), 'quota' => $c->quota()] + $this->lifeInfo($c));
+    }
+
+    /** Правила хранения для подписи над списком: срок, сколько закреплено и сколько можно. */
+    private function lifeInfo(PersonalCloud $c): array
+    {
+        return ['fileDays' => $c->fileDays(), 'pinCap' => $c->pinCap(), 'pinned' => $c->pinnedUsage()];
+    }
+
+    /** Закрепить или открепить файл или папку. */
+    public function pin(Request $request, ImapSession $imap): JsonResponse
+    {
+        $d = $request->validate(['path' => ['required', 'string', 'max:2000'], 'on' => ['required', 'boolean']]);
+        $c = $this->cloud($imap);
+
+        return response()->json(['life' => $c->pin($d['path'], (bool) $d['on']), 'pinned' => $c->pinnedUsage(), 'pinCap' => $c->pinCap()]);
     }
 
     public function mkdir(Request $request, ImapSession $imap): JsonResponse
@@ -200,6 +215,8 @@ class PersonalCloudController extends Controller
             abort(404, 'Файла нет');
         }
         $name = $st['name'];
+        // Открыл или скачал — обращение: срок хранения считается заново (перемотка видео — тоже, это дёшево).
+        $c->touch($path);
         // Показать в браузере можно только то, что не исполняется в домене почты.
         $safe = (bool) preg_match('~^(image/(png|jpe?g|gif|webp)|video/|audio/|application/pdf$)~', $st['type']);
         $inline = $request->boolean('inline') && $safe;

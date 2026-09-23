@@ -25,6 +25,7 @@ class GroupwareController extends Controller
             'enabled' => \App\Services\Cloud\PersonalCloud::enabled(),
             'linkDays' => (int) ($s['personal_link_days'] ?? 30),
             'trashDays' => (int) ($s['personal_trash_days'] ?? 30),
+            'fileDays' => (int) ($s['personal_file_days'] ?? 28),
             'chunkSize' => \App\Services\Cloud\PersonalCloud::CHUNK,
         ]);
     }

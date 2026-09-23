@@ -58,7 +58,8 @@ class PersonalCloud
     public static function settings(): array
     {
         $s = Nextcloud::settings();
-        $s += ['personal_enabled' => false, 'personal_root' => 'Облако сотрудников', 'personal_quota_gb' => 15, 'personal_total_gb' => 100, 'personal_link_days' => 30, 'personal_trash_days' => 30];
+        $s += ['personal_enabled' => false, 'personal_root' => 'Облако сотрудников', 'personal_quota_gb' => 15, 'personal_total_gb' => 100, 'personal_link_days' => 30, 'personal_trash_days' => 30,
+            'personal_file_days' => 28, 'personal_pin_gb' => 5];
         if (empty($s['uid']) && filled($s['login'] ?? null) && filled($s['app_password'] ?? null)) {
             // Для входа по WebDAV нужен id пользователя Nextcloud, а Login Flow отдаёт логин —
             // у учёток из LDAP они разные. Узнаём один раз и запоминаем.
@@ -372,6 +373,7 @@ class PersonalCloud
         };
         // Ссылка в Nextcloud привязана к файлу и переезжает с ним сама; поправить надо свой учёт.
         $this->ledger->movePrefix($this->user, $from, $to);
+        $this->ledger->touch($this->user, $to);
         // У ссылки files-хоста в адресе и при скачивании — имя файла: переименовали — меняем и там.
         foreach ($this->ledger->linksUnder($this->user, $to) as $l) {
             if (self::fileId($l['share_id']) !== null) {
@@ -400,6 +402,7 @@ class PersonalCloud
             $this->dropShare($l['share_id']);
             $this->ledger->forgetLink($this->user, $l['path']);
         }
+        $this->ledger->forgetMarks($this->user, $rel);
         $this->ensureTrash();
         $trashName = date('Ymd-His') . '-' . bin2hex(random_bytes(3)) . ' ' . $st['name'];
         $r = $this->send('MOVE', $this->url($rel), ['Destination' => $this->url(PersonalPath::TRASH . '/' . $trashName), 'Overwrite' => 'F']);
@@ -451,6 +454,7 @@ class PersonalCloud
             throw MailException::upstream('Облако не вернуло (ответ ' . $r->status() . ')');
         }
         $this->ledger->forgetTrash($id);
+        $this->ledger->touch($this->user, $dest);
 
         return $dest;
     }
@@ -604,6 +608,7 @@ class PersonalCloud
             throw MailException::upstream('Облако не собрало файл (ответ ' . $r->status() . ')');
         }
         $this->ledger->finishUpload($id, $u['path']);
+        $this->ledger->touch($this->user, $u['path']);
 
         return $this->stat($u['path']) ?? ['name' => PersonalPath::base($u['path']), 'path' => $u['path'], 'dir' => false, 'size' => (int) $u['size'], 'modified' => date(DATE_ATOM), 'type' => 'application/octet-stream', 'fileid' => null];
     }
@@ -667,6 +672,7 @@ class PersonalCloud
             return $this->link($rel, $days, $password);
         }
         $this->ledger->saveLink($this->user, $link);
+        $this->ledger->touch($this->user, $rel);
 
         return $link + ($pwd ? ['password' => $pwd] : []);
     }
@@ -794,6 +800,7 @@ class PersonalCloud
             if (! $l || $stale || ($l['expires_at'] && $l['expires_at'] < date('Y-m-d'))) {
                 $l = $this->link($p, (int) ($this->settings['personal_link_days'] ?? 30), $l ? null : false);
             }
+            $this->ledger->touch($this->user, $p);
             $out[] = ['path' => $p, 'name' => $st['name'], 'size' => $st['size'], 'url' => $l['url'], 'expires' => $l['expires_at'], 'password' => (bool) $l['has_password']];
         }
 
@@ -840,5 +847,174 @@ class PersonalCloud
         if (! $r->successful()) {
             throw MailException::upstream('Облако не отдало «' . PersonalPath::base($rel) . '» (ответ ' . $r->status() . ')');
         }
+    }
+
+    // ── срок хранения ─────────────────────────────────────────────────────
+
+    /** Сколько дней файл живёт после последнего обращения; 0 — без срока. */
+    public function fileDays(): int
+    {
+        return max(0, (int) ($this->settings['personal_file_days'] ?? 28));
+    }
+
+    /** Сколько можно закрепить, байт; 0 — без предела. */
+    public function pinCap(): int
+    {
+        return (int) round(max(0, (float) ($this->settings['personal_pin_gb'] ?? 5)) * 1073741824);
+    }
+
+    /** Обращение владельца к файлу (открыл, скачал): срок хранения считается заново. */
+    public function touch(string $rel): void
+    {
+        $this->ledger->touch($this->user, PersonalPath::clean($rel));
+    }
+
+    /**
+     * Срок хранения для строк списка: 'life' => expires (ISO) | null, days (сколько осталось) | null,
+     * pinned, pinnedBy (закреплена папка выше), reason: access | link | link-forever | pin | off.
+     * Файлу без отметки (лежал до включения срока) отметка заводится сейчас — отсчёт с сегодня.
+     */
+    public function withLife(array $items): array
+    {
+        $marks = $this->ledger->marks($this->user);
+        $links = $this->ledger->links($this->user);
+        foreach ($items as &$it) {
+            if (! $it['dir'] && ! isset($marks[$it['path']])) {
+                $this->ledger->touch($this->user, $it['path'], true);
+                $marks[$it['path']] = ['last' => date('Y-m-d H:i:s'), 'pinned' => false];
+            }
+            $it['life'] = $this->lifeOf($it['path'], (bool) $it['dir'], $marks, $links);
+        }
+        unset($it);
+
+        return $items;
+    }
+
+    public function lifeOf(string $path, bool $dir, array $marks, array $links): array
+    {
+        for ($p = $path; ; $p = PersonalPath::parent($p)) {
+            if (! empty($marks[$p]['pinned'])) {
+                return ['expires' => null, 'days' => null, 'pinned' => true, 'pinnedBy' => $p === $path ? null : $p, 'reason' => 'pin'];
+            }
+            if ($p === '') {
+                break;
+            }
+        }
+        $none = ['expires' => null, 'days' => null, 'pinned' => false, 'pinnedBy' => null];
+        if ($dir) {
+            return $none + ['reason' => null];
+        }
+        if (! ($days = $this->fileDays())) {
+            return $none + ['reason' => 'off'];
+        }
+        $base = ($t = strtotime((string) ($marks[$path]['last'] ?? ''))) ? $t : time();
+        $reason = 'access';
+        // Пока действует ссылка, файл нужен получателю: срок пойдёт только после её окончания.
+        if ($link = $links[$path] ?? null) {
+            if (empty($link['expires_at'])) {
+                return $none + ['reason' => 'link-forever'];
+            }
+            $end = strtotime($link['expires_at'] . ' 23:59:59');
+            if ($end > $base) {
+                $base = $end;
+                $reason = 'link';
+            }
+        }
+        $exp = $base + $days * 86400;
+
+        return ['expires' => date(DATE_ATOM, $exp), 'days' => max(0, (int) ceil(($exp - time()) / 86400)), 'pinned' => false, 'pinnedBy' => null, 'reason' => $reason];
+    }
+
+    /** Сколько закреплено, байт: закреплённые файлы и папки, не считая вложенных в закреплённое. */
+    public function pinnedUsage(?array $marks = null): int
+    {
+        $marks ??= $this->ledger->marks($this->user);
+        $roots = array_keys(array_filter($marks, fn ($m) => ! empty($m['pinned'])));
+        $sum = 0;
+        foreach ($roots as $r) {
+            foreach ($roots as $o) {
+                if ($o !== $r && PersonalPath::within($r, $o)) {
+                    continue 2;
+                }
+            }
+            $st = $this->stat($r);
+            if ($st) {
+                $sum += (int) $st['size'];
+            } else {
+                $this->ledger->forgetMarks($this->user, $r);
+            }
+        }
+
+        return $sum;
+    }
+
+    /** Закрепить (срок не действует) или открепить (срок пойдёт заново с сегодня). */
+    public function pin(string $rel, bool $on): array
+    {
+        $rel = PersonalPath::clean($rel);
+        if ($rel === '') {
+            throw MailException::invalid('Корневую папку закрепить нельзя');
+        }
+        $st = $this->stat($rel);
+        if (! $st) {
+            throw MailException::notFound('Файла или папки уже нет');
+        }
+        $marks = $this->ledger->marks($this->user);
+        if ($on && ($cap = $this->pinCap()) > 0) {
+            $already = $this->lifeOf($rel, $st['dir'], $marks, [])['pinned'];
+            $used = $this->pinnedUsage($marks);
+            if (! $already && $used + (int) $st['size'] > $cap) {
+                throw MailException::tooLarge('Закрепить можно до ' . \App\Support\Format::size($cap) . ', уже закреплено ' . \App\Support\Format::size($used)
+                    . ', а «' . $st['name'] . '» — ' . \App\Support\Format::size((int) $st['size']) . '. Открепите ненужное.');
+            }
+        }
+        $this->ledger->setPinned($this->user, $rel, $on);
+
+        return $this->lifeOf($rel, $st['dir'], $this->ledger->marks($this->user), $this->ledger->links($this->user));
+    }
+
+    /** Все файлы сотрудника (без корзины и скрытых), обходом папок. */
+    public function walk(string $rel = '', int $depth = 0): array
+    {
+        $out = [];
+        foreach ($this->list($rel) as $it) {
+            if ($it['dir']) {
+                if ($depth < 30) {
+                    $out = array_merge($out, $this->walk($it['path'], $depth + 1));
+                }
+            } else {
+                $out[] = $it;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Ночная уборка: файлы, к которым не обращались дольше срока (и у которых нет действующей
+     * ссылки), уходят в корзину. Закреплённое не трогаем. @return string[] пути убранного
+     */
+    public function expire(): array
+    {
+        if (! $this->fileDays()) {
+            return [];
+        }
+        $gone = [];
+        $marks = $this->ledger->marks($this->user);
+        $links = $this->ledger->links($this->user);
+        foreach ($this->walk('') as $f) {
+            if (! isset($marks[$f['path']])) {
+                // Лежал до включения срока или положен мимо почты — отсчёт с сегодня.
+                $this->ledger->touch($this->user, $f['path'], true);
+                continue;
+            }
+            $life = $this->lifeOf($f['path'], false, $marks, $links);
+            if ($life['expires'] !== null && strtotime($life['expires']) < time()) {
+                $this->delete($f['path']);
+                $gone[] = $f['path'];
+            }
+        }
+
+        return $gone;
     }
 }
