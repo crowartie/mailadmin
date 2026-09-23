@@ -210,7 +210,7 @@ async function doRemove() {
         await api.cloudDelete(list.map((i) => i.path));
         dialog.value = null;
         selected.value = null;
-        say(list.length === 1 ? '«' + list[0].name + '» в корзине' : plural(list.length, 'объект', 'объекта', 'объектов') + ' в корзине');
+        say(list.length === 1 ? '«' + list[0].name + '» в корзине' : list.length + ' ' + plural(list.length, 'объект', 'объекта', 'объектов') + ' в корзине');
         if (list.some((i) => i.dir)) await loadTree(here.value);
         await load();
     } catch (e) { say(e.message, true); }
@@ -345,7 +345,7 @@ onMounted(async () => {
                     </nav>
                     <b v-else>{{ titles[view] }}</b>
                     <span class="grow" />
-                    <span v-if="view === 'folder'" class="cl-muted">{{ plural(totals.n, 'файл', 'файла', 'файлов') }} · {{ size(totals.bytes) }}</span>
+                    <span v-if="view === 'folder'" class="cl-muted">{{ totals.n }} {{ plural(totals.n, 'файл', 'файла', 'файлов') }} · {{ size(totals.bytes) }}</span>
                     <span v-if="view === 'trash'" class="cl-muted">Через {{ trashDays }} дней удаляется само</span>
                 </div>
 
@@ -490,7 +490,7 @@ onMounted(async () => {
 
         <Dialog v-if="dialog && dialog.kind === 'mkdir'" title="Новая папка" :prompt="{ label: 'Название', value: '', placeholder: 'Например, Командировка', maxlength: 200 }" confirm-label="Создать" @close="dialog = null" @confirm="doMkdir" />
         <Dialog v-if="dialog && dialog.kind === 'rename'" title="Переименовать" :prompt="{ label: 'Новое имя', value: dialog.it.name, maxlength: 200 }" confirm-label="Переименовать" @close="dialog = null" @confirm="doRename" />
-        <Dialog v-if="dialog && dialog.kind === 'delete'" :title="dialog.list.length === 1 ? 'Удалить «' + dialog.list[0].name + '»?' : 'Удалить ' + plural(dialog.list.length, 'объект', 'объекта', 'объектов') + '?'" confirm-label="В корзину" danger @close="dialog = null" @confirm="doRemove">
+        <Dialog v-if="dialog && dialog.kind === 'delete'" :title="dialog.list.length === 1 ? 'Удалить «' + dialog.list[0].name + '»?' : 'Удалить ' + dialog.list.length + ' ' + plural(dialog.list.length, 'объект', 'объекта', 'объектов') + '?'" confirm-label="В корзину" danger @close="dialog = null" @confirm="doRemove">
             <p style="margin: 0">Удалённое лежит в корзине {{ trashDays }} дней, его можно вернуть. Публичные ссылки на удалённые файлы перестанут работать сразу.</p>
         </Dialog>
         <Dialog v-if="dialog && dialog.kind === 'move'" title="Куда перенести" confirm-label="Перенести" @close="dialog = null" @confirm="doMove">

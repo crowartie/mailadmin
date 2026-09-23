@@ -94,7 +94,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true));
             </div>
             <div class="cl-picker__foot">
                 <div class="cl-muted" style="line-height: 1.45">
-                    <template v-if="chosen.size"><b style="color: var(--text)">Выбрано {{ plural(chosen.size, 'файл', 'файла', 'файлов') }} · {{ size(total) }}.</b> Уйдут ссылками, письмо останется лёгким.</template>
+                    <template v-if="chosen.size"><b style="color: var(--text)">Выбрано {{ chosen.size }} {{ plural(chosen.size, 'файл', 'файла', 'файлов') }} · {{ size(total) }}.</b> Уйдут ссылками, письмо останется лёгким.</template>
                     <template v-else>Отметьте файлы. Они не копируются — в письмо уйдут ссылки.</template>
                     <div v-if="error && items.length" class="cl-err">{{ error }}</div>
                 </div>
