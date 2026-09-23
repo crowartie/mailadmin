@@ -124,7 +124,7 @@ const cloudWaiting = ref(false);
 const cloudError = ref('');
 const manual = ref(false);
 const cloudForm = useForm({ enabled: !!props.cloud?.enabled, folder: props.cloud?.folder || 'Почта', threshold_mb: props.cloud?.threshold_mb ?? 10, expire_days: props.cloud?.expire_days ?? 30, link_password: props.cloud?.link_password || '',
-    personal_enabled: !!props.cloud?.personal_enabled, personal_root: props.cloud?.personal_root || 'Облако сотрудников', personal_quota_gb: props.cloud?.personal_quota_gb ?? 50,
+    personal_enabled: !!props.cloud?.personal_enabled, personal_root: props.cloud?.personal_root || 'Облако сотрудников', personal_quota_gb: props.cloud?.personal_quota_gb ?? 15, personal_total_gb: props.cloud?.personal_total_gb ?? 100,
     personal_link_days: props.cloud?.personal_link_days ?? 30, personal_trash_days: props.cloud?.personal_trash_days ?? 30 });
 const manualForm = useForm({ url: props.cloud?.url || '', login: '', app_password: '' });
 const filesForm = useForm({
@@ -604,6 +604,7 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                                 <p class="hint" style="margin: 6px 0 0">У каждого ящика своя папка в облаке служебной учётки. Сотрудник загружает туда файлы любого размера (частями, с докачкой), даёт на отдельный файл публичную ссылку и прикладывает файлы к письмам ссылками. Общего доступа между сотрудниками нет.</p>
                                 <div class="toggles--3" style="margin-top: 12px">
                                     <label class="field"><span>Место на сотрудника, ГБ</span><input v-model.number="cloudForm.personal_quota_gb" class="input" type="number" min="0.1" step="0.1"></label>
+                                    <label class="field"><span>Всего на всех, ГБ</span><input v-model.number="cloudForm.personal_total_gb" class="input" type="number" min="0" step="1"><span class="hint">{{ cloud.personal_used != null ? 'Занято сейчас: ' + mb(cloud.personal_used) + '. ' : '' }}0 — без предела. Держите меньше свободного места на диске Nextcloud.</span></label>
                                     <label class="field"><span>Ссылка по умолчанию, дней</span><input v-model.number="cloudForm.personal_link_days" class="input" type="number" min="0" max="3650"><span class="hint">0 — бессрочно</span></label>
                                     <label class="field"><span>Корзина хранит, дней</span><input v-model.number="cloudForm.personal_trash_days" class="input" type="number" min="1" max="3650"></label>
                                 </div>

@@ -164,9 +164,13 @@ class SettingsController extends Controller
         $files = \App\Services\Cloud\LocalFiles::settings() + [
             'ready' => \App\Http\Controllers\Mail\FilesController::ready(),
             'root' => \App\Services\Cloud\LocalFiles::root(),
-            'count' => $this->safe(fn () => \App\Models\Webmail\CloudFile::query()->count(), 0),
-            'used' => $this->safe(fn () => (int) \App\Models\Webmail\CloudFile::query()->sum('size'), 0),
+            'count' => $this->safe(fn () => \App\Models\Webmail\CloudFile::query()->where('source', 'local')->count(), 0),
+            'used' => $this->safe(fn () => (int) \App\Models\Webmail\CloudFile::query()->where('source', 'local')->sum('size'), 0),
         ];
+        // Сколько занято облаком сотрудников — всеми вместе (рядом с общим пределом).
+        $s['personal_used'] = ! empty($s['personal_enabled']) && \App\Services\Cloud\PersonalCloud::enabled()
+            ? $this->safe(fn () => \App\Services\Cloud\PersonalCloud::forUser('service@mail.local')->totalUsage())
+            : null;
 
         return ['cloud' => $s, 'files' => $files, 'cloudStatus' => $s['connected'] ? $this->safe(fn () => (new \App\Services\Cloud\Nextcloud())->status()) : null, 'sizeLimitMb' => $this->safe(fn () => $this->amavis->current()['sizeLimitMb'], 15)];
     }

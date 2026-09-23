@@ -90,12 +90,12 @@ class CloudController extends Controller
             'enabled' => ['boolean'], 'folder' => ['required', 'string', 'max:120', 'regex:#^[^/\\:*?"<>|]+(/[^/\\:*?"<>|]+)*$#u'],
             'threshold_mb' => ['required', 'integer', 'min:1', 'max:1024'], 'expire_days' => ['required', 'integer', 'min:0', 'max:3650'], 'link_password' => ['nullable', 'string', 'max:64'],
             'personal_enabled' => ['boolean'], 'personal_root' => ['nullable', 'string', 'max:120', 'regex:#^[^/\\:*?"<>|.][^/\\:*?"<>|]*$#u'],
-            'personal_quota_gb' => ['nullable', 'numeric', 'min:0.1', 'max:10000'], 'personal_link_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
+            'personal_quota_gb' => ['nullable', 'numeric', 'min:0.1', 'max:10000'], 'personal_total_gb' => ['nullable', 'numeric', 'min:0', 'max:100000'], 'personal_link_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'personal_trash_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
         ]);
         AppSetting::put('cloud', ['enabled' => (bool) ($data['enabled'] ?? false), 'folder' => trim($data['folder'], '/'), 'threshold_mb' => $data['threshold_mb'], 'expire_days' => $data['expire_days'], 'link_password' => (string) ($data['link_password'] ?? ''),
             'personal_enabled' => (bool) ($data['personal_enabled'] ?? false), 'personal_root' => trim((string) ($data['personal_root'] ?? 'Облако сотрудников')) ?: 'Облако сотрудников',
-            'personal_quota_gb' => (float) ($data['personal_quota_gb'] ?? 50), 'personal_link_days' => (int) ($data['personal_link_days'] ?? 30),
+            'personal_quota_gb' => (float) ($data['personal_quota_gb'] ?? 15), 'personal_total_gb' => (float) ($data['personal_total_gb'] ?? 100), 'personal_link_days' => (int) ($data['personal_link_days'] ?? 30),
             'personal_trash_days' => (int) ($data['personal_trash_days'] ?? 30)]);
         if (\App\Services\Cloud\Nextcloud::enabled()) {
             try {

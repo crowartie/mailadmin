@@ -202,6 +202,23 @@ class PersonalCloudTest extends TestCase
         $this->assertTrue($trash[0]['dir']);
     }
 
+    public function test_загрузка_не_начинается_без_общего_места(): void
+    {
+        $this->fake([
+            ['PROPFIND', '~ivanov@example.ru$~', Http::response(self::multistatus([['', true, 1048576]]), 207)],
+            ['PROPFIND', '~/Облако сотрудников$~', Http::response('<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/x/</d:href><d:propstat><d:prop><oc:size>' . (int) (99.9 * 1073741824) . '</oc:size></d:prop></d:propstat></d:response></d:multistatus>', 207)],
+        ]);
+        $c = new PersonalCloud('ivanov@example.ru', [
+            'url' => self::BASE, 'login' => 'mailcloud', 'app_password' => 'secret', 'uid' => 'mailcloud',
+            'personal_root' => 'Облако сотрудников', 'personal_quota_gb' => 15, 'personal_total_gb' => 100,
+        ], $this->ledger);
+
+        $this->assertSame((int) (99.9 * 1073741824), $c->totalUsage());
+        $this->expectException(MailException::class);
+        $this->expectExceptionMessage('Общее место облака сотрудников заканчивается');
+        $c->startUpload('', 'Цех.mp4', 200 * 1048576);
+    }
+
     public function test_загрузка_не_начинается_без_места(): void
     {
         $this->fake([['PROPFIND', '~ivanov@example.ru$~', Http::response(self::multistatus([['', true, 900 * 1048576]]), 207)]]);

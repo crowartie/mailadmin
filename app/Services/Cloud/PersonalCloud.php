@@ -58,7 +58,7 @@ class PersonalCloud
     public static function settings(): array
     {
         $s = Nextcloud::settings();
-        $s += ['personal_enabled' => false, 'personal_root' => 'Облако сотрудников', 'personal_quota_gb' => 50, 'personal_link_days' => 30, 'personal_trash_days' => 30];
+        $s += ['personal_enabled' => false, 'personal_root' => 'Облако сотрудников', 'personal_quota_gb' => 15, 'personal_total_gb' => 100, 'personal_link_days' => 30, 'personal_trash_days' => 30];
         if (empty($s['uid']) && filled($s['login'] ?? null) && filled($s['app_password'] ?? null)) {
             // Для входа по WebDAV нужен id пользователя Nextcloud, а Login Flow отдаёт логин —
             // у учёток из LDAP они разные. Узнаём один раз и запоминаем.
@@ -240,9 +240,29 @@ class PersonalCloud
         return (int) ($st['size'] ?? 0);
     }
 
+    /** Общий предел облака сотрудников, байт; 0 — без предела. */
+    public function totalQuota(): int
+    {
+        $gb = (float) ($this->settings['personal_total_gb'] ?? 100);
+
+        return $gb > 0 ? (int) round($gb * 1073741824) : 0;
+    }
+
+    /** Сколько занимают папки всех сотрудников вместе, байт (Nextcloud считает размер папки сам). */
+    public function totalUsage(): int
+    {
+        $body = '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:size/></d:prop></d:propfind>';
+        $r = $this->send('PROPFIND', $this->base() . '/remote.php/dav/files/' . rawurlencode($this->uid()) . '/' . PersonalPath::encode($this->root()), ['Depth' => '0'], $body, 'application/xml');
+        if ($r->status() !== 207) {
+            return 0;
+        }
+
+        return preg_match('#<[a-z0-9]+:size>(\d+)</#i', $r->body(), $m) ? (int) $m[1] : 0;
+    }
+
     public function quota(): int
     {
-        return (int) round(max(0.1, (float) ($this->settings['personal_quota_gb'] ?? 50)) * 1073741824);
+        return (int) round(max(0.1, (float) ($this->settings['personal_quota_gb'] ?? 15)) * 1073741824);
     }
 
     /**
@@ -477,6 +497,14 @@ class PersonalCloud
         $free = $this->quota() - $this->usage();
         if ($size > $free) {
             throw MailException::tooLarge('Не хватает места в облаке: свободно ' . \App\Support\Format::size(max(0, $free)) . ', нужно ' . \App\Support\Format::size($size) . '. Удалите ненужное или очистите корзину.');
+        }
+        // Общий предел на всех: диск Nextcloud один, и несколько человек с видео заполнили бы его
+        // целиком — встал бы весь Nextcloud, а не только облако почты.
+        if (($cap = $this->totalQuota()) > 0) {
+            $left = $cap - $this->totalUsage();
+            if ($size > $left) {
+                throw MailException::tooLarge('Общее место облака сотрудников заканчивается: свободно ' . \App\Support\Format::size(max(0, $left)) . ', нужно ' . \App\Support\Format::size($size) . '. Сообщите администратору.');
+            }
         }
         $dest = PersonalPath::join($dir, $name);
         for ($n = 2; $this->stat($dest) && $n < 100; $n++) {
