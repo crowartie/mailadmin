@@ -27,8 +27,9 @@ const props = defineProps({
     labels: { type: Array, default: () => [] },
     loading: Boolean,
     edge: { type: String, default: '' },   // что дочитывается: 'more' — ниже, 'newer' — выше
+    selectedAll: Boolean,                  // выбраны все письма выборки, а не только загруженные
 });
-const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'more', 'newer', 'jump', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
+const emit = defineEmits(['open', 'toggle', 'select-all', 'select-folder', 'clear', 'act', 'context', 'more', 'newer', 'jump', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
 
 // При поиске по всем папкам у двух писем может совпасть UID — ключ строки с папкой.
 const rowKey = (m) => (m.folder || '') + ':' + m.uid;
@@ -261,7 +262,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
 
         <div v-if="selected.length" class="mlist__bulk">
             <span class="cb cb--on" role="checkbox" aria-checked="true" @click="$emit('clear')"><Icon name="check" :size="12" /></span>
-            <b>Выбрано {{ selected.length }}</b>
+            <b>Выбрано {{ selectedAll ? list.total : selected.length }}</b>
             <button class="ib ib--sm" type="button" title="Прочитано" @click="$emit('act', 'seen', selected)" aria-label="Прочитано"><Icon name="eye" :size="16" /></button>
             <button class="ib ib--sm" type="button" title="Непрочитано" @click="$emit('act', 'unseen', selected)" aria-label="Непрочитано"><Icon name="unread" :size="16" /></button>
             <template v-if="!readonly">
@@ -273,7 +274,16 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
             </template>
             <span v-else class="mlist__ro" title="Владелец открыл эту папку только для просмотра">только просмотр</span>
         </div>
-        <div v-else class="mlist__meta">
+        <!-- Отмечены все загруженные, а в выборке больше — предложить всю папку (как в Gmail). -->
+        <div v-if="selected.length && selectedAll" class="mlist__allrow">
+            Выбраны все {{ list.total }} {{ plural(list.total, 'письмо', 'письма', 'писем') }}{{ query ? ' по запросу' : ' папки' }}.
+            <button type="button" class="linklike" @click="$emit('clear')">Снять выбор</button>
+        </div>
+        <div v-else-if="selected.length && allChecked && !everywhere && list.total > list.messages.length" class="mlist__allrow">
+            Выбраны {{ selected.length }} {{ plural(selected.length, 'загруженное', 'загруженных', 'загруженных') }}.
+            <button type="button" class="linklike" @click="$emit('select-folder')">Выбрать все {{ list.total }} {{ plural(list.total, 'письмо', 'письма', 'писем') }}{{ query ? ' по запросу' : ' папки' }}</button>
+        </div>
+        <div v-if="!selected.length" class="mlist__meta">
             <span class="cb" :class="{ 'cb--on': allChecked }" role="checkbox" tabindex="0" :aria-checked="allChecked"
                   title="Выбрать все загруженные" @click="$emit('select-all')" @keydown.enter.prevent="$emit('select-all')" @keydown.space.prevent="$emit('select-all')">
                 <Icon v-if="allChecked" name="check" :size="12" />

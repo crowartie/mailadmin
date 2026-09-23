@@ -51,7 +51,8 @@ export function useMessageActions(ctx) {
     }
 
     async function runAct(p, opts = {}) {
-        const r = await api.action(p.folder, p.uids, p.op, p.extra, opts);
+        // Вся папка — это тысячи писем частями по 500: ждём дольше обычной минуты.
+        const r = await api.action(p.folder, p.uids, p.op, p.extra, p.extra?.all ? { ...opts, timeout: 600000 } : opts);
         if (r?.folders) ctx.folders.value = r.folders;
 
         return r;
@@ -174,18 +175,38 @@ export function useMessageActions(ctx) {
      * или все от адреса», а окно отмены поверх этого вопроса только мешало бы.
      * Раньше этот довод объявлялся, но не читался, и отмена показывалась всё равно.
      */
+    // «Все письма папки»: какие действия можно и как о них спросить.
+    const FOR_ALL = {
+        seen: 'Отметить прочитанными', unseen: 'Отметить непрочитанными', flag: 'Поставить флажок', unflag: 'Снять флажок',
+        delete: 'Удалить', move: 'Перенести', archive: 'Отправить в архив', spam: 'Отправить в спам',
+        notspam: 'Вернуть во «Входящие»', lists: 'Перенести в «Рассылки»', label: 'Поставить метку', unlabel: 'Снять метку',
+    };
+    const sameSet = (a, b) => a.length === b.length && a.every((u) => b.includes(u));
+
     async function act(op, uids, extra = {}, deferrable = true) {
         if (!uids?.length) return;
         ctx.menu.value = null;
+        // Выбраны все письма папки (а не только загруженные) — действие уходит на всю выборку сервера.
+        const all = ctx.selectedAll?.value && ctx.selectedAll.value.folder === ctx.folder.value && sameSet(uids, ctx.selected.value) ? ctx.selectedAll.value : null;
+        let count = uids.length;
+        if (all) {
+            if (!FOR_ALL[op]) { ctx.showToast({ text: 'Это действие для всей папки сразу недоступно — выберите письма', error: true }); return; }
+            const verb = op === 'delete' && ctx.folderInfo.value.role === 'trash' ? 'Стереть навсегда' : FOR_ALL[op];
+            const what = `${all.total} ${plural(all.total, 'письмо', 'письма', 'писем')}`;
+            if (!window.confirm(`${verb}: все ${what} ${all.q ? 'по запросу' : 'папки «' + (ctx.folderInfo.value.name || '') + '»'}?`)) return;
+            extra = { ...extra, all: { filter: all.filter, q: all.q } };
+            count = all.total;
+            ctx.selectedAll.value = null;
+        }
         // Что было открыто до действия — чтобы вернуть на экран при отмене.
         const opened = ctx.open.value && uids.includes(ctx.open.value.uid) ? ctx.open.value : null;
         const mobileRead = !!ctx.mobileRead.value;
         applyToScreen(op, uids, extra);
 
-        const label = `${NAMES[op] || ''}${uids.length > 1 ? ` · ${uids.length} ${plural(uids.length, 'письмо', 'письма', 'писем')}` : ''}`;
+        const label = `${NAMES[op] || ''}${count > 1 ? ` · ${count} ${plural(count, 'письмо', 'письма', 'писем')}` : ''}`;
         const secs = Number(ctx.settings.value.undo_seconds ?? 5);
 
-        if (!secs && op === 'delete' && !confirmForever(uids)) return;
+        if (!secs && op === 'delete' && !all && !confirmForever(uids)) return;
         // Перетащили письмо мышью не в ту папку или ошиблись со «Спамом» — отмена нужна
         // так же, как при удалении. Раньше эти действия уходили на сервер сразу.
         if (deferrable && secs > 0 && DEFERRABLE.includes(op)) {

@@ -76,6 +76,17 @@ function setEverywhere(on) {
 // список прокручивается в начало; подгрузка и тихое обновление его не трогают.
 const list = ref({ offset: 0, seq: 0, ...props.list });
 const selected = ref([]);
+// «Выбрать все письма папки»: не только загруженные прокруткой, а всю выборку на сервере.
+// { folder, filter, q, total } — пока человек не тронул выбор руками.
+const selectedAll = ref(null);
+// Человек снял или добавил письмо руками — это уже не «вся папка». Выбор меняется и на месте (splice), поэтому deep.
+watch(selected, (now) => {
+    if (selectedAll.value && !(now.length && now.length === list.value.messages.length)) selectedAll.value = null;
+}, { deep: true });
+function selectFolder() {
+    selected.value = list.value.messages.map((m) => m.uid);
+    selectedAll.value = { folder: folder.value, filter: filter.value, q: query.value, total: list.value.total };
+}
 const cursor = ref(null);
 const open = ref(null);
 const loading = ref(false);
@@ -174,7 +185,7 @@ async function load(page = 1, keepOpen = false, silent = false, offset = null) {
         if (!r.messages.length && at > 0 && at >= r.total) return load(1, keepOpen, silent, Math.max(0, r.total - PAGE));
         list.value = { messages: r.messages, total: r.total, offset: r.offset ?? at, page: 1, pages: 1, everywhere: !!r.everywhere, skipped: r.skipped || [], seq: ++listSeq };
         if (r.folders) folders.value = r.folders;
-        if (!silent) selected.value = [];
+        if (!silent) { selected.value = []; selectedAll.value = null; }
         if (!keepOpen) { open.value = null; cursor.value = null; }
         syncUrl();
     } catch (e) { fail(e); } finally { if (!silent) loading.value = false; }
@@ -326,7 +337,7 @@ function selectAll() {
 // Сами действия и окно отмены — в useMessageActions.
 const { act, flushPendingAct, undoAct, undoToast } = useMessageActions({
     list, folder, folders, selected, open, mobileRead, menu, toast, settings, folderInfo,
-    showToast, fail, load, reload, refillAfter, bump,
+    showToast, fail, load, reload, refillAfter, bump, selectedAll,
     // Отмена отправки живёт в useCompose, а он создаётся ниже — иначе ему неоткуда взять
     // flushPendingAct. Поэтому здесь не сама функция, а обращение к ней в момент вызова.
     undoSend: () => undoSend(),
@@ -641,10 +652,12 @@ onBeforeUnmount(() => {
                 @open="openMessage"
                 @toggle="toggle"
                 @select-all="selectAll"
-                @clear="selected = []"
+                @select-folder="selectFolder"
+                @clear="selected = []; selectedAll = null"
                 @act="act"
                 @context="openMenu"
                 :edge="edge"
+                :selected-all="!!selectedAll"
                 @more="loadMore"
                 @newer="loadNewer"
                 @jump="jumpToDate"

@@ -271,6 +271,12 @@ class MailStore
         return $this->listing->list($path, $page, $filter, $query, $sort, $offset, $limit);
     }
 
+    /** @see MessageListing::allUids() */
+    public function allUids(string $path, string $filter, ?string $query): array
+    {
+        return $this->listing->allUids($path, $filter, $query);
+    }
+
     /** @see MessageListing::offsetForDate() */
     public function offsetForDate(string $path, string $filter, ?string $query, string $sort, string $date): int
     {

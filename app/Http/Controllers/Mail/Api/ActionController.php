@@ -20,8 +20,12 @@ class ActionController extends Controller
     {
         $data = $request->validate([
             'folder' => ['required', 'string'],
-            'uids' => ['required', 'array', 'min:1', 'max:500'],
+            'uids' => ['required_without:all', 'array', 'max:500'],
             'uids.*' => ['integer'],
+            // «Все письма папки»: сервер сам берёт выборку с тем же отбором и поиском, что на экране.
+            'all' => ['nullable', 'array'],
+            'all.filter' => ['nullable', 'string', 'max:64'],
+            'all.q' => ['nullable', 'string', 'max:500'],
             'op' => ['required', 'string'],
             'target' => ['nullable', 'string'],
             'label' => ['nullable', 'integer'],
@@ -30,8 +34,33 @@ class ActionController extends Controller
 
         $store = new MailStore($imap->client());
         $folder = $data['folder'];
-        $uids = $data['uids'];
+        $uids = $data['uids'] ?? [];
+        if (is_array($data['all'] ?? null)) {
+            abort_unless(in_array($data['op'], self::FOR_ALL, true), 422, 'Это действие для всей папки сразу недоступно — выберите письма');
+            set_time_limit(600);
+            $uids = $store->allUids($folder, (string) ($data['all']['filter'] ?? 'all'), $data['all']['q'] ?? null);
+            if (! $uids) {
+                return response()->json(['ok' => true, 'done' => 0, 'folders' => $store->folders()]);
+            }
+        }
+        abort_if(! $uids, 422, 'Не выбрано ни одного письма');
 
+        // Длинный набор — частями: команда с десятью тысячами номеров упирается в предел длины строки IMAP.
+        $result = null;
+        foreach (array_chunk($uids, 500) as $chunk) {
+            $result = $this->apply($store, $imap, $data, $folder, $chunk) ?? $result;
+        }
+
+        // Частичный успех раньше выдавался за полный: из двадцати выделенных откладывалось
+        // девятнадцать, и об этом не говорилось.
+        return response()->json(($result ?? []) + ['ok' => true, 'done' => count($uids), 'folders' => $store->folders()]);
+    }
+
+    /** Действия, которые можно применить ко всей папке сразу (без отложить/напомнить: там по письму в базе). */
+    private const FOR_ALL = ['seen', 'unseen', 'flag', 'unflag', 'delete', 'move', 'archive', 'spam', 'notspam', 'lists', 'label', 'unlabel'];
+
+    private function apply(MailStore $store, ImapSession $imap, array $data, string $folder, array $uids): ?array
+    {
         switch ($data['op']) {
             case 'seen':
                 $store->flag($folder, $uids, '\\Seen', true);
@@ -83,9 +112,7 @@ class ActionController extends Controller
                 abort(422, 'Неизвестное действие');
         }
 
-        // Частичный успех раньше выдавался за полный: из двадцати выделенных откладывалось
-        // девятнадцать, и об этом не говорилось.
-        return response()->json(['ok' => true, 'folders' => $store->folders()] + ($result ?? []));
+        return $result ?? null;
     }
 
     /**

@@ -280,6 +280,44 @@ class MessageListing
     }
 
     /**
+     * Все UID выборки в порядке списка (отбор, поиск, порядок — как у list()); null — без
+     * сортировки и без отбора, тогда порядок — по номеру письма.
+     */
+    private function orderedUids(\Webklex\PHPIMAP\Folder $folder, string $path, string $filter, ?string $query, string $sort): ?array
+    {
+        [$q, $searching, $byFile, $needAttachment] = $this->build($folder, $filter, $query);
+        $order = $this->q->sortedUids($searching || $filter !== 'all' ? $q : null, $path, $sort);
+        if ($order === null && ($searching || $filter !== 'all')) {
+            $order = $this->q->searchUids($q, $path, $searching);
+            rsort($order);
+            if ($sort === 'date-asc') {
+                $order = array_reverse($order);
+            }
+        }
+        if ($order !== null && $needAttachment) {
+            $order = $this->q->keepWithFile($path, $order, $byFile);
+        }
+
+        return $order;
+    }
+
+    /**
+     * «Выбрать все письма папки»: UID всей выборки — с тем же отбором и поиском, что на экране.
+     *
+     * @return int[]
+     */
+    public function allUids(string $path, string $filter, ?string $query): array
+    {
+        $folder = $this->tree->folder($path);
+        $order = $this->orderedUids($folder, $path, $filter, $query, 'date');
+        if ($order === null) {
+            $order = $this->q->searchUids($folder->query()->all(), $path, false);
+        }
+
+        return array_values(array_unique(array_map('intval', $order)));
+    }
+
+    /**
      * Переход к дате: с какого места списка начинаются письма этого дня (и старше — при
      * порядке «сначала новые»; и новее — при «сначала старые»). Порядок — тот же, что у списка:
      * по времени получения. Если позже нет ничего — конец списка.
@@ -287,21 +325,10 @@ class MessageListing
     public function offsetForDate(string $path, string $filter, ?string $query, string $sort, string $date): int
     {
         $folder = $this->tree->folder($path);
-        [$q, $searching, $byFile, $needAttachment] = $this->build($folder, $filter, $query);
         $asc = $sort === 'date-asc';
         $day = \Carbon\Carbon::parse($date)->startOfDay();
 
-        $order = $this->q->sortedUids($searching || $filter !== 'all' ? $q : null, $path, $asc ? 'date-asc' : 'date');
-        if ($order === null && ($searching || $filter !== 'all')) {
-            $order = $this->q->searchUids($q, $path, $searching);
-            rsort($order);
-            if ($asc) {
-                $order = array_reverse($order);
-            }
-        }
-        if ($order !== null && $needAttachment) {
-            $order = $this->q->keepWithFile($path, $order, $byFile);
-        }
+        $order = $this->orderedUids($folder, $path, $filter, $query, $asc ? 'date-asc' : 'date');
         $edge = $folder->query();
         $edge = $asc ? $edge->whereSince($day) : $edge->whereBefore($day->copy()->addDay());
         $hit = array_flip($this->q->searchUids($edge, $path, false));
