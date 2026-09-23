@@ -200,8 +200,8 @@ if ! grep -q '^mailadmin:' /etc/dovecot/dovecot-master-users 2>/dev/null; then
   chown root:dovecot /etc/dovecot/dovecot-master-users; chmod 0640 /etc/dovecot/dovecot-master-users
 fi
 # auth_default_realm дописывает домен и к master-имени (user*mailadmin → mailadmin@домен) — нужна вторая запись с тем же хешем.
-if ! grep -q "^mailadmin@$FIRST_DOMAIN:" /etc/dovecot/dovecot-master-users; then
-  sed -i "s/^\(mailadmin\):\(.*\)$/\1:\2\n\1@$FIRST_DOMAIN:\2/" /etc/dovecot/dovecot-master-users
+if ! grep -q "^mailadmin@$DOMAIN:" /etc/dovecot/dovecot-master-users; then
+  sed -i "s/^\(mailadmin\):\(.*\)$/\1:\2\n\1@$DOMAIN:\2/" /etc/dovecot/dovecot-master-users
 fi
 
 # ── 4. Приложение: зависимости, сборка, миграции ───────────────────────────
@@ -307,7 +307,7 @@ open(p, 'w').write(s.replace(old, new, 1))
 PYEOF
 fi
 # Логин без домена (сотрудники привыкли к Kerio: «ivanov», а не «ivanov@домен») — Dovecot сам подставит домен.
-grep -q '^auth_default_realm' /etc/dovecot/dovecot.conf || printf '\n# mailadmin: логин без домена — домен подставляется сам\nauth_default_realm = %s\n' "$FIRST_DOMAIN" >> /etc/dovecot/dovecot.conf
+grep -q '^auth_default_realm' /etc/dovecot/dovecot.conf || printf '\n# mailadmin: логин без домена — домен подставляется сам\nauth_default_realm = %s\n' "$DOMAIN" >> /etc/dovecot/dovecot.conf
 bash "$HERE/dovecot-fts-learn.sh"
 bash "$HERE/setup-reports.sh"
 doveconf -n >/dev/null && systemctl restart dovecot

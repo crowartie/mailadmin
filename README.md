@@ -70,15 +70,24 @@ sudo bash /opt/mailadmin/deploy/update.sh
 
 ## Как устроено
 
+Подробная документация для разработчика и администратора — в [docs/](docs/README.md):
+
+- [Архитектура](docs/architecture.md) — общая схема системы, из чего состоит, где какие данные.
+- [Процессы](docs/processes/README.md) — блок-схема каждого процесса: вход, письма, отправка, правила, облако, админка, перенос.
+- [Разработка](docs/development.md) — как поднять у себя, тесты, как добавлять функции, соглашения.
+- [Эксплуатация](docs/operations.md) — установка, обновление, порты, расписание, куда смотреть при сбое.
+- [Подводные камни](docs/gotchas.md) — на чём уже спотыкались.
+
+Коротко о коде:
+
 - `app/Http/Controllers` — админка; `app/Http/Controllers/Mail` — веб-почта (Inertia-страницы и `/mail/api/*`).
 - `app/Services/Mail` — IMAP (webklex/php-imap), отправка, правила Sieve, общие папки (ACL), решения по отправителям.
 - `app/Services/Dav`, `app/Dav` — CalDAV/CardDAV на sabre/dav внутри приложения (`/dav/`).
 - `app/Services/Server` — сервер: Amavis, карантин, белые списки, Postfix-очередь, журналы, fail2ban, копии, сертификат,
   DNS, отчёты DMARC/TLS-RPT. Всё, что требует root, идёт через `sudo mailadmin-ctl <подкоманда>` — белый список в `deploy/mailadmin-ctl`.
-- `app/Console/Commands` — планировщик (`routes/console.php`): уведомления, копии, сводка карантина, напоминания,
-  отчёты, возврат отложенных, очередь отправки, перенос ящиков.
+- `app/Console/Commands` — планировщик (`routes/console.php`).
 - `deploy/` — установщик, обновление, служебные скрипты и шаблоны конфигов.
-- `resources/js/Pages` — Vue-страницы (`Mail/*` — веб-почта), `resources/js/Components/Mail` — компоненты веб-почты.
+- `resources/js/Pages` — Vue-страницы (`Mail/*` — веб-почта); `resources/js/Components/Mail` и `resources/js/mail` — клиент веб-почты.
 
 Базы: `mailadmin` (приложение), `vmail` (iRedMail: домены, ящики, псевдонимы), `amavisd` (карантин, списки), `iredapd` (лимиты).
 Пароли сотрудников меняет только администратор — самообслуживания намеренно нет.
