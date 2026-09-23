@@ -195,7 +195,37 @@ function ownLetter(m) {
 
 function body(m) {
     if (!m.html) return null;
-    return imagesShown(m) ? m.html.replace(/\sdata-blocked-(src|srcset|background)=/gi, ' $1=') : m.html;
+    const html = withoutLinksBlock(m);
+    return imagesShown(m) ? html.replace(/\sdata-blocked-(src|srcset|background)=/gi, ' $1=') : html;
+}
+
+// Блок «К этому письму приложены ссылки…» нужен внешним получателям. Здесь те же файлы уже
+// стоят карточками над письмом — блок прячем, если все его ссылки есть среди карточек.
+// Только при показе: в самом письме, в ответе и пересылке блок остаётся.
+const LINKS_TITLE = 'К этому письму приложены ссылки на следующие файлы';
+const stripped = new WeakMap();
+function withoutLinksBlock(m) {
+    const cards = cloudFiles(m);
+    if (!cards.length || !m.html.includes(LINKS_TITLE)) return m.html;
+    const hit = stripped.get(m);
+    if (hit && hit.src === m.html) return hit.out;
+    const tokens = new Set(cards.map((f) => f.token));
+    const doc = new DOMParser().parseFromString(m.html, 'text/html');
+    let changed = false;
+    for (const box of [...doc.querySelectorAll('div')]) {
+        // Корень блока — div, первый элемент которого — сам заголовок (текст без вложенных тегов).
+        const head = box.firstElementChild;
+        if (!head || head.children.length || !head.textContent.trim().startsWith(LINKS_TITLE) || box.closest('blockquote')) continue;
+        const links = [...box.querySelectorAll('a[href]')];
+        const ours = links.length && links.every((a) => {
+            const t = (a.getAttribute('href') || '').match(/^https?:\/\/[^/]+\/([A-Za-z0-9_-]{20,64})(?:[/?#]|$)/);
+            return t && tokens.has(t[1]);
+        });
+        if (ours) { box.remove(); changed = true; }
+    }
+    const out = changed ? doc.body.innerHTML : m.html;
+    stripped.set(m, { src: m.html, out });
+    return out;
 }
 
 function replyTo(m) {

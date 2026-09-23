@@ -40,7 +40,8 @@ async function request(method, url, body, opts = {}) {
     }
     const text = await r.text();
     let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = { message: text }; }
+    // Не JSON (страница nginx, страница входа) — текст ошибки не берём: иначе человеку показывался HTML-код.
+    try { data = text ? JSON.parse(text) : null; } catch { data = /^\s*</.test(text) ? null : { message: text.slice(0, 300) }; }
     if (r.status === 401 || (r.redirected && r.url.includes('/mail/login'))) {
         // Причину (пароль сменили, вход закрыли) показываем на странице входа — через адрес, flash до неё не доживает.
         const why = r.status === 401 && data?.message ? '?m=' + encodeURIComponent(data.message) : '';

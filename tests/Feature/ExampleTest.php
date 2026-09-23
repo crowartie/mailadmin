@@ -33,4 +33,14 @@ class ExampleTest extends TestCase
 
         $this->get('http://localhost/')->assertNotFound();
     }
+
+    public function test_запрос_веб_почты_без_входа_получает_401_а_не_страницу_входа(): void
+    {
+        $this->ports();
+
+        // Раньше fetch уходил по переадресации на страницу входа, и её HTML показывался в окне «войдите заново».
+        $this->get('http://localhost/mail/api/folders', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertStatus(401)->assertJson(['message' => 'Сеанс закончился: почтой долго не пользовались']);
+        $this->get('http://localhost/mail')->assertRedirectContains('/mail/login');
+    }
 }

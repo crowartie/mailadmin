@@ -32,7 +32,9 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    // 12 часов без запросов: браузеры «усыпляют» вкладку в фоне (Edge, Яндекс — через пару часов),
+    // опрос почты при этом стоит, и с двумя часами после обеда приходилось входить заново.
+    'lifetime' => (int) env('SESSION_LIFETIME', 720),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

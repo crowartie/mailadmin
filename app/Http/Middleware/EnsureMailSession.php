@@ -18,6 +18,12 @@ class EnsureMailSession
     public function handle(Request $request, Closure $next): Response
     {
         if (! $request->session()->has('mail.user')) {
+            // Запросу веб-почты — понятный 401, а не переадресация: fetch шёл за ней на страницу входа,
+            // и в окне «войдите заново» показывался её HTML-код.
+            if ($request->expectsJson() || $request->is('mail/api/*')) {
+                return response()->json(['message' => 'Сеанс закончился: почтой долго не пользовались'], 401);
+            }
+
             return redirect()->guest('/mail/login');
         }
 
