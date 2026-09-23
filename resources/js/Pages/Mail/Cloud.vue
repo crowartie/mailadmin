@@ -164,6 +164,15 @@ function lifeText(it) {
     if (l.days <= 0) return 'удалится этой ночью';
     return 'удалится через ' + l.days + ' ' + plural(l.days, 'день', 'дня', 'дней');
 }
+// Коротко — для строки списка: при открытой карточке колонка имени узкая.
+function lifeShort(it) {
+    const l = it.life;
+    if (!l) return '';
+    if (l.pinned) return 'закреплён';
+    if (l.reason === 'link-forever') return 'по ссылке';
+    if (l.days === null || l.days === undefined) return '';
+    return l.days <= 0 ? 'сегодня ночью' : l.days + ' дн.';
+}
 const lifeWarn = (it) => !!it.life && !it.life.pinned && it.life.days !== null && it.life.days !== undefined && it.life.days <= 3;
 function lifeLong(it) {
     const l = it.life;
@@ -181,7 +190,7 @@ async function togglePin(it) {
         const r = await api.cloudPin(it.path, on);
         it.life = r.life;
         keep.value = { ...keep.value, pinned: r.pinned, cap: r.pinCap };
-        say(on ? '«' + it.name + '» закреплён — хранится без срока' : '«' + it.name + '» откреплён — хранится ' + keep.value.days + ' дн. с сегодняшнего дня');
+        say(on ? '«' + it.name + '» закреплён — хранится без срока' : '«' + it.name + '» откреплён — ' + lifeText(it));
         if (it.dir) await load();   // у файлов внутри поменялся срок
     } catch (e) { say(e.message, true); }
 }
@@ -433,8 +442,8 @@ onMounted(async () => {
                             <span class="cl-ico" :class="'cl-ico--' + kind(it)"><Icon :name="ICON[kind(it)]" :size="17" /></span>
                             <span class="cl-namebox">
                                 <span class="cl-ell" :class="{ 'cl-dirname': it.dir }">{{ it.name }}</span>
-                                <span v-if="view !== 'trash' && lifeText(it)" class="cl-life" :class="{ 'cl-life--warn': lifeWarn(it), 'cl-life--pin': it.life && it.life.pinned }">
-                                    <Icon v-if="it.life && it.life.pinned" name="pin" :size="11" />{{ lifeText(it) }}
+                                <span v-if="view !== 'trash' && lifeShort(it)" class="cl-life" :class="{ 'cl-life--warn': lifeWarn(it), 'cl-life--pin': it.life && it.life.pinned }" :title="lifeText(it)">
+                                    <Icon :name="it.life && it.life.pinned ? 'pin' : 'clock'" :size="11" />{{ lifeShort(it) }}
                                 </span>
                             </span>
                         </span>

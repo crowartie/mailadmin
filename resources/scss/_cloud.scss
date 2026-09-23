@@ -83,7 +83,7 @@
 // Имя и под ним срок хранения: «удалится через 12 дней», «закреплён».
 .cl-namebox { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .cl-life {
-    display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 400; color: v.$c-muted;
+    display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 400; color: v.$c-muted; white-space: nowrap;
     &--warn { color: v.$c-no-ink; font-weight: 600; }
     &--pin { color: v.$c-accent-ink; }
 }
