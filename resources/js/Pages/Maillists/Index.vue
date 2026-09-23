@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     lists: Array,
@@ -32,7 +33,7 @@ function who(l) { if (l.options?.only_moderator_can_post) return 'только �
 
 function post(url, data = {}) { router.post(url, data, { preserveScroll: true }); }
 function saveEdit() { edit.put(`/maillists/${props.open.address}`, { preserveScroll: true }); }
-function destroy() { if (confirm(`Удалить рассылку ${props.open.address} вместе с архивом?`)) router.delete(`/maillists/${props.open.address}`); }
+async function destroy() { if (await confirmAsk(`Удалить рассылку ${props.open.address} вместе с архивом?`, { ok: 'Удалить', danger: true })) router.delete(`/maillists/${props.open.address}`); }
 function toggleModerator(mail) { const i = edit.moderators.indexOf(mail); i >= 0 ? edit.moderators.splice(i, 1) : edit.moderators.push(mail); saveEdit(); }
 function addSubs() { if (!newSubs.value.trim()) return; post(`/maillists/${props.open.address}/subscribe`, { emails: newSubs.value }); newSubs.value = ''; }
 function pickEmployee(e) { if (e.target.value) { newSubs.value = (newSubs.value ? newSubs.value + ', ' : '') + e.target.value; e.target.value = ''; } }

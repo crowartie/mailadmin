@@ -11,6 +11,7 @@ import AttachmentViewer from './AttachmentViewer.vue';
 import { viewable, viewerItems, localViewable, localViewerItems } from '../../mail/attachments';
 import { api, composeForm } from '../../mail/api';
 import { addrString, presets, size, toLocalInput, when } from '../../mail/format';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     compose: { type: Object, required: true },
@@ -154,16 +155,16 @@ function payload(extra = {}) {
     };
 }
 
-function send(sendAt = null) {
+async function send(sendAt = null) {
     flushRecipients();
     if (!canSend.value) {
         emit('toast', { text: 'Укажите получателя', error: true });
         toInput.value?.focus();
         return;
     }
-    if (!subject.value.trim() && !window.confirm('Отправить письмо без темы?')) return;
+    if (!subject.value.trim() && !(await confirmAsk('Отправить письмо без темы?', { ok: 'Отправить' }))) return;
     const warns = [...to.value, ...cc.value, ...bcc.value].filter((a) => a.warn).map((a) => a.warn);
-    if (warns.length && !window.confirm(warns.join('\n') + '\n\nПисьмо, скорее всего, не дойдёт. Отправить всё равно?')) return;
+    if (warns.length && !(await confirmAsk(warns.join('\n') + '\n\nПисьмо, скорее всего, не дойдёт. Отправить всё равно?', { ok: 'Отправить всё равно', danger: true }))) return;
     menu.value = null;
     dirty.value = false;
     closed = true;
@@ -230,11 +231,11 @@ function worthSaving() {
 }
 
 /** Удалить черновик и закрыть окно — действие необратимое, поэтому спрашиваем. */
-function discard() {
-    closed = true;
+async function discard() {
     const something = to.value.length || subject.value.trim() || files.value.length
         || (html.value || '').replace(/<[^>]+>/g, '').trim();
-    if (something && !window.confirm('Удалить письмо вместе с черновиком? Восстановить его будет нельзя.')) return;
+    if (something && !(await confirmAsk('Удалить письмо вместе с черновиком? Восстановить его будет нельзя.', { ok: 'Удалить', danger: true }))) return;
+    closed = true;
     track('compose.discard', something ? 'с текстом' : 'пустое');
     emit('close', { discard: true, draftUid: draftUid.value });
 }

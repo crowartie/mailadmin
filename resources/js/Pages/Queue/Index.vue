@@ -6,6 +6,7 @@ import Icon from '../../Components/Icon.vue';
 // Размер и склонение считаются общими функциями веб-почты: две копии одного расчёта
 // расходились по краям (у очереди «1.0 МБ» против «1 МБ» в письме).
 import { plural, size } from '../../mail/format';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     rows: Array,
@@ -53,7 +54,7 @@ async function expand(id) {
     }
 }
 async function act(op, ids = [...selected.value]) {
-    if (op === 'delete' && !confirm(`Удалить ${ids.length === 1 ? 'письмо' : ids.length + ' писем'} из очереди? Отправитель уведомление не получит.`)) return;
+    if (op === 'delete' && !(await confirmAsk(`Удалить ${ids.length === 1 ? 'письмо' : ids.length + ' писем'} из очереди? Отправитель уведомление не получит.`, { ok: 'Удалить', danger: true }))) return;
     busy.value = true;
     try {
         const r = await api('POST', '/queue/action', { op, ids });

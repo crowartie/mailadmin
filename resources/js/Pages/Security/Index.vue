@@ -5,6 +5,9 @@ import { computed, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
+import { ask as confirmAsk } from '../../confirm';
+// Вопрос перед действием из разметки: confirm браузера в шаблоне недоступен (не глобал Vue).
+async function confirmDo(text, fn) { if (await confirmAsk(text, { danger: true })) fn(); }
 
 const props = defineProps({
     tab: String,
@@ -141,7 +144,7 @@ const filteredEmployees = computed(() => (props.employees || []).filter((e) => !
                         <span style="display: flex; gap: 6px">
                             <button v-if="!e.enabled && !e.required" class="btn btn--sm" type="button" @click="post('/security/require-2fa', { user: e.username })">Потребовать</button>
                             <button v-if="!e.enabled && e.required" class="btn btn--sm" type="button" @click="post('/security/require-2fa', { user: e.username, off: true })">Снять требование</button>
-                            <button v-if="e.enabled" class="btn btn--sm" type="button" @click="confirm(`Сбросить защиту у ${e.name}? Потерянный телефон — единственная причина это делать.`) && post('/security/reset-2fa', { user: e.username })">Сбросить</button>
+                            <button v-if="e.enabled" class="btn btn--sm" type="button" @click="confirmDo(`Сбросить защиту у ${e.name}? Потерянный телефон — единственная причина это делать.`, () => post('/security/reset-2fa', { user: e.username }))">Сбросить</button>
                         </span>
                     </div>
                 </div>

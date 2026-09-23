@@ -6,6 +6,9 @@ import AppLayout from '../../Layouts/AppLayout.vue';
 import { SETTINGS_TABS } from './tabs';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
+import { ask as confirmAsk } from '../../confirm';
+// Вопрос перед действием из разметки: confirm браузера в шаблоне недоступен (не глобал Vue).
+async function confirmDo(text, fn) { if (await confirmAsk(text, { danger: true })) fn(); }
 
 const page = usePage();
 const props = defineProps({
@@ -103,7 +106,7 @@ const pendingCount = computed(() => rows.value.filter((r) => r.status !== 'runni
                                 <button class="btn btn--sm btn--icon" type="button" :disabled="testing[r.id] || r.status === 'running'" title="Проверить вход на оба сервера" @click="test(r)" aria-label="Проверить вход на оба сервера"><Icon :name="testing[r.id] ? 'refresh' : 'check'" :size="16" /></button>
                                 <button class="btn btn--sm btn--icon btn--primary" type="button" :disabled="r.status === 'running' || r.status === 'queued'" title="Запустить перенос" @click="post(`/settings/migrate/${r.id}/run`, { what })" aria-label="Запустить перенос"><Icon name="play" :size="16" /></button>
                                 <button v-if="r.hasLog" class="btn btn--sm btn--icon" type="button" title="Журнал imapsync" @click="showLog(r)" aria-label="Журнал imapsync"><Icon name="log" :size="16" /></button>
-                                <button class="btn btn--sm btn--icon btn--danger" type="button" :disabled="r.status === 'running'" title="Убрать из списка" @click="confirm(`Убрать ${r.login} из списка? Уже перенесённые письма останутся.`) && router.delete(`/settings/migrate/${r.id}`, { preserveScroll: true })" aria-label="Убрать из списка"><Icon name="trash" :size="16" /></button>
+                                <button class="btn btn--sm btn--icon btn--danger" type="button" :disabled="r.status === 'running'" title="Убрать из списка" @click="confirmDo(`Убрать ${r.login} из списка? Уже перенесённые письма останутся.`, () => router.delete(`/settings/migrate/${r.id}`, { preserveScroll: true }))" aria-label="Убрать из списка"><Icon name="trash" :size="16" /></button>
                             </span>
                         </div>
                         <div v-if="logOf === r.id" class="row__expand" style="grid-template-columns: 1fr"><pre class="log" style="max-height: 320px; overflow: auto; margin: 0; font-size: 12px; white-space: pre-wrap">{{ logText }}</pre></div>

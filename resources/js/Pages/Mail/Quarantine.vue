@@ -6,6 +6,7 @@ import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import { api } from '../../mail/api';
 import { plural, size, when } from '../../mail/format';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({ user: String, settings: Object, items: Array, keepDays: { type: Number, default: 14 } });
 const items = ref(props.items || []);
@@ -33,7 +34,7 @@ async function notSpam(match) {
 async function remove(i) {
     // 283: кнопка стоит вплотную к «Доставить», а действие необратимо — и ни вопроса,
     // ни сообщения об успехе не было.
-    if (!window.confirm(`Удалить письмо «${i.subject || 'без темы'}» из карантина навсегда? Восстановить его будет нельзя.`)) return;
+    if (!(await confirmAsk(`Удалить письмо «${i.subject || 'без темы'}» из карантина навсегда? Восстановить его будет нельзя.`, { ok: 'Удалить', danger: true }))) return;
     busy.value = i.id;
     try {
         const r = await api.quarantineDelete(i.id);

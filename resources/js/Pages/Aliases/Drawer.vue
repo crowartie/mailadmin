@@ -3,6 +3,7 @@ import { useForm, router } from '@inertiajs/vue3';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     alias: Object,
@@ -28,8 +29,8 @@ function submit() {
     }
 }
 
-function destroy() {
-    if (!confirm(`Удалить псевдоним ${props.alias.address}? Письма на него перестанут приниматься.`)) return;
+async function destroy() {
+    if (!(await confirmAsk(`Удалить псевдоним ${props.alias.address}? Письма на него перестанут приниматься.`, { ok: 'Удалить', danger: true }))) return;
     router.delete(`/aliases/${props.alias.address}`);
 }
 

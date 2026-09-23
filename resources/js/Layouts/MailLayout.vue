@@ -3,6 +3,7 @@ import { Link, usePage, router } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Components/Icon.vue';
 import FeedbackDialog from '../Components/Mail/FeedbackDialog.vue';
+import ConfirmHost from '../Components/ConfirmHost.vue';
 
 const props = defineProps({
     user: String,
@@ -164,5 +165,6 @@ onBeforeUnmount(() => { document.removeEventListener('click', exitOutside, true)
         </div>
 
         <FeedbackDialog v-if="feedback" @close="feedback = false" />
+        <ConfirmHost />
     </div>
 </template>

@@ -6,6 +6,9 @@ import AppLayout from '../../Layouts/AppLayout.vue';
 import { SETTINGS_TABS } from './tabs';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
+import { ask as confirmAsk } from '../../confirm';
+// Вопрос перед действием из разметки: confirm браузера в шаблоне недоступен (не глобал Vue).
+async function confirmDo(text, fn) { if (await confirmAsk(text, { danger: true })) fn(); }
 
 const props = defineProps({
     tab: String,
@@ -211,7 +214,7 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                     <div class="attn" :class="mtasts.enabled ? 'attn--ok' : ''" style="margin-bottom: 10px"><Icon :name="mtasts.enabled ? 'shield' : 'clock'" /><span>{{ mtasts.enabled ? `Включён, режим ${mtasts.mode}${mtasts.inCert ? ', имя в сертификате есть' : ', имени в сертификате ещё нет'}` : 'Не включён' }}</span></div>
                     <div class="form-actions">
                         <button v-if="!mtasts.enabled || !mtasts.inCert" class="btn btn--primary" type="button" @click="post('/settings/mtasts/enable', { mode: 'testing' })">Включить (режим testing)</button>
-                        <button v-if="mtasts.enabled && mtasts.mode === 'testing'" class="btn" type="button" @click="confirm('Перевести в enforce? Отправители будут отказываться доставлять письма, если сертификат или MX не совпадут. Включайте после недели без ошибок в TLS-отчётах.') && post('/settings/mtasts/mode', { mode: 'enforce' })">Перевести в enforce</button>
+                        <button v-if="mtasts.enabled && mtasts.mode === 'testing'" class="btn" type="button" @click="confirmDo('Перевести в enforce? Отправители будут отказываться доставлять письма, если сертификат или MX не совпадут. Включайте после недели без ошибок в TLS-отчётах.', () => post('/settings/mtasts/mode', { mode: 'enforce' }))">Перевести в enforce</button>
                         <button v-if="mtasts.enabled" class="btn" type="button" @click="post('/settings/mtasts/mode', { mode: 'off' })">Выключить</button>
                     </div>
                 </div>
@@ -240,7 +243,7 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                         <div v-if="d.dkim" class="card card--pad" style="margin-top: 14px">
                             <div class="card__title" style="display: flex; justify-content: space-between; align-items: center">
                                 <span>Ключ DKIM <span class="row__sub">RSA {{ d.dkim.bits }} бит · с {{ date(d.dkim.since) }}</span></span>
-                                <span style="display: flex; gap: 6px"><button class="btn btn--sm" type="button" @click="copy(d.dkim.txt)"><Icon name="copy" /> Скопировать TXT</button><button class="btn btn--sm btn--danger" type="button" @click="confirm('Сменить ключ DKIM? Письма будут подписываться новым ключом — до обновления TXT-записи в DNS чужие серверы не смогут проверить подпись.') && post('/settings/dkim/rotate', { domain: d.domain })">Сменить ключ</button></span>
+                                <span style="display: flex; gap: 6px"><button class="btn btn--sm" type="button" @click="copy(d.dkim.txt)"><Icon name="copy" /> Скопировать TXT</button><button class="btn btn--sm btn--danger" type="button" @click="confirmDo('Сменить ключ DKIM? Письма будут подписываться новым ключом — до обновления TXT-записи в DNS чужие серверы не смогут проверить подпись.', () => post('/settings/dkim/rotate', { domain: d.domain }))">Сменить ключ</button></span>
                             </div>
                             <div class="kv"><span>Имя записи</span><span class="mono">{{ d.dkim.host }}</span></div>
                             <div class="kv" style="align-items: flex-start"><span>Значение TXT</span><span class="mono" style="font-size: 11px; overflow-wrap: anywhere; max-width: 520px">{{ d.dkim.txt }}</span></div>
@@ -480,7 +483,7 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
 
                 <div class="card card--pad">
                     <div class="card__title">Восстановить ящик из копии</div>
-                    <form @submit.prevent="confirm(`Восстановить письма ${restore.user} из архива? Существующие письма не удаляются, недостающие добавятся.`) && post('/settings/backup/restore', restore)">
+                    <form @submit.prevent="confirmDo(`Восстановить письма ${restore.user} из архива? Существующие письма не удаляются, недостающие добавятся.`, () => post('/settings/backup/restore', restore))">
                         <label class="field"><span>Архив</span><select v-model="restore.file" class="input" required><option value="" disabled>выберите…</option><option v-for="f in files" :key="f.file" :value="f.file">{{ new Date(f.mtime * 1000).toLocaleString('ru-RU') }} — {{ mb(f.size) }}</option></select></label>
                         <label class="field"><span>Ящик</span><select v-model="restore.user" class="input" required><option value="" disabled>выберите…</option><option v-for="u in employees" :key="u" :value="u">{{ u }}</option></select></label>
                         <button class="btn" type="submit" :disabled="!restore.file || !restore.user"><Icon name="upload" /> Восстановить</button>
@@ -523,7 +526,7 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                                 <button class="btn btn--primary" type="button" @click="saveAdmin(a)">Сохранить</button>
                                 <button v-if="a.twofa" class="btn" type="button" @click="router.put(`/settings/admins/${a.id}`, { reset2fa: true }, { preserveScroll: true })">Сбросить 2FA</button>
                                 <button v-if="!a.me" class="btn" type="button" @click="router.put(`/settings/admins/${a.id}`, { active: !a.active }, { preserveScroll: true })">{{ a.active ? 'Отключить доступ' : 'Включить доступ' }}</button>
-                                <button v-if="!a.me" class="btn btn--danger" type="button" @click="confirm(`Снять администратора ${a.email}?`) && del(`/settings/admins/${a.id}`)">Снять</button>
+                                <button v-if="!a.me" class="btn btn--danger" type="button" @click="confirmDo(`Снять администратора ${a.email}?`, () => del(`/settings/admins/${a.id}`))">Снять</button>
                             </div>
                         </div>
                     </template>
@@ -613,7 +616,7 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                             <div class="form-actions" style="margin-top: 14px">
                                 <button class="btn btn--primary" type="submit" :disabled="cloudForm.processing">Сохранить</button>
                                 <button class="btn" type="button" @click="post('/settings/cloud/test')"><Icon name="upload" /> Проверить загрузку</button>
-                                <button class="btn btn--danger" type="button" @click="confirm('Отключить облако? Уже отправленные ссылки продолжат работать, новые вложения пойдут внутри писем.') && post('/settings/cloud/disconnect')">Отключить</button>
+                                <button class="btn btn--danger" type="button" @click="confirmDo('Отключить облако? Уже отправленные ссылки продолжат работать, новые вложения пойдут внутри писем.', () => post('/settings/cloud/disconnect'))">Отключить</button>
                             </div>
                         </form>
                     </template>

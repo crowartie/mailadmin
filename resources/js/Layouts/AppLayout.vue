@@ -2,6 +2,7 @@
 import { Head, Link, usePage, router } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import Icon from '../Components/Icon.vue';
+import ConfirmHost from '../Components/ConfirmHost.vue';
 
 const props = defineProps({
     title: String,
@@ -146,5 +147,6 @@ function logout() {
         </div>
 
         <slot name="overlay" />
+        <ConfirmHost />
     </div>
 </template>

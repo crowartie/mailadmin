@@ -4,6 +4,7 @@ import { Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     kinds: Array,
@@ -16,8 +17,8 @@ const props = defineProps({
 
 function url(kind, file) { return '/reports?' + new URLSearchParams({ ...(kind ? { kind } : {}), ...(file ? { file } : {}) }).toString(); }
 function show(r) { router.get(url(props.kind, r.file) + (props.kind ? '' : '&kind=' + r.kind), {}, { preserveScroll: true, preserveState: true, only: ['open'] }); }
-function del(r) {
-    if (!confirm(`Удалить отчёт ${r.title} от ${r.date}?`)) return;
+async function del(r) {
+    if (!(await confirmAsk(`Удалить отчёт ${r.title} от ${r.date}?`, { ok: 'Удалить', danger: true }))) return;
     router.delete(`/reports/${r.kind}/${r.file}`, { preserveScroll: true });
 }
 const kb = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + ' МБ' : b > 1024 ? Math.round(b / 1024) + ' КБ' : b + ' Б');

@@ -1,6 +1,7 @@
 <script setup>
 // Модальное окно: подтверждение, ввод строки, произвольное содержимое через слот.
 import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { ask as confirmAsk } from '../../confirm';
 
 let seq = 0;
 
@@ -42,8 +43,8 @@ function onKey(e) {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 }
 /** Закрытие кликом мимо окна: если что-то уже набрано, сначала переспрашиваем. */
-function onOutside() {
-    if (touched.value && !window.confirm('Закрыть окно? Набранное не сохранится.')) return;
+async function onOutside() {
+    if (touched.value && !(await confirmAsk('Закрыть окно? Набранное не сохранится.', { ok: 'Закрыть', danger: true }))) return;
     emit('close');
 }
 onMounted(() => {

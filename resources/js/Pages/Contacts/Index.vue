@@ -4,6 +4,7 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     cards: Array,
@@ -38,8 +39,8 @@ function close() {
     creating.value = false;
     if (props.editing) router.get('/company-contacts', { search: search.value || undefined }, { preserveState: true });
 }
-function destroy(c) {
-    if (!confirm(`Удалить «${c.fn}» из общей книги?`)) return;
+async function destroy(c) {
+    if (!(await confirmAsk(`Удалить «${c.fn}» из общей книги?`, { ok: 'Удалить', danger: true }))) return;
     router.delete(`/company-contacts/${c.uri}`);
 }
 function initialsOf(c) { return (c.fn || '?').split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || '?'; }

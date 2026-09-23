@@ -5,6 +5,7 @@ import { Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import { http } from '../../admin/http';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({ rows: Array, candidates: Array, levels: Object });
 
@@ -51,7 +52,7 @@ async function setLevel(r, level) {
     catch (e) { say(e.message, true); } finally { busy.value = false; }
 }
 async function remove(r) {
-    if (!confirm(`Закрыть «${r.folderName}» ящика ${r.owner} для ${r.withName}?`)) return;
+    if (!(await confirmAsk(`Закрыть «${r.folderName}» ящика ${r.owner} для ${r.withName}?`, { ok: 'Закрыть доступ', danger: true }))) return;
     busy.value = true;
     try { await http('DELETE', `/mailboxes/${encodeURIComponent(r.owner)}/shares`, { folder: r.folder, with: r.with }); await reload(); say('Доступ закрыт'); }
     catch (e) { say(e.message, true); } finally { busy.value = false; }

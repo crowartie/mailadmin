@@ -6,6 +6,7 @@
 // из списка доводов: им нужен только способ сказать об ошибке.
 import { computed, ref, watch } from 'vue';
 import { api } from './api';
+import { ask as confirmAsk } from '../confirm';
 
 /**
  * @param {(e: unknown) => void} fail  показать ошибку человеку
@@ -78,7 +79,7 @@ export function useCalendarTasks(fail) {
 
     async function removeTask(t) {
         // У события и контакта подтверждение есть, а задача удалялась одним кликом и без отмены.
-        if (!window.confirm(`Удалить задачу «${t.title}»? Восстановить её будет нельзя.`)) return;
+        if (!(await confirmAsk(`Удалить задачу «${t.title}»? Восстановить её будет нельзя.`, { ok: 'Удалить', danger: true }))) return;
         try {
             await api.deleteTask(t.calendar, t.id);
             tasks.value = tasks.value.filter((x) => !(x.id === t.id && x.calendar === t.calendar));

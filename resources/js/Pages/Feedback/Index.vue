@@ -9,6 +9,7 @@ import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import AttachmentViewer from '../../Components/Mail/AttachmentViewer.vue';
 import { http } from '../../admin/http';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     rows: Array,
@@ -184,8 +185,8 @@ async function close() {
     duplicateOf.value = '';
 }
 
-function del() {
-    if (confirm(`Удалить обращение №${ticket.value.id} вместе с перепиской?`)) router.delete(`/feedback/${ticket.value.id}`);
+async function del() {
+    if (await confirmAsk(`Удалить обращение №${ticket.value.id} вместе с перепиской?`, { ok: 'Удалить', danger: true })) router.delete(`/feedback/${ticket.value.id}`);
 }
 
 // ── Живое обновление открытой переписки ──────────────────────────

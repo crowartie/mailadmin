@@ -3,6 +3,7 @@ import { useForm, router } from '@inertiajs/vue3';
 import { computed, reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     mailbox: Object,
@@ -65,8 +66,8 @@ function submit() {
     form.put(`/mailboxes/${props.mailbox.username}`, { preserveScroll: true });
 }
 
-function destroy() {
-    if (!confirm(`Удалить ${props.mailbox.username}? Письма будут помечены к удалению почтовым сервером.`)) return;
+async function destroy() {
+    if (!(await confirmAsk(`Удалить ${props.mailbox.username}? Письма будут помечены к удалению почтовым сервером.`, { ok: 'Удалить', danger: true }))) return;
     router.delete(`/mailboxes/${props.mailbox.username}`);
 }
 
@@ -87,8 +88,8 @@ const p = props.mailbox.profile || {};
 const access = useForm({ unit_id: p.unit_id ?? null, title: p.title ?? '', personal_email: p.personal_email ?? '', require_2fa: !!p.require_2fa, login_blocked: !!p.login_blocked, is_service: !!p.is_service });
 const base = `/mailboxes/${props.mailbox.username}`;
 function saveAccess() { access.post(`${base}/access`, { preserveScroll: true }); }
-function act(url, data = {}, message = null) { if (message && !confirm(message)) return; router.post(url, data, { preserveScroll: true }); }
-function impersonate() { if (confirm(`Открыть веб-почту ${props.mailbox.username} от его имени? Действие попадёт в журнал.`)) router.post(`${base}/impersonate`); }
+async function act(url, data = {}, message = null) { if (message && !(await confirmAsk(message, { ok: 'Да', danger: true }))) return; router.post(url, data, { preserveScroll: true }); }
+async function impersonate() { if (await confirmAsk(`Открыть веб-почту ${props.mailbox.username} от его имени? Действие попадёт в журнал.`, { ok: 'Открыть' })) router.post(`${base}/impersonate`); }
 function when(iso) { if (!iso) return '—'; const d = new Date(iso); const diff = (Date.now() - d) / 60000; if (diff < 1) return 'сейчас'; if (diff < 60) return Math.round(diff) + ' мин назад'; if (diff < 1440) return Math.round(diff / 60) + ' ч назад'; return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
 const LOGIN = { ok: 'вход', new_device: 'новое устройство', bad_password: 'неверный пароль', blocked: 'заблокирован', bad_code: 'неверный код' };
 

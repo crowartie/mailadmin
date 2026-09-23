@@ -1,5 +1,6 @@
 // Обёртка над fetch для /mail/api/*: CSRF из cookie, JSON, единый разбор ошибок.
 import { recordApiError } from './diag';
+import { ask as confirmAsk } from '../confirm';
 
 export function xsrf() {
     const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
@@ -49,9 +50,11 @@ async function request(method, url, body, opts = {}) {
         // и написанное пропадало. Спрашиваем; пока человек не ответил, страница остаётся на месте.
         if (!sessionEnded) {
             sessionEnded = true;
-            const text = (data?.message || 'Сеанс закончился') + '.\n\nНужно войти заново. Если вы писали письмо, нажмите «Отмена»: текст останется на экране, его можно скопировать.';
-            if (window.confirm(text + '\n\nПерейти к входу?')) window.location.href = '/mail/login' + why;
-            else setTimeout(() => { sessionEnded = false; }, 60000);
+            const text = (data?.message || 'Сеанс закончился') + '.\n\nЕсли вы писали письмо, нажмите «Остаться»: текст останется на экране, его можно скопировать.';
+            confirmAsk(text, { title: 'Нужно войти заново', ok: 'Войти', cancel: 'Остаться' }).then((yes) => {
+                if (yes) window.location.href = '/mail/login' + why;
+                else setTimeout(() => { sessionEnded = false; }, 60000);
+            });
         }
         throw new ApiError(data?.message || 'Сеанс закончился — войдите заново', 401);
     }

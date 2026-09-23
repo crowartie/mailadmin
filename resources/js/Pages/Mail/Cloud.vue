@@ -10,6 +10,7 @@ import Toast from '../../Components/Mail/Toast.vue';
 import { api } from '../../mail/api';
 import { plural, size, when } from '../../mail/format';
 import { addUploads, cancelUpload, clearFinished, forgetUnfinished, retryUpload, unfinished, uploads } from '../../mail/cloudUpload';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     user: String,
@@ -270,11 +271,11 @@ async function restore(t) {
     try { const r = await api.cloudRestore(t.id); say('Возвращено: ' + r.path); await loadTree(''); await load(); } catch (e) { say(e.message, true); }
 }
 async function purge(t) {
-    if (!window.confirm('Удалить «' + t.name + '» навсегда? Вернуть будет нельзя.')) return;
+    if (!(await confirmAsk('Удалить «' + t.name + '» навсегда? Вернуть будет нельзя.', { ok: 'Удалить', danger: true }))) return;
     try { await api.cloudPurge(t.id); await load(); } catch (e) { say(e.message, true); }
 }
 async function emptyTrash() {
-    if (!window.confirm('Очистить корзину? Всё в ней удалится навсегда.')) return;
+    if (!(await confirmAsk('Очистить корзину? Всё в ней удалится навсегда.', { ok: 'Очистить', danger: true }))) return;
     try { const r = await api.cloudEmptyTrash(); say('Удалено навсегда: ' + r.purged); await load(); } catch (e) { say(e.message, true); }
 }
 

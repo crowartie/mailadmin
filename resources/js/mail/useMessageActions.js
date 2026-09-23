@@ -1,4 +1,5 @@
 import { api } from './api';
+import { ask as confirmAsk } from '../confirm';
 import { plural } from './format';
 
 /**
@@ -140,7 +141,7 @@ export function useMessageActions(ctx) {
         const forever = ctx.folderInfo.value.role === 'trash';
         const what = uids.length > 1 ? `${uids.length} ${plural(uids.length, 'письмо', 'письма', 'писем')}` : 'письмо';
 
-        return window.confirm(forever ? `Стереть ${what} навсегда? Восстановить будет нельзя.` : `Удалить ${what}?`);
+        return confirmAsk(forever ? `Стереть ${what} навсегда? Восстановить будет нельзя.` : `Удалить ${what}?`, { ok: forever ? 'Стереть' : 'Удалить', danger: true });
     }
 
     function defer(op, uids, extra, label, secs, opened = null, mobileRead = false) {
@@ -193,7 +194,8 @@ export function useMessageActions(ctx) {
             if (!FOR_ALL[op]) { ctx.showToast({ text: 'Это действие для всей папки сразу недоступно — выберите письма', error: true }); return; }
             const verb = op === 'delete' && ctx.folderInfo.value.role === 'trash' ? 'Стереть навсегда' : FOR_ALL[op];
             const what = `${all.total} ${plural(all.total, 'письмо', 'письма', 'писем')}`;
-            if (!window.confirm(`${verb}: все ${what} ${all.q ? 'по запросу' : 'папки «' + (ctx.folderInfo.value.name || '') + '»'}?`)) return;
+            const destructive = ['delete', 'move', 'archive', 'spam', 'lists', 'notspam'].includes(op);
+            if (!(await confirmAsk(`${verb}: все ${what} ${all.q ? 'по запросу' : 'папки «' + (ctx.folderInfo.value.name || '') + '»'}?`, { ok: verb, danger: destructive }))) return;
             extra = { ...extra, all: { filter: all.filter, q: all.q } };
             count = all.total;
             ctx.selectedAll.value = null;
@@ -206,7 +208,7 @@ export function useMessageActions(ctx) {
         const label = `${NAMES[op] || ''}${count > 1 ? ` · ${count} ${plural(count, 'письмо', 'письма', 'писем')}` : ''}`;
         const secs = Number(ctx.settings.value.undo_seconds ?? 5);
 
-        if (!secs && op === 'delete' && !all && !confirmForever(uids)) return;
+        if (!secs && op === 'delete' && !all && !(await confirmForever(uids))) return;
         // Перетащили письмо мышью не в ту папку или ошиблись со «Спамом» — отмена нужна
         // так же, как при удалении. Раньше эти действия уходили на сервер сразу.
         if (deferrable && secs > 0 && DEFERRABLE.includes(op)) {

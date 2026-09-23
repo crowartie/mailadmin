@@ -1,3 +1,4 @@
+import { ask as confirmAsk } from '../confirm';
 import { api, composeForm } from './api';
 import { addrString, escapeHtml, plural, when } from './format';
 import { track } from './track';
@@ -338,7 +339,7 @@ export function useCompose(ctx) {
         ctx.router.visit('/calendar?' + p);
     }
 
-    function unsubscribe(m) {
+    async function unsubscribe(m) {
         const h = m.listUnsubscribe || '';
         const mailto = h.match(/<mailto:([^>]+)>/i);
         const http = h.match(/<(https?:[^>]+)>/i);
@@ -351,7 +352,7 @@ export function useCompose(ctx) {
             } catch {
                 /* оставим как есть */
             }
-            if (!window.confirm(`Открыть страницу отписки на сайте ${host}?`)) return;
+            if (!(await confirmAsk(`Открыть страницу отписки на сайте ${host}?`, { ok: 'Открыть' }))) return;
             window.open(http[1], '_blank', 'noopener');
 
             return;

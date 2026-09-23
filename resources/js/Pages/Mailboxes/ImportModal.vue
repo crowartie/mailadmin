@@ -4,6 +4,7 @@ import { computed, reactive, ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import Icon from '../../Components/Icon.vue';
 import Toggle from '../../Components/Toggle.vue';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({ domains: Array });
 const emit = defineEmits(['close']);
@@ -46,7 +47,7 @@ async function check() {
     } catch (err) { error.value = err.message; } finally { busy.value = false; }
 }
 async function run() {
-    if (!confirm(`Создать ${counts.value.create} ящиков и обновить ${counts.value.update}?`)) return;
+    if (!(await confirmAsk(`Создать ${counts.value.create} ящиков и обновить ${counts.value.update}?`, { ok: 'Создать' }))) return;
     busy.value = true; error.value = '';
     try {
         result.value = await api('/mailboxes/import/run', { rows: parsed.value.rows, mapping, ...opts });

@@ -4,6 +4,7 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
+import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
     tree: Array,
@@ -37,8 +38,8 @@ function save() {
     if (creating.value) form.transform(() => data).post('/units', { onSuccess: () => (creating.value = false) });
     else form.transform(() => data).put(`/units/${props.selected.id}`, { preserveScroll: true, onSuccess: () => (editing.value = false) });
 }
-function destroy() {
-    if (!confirm(`Удалить подразделение «${props.selected.name}»? Сотрудники и вложенные отделы поднимутся уровнем выше, адрес отдела перестанет работать.`)) return;
+async function destroy() {
+    if (!(await confirmAsk(`Удалить подразделение «${props.selected.name}»? Сотрудники и вложенные отделы поднимутся уровнем выше, адрес отдела перестанет работать.`, { ok: 'Удалить', danger: true }))) return;
     router.delete(`/units/${props.selected.id}`);
 }
 function toggle(u) { const i = picked.value.indexOf(u); i >= 0 ? picked.value.splice(i, 1) : picked.value.push(u); }
