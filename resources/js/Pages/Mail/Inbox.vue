@@ -71,7 +71,10 @@ function setEverywhere(on) {
     everywhere.value = !!on;
     load(1);
 }
-const list = ref(props.list);
+// Список — непрерывный кусок папки: с offset-го письма, сколько уже подгружено прокруткой.
+// seq меняется только при новой выборке (папка, отбор, поиск, переход к дате) — по нему
+// список прокручивается в начало; подгрузка и тихое обновление его не трогают.
+const list = ref({ offset: 0, seq: 0, ...props.list });
 const selected = ref([]);
 const cursor = ref(null);
 const open = ref(null);
@@ -127,7 +130,7 @@ const { syncUrl, pushUrl, onPopState } = useUrlState({
 // Опрос сервера, счётчик в заголовке вкладки и уведомления — в useLiveUpdates.
 const { poll, resetUidnext, schedule, stopPolling, wakeUp } = useLiveUpdates({
     folders, folder, list, settings, compose, menu,
-    load, openMessage, showToast,
+    load, reload, openMessage, showToast,
 });
 
 /**
@@ -143,25 +146,108 @@ const tabTitle = computed(() => {
     return (n ? `(${n}) ` : '') + (folderInfo.value.name || 'Почта');
 });
 
-async function load(page = 1, keepOpen = false, silent = false) {
+const PAGE = 40;
+// Больше строк не держим: при долгой прокрутке верх выгружается (и подгружается обратно, если вернуться).
+const WINDOW = 400;
+let listSeq = 0;
+const rowKey = (m) => (m.folder || '') + ':' + m.uid;
+function merge(a, b) {
+    const seen = new Set(a.map(rowKey));
+    return a.concat(b.filter((m) => !seen.has(rowKey(m))));
+}
+const listQuery = (extra) => ({ filter: filter.value, q: query.value, sort: sort.value, scope: everywhere.value ? 'all' : 'folder', ...extra });
+// Не держать весь экран на одном месте, пока грузится место на краю.
+const edge = ref('');   // '', 'more', 'newer'
+
+/** Изменить список, не сдвинув то, что человек видит (строка сверху экрана остаётся на месте). */
+const anchored = (fn) => (listRef.value?.keepAnchor ? listRef.value.keepAnchor(fn) : fn());
+
+/** Новая выборка: с начала (или со страницы из адреса, или с места перехода к дате). */
+async function load(page = 1, keepOpen = false, silent = false, offset = null) {
     if (!silent) loading.value = true;
     try {
+        const at = offset ?? (Math.max(1, page) - 1) * PAGE;
         // Тихая перезагрузка (после действия, по приходу почты) счётчики папок не запрашивает:
         // их приносит отдельный опрос состояния.
-        const r = await api.list(folder.value, { page, filter: filter.value, q: query.value, sort: sort.value, folders: !silent, scope: everywhere.value ? 'all' : 'folder' });
-        // Страница оказалась за концом списка (удалили всё на последней) — показать последнюю существующую.
-        if (!r.messages.length && r.page > 1 && r.pages < r.page) return load(Math.max(1, r.pages), keepOpen, silent);
-        list.value = { messages: r.messages, total: r.total, page: r.page, pages: r.pages, everywhere: !!r.everywhere, skipped: r.skipped || [] };
+        const r = await api.list(folder.value, listQuery({ offset: at, limit: PAGE, folders: !silent }));
+        // Место оказалось за концом списка (удалили всё в хвосте) — показать последние письма.
+        if (!r.messages.length && at > 0 && at >= r.total) return load(1, keepOpen, silent, Math.max(0, r.total - PAGE));
+        list.value = { messages: r.messages, total: r.total, offset: r.offset ?? at, page: 1, pages: 1, everywhere: !!r.everywhere, skipped: r.skipped || [], seq: ++listSeq };
         if (r.folders) folders.value = r.folders;
         if (!silent) selected.value = [];
         if (!keepOpen) { open.value = null; cursor.value = null; }
         syncUrl();
     } catch (e) { fail(e); } finally { if (!silent) loading.value = false; }
 }
-// После удаления/переноса страница «подтягивает» следующие письма фоном, а не пустеет (обращение №31).
+
+/** Перечитать то, что уже на экране (после действия, по приходу почты), не сбивая прокрутку. */
+async function reload(silent = true) {
+    const cur = list.value;
+    const n = Math.min(Math.max(cur.messages.length, PAGE), 200);
+    if (!silent) loading.value = true;
+    try {
+        const r = await api.list(folder.value, listQuery({ offset: cur.offset || 0, limit: n, folders: !silent }));
+        if (list.value.seq !== cur.seq) return;   // пока ждали, открыли другую папку
+        const apply = () => {
+            // Хвост дальше перечитанного куска оставляем как есть — он подтянется прокруткой.
+            list.value = { ...list.value, messages: merge(r.messages, list.value.messages.slice(n)), total: r.total, skipped: r.skipped || [] };
+        };
+        await anchored(apply);
+        if (r.folders) folders.value = r.folders;
+    } catch (e) { if (!silent) fail(e); } finally { if (!silent) loading.value = false; }
+}
+
+/** Прокрутили к концу — дочитать следующие письма. */
+async function loadMore() {
+    const cur = list.value;
+    if (edge.value || loading.value || (cur.offset || 0) + cur.messages.length >= cur.total) return;
+    edge.value = 'more';
+    try {
+        const r = await api.list(folder.value, listQuery({ offset: (cur.offset || 0) + cur.messages.length, limit: PAGE, folders: false }));
+        if (list.value.seq !== cur.seq) return;
+        await anchored(() => {
+            let messages = merge(list.value.messages, r.messages);
+            let offset = list.value.offset || 0;
+            const drop = messages.length - WINDOW;
+            if (drop > 0) { messages = messages.slice(drop); offset += drop; }
+            list.value = { ...list.value, messages, offset, total: r.total };
+        });
+    } catch (e) { fail(e); } finally { edge.value = ''; }
+}
+
+/** Прокрутили к началу, а список начинается не с первого письма (после перехода к дате) — дочитать новее. */
+async function loadNewer() {
+    const cur = list.value;
+    if (edge.value || loading.value || !(cur.offset > 0)) return;
+    edge.value = 'newer';
+    try {
+        const from = Math.max(0, cur.offset - PAGE);
+        const r = await api.list(folder.value, listQuery({ offset: from, limit: cur.offset - from, folders: false }));
+        if (list.value.seq !== cur.seq) return;
+        await anchored(() => {
+            let messages = merge(r.messages, list.value.messages);
+            if (messages.length > WINDOW) messages = messages.slice(0, WINDOW);
+            list.value = { ...list.value, messages, offset: from, total: r.total };
+        });
+    } catch (e) { fail(e); } finally { edge.value = ''; }
+}
+
+/** Перейти к дате: список с писем этого дня; выше — новее, ниже — старше. */
+async function jumpToDate(date) {
+    loading.value = true;
+    try {
+        const r = await api.listAt(folder.value, { date, filter: filter.value, q: query.value, sort: sort.value });
+        loading.value = false;
+        await load(1, false, false, Math.max(0, r.offset));
+        const d = new Date(date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+        if (r.offset >= list.value.total) showToast({ text: (sort.value === 'date-asc' ? 'После ' : 'До ') + d + ' писем нет' });
+        else showToast({ text: 'Письма с ' + d + (sort.value === 'date-asc' ? ' и новее' : ' и старше') }, 2500);
+    } catch (e) { loading.value = false; fail(e); }
+}
+// После удаления/переноса список «подтягивает» следующие письма фоном, а не пустеет (обращение №31).
 const REMOVING = ['delete', 'move', 'archive', 'spam', 'notspam', 'lists', 'snooze', 'unsnooze'];
 function refillAfter(op) {
-    if (REMOVING.includes(op)) load(list.value.page, true, true);
+    if (REMOVING.includes(op)) reload(true);
 }
 
 function go(path, f = 'all') {
@@ -170,13 +256,12 @@ function go(path, f = 'all') {
     query.value = '';
     navOpen.value = false;
     mobileRead.value = false;
-    list.value.page = 1;
     pushUrl();
     load(1);
 }
 function setFilter(f) { filter.value = f; load(1); }
 function search(q) { query.value = q; load(1); }
-async function refresh() { await load(list.value.page, true); }
+async function refresh() { await reload(false); }
 
 // ── Чтение ────────────────────────────────────────────────────
 async function openMessage(uid, e) {
@@ -241,7 +326,7 @@ function selectAll() {
 // Сами действия и окно отмены — в useMessageActions.
 const { act, flushPendingAct, undoAct, undoToast } = useMessageActions({
     list, folder, folders, selected, open, mobileRead, menu, toast, settings, folderInfo,
-    showToast, fail, load, refillAfter, bump,
+    showToast, fail, load, reload, refillAfter, bump,
     // Отмена отправки живёт в useCompose, а он создаётся ниже — иначе ему неоткуда взять
     // flushPendingAct. Поэтому здесь не сама функция, а обращение к ней в момент вызова.
     undoSend: () => undoSend(),
@@ -457,7 +542,7 @@ const {
 } = useCompose({
     props, settings, folders, folder, folderInfo, compose, open, cursor, mobileRead,
     menu, toast, list, dialog, outboxCount,
-    load, refresh, fail, showToast, flushPendingAct, rolePath, router,
+    load, reload, refresh, fail, showToast, flushPendingAct, rolePath, router,
 });
 
 // ── Горячие клавиши ───────────────────────────────────────────
@@ -559,7 +644,10 @@ onBeforeUnmount(() => {
                 @clear="selected = []"
                 @act="act"
                 @context="openMenu"
-                @page="load"
+                :edge="edge"
+                @more="loadMore"
+                @newer="loadNewer"
+                @jump="jumpToDate"
                 @filter="setFilter"
                 @search="search"
                 @refresh="refresh"

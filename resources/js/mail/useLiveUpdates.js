@@ -82,7 +82,7 @@ export function useLiveUpdates(ctx) {
                 const prev = lastUidnext;
                 // Тихая перезагрузка: обычная сбрасывала галочки и на секунду гасила список,
                 // а письмо приходит как раз тогда, когда человек отмечает пачку.
-                await ctx.load(ctx.list.value.page, true, true);
+                await ctx.reload(true);
                 // Сервер отдаёт признак «прочитано» (seen); поля unread в ответе нет никогда,
                 // поэтому список новых всегда получался пустым и уведомления не приходили.
                 const fresh = (ctx.list.value.messages || []).filter((m) => m.uid >= prev && !m.seen);

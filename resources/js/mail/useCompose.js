@@ -183,7 +183,7 @@ export function useCompose(ctx) {
     /** Черновик сохранён: обновляем счётчик папки и список, если открыты «Черновики». */
     function onDraftSaved() {
         api.folders().then((r) => { if (Array.isArray(r)) ctx.folders.value = r; }).catch(() => {});
-        if (ctx.folderInfo.value.role === 'drafts') ctx.load(ctx.list.value.page, true);
+        if (ctx.folderInfo.value.role === 'drafts') ctx.reload(false);
     }
 
     function onComposeClose(opts) {

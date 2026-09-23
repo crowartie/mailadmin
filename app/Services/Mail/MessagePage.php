@@ -56,6 +56,18 @@ class MessagePage
     }
 
 
+    /** Кусок списка без сортировки: $limit писем, начиная с $offset-го от новых. */
+    public function pageFastAt(int $offset, int $limit, int $total): ?array
+    {
+        $hi = $total - $offset;
+        if ($hi < 1) {
+            return [];
+        }
+        $lo = max(1, $hi - $limit + 1);
+
+        return $this->fetchPage($lo, $hi, IMAP::ST_MSGN, $hi - $lo + 1);
+    }
+
     /** То же для заранее известных UID (результат поиска или фильтра). */
     public function pageFastUids(array $uids): ?array
     {

@@ -107,8 +107,11 @@ export const api = {
     unshareFolder: (path, withMail) => request('DELETE', `/mail/api/folders/${enc(path)}/shares`, { with: withMail }),
     emptyFolder: (path) => request('POST', `/mail/api/folders/${enc(path)}/empty`),
 
-    list: (folder, { page = 1, filter = 'all', q = '', sort = 'date', folders = true, scope = 'folder' } = {}) => {
+    list: (folder, { page = 1, offset = null, limit = null, filter = 'all', q = '', sort = 'date', folders = true, scope = 'folder' } = {}) => {
         const p = new URLSearchParams({ page, filter });
+        // Прокрутка: кусок списка с любого места.
+        if (offset !== null) p.set('offset', String(offset));
+        if (limit !== null) p.set('limit', String(limit));
         if (q) p.set('q', q);
         if (scope === 'all') p.set('scope', 'all');
         if (sort && sort !== 'date') p.set('sort', sort);
@@ -116,6 +119,12 @@ export const api = {
         // на каждую папку, и на большом дереве это заметно замедляет список.
         if (!folders) p.set('folders', '0');
         return request('GET', `/mail/api/list/${enc(folder)}?${p}`);
+    },
+    // Переход к дате: с какого места списка начинаются письма этого дня.
+    listAt: (folder, { date, filter = 'all', q = '', sort = 'date' }) => {
+        const p = new URLSearchParams({ date, filter, sort });
+        if (q) p.set('q', q);
+        return request('GET', `/mail/api/list-at/${enc(folder)}?${p}`);
     },
     message: (folder, uid, peek = false) => request('GET', `/mail/api/message/${enc(folder)}/${uid}${peek ? '?peek=1' : ''}`),
     thread: (folder, uid) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/thread`),

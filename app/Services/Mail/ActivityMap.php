@@ -21,7 +21,7 @@ final class ActivityMap
         'cloud.restore' => 'Облако: вернул из корзины', 'cloud.purge' => 'Облако: удалил навсегда', 'cloud.upload' => 'Облако: загрузил файл',
         'cloud.upload-abort' => 'Облако: отменил загрузку', 'cloud.link' => 'Облако: дал ссылку', 'cloud.unlink' => 'Облако: отозвал ссылку',
         'cloud.attach' => 'Облако: приложил к письму', 'cloud.download' => 'Облако: скачал или посмотрел',
-        'list' => 'Листал список', 'search' => 'Искал', 'open' => 'Открыл письмо', 'thread' => 'Открыл переписку',
+        'list' => 'Листал список', 'list.date' => 'Перешёл к дате', 'search' => 'Искал', 'open' => 'Открыл письмо', 'thread' => 'Открыл переписку',
         'raw' => 'Исходник письма', 'attachment' => 'Скачал вложение', 'attachment.preview' => 'Просмотр вложения',
         'attachment.zip' => 'Скачал все вложения', 'attachment.mail' => 'Открыл вложенное письмо', 'image' => 'Картинка в тексте письма',
         'send' => 'Отправил письмо', 'send.cancel' => 'Отменил отправку', 'draft.save' => 'Сохранил черновик',
@@ -74,6 +74,7 @@ final class ActivityMap
             $is('security'), $is('rules') && $method === 'GET', $is('contacts/(books|groups|history)') && $method === 'GET',
             $is('tasks') && $method === 'GET', $is('quarantine') && $method === 'GET' => null,
 
+            $is('list-at/.+') => ['list.date', self::role(urldecode(substr($p, 8))), null],
             $is('list/.+') => self::listing(urldecode(substr($p, 5)), $query),
             $is('message/.+/attachment/\d+/preview\.pdf') => ['attachment.preview', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/attachment/\d+/message(/\d+)?') => ['attachment.mail', self::role(self::folderOf($p, 'message')), null],
@@ -193,6 +194,9 @@ final class ActivityMap
         $extra = [];
         if ($page > 1) {
             $extra[] = 'стр. ' . $page;
+        }
+        if ((int) ($query['offset'] ?? 0) > 0) {
+            $extra[] = 'прокрутка';
         }
         if (! empty($query['filter']) && $query['filter'] !== 'all') {
             $extra[] = 'отбор';

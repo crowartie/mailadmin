@@ -69,7 +69,7 @@ export function useMessageActions(ctx) {
             .then(() => { if (!keepalive) ctx.refillAfter(p.op); })
             // При уходе со страницы показывать уже нечего, в остальных случаях молчать нельзя:
             // письмо пропадало с экрана, хотя на сервере ничего не произошло.
-            .catch((e) => { if (!keepalive) { ctx.fail(e); ctx.load(ctx.list.value.page, true); } });
+            .catch((e) => { if (!keepalive) { ctx.fail(e); ctx.reload(false); } });
     }
 
     /** «Отменить» у отложенного действия. Возвращает false, если отменять нечего. */
@@ -80,7 +80,7 @@ export function useMessageActions(ctx) {
         pending = null;
         ctx.toast.value = null;
         // Сервер ничего не делал — достаточно перечитать список и счётчики.
-        ctx.load(ctx.list.value.page, true);
+        ctx.reload(false);
         // Удалённое письмо было открыто — показываем его снова, а не «Выберите письмо слева».
         if (p.opened) {
             ctx.open.value = p.opened;
@@ -153,7 +153,7 @@ export function useMessageActions(ctx) {
                 const p = pending;
                 pending = null;
                 ctx.toast.value = null;
-                runAct(p).then(() => ctx.refillAfter(p.op)).catch((e) => { ctx.fail(e); ctx.load(ctx.list.value.page, true); });
+                runAct(p).then(() => ctx.refillAfter(p.op)).catch((e) => { ctx.fail(e); ctx.reload(false); });
 
                 return;
             }
@@ -207,7 +207,7 @@ export function useMessageActions(ctx) {
             ctx.refillAfter(op);
         } catch (e) {
             ctx.fail(e);
-            ctx.load(ctx.list.value.page, true);
+            ctx.reload(false);
         }
     }
 

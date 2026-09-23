@@ -266,15 +266,21 @@ class MailStore
     // ── Списки и поиск ───────────────────────────────────────────────────
 
     /** @see MessageListing::list() */
-    public function list(string $path, int $page = 1, string $filter = 'all', ?string $query = null, string $sort = 'date'): array
+    public function list(string $path, int $page = 1, string $filter = 'all', ?string $query = null, string $sort = 'date', ?int $offset = null, ?int $limit = null): array
     {
-        return $this->listing->list($path, $page, $filter, $query, $sort);
+        return $this->listing->list($path, $page, $filter, $query, $sort, $offset, $limit);
+    }
+
+    /** @see MessageListing::offsetForDate() */
+    public function offsetForDate(string $path, string $filter, ?string $query, string $sort, string $date): int
+    {
+        return $this->listing->offsetForDate($path, $filter, $query, $sort, $date);
     }
 
     /** @see MessageListing::searchEverywhere() */
-    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date', ?string $from = null): array
+    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date', ?string $from = null, ?int $offset = null, ?int $limit = null): array
     {
-        return $this->listing->searchEverywhere($query, $page, $sort, $from);
+        return $this->listing->searchEverywhere($query, $page, $sort, $from, $offset, $limit);
     }
 
     /** @see MessageListing::searchFrom() */

@@ -17,6 +17,9 @@ class MessageController extends Controller
         // ?filter[]=x и ?q[]=a приходили массивом и роняли запрос ошибкой сервера.
         $request->validate([
             'page' => ['nullable', 'integer', 'min:1'],
+            // Прокрутка: кусок списка с любого места.
+            'offset' => ['nullable', 'integer', 'min:0'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
             'filter' => ['nullable', 'string', 'max:64'],
             'q' => ['nullable', 'string', 'max:500'],
             'sort' => ['nullable', 'string', 'in:date,date-asc,from,subject,size'],
@@ -28,15 +31,19 @@ class MessageController extends Controller
         // «Искать везде» имеет смысл только вместе с запросом: пустой поиск по всем папкам —
         // это просто все письма ящика.
         $everywhere = $request->query('scope') === 'all' && trim($q) !== '';
+        $offset = $request->query('offset') !== null ? (int) $request->query('offset') : null;
+        $limit = $request->query('limit') !== null ? (int) $request->query('limit') : null;
         $list = $everywhere
             // Папку, в которой человек стоит, передаём: с неё поиск и начинается.
-            ? $store->searchEverywhere($q, (int) $request->query('page', 1), (string) $request->query('sort', 'date'), $folder)
+            ? $store->searchEverywhere($q, (int) $request->query('page', 1), (string) $request->query('sort', 'date'), $folder, $offset, $limit)
             : $store->list(
                 $folder,
                 (int) $request->query('page', 1),
                 (string) $request->query('filter', 'all'),
                 $request->query('q'),
                 (string) $request->query('sort', 'date'),
+                $offset,
+                $limit,
             );
         // Каждый такой вызов делает STATUS по каждой папке ящика: на тихой перезагрузке
         // счётчики не нужны — их приносит отдельный опрос состояния.
@@ -45,6 +52,20 @@ class MessageController extends Controller
         }
 
         return response()->json($list);
+    }
+
+    /** Переход к дате: с какого места списка начинаются письма этого дня. */
+    public function listAt(Request $request, ImapSession $imap, string $folder): JsonResponse
+    {
+        $d = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'filter' => ['nullable', 'string', 'max:64'],
+            'q' => ['nullable', 'string', 'max:500'],
+            'sort' => ['nullable', 'string', 'in:date,date-asc'],
+        ]);
+        $store = new MailStore($imap->client());
+
+        return response()->json(['offset' => $store->offsetForDate($folder, (string) ($d['filter'] ?? 'all'), $d['q'] ?? null, (string) ($d['sort'] ?? 'date'), $d['date'])]);
     }
 
     public function show(Request $request, ImapSession $imap, string $folder, int $uid): JsonResponse

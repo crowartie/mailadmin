@@ -1,6 +1,7 @@
 <script setup>
-// Средняя колонка: поиск, фильтры, панель массовых действий, строки писем, страницы.
-import { computed, nextTick, ref, watch } from 'vue';
+// Средняя колонка: поиск, фильтры, панель массовых действий, строки писем.
+// Страниц нет: список дочитывается при прокрутке, а к нужному месту ведёт «К дате».
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import { dayGroup, hue, initials, plural, when } from '../../mail/format';
 
@@ -25,8 +26,12 @@ const props = defineProps({
     openUid: { type: Number, default: null },
     labels: { type: Array, default: () => [] },
     loading: Boolean,
+    edge: { type: String, default: '' },   // что дочитывается: 'more' — ниже, 'newer' — выше
 });
-const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'page', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
+const emit = defineEmits(['open', 'toggle', 'select-all', 'clear', 'act', 'context', 'more', 'newer', 'jump', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
+
+// При поиске по всем папкам у двух писем может совпасть UID — ключ строки с папкой.
+const rowKey = (m) => (m.folder || '') + ':' + m.uid;
 
 /**
  * Подпись группы перед строкой письма — «Сегодня», «Вчера», «Сентябрь».
@@ -78,12 +83,12 @@ if (initial.scope) scope.value = initial.scope;
 const q = ref(initial.text);
 watch(() => props.query, (v) => { const d = decomposeQuery(v); if (d.scope) scope.value = d.scope; q.value = d.text; });
 
-// 40: страница менялась, а список оставался прокрученным на прежнюю высоту — человек жал
-// «Старше» и попадал в середину новой страницы, теряя место, на котором остановился.
-// Показываем новый список с начала; на узком экране список прокручивается вместе со страницей.
+// Новая выборка (папка, отбор, поиск, переход к дате) показывается с начала; подгрузка
+// при прокрутке и тихое обновление место не сбивают. На узком экране список прокручивается
+// вместе со страницей.
 const rowsBox = ref(null);
 watch(
-    () => [props.folder, props.list?.page, props.filter, props.query, props.sort, props.everywhere].join('\u0000'),
+    () => [props.folder, props.list?.seq, props.filter, props.query, props.sort, props.everywhere].join('\u0000'),
     async (now, before) => {
         if (now === before) return;
         await nextTick();
@@ -95,6 +100,75 @@ watch(
         }
     },
 );
+
+// ── Прокрутка ──
+// На компьютере прокручивается сам список, на телефоне — вся страница: считаем для обоих.
+const ownScroll = () => !!rowsBox.value && rowsBox.value.scrollHeight > rowsBox.value.clientHeight + 1;
+const atEnd = computed(() => (props.list.offset || 0) + props.list.messages.length >= props.list.total);
+function checkEdges() {
+    const box = rowsBox.value;
+    if (!box || props.loading || props.edge) return;
+    let above; let below;
+    if (ownScroll()) {
+        above = box.scrollTop;
+        below = box.scrollHeight - box.scrollTop - box.clientHeight;
+    } else {
+        const r = box.getBoundingClientRect();
+        above = -r.top;
+        below = r.bottom - window.innerHeight;
+    }
+    // Дочитываем заранее, за пару экранов до края, — чтобы человек не упирался в «Загружаю».
+    if (below < 900 && !atEnd.value) emit('more');
+    else if (above < 150 && (props.list.offset || 0) > 0) emit('newer');
+}
+let raf = 0;
+const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; checkEdges(); }); };
+onMounted(() => { window.addEventListener('scroll', onScroll, { passive: true }); nextTick(checkEdges); });
+onBeforeUnmount(() => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); });
+// Список пришёл короче экрана (или дочитался) — проверить края ещё раз, иначе прокрутки не будет вовсе.
+watch(() => [props.list.messages.length, props.list.seq, props.edge, props.loading].join('|'), () => nextTick(checkEdges));
+
+/**
+ * Изменить список, не сдвинув видимое: запоминаем первую строку на экране и где она стоит,
+ * а после изменения возвращаем её туда же. Нужно, когда строки добавляются или убираются
+ * выше того, что человек читает (новые сверху, выгрузка верха при долгой прокрутке).
+ */
+async function keepAnchor(fn) {
+    const box = rowsBox.value;
+    const own = ownScroll();
+    const top = own && box ? box.getBoundingClientRect().top : 0;
+    const anchor = box ? [...box.querySelectorAll('.mrow')].find((el) => el.getBoundingClientRect().bottom > top + 1) : null;
+    const key = anchor?.dataset.key;
+    const was = anchor ? anchor.getBoundingClientRect().top : 0;
+    await fn();
+    await nextTick();
+    if (!box || !key) return;
+    const el = [...box.querySelectorAll('.mrow')].find((x) => x.dataset.key === key);
+    if (!el) return;
+    const delta = el.getBoundingClientRect().top - was;
+    if (Math.abs(delta) < 1) return;
+    if (own) box.scrollTop += delta; else window.scrollBy(0, delta);
+}
+
+// ── Переход к дате ──
+const jumpOpen = ref(false);
+const jumpDate = ref('');
+const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const canJump = computed(() => (props.sort === 'date' || props.sort === 'date-asc') && !props.everywhere);
+function openJump() {
+    if (!jumpDate.value) jumpDate.value = today();
+    jumpOpen.value = !jumpOpen.value;
+}
+function monthsAgo(n) {
+    const d = new Date(); d.setMonth(d.getMonth() - n);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+function jump(date) {
+    if (!date) return;
+    jumpOpen.value = false;
+    emit('jump', date);
+}
+
 const searchInput = ref(null);
 // Подсказка по операторам — по ссылке, а не всегда: с переключателем поля она нужна
 // только тем, кто пишет операторы руками.
@@ -117,7 +191,7 @@ function changeScope() {
     if (q.value.trim() || props.query) submitSearch();
 }
 
-defineExpose({ focusSearch: () => searchInput.value?.focus() });
+defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
 </script>
 
 <template>
@@ -181,7 +255,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
         </div>
         <div v-else class="mlist__meta">
             <span class="cb" :class="{ 'cb--on': allChecked }" role="checkbox" tabindex="0" :aria-checked="allChecked"
-                  title="Выбрать все на странице" @click="$emit('select-all')" @keydown.enter.prevent="$emit('select-all')" @keydown.space.prevent="$emit('select-all')">
+                  title="Выбрать все загруженные" @click="$emit('select-all')" @keydown.enter.prevent="$emit('select-all')" @keydown.space.prevent="$emit('select-all')">
                 <Icon v-if="allChecked" name="check" :size="12" />
             </span>
             <span>{{ list.total }} {{ plural(list.total, 'письмо', 'письма', 'писем') }}</span>
@@ -198,6 +272,22 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
                     <option value="size">Сначала тяжёлые</option>
                 </select>
             </span>
+            <!-- К дате: вместо сотни страниц — сразу к письмам нужного дня. -->
+            <span v-if="canJump" class="mlist__jump">
+                <button class="ib ib--sm" type="button" :class="{ 'ib--on': jumpOpen }" title="Перейти к дате" aria-label="Перейти к дате" :aria-expanded="jumpOpen" @click="openJump"><Icon name="cal" :size="14" /></button>
+                <form v-if="jumpOpen" class="mlist__jump-pop" @submit.prevent="jump(jumpDate)" @keydown.esc.prevent="jumpOpen = false">
+                    <label class="field"><span>Письма за дату</span><input v-model="jumpDate" class="input" type="date" :max="today()" required></label>
+                    <div class="mlist__jump-quick">
+                        <button type="button" class="chip" @click="jump(monthsAgo(1))">Месяц назад</button>
+                        <button type="button" class="chip" @click="jump(monthsAgo(6))">Полгода</button>
+                        <button type="button" class="chip" @click="jump(monthsAgo(12))">Год назад</button>
+                    </div>
+                    <div class="mlist__jump-go">
+                        <button type="button" class="btn btn--sm" @click="jumpOpen = false">Отмена</button>
+                        <button type="submit" class="btn btn--sm btn--primary">Перейти</button>
+                    </div>
+                </form>
+            </span>
             <span class="seg seg--sm">
                 <button type="button" class="seg__item" :class="{ 'seg__item--on': filter === 'all' }" @click="$emit('filter', 'all')">Все</button>
                 <button type="button" class="seg__item" :class="{ 'seg__item--on': filter === 'unread' }" @click="$emit('filter', 'unread')">Непрочитанные</button>
@@ -205,11 +295,14 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             </span>
         </div>
 
-        <div ref="rowsBox" class="mlist__rows" :style="loading ? 'opacity:.6' : ''">
-            <template v-for="(m, i) in list.messages" :key="m.uid">
+        <div ref="rowsBox" class="mlist__rows" :style="loading ? 'opacity:.6' : ''" @scroll.passive="onScroll">
+            <div v-if="edge === 'newer'" class="mlist__more">Загружаю более новые…</div>
+            <button v-else-if="(list.offset || 0) > 0 && list.messages.length" type="button" class="mlist__more mlist__more--btn" @click="$emit('newer')">Показать более новые</button>
+            <template v-for="(m, i) in list.messages" :key="rowKey(m)">
             <div v-if="groupLabel(i)" class="mlist__day">{{ groupLabel(i) }}</div>
             <div
                 class="mrow"
+                :data-key="rowKey(m)"
                 :class="{
                     'mrow--unread': !m.seen,
                     'mrow--on': m.uid === openUid || m.uid === opening,
@@ -262,12 +355,10 @@ defineExpose({ focusSearch: () => searchInput.value?.focus() });
             <div v-if="!list.messages.length && !loading" class="empty" style="padding-top: 60px">
                 {{ query ? 'Ничего не найдено' : filter !== 'all' ? 'Таких писем нет' : 'В этой папке пусто' }}
             </div>
+            <div v-else-if="edge === 'more'" class="mlist__more">Загружаю…</div>
+            <!-- Кнопка на случай, если прокрутка не сработала (очень высокий экран, старый браузер). -->
+            <button v-else-if="!atEnd && list.messages.length" type="button" class="mlist__more mlist__more--btn" @click="$emit('more')">Показать ещё</button>
+            <div v-else-if="list.messages.length > 20" class="mlist__more">Это все письма{{ query ? ' по запросу' : ' папки' }} ({{ list.total }})</div>
         </div>
-
-        <footer v-if="list.pages > 1" class="mlist__foot">
-            <button class="btn btn--sm" type="button" :disabled="loading || list.page <= 1" @click="$emit('page', list.page - 1)">Новее</button>
-            <span class="grow" style="text-align: center">{{ list.page }} / {{ list.pages }}</span>
-            <button class="btn btn--sm" type="button" :disabled="loading || list.page >= list.pages" @click="$emit('page', list.page + 1)">Старше</button>
-        </footer>
     </section>
 </template>

@@ -4,6 +4,7 @@ namespace App\Services\Mail;
 
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\IMAP;
+use Webklex\PHPIMAP\Query\WhereQuery;
 
 /**
  * Что показать человеку: страница папки, отбор, порядок и поиск.
@@ -53,9 +54,11 @@ class MessageListing
      *
      * @return array{messages:array,total:int,page:int,pages:int}
      */
-    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date', ?string $from = null): array
+    public function searchEverywhere(string $query, int $page = 1, string $sort = 'date', ?string $from = null, ?int $offset = null, ?int $limit = null): array
     {
         $page = max(1, $page);
+        [$offset, $limit] = self::window($page, $offset, $limit);
+        $page = intdiv($offset, self::PAGE) + 1;
         $own = [];
         $shared = [];
         $junk = [];
@@ -108,7 +111,7 @@ class MessageListing
             $this->q->withTimeout(null);
         }
         $total = count($hits);
-        $slice = array_slice($hits, ($page - 1) * self::PAGE, self::PAGE);
+        $slice = array_slice($hits, $offset, $limit);
 
         $messages = [];
         $byFolder = [];
@@ -139,6 +142,8 @@ class MessageListing
             'total' => $total,
             'page' => $page,
             'pages' => max(1, (int) ceil($total / self::PAGE)),
+            'offset' => $offset,
+            'limit' => $limit,
             'everywhere' => true,
             'skipped' => $skipped,
         ];
@@ -151,32 +156,15 @@ class MessageListing
      *
      * @return array{messages:array,total:int,page:int,pages:int}
      */
-    public function list(string $path, int $page = 1, string $filter = 'all', ?string $query = null, string $sort = 'date'): array
+    public function list(string $path, int $page = 1, string $filter = 'all', ?string $query = null, string $sort = 'date', ?int $offset = null, ?int $limit = null): array
     {
         $folder = $this->tree->folder($path);
         $page = max(1, $page);
+        // Кусок списка: с любого места (прокрутка, переход к дате) или по странице, как раньше.
+        [$offset, $limit] = self::window($page, $offset, $limit);
+        $page = intdiv($offset, self::PAGE) + 1;
 
-        $q = $folder->query()->setFetchBody(false)->setFetchFlags(true)->setFetchOrder('desc');
-        $q = $this->q->applyFilter($q, $filter);
-        $searching = $query !== null && trim($query) !== '';
-        $byFile = null;
-        $needAttachment = false;
-        if ($searching) {
-            $sq = new SearchQuery($query);
-            $q = $sq->apply($q);
-            $byFile = $sq->fileName();
-            $needAttachment = $sq->needsAttachment();
-        }
-        if (! $searching && $filter === 'all') {
-            $q->all();
-        }
-        // Вкладка «Вложения»: отбор по структуре письма, как и у оператора «есть:вложение».
-        if ($this->q->filterNeedsAttachment($filter)) {
-            $needAttachment = true;
-            if (! $searching) {
-                $q->all();
-            }
-        }
+        [$q, $searching, $byFile, $needAttachment] = $this->build($folder, $filter, $query);
 
         $messages = [];
         // Порядок писем задаёт дата письма, а не внутренний номер: письмо, перенесённое в папку
@@ -189,7 +177,7 @@ class MessageListing
         }
         if ($sorted !== null) {
             $total = count($sorted);
-            $slice = array_slice($sorted, ($page - 1) * self::PAGE, self::PAGE);
+            $slice = array_slice($sorted, $offset, $limit);
             $messages = $slice ? ($this->pages->pageFastUids($slice) ?? []) : [];
             // FETCH отдаёт письма в своём порядке, а не в том, в каком мы запросили UID:
             // раскладываем строки обратно по порядку сортировки.
@@ -214,6 +202,8 @@ class MessageListing
                     'total' => $total,
                     'page' => $page,
                     'pages' => max(1, (int) ceil($total / self::PAGE)),
+                    'offset' => $offset,
+                    'limit' => $limit,
                 ];
             }
         }
@@ -226,12 +216,12 @@ class MessageListing
                 $uids = $this->q->keepWithFile($path, $uids, $byFile);
             }
             $total = count($uids);
-            $slice = array_slice($uids, ($page - 1) * self::PAGE, self::PAGE);
+            $slice = array_slice($uids, $offset, $limit);
             $messages = $slice ? ($this->pages->pageFastUids($slice) ?? $this->pages->pageViaLibraryUids($q, $slice)) : [];
         } else {
             $total = (int) ($folder->examine()['exists'] ?? 0);
             if ($total > 0) {
-                $messages = $this->pages->pageFast($page, $total) ?? $this->pages->pageViaLibrary($q, $page);
+                $messages = $this->pages->pageFastAt($offset, $limit, $total) ?? $this->pages->pageViaLibrary($q, $page);
             }
         }
 
@@ -240,7 +230,94 @@ class MessageListing
             'total' => $total,
             'page' => $page,
             'pages' => max(1, (int) ceil($total / self::PAGE)),
+            'offset' => $offset,
+            'limit' => $limit,
         ];
+    }
+
+    /** Самый большой кусок списка за один запрос: больше — это уже не прокрутка, а выгрузка папки. */
+    public const MAX_LIMIT = 200;
+
+    /** @return array{0:int,1:int} [offset, limit] */
+    private static function window(int $page, ?int $offset, ?int $limit): array
+    {
+        $offset = $offset !== null ? max(0, $offset) : (max(1, $page) - 1) * self::PAGE;
+        $limit = $limit !== null ? max(1, min(self::MAX_LIMIT, $limit)) : self::PAGE;
+
+        return [$offset, $limit];
+    }
+
+    /**
+     * Запрос к папке с отбором и поиском — общий для списка и перехода к дате.
+     *
+     * @return array{0:WhereQuery,1:bool,2:?string,3:bool} [запрос, идёт поиск, имя файла из поиска, нужен отбор по вложениям]
+     */
+    private function build(\Webklex\PHPIMAP\Folder $folder, string $filter, ?string $query): array
+    {
+        $q = $folder->query()->setFetchBody(false)->setFetchFlags(true)->setFetchOrder('desc');
+        $q = $this->q->applyFilter($q, $filter);
+        $searching = $query !== null && trim($query) !== '';
+        $byFile = null;
+        $needAttachment = false;
+        if ($searching) {
+            $sq = new SearchQuery($query);
+            $q = $sq->apply($q);
+            $byFile = $sq->fileName();
+            $needAttachment = $sq->needsAttachment();
+        }
+        if (! $searching && $filter === 'all') {
+            $q->all();
+        }
+        // Вкладка «Вложения»: отбор по структуре письма, как и у оператора «есть:вложение».
+        if ($this->q->filterNeedsAttachment($filter)) {
+            $needAttachment = true;
+            if (! $searching) {
+                $q->all();
+            }
+        }
+
+        return [$q, $searching, $byFile, $needAttachment];
+    }
+
+    /**
+     * Переход к дате: с какого места списка начинаются письма этого дня (и старше — при
+     * порядке «сначала новые»; и новее — при «сначала старые»). Порядок — тот же, что у списка:
+     * по времени получения. Если позже нет ничего — конец списка.
+     */
+    public function offsetForDate(string $path, string $filter, ?string $query, string $sort, string $date): int
+    {
+        $folder = $this->tree->folder($path);
+        [$q, $searching, $byFile, $needAttachment] = $this->build($folder, $filter, $query);
+        $asc = $sort === 'date-asc';
+        $day = \Carbon\Carbon::parse($date)->startOfDay();
+
+        $order = $this->q->sortedUids($searching || $filter !== 'all' ? $q : null, $path, $asc ? 'date-asc' : 'date');
+        if ($order === null && ($searching || $filter !== 'all')) {
+            $order = $this->q->searchUids($q, $path, $searching);
+            rsort($order);
+            if ($asc) {
+                $order = array_reverse($order);
+            }
+        }
+        if ($order !== null && $needAttachment) {
+            $order = $this->q->keepWithFile($path, $order, $byFile);
+        }
+        $edge = $folder->query();
+        $edge = $asc ? $edge->whereSince($day) : $edge->whereBefore($day->copy()->addDay());
+        $hit = array_flip($this->q->searchUids($edge, $path, false));
+        if ($order === null) {
+            // Без сортировки список идёт по номеру письма (новые сверху): письма этого дня и старше — в хвосте.
+            $total = (int) ($folder->examine()['exists'] ?? 0);
+
+            return max(0, $total - count($hit));
+        }
+        foreach ($order as $i => $uid) {
+            if (isset($hit[(int) $uid])) {
+                return $i;
+            }
+        }
+
+        return count($order);
     }
 
 

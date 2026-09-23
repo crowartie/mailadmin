@@ -93,6 +93,7 @@ Route::middleware('area:mail')->group(function () {
             Route::delete('folders/{folder}', [FolderController::class, 'destroy'])->where('folder', '.*');
             Route::post('folders/{folder}/empty', [FolderController::class, 'empty'])->where('folder', '.*');
 
+            Route::get('list-at/{folder}', [MessageController::class, 'listAt'])->where('folder', '.*');
             Route::get('list/{folder}', [MessageController::class, 'list'])->where('folder', '.*');
             Route::get('message/{folder}/{uid}/attachment/{index}', [MessageController::class, 'attachment'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
             Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 'attachmentsZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
