@@ -3,6 +3,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import { track } from '../../mail/track';
+import CloudPicker from './CloudPicker.vue';
+import { insertLinks } from '../../mail/format';
 import RecipientInput from './RecipientInput.vue';
 import Editor from './Editor.vue';
 import Popover from './Popover.vue';
@@ -15,7 +17,7 @@ const props = defineProps({
     compose: { type: Object, required: true },
     identities: { type: Array, default: () => [] },
     settings: { type: Object, default: () => ({}) },
-    cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50 }) },
+    cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50, personal: false }) },
     limits: { type: Object, default: () => ({ messageMb: 25, maxFiles: 20 }) },
 });
 const emit = defineEmits(['close', 'send', 'toast', 'draft']);
@@ -246,6 +248,15 @@ function close() {
     emit('close');
 }
 
+// Файлы из личного облака: в письмо вставляется блок ссылок (перед подписью).
+const picker = ref(false);
+function onCloudAttach(r) {
+    picker.value = false;
+    html.value = insertLinks(html.value, r.html);
+    dirty.value = true;
+    emit('toast', { text: r.links.length === 1 ? 'Ссылка на файл добавлена в письмо' : 'Ссылки на файлы добавлены в письмо: ' + r.links.length });
+}
+
 function addFiles(list) {
     for (const f of list) {
         if (files.value.length >= MAX_FILES) {
@@ -474,6 +485,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             </span>
             <button class="ib" type="button" title="Вложить файл" aria-label="Вложить файл" @click="fileInput?.click()"><Icon name="clip" :size="17" /></button>
             <input ref="fileInput" type="file" multiple hidden @change="onFiles">
+            <button v-if="cloud.personal" class="ib" type="button" title="Приложить из облака — уйдёт ссылкой" aria-label="Приложить из облака" @click="picker = true"><Icon name="cloud" :size="17" /></button>
             <button class="ib" type="button" :class="{ 'ib--on': remindDays }" title="Напомнить, если не ответят" aria-label="Напомнить, если не ответят" @click="openMenu('remind', $event)">
                 <Icon name="bell" :size="17" /><span v-if="remindDays">{{ remindDays }} дн.</span>
             </button>
@@ -483,6 +495,8 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             <button class="ib" type="button" title="Сохранить черновик (Ctrl+S)" aria-label="Сохранить черновик" @click="saveDraft()"><Icon name="edit" :size="16" /></button>
             <button class="ib ib--danger" type="button" title="Удалить черновик и закрыть" aria-label="Удалить черновик и закрыть" @click="discard"><Icon name="trash" :size="16" /></button>
         </div>
+
+        <CloudPicker v-if="picker" @close="picker = false" @attach="onCloudAttach" />
 
         <Popover v-if="menu === 'later'" :x="menuAt.x" :y="menuAt.y - 250" @close="menu = null">
             <div class="pop__title">Отправить позже</div>

@@ -23,6 +23,7 @@ flowchart LR
         FS["Папки и общий доступ"]
         RL["Правила и автоответ"]
         CF["Облако для вложений"]
+        PC["Облако сотрудника"]
         FB["Обращения"]
         AL["Журнал действий"]
     end
@@ -39,6 +40,7 @@ flowchart LR
     OM --> MA
     MV --> SR
     CS --> CF
+    PC --> CS
     CS --> OUTM
     RL --> IN
     FS --> RL
@@ -74,6 +76,7 @@ flowchart LR
 | Папки и общий доступ | [folders-and-shares.md](folders-and-shares.md) |
 | Правила и автоответ | [rules.md](rules.md) |
 | Облако для больших вложений | [cloud-files.md](cloud-files.md) |
+| Облако сотрудника: папки, загрузка с докачкой, ссылки | [personal-cloud.md](personal-cloud.md) |
 | Обращения сотрудников | [feedback.md](feedback.md) |
 | Журнал действий и «Активность» | [activity-log.md](activity-log.md) |
 

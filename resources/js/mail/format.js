@@ -177,3 +177,10 @@ export function presets() {
     out.push({ label: 'Через неделю', sub: DAYS[week.getDay()] + ' 09:00', at: at(week, 9) });
     return out;
 }
+
+/** Вставить блок ссылок на файлы в текст письма: перед подписью, если она есть, иначе в конец. */
+export function insertLinks(html, block) {
+    const text = html || '';
+    const at = text.search(/<div class="sig"/);
+    return at < 0 ? text + block : text.slice(0, at) + block + text.slice(at);
+}

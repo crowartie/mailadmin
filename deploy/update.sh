@@ -65,6 +65,7 @@ bash "$HERE/dovecot-fts-learn.sh" >/dev/null 2>&1 || true
 bash "$HERE/postfix-quota-soft.sh" >/dev/null 2>&1 || true
 bash "$HERE/postfix-delivery.sh" >/dev/null 2>&1 || true
 bash "$HERE/antispam-extras.sh" >/dev/null 2>&1 || true
+bash "$HERE/nccloud-accel.sh" || true
 systemctl reload php8.3-fpm
 # Octane держит код в памяти — после выкладки воркеры надо перезапустить (мягко, без обрыва запросов)
 if systemctl is-active -q mailadmin-octane; then systemctl reload mailadmin-octane || systemctl restart mailadmin-octane; fi

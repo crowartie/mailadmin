@@ -102,6 +102,30 @@ Route::middleware('area:mail')->group(function () {
             Route::get('message/{folder}/{uid}/attachment/{index}/message/{sub}', [MessageController::class, 'attachedPart'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index')->whereNumber('sub');
             // Своё хранилище больших вложений: мои файлы, продление, удаление, предпросмотр в почте.
             Route::get('files', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'index']);
+            // Личное облако сотрудника (раздел «Облако», файлы в Nextcloud).
+            Route::prefix('cloud')->group(function () {
+                Route::get('list', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'list']);
+                Route::get('folders', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'folders']);
+                Route::get('recent', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'recent']);
+                Route::get('links', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'withLinks']);
+                Route::post('folder', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'mkdir']);
+                Route::post('rename', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'rename']);
+                Route::post('move', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'move']);
+                Route::post('delete', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'delete']);
+                Route::get('trash', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'trash']);
+                Route::post('trash/{id}/restore', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'restore'])->whereNumber('id');
+                Route::delete('trash/{id}', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'purge'])->whereNumber('id');
+                Route::delete('trash', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'emptyTrash']);
+                Route::post('uploads', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'uploadStart']);
+                Route::get('uploads/{id}', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'uploadStatus'])->where('id', 'mc[0-9a-f]{30}');
+                Route::put('uploads/{id}/{n}', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'uploadChunk'])->where('id', 'mc[0-9a-f]{30}')->whereNumber('n');
+                Route::post('uploads/{id}/finish', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'uploadFinish'])->where('id', 'mc[0-9a-f]{30}');
+                Route::delete('uploads/{id}', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'uploadAbort'])->where('id', 'mc[0-9a-f]{30}');
+                Route::post('link', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'link']);
+                Route::post('unlink', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'unlink']);
+                Route::post('attach', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'attach']);
+                Route::get('file', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'file']);
+            });
             Route::get('files/{token}', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'show'])->where('token', '[A-Za-z0-9_-]{20,64}');
             Route::post('files/{token}/renew', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'renew'])->where('token', '[A-Za-z0-9_-]{20,64}');
             Route::delete('files/{token}', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'destroy'])->where('token', '[A-Za-z0-9_-]{20,64}');
@@ -178,5 +202,6 @@ Route::middleware('area:mail')->group(function () {
         // Календарь и контакты — тот же интерфейс, данные в встроенном sabre/dav.
         Route::get('/calendar', [GroupwareController::class, 'calendar']);
         Route::get('/contacts', [GroupwareController::class, 'contacts']);
+        Route::get('/cloud', [GroupwareController::class, 'cloud']);
     });
 });

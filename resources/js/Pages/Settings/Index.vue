@@ -123,7 +123,9 @@ const cloudLogin = ref('');          // ссылка Login Flow, пока ждё
 const cloudWaiting = ref(false);
 const cloudError = ref('');
 const manual = ref(false);
-const cloudForm = useForm({ enabled: !!props.cloud?.enabled, folder: props.cloud?.folder || 'Почта', threshold_mb: props.cloud?.threshold_mb ?? 10, expire_days: props.cloud?.expire_days ?? 30, link_password: props.cloud?.link_password || '' });
+const cloudForm = useForm({ enabled: !!props.cloud?.enabled, folder: props.cloud?.folder || 'Почта', threshold_mb: props.cloud?.threshold_mb ?? 10, expire_days: props.cloud?.expire_days ?? 30, link_password: props.cloud?.link_password || '',
+    personal_enabled: !!props.cloud?.personal_enabled, personal_root: props.cloud?.personal_root || 'Облако сотрудников', personal_quota_gb: props.cloud?.personal_quota_gb ?? 50,
+    personal_link_days: props.cloud?.personal_link_days ?? 30, personal_trash_days: props.cloud?.personal_trash_days ?? 30 });
 const manualForm = useForm({ url: props.cloud?.url || '', login: '', app_password: '' });
 const filesForm = useForm({
     enabled: !!props.files?.enabled, host: props.files?.host || '',
@@ -597,6 +599,16 @@ function testAlerts() { testing.value = true; post('/settings/alerts/test', {}, 
                                 <label class="field"><span>Пароль на ссылки</span><input v-model="cloudForm.link_password" class="input" placeholder="не нужен"><span class="hint">Один на все ссылки; получателю его сообщает отправитель</span></label>
                             </div>
                             <label class="field" style="margin-top: 8px"><span>Папка в облаке</span><input v-model="cloudForm.folder" class="input"><span class="hint">Внутри — подпапки по сотрудникам и месяцам: {{ cloudForm.folder }}/ivanov@…/2026-09/файл</span></label>
+                            <div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border)">
+                                <Toggle v-model="cloudForm.personal_enabled" label="Облако сотрудников: раздел «Облако» в веб-почте" />
+                                <p class="hint" style="margin: 6px 0 0">У каждого ящика своя папка в облаке служебной учётки. Сотрудник загружает туда файлы любого размера (частями, с докачкой), даёт на отдельный файл публичную ссылку и прикладывает файлы к письмам ссылками. Общего доступа между сотрудниками нет.</p>
+                                <div class="toggles--3" style="margin-top: 12px">
+                                    <label class="field"><span>Место на сотрудника, ГБ</span><input v-model.number="cloudForm.personal_quota_gb" class="input" type="number" min="0.1" step="0.1"></label>
+                                    <label class="field"><span>Ссылка по умолчанию, дней</span><input v-model.number="cloudForm.personal_link_days" class="input" type="number" min="0" max="3650"><span class="hint">0 — бессрочно</span></label>
+                                    <label class="field"><span>Корзина хранит, дней</span><input v-model.number="cloudForm.personal_trash_days" class="input" type="number" min="1" max="3650"></label>
+                                </div>
+                                <label class="field" style="margin-top: 8px"><span>Папка сотрудников в облаке</span><input v-model="cloudForm.personal_root" class="input"><span class="hint">{{ cloudForm.personal_root }}/ivanov@…/ — по папке на ящик</span></label>
+                            </div>
                             <div class="form-actions" style="margin-top: 14px">
                                 <button class="btn btn--primary" type="submit" :disabled="cloudForm.processing">Сохранить</button>
                                 <button class="btn" type="button" @click="post('/settings/cloud/test')"><Icon name="upload" /> Проверить загрузку</button>

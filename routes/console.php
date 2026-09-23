@@ -68,3 +68,5 @@ Schedule::command('backup:run --if-due')->everyMinute()->withoutOverlapping()->r
 Schedule::command('backup:run --purge-quarantine')->dailyAt('04:10');
 // Журнал действий сотрудников хранится 90 дней.
 Schedule::command('activity:prune')->dailyAt('04:40')->withoutOverlapping();
+// Корзина личного облака: удалённое дольше срока стирается из Nextcloud.
+Schedule::command('cloud:purge-trash')->dailyAt('04:45')->withoutOverlapping();

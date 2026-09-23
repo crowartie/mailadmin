@@ -45,7 +45,8 @@ class InboxController extends Controller
             'quarantine' => \App\Http\Controllers\Mail\QuarantineController::count($imap->user()),
             // Индикатор занятого места: разметка в панели папок была, данных не было.
             'quota' => $store->quota(),
-            'cloud' => ['enabled' => \App\Services\Cloud\Cloud::enabled(), 'thresholdMb' => \App\Services\Cloud\Cloud::thresholdMb(), 'maxMb' => \App\Services\Cloud\Cloud::maxMb()],
+            'cloud' => ['enabled' => \App\Services\Cloud\Cloud::enabled(), 'thresholdMb' => \App\Services\Cloud\Cloud::thresholdMb(), 'maxMb' => \App\Services\Cloud\Cloud::maxMb(),
+                'personal' => \App\Services\Cloud\PersonalCloud::enabled()],
             // Предупреждение о тяжёлом письме раньше срабатывало по зашитым 20 МБ и не было
             // связано с настоящим пределом почтового сервера. Отдаём его форме вместе
             // с пределом на число файлов, который проверяет ComposeController.

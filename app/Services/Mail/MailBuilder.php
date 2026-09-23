@@ -313,6 +313,15 @@ class MailBuilder
      */
     private function cloudBlockHtml(array $links): string
     {
+        return self::linksBlock($links);
+    }
+
+    /**
+     * Блок «К этому письму приложены ссылки…» — один вид для больших вложений и для файлов
+     * из личного облака. $links: name, size, url, expires, password (ссылка с паролем).
+     */
+    public static function linksBlock(array $links): string
+    {
         $fmt = fn (int $b): string => \App\Support\Format::size($b);
         $rows = '';
         foreach ($links as $l) {
@@ -323,6 +332,7 @@ class MailBuilder
             $rows .= '<div style="margin:0 0 10px">'
                 . '<div style="font-weight:600;color:#1b2430">' . htmlspecialchars($l['name']) . ' <span style="font-weight:400;color:#6b7280">(' . $fmt($l['size']) . ')</span></div>'
                 . '<div style="color:#4b5563">Ссылка для скачивания: <a href="' . $url . '" style="color:#1a56db;word-break:break-all">' . $shown . '</a></div>'
+                . (! empty($l['password']) ? '<div style="color:#6b7280;font-size:12px">Ссылка защищена паролем — его сообщит отправитель.</div>' : '')
                 . '</div>';
         }
         $until = array_filter(array_map(fn ($l) => $l['expires'], $links));

@@ -16,6 +16,11 @@ final class ActivityMap
     public const LABELS = [
         'page.mail' => 'Открыл почту', 'page.folder' => 'Открыл папку', 'page.settings' => 'Открыл настройки',
         'page.feedback' => 'Открыл обращения', 'page.quarantine' => 'Открыл карантин', 'print' => 'Печать письма',
+        'page.cloud' => 'Открыл облако', 'cloud.open' => 'Облако: открыл папку', 'cloud.mkdir' => 'Облако: создал папку',
+        'cloud.rename' => 'Облако: переименовал', 'cloud.move' => 'Облако: перенёс', 'cloud.delete' => 'Облако: удалил',
+        'cloud.restore' => 'Облако: вернул из корзины', 'cloud.purge' => 'Облако: удалил навсегда', 'cloud.upload' => 'Облако: загрузил файл',
+        'cloud.upload-abort' => 'Облако: отменил загрузку', 'cloud.link' => 'Облако: дал ссылку', 'cloud.unlink' => 'Облако: отозвал ссылку',
+        'cloud.attach' => 'Облако: приложил к письму', 'cloud.download' => 'Облако: скачал или посмотрел',
         'list' => 'Листал список', 'search' => 'Искал', 'open' => 'Открыл письмо', 'thread' => 'Открыл переписку',
         'raw' => 'Исходник письма', 'attachment' => 'Скачал вложение', 'attachment.preview' => 'Просмотр вложения',
         'attachment.zip' => 'Скачал все вложения', 'attachment.mail' => 'Открыл вложенное письмо', 'image' => 'Картинка в тексте письма',
@@ -49,6 +54,9 @@ final class ActivityMap
     {
         $method = strtoupper($method);
         $path = trim($path, '/');
+        if ($path === 'cloud') {
+            return ['page.cloud', null, null];
+        }
         if (! str_starts_with($path, 'mail')) {
             return null;
         }
@@ -111,6 +119,24 @@ final class ActivityMap
             $is('quarantine/[^/]+/release') => ['quarantine.release', null, null],
             $is('quarantine/[^/]+') && $method === 'DELETE' => ['quarantine.delete', null, null],
             $is('feedback') && $method === 'POST' => ['feedback.send', null, null],
+            // Облако: части загрузки и служебные запросы — фон, в журнал идут действия человека.
+            $is('cloud/folders'), $is('cloud/uploads/[^/]+') && $method === 'GET', $is('cloud/uploads/[^/]+/\d+'), $is('cloud/uploads') => null,
+            $is('cloud/list') => ['cloud.open', null, ($query['path'] ?? '') === '' ? 'корень' : 'папка'],
+            $is('cloud/recent') => ['cloud.open', null, 'недавние'],
+            $is('cloud/links') => ['cloud.open', null, 'со ссылками'],
+            $is('cloud/trash') && $method === 'GET' => ['cloud.open', null, 'корзина'],
+            $is('cloud/folder') => ['cloud.mkdir', null, null],
+            $is('cloud/rename') => ['cloud.rename', null, null],
+            $is('cloud/move') => ['cloud.move', null, 'штук ' . count((array) ($input['paths'] ?? []))],
+            $is('cloud/delete') => ['cloud.delete', null, 'штук ' . count((array) ($input['paths'] ?? []))],
+            $is('cloud/trash/\d+/restore') => ['cloud.restore', null, null],
+            $is('cloud/trash(/\d+)?') => ['cloud.purge', null, null],
+            $is('cloud/uploads/[^/]+/finish') => ['cloud.upload', null, null],
+            $is('cloud/uploads/[^/]+') => ['cloud.upload-abort', null, null],
+            $is('cloud/link') => ['cloud.link', null, ! empty($input['password']) ? 'с паролем' : null],
+            $is('cloud/unlink') => ['cloud.unlink', null, null],
+            $is('cloud/attach') => ['cloud.attach', null, 'файлов ' . count((array) ($input['paths'] ?? []))],
+            $is('cloud/file') => ['cloud.download', null, ! empty($query['inline']) ? 'просмотр' : 'скачивание'],
             default => null,
         };
     }

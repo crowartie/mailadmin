@@ -121,6 +121,7 @@ flowchart TD
 | `files:check` | 04:35 | целостность хранилища по размеру |
 | `files:check --hash` | вс 04:50 | целостность по контрольной сумме |
 | `activity:prune` | 04:40 | журнал действий старше 90 дней |
+| `cloud:purge-trash` | 04:45 | корзина облака сотрудников старше срока |
 
 Вне расписания: `migrate:run` (перенос ящиков), `dav:import`, `rules:sync`,
 `setup:bootstrap`, `admin:create`, `mail:fix-subscriptions`.

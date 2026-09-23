@@ -30,6 +30,7 @@ const services = [
     { href: '/mail', icon: 'mail', label: 'Почта' },
     { href: '/calendar', icon: 'cal', label: 'Календарь' },
     { href: '/contacts', icon: 'users', label: 'Контакты' },
+    { href: '/cloud', icon: 'cloud', label: 'Облако' },
 ];
 
 // «Ещё» на телефоне: в нижней панели помещается только четыре пункта.

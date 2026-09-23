@@ -1,7 +1,7 @@
 // Обёртка над fetch для /mail/api/*: CSRF из cookie, JSON, единый разбор ошибок.
 import { recordApiError } from './diag';
 
-function xsrf() {
+export function xsrf() {
     const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : '';
 }
@@ -68,6 +68,27 @@ async function request(method, url, body, opts = {}) {
 const enc = (s) => encodeURIComponent(s);
 
 export const api = {
+    // Личное облако (раздел «Облако»): пути — относительно папки сотрудника.
+    cloudList: (path = '') => request('GET', `/mail/api/cloud/list?path=${enc(path)}`),
+    cloudFolders: (path = '') => request('GET', `/mail/api/cloud/folders?path=${enc(path)}`),
+    cloudRecent: () => request('GET', '/mail/api/cloud/recent'),
+    cloudLinks: () => request('GET', '/mail/api/cloud/links'),
+    cloudTrash: () => request('GET', '/mail/api/cloud/trash'),
+    cloudMkdir: (path, name) => request('POST', '/mail/api/cloud/folder', { path, name }),
+    cloudRename: (path, name) => request('POST', '/mail/api/cloud/rename', { path, name }),
+    cloudMove: (paths, to) => request('POST', '/mail/api/cloud/move', { paths, to }),
+    cloudDelete: (paths) => request('POST', '/mail/api/cloud/delete', { paths }),
+    cloudRestore: (id) => request('POST', `/mail/api/cloud/trash/${enc(id)}/restore`),
+    cloudPurge: (id) => request('DELETE', `/mail/api/cloud/trash/${enc(id)}`),
+    cloudEmptyTrash: () => request('DELETE', '/mail/api/cloud/trash'),
+    cloudUploadStart: (path, name, size) => request('POST', '/mail/api/cloud/uploads', { path, name, size }),
+    cloudUploadStatus: (id) => request('GET', `/mail/api/cloud/uploads/${enc(id)}`),
+    cloudUploadFinish: (id) => request('POST', `/mail/api/cloud/uploads/${enc(id)}/finish`, null, { timeout: 600000 }),
+    cloudUploadAbort: (id) => request('DELETE', `/mail/api/cloud/uploads/${enc(id)}`),
+    cloudLink: (path, days, password) => request('POST', '/mail/api/cloud/link', password === undefined ? { path, days } : { path, days, password }),
+    cloudUnlink: (path) => request('POST', '/mail/api/cloud/unlink', { path }),
+    cloudAttach: (paths) => request('POST', '/mail/api/cloud/attach', { paths }),
+    cloudFileUrl: (path, inline = false) => `/mail/api/cloud/file?path=${enc(path)}${inline ? '&inline=1' : ''}`,
     quarantineList: () => request('GET', '/mail/api/quarantine'),
     quarantineRelease: (id) => request('POST', `/mail/api/quarantine/${enc(id)}/release`),
     quarantineDelete: (id) => request('DELETE', `/mail/api/quarantine/${enc(id)}`),

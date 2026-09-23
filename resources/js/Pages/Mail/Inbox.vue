@@ -16,7 +16,7 @@ import Dialog from '../../Components/Mail/Dialog.vue';
 import ShortcutsHelp from '../../Components/Mail/ShortcutsHelp.vue';
 import PrintPreview from '../../Components/Mail/PrintPreview.vue';
 import { api, composeForm } from '../../mail/api';
-import { addrString, escapeHtml, hotkey, plural, presets, when } from '../../mail/format';
+import { addrString, escapeHtml, hotkey, insertLinks, plural, presets, when } from '../../mail/format';
 import { useColumns } from '../../mail/useColumns';
 import { useCompose } from '../../mail/useCompose';
 import { useHotkeys } from '../../mail/useHotkeys';
@@ -478,6 +478,15 @@ onMounted(() => {
         if (document.visibilityState === 'visible') { wakeUp(); poll(); }
     });
     if (props.openUid) openMessage(props.openUid);
+    // «Приложить к письму» из облака: файлы выбраны там, здесь — новое письмо уже со ссылками.
+    let cloudPaths = null;
+    try { cloudPaths = JSON.parse(sessionStorage.getItem('cloud-attach') || 'null'); sessionStorage.removeItem('cloud-attach'); } catch { cloudPaths = null; }
+    if (Array.isArray(cloudPaths) && cloudPaths.length) {
+        api.cloudAttach(cloudPaths).then((r) => {
+            startCompose('new');
+            compose.value.html = insertLinks(compose.value.html, r.html);
+        }).catch(fail);
+    }
     if (props.composeTo !== null) {
         startCompose('new');
         compose.value.to = parseList(props.composeTo);

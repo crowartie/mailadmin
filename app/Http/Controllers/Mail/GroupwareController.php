@@ -13,6 +13,22 @@ use Inertia\Response;
 /** Страницы «Контакты» и «Календарь» — первая отрисовка; дальше всё через /mail/api/*. */
 class GroupwareController extends Controller
 {
+    /** Личное облако сотрудника: файлы в Nextcloud, интерфейс — наш. */
+    public function cloud(ImapSession $imap): Response
+    {
+        $user = $imap->user();
+        $s = \App\Services\Cloud\Nextcloud::settings();
+
+        return Inertia::render('Mail/Cloud', [
+            'user' => $user,
+            'settings' => Setting::for($user),
+            'enabled' => \App\Services\Cloud\PersonalCloud::enabled(),
+            'linkDays' => (int) ($s['personal_link_days'] ?? 30),
+            'trashDays' => (int) ($s['personal_trash_days'] ?? 30),
+            'chunkSize' => \App\Services\Cloud\PersonalCloud::CHUNK,
+        ]);
+    }
+
     public function contacts(Request $request, ImapSession $imap, DavStore $store): Response
     {
         $user = $imap->user();
