@@ -100,13 +100,23 @@ watch(
         // там папка, страница и отбор те же самые.
         if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) {
             window.scrollTo({ top: 0 });
+            const sc = scroller();
+            if (sc) sc.scrollTop = 0;
         }
     },
 );
 
 // ── Прокрутка ──
-// На компьютере прокручивается сам список, на телефоне — вся страница: считаем для обоих.
+// На компьютере прокручивается сам список, на телефоне — общий контейнер вокруг него: считаем для обоих.
 const ownScroll = () => !!rowsBox.value && rowsBox.value.scrollHeight > rowsBox.value.clientHeight + 1;
+/** Кто прокручивается, если не сам список: ближайший предок с прокруткой, иначе окно. */
+function scroller() {
+    for (let el = rowsBox.value?.parentElement; el && el !== document.body; el = el.parentElement) {
+        const oy = getComputedStyle(el).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) return el;
+    }
+    return null;
+}
 const atEnd = computed(() => (props.list.offset || 0) + props.list.messages.length >= props.list.total);
 // Вверх дочитываем только по прокрутке человека: сразу после перехода к дате список стоит
 // в самом верху, и без этого над выбранным днём тут же появлялись более новые письма.
@@ -119,8 +129,10 @@ function checkEdges(scrolled = false) {
         below = box.scrollHeight - box.scrollTop - box.clientHeight;
     } else {
         const r = box.getBoundingClientRect();
-        above = -r.top;
-        below = r.bottom - window.innerHeight;
+        const sc = scroller();
+        const view = sc ? sc.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+        above = view.top - r.top;
+        below = r.bottom - view.bottom;
     }
     // Дочитываем заранее, за пару экранов до края, — чтобы человек не упирался в «Загружаю».
     if (below < 900 && !atEnd.value) emit('more');
@@ -129,8 +141,9 @@ function checkEdges(scrolled = false) {
 let raf = 0;
 // Колесо вверх в самом верху списка прокрутки не даёт (scrollTop уже 0) — ловим его отдельно (см. @wheel).
 const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; checkEdges(Date.now() > quietUntil); }); };
-onMounted(() => { window.addEventListener('scroll', onScroll, { passive: true }); nextTick(() => checkEdges()); });
-onBeforeUnmount(() => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); });
+// Прокрутка не всплывает — слушаем на перехвате: так видна прокрутка любого контейнера, где бы список ни стоял.
+onMounted(() => { document.addEventListener('scroll', onScroll, { passive: true, capture: true }); nextTick(() => checkEdges()); });
+onBeforeUnmount(() => { document.removeEventListener('scroll', onScroll, { capture: true }); if (raf) cancelAnimationFrame(raf); });
 // Список пришёл короче экрана (или дочитался) — проверить края ещё раз, иначе прокрутки не будет вовсе.
 watch(() => [props.list.messages.length, props.list.seq, props.edge, props.loading].join('|'), () => nextTick(() => checkEdges()));
 
@@ -142,7 +155,7 @@ watch(() => [props.list.messages.length, props.list.seq, props.edge, props.loadi
 async function keepAnchor(fn) {
     const box = rowsBox.value;
     const own = ownScroll();
-    const top = own && box ? box.getBoundingClientRect().top : 0;
+    const top = own && box ? box.getBoundingClientRect().top : (scroller()?.getBoundingClientRect().top || 0);
     const anchor = box ? [...box.querySelectorAll('.mrow')].find((el) => el.getBoundingClientRect().bottom > top + 1) : null;
     const key = anchor?.dataset.key;
     const was = anchor ? anchor.getBoundingClientRect().top : 0;
@@ -153,7 +166,8 @@ async function keepAnchor(fn) {
     if (!el) return;
     const delta = el.getBoundingClientRect().top - was;
     if (Math.abs(delta) < 1) return;
-    if (own) box.scrollTop += delta; else window.scrollBy(0, delta);
+    if (own) box.scrollTop += delta;
+    else { const sc = scroller(); if (sc) sc.scrollTop += delta; else window.scrollBy(0, delta); }
 }
 
 // ── Переход к дате ──
@@ -301,7 +315,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
             </span>
         </div>
 
-        <div ref="rowsBox" class="mlist__rows" :style="loading ? 'opacity:.6' : ''" @scroll.passive="onScroll" @wheel.passive="$event.deltaY < 0 && checkEdges(true)">
+        <div ref="rowsBox" class="mlist__rows" :style="loading ? 'opacity:.6' : ''" @wheel.passive="$event.deltaY < 0 && checkEdges(true)">
             <div v-if="edge === 'newer'" class="mlist__more">Загружаю более новые…</div>
             <button v-else-if="(list.offset || 0) > 0 && list.messages.length" type="button" class="mlist__more mlist__more--btn" @click="$emit('newer')">Показать более новые</button>
             <template v-for="(m, i) in list.messages" :key="rowKey(m)">
