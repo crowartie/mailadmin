@@ -1169,6 +1169,7 @@ select.input { padding-right: 28px; }
 
         &:hover { background: v.$c-surface-2; text-decoration: none; }
         &--exit { color: v.$c-no; }
+        &--exit-ask, &--exit-ask:hover { background: v.$c-no; color: #fff; font-weight: 600; }
         &--close { justify-content: center; color: v.$c-muted; border-top: 1px solid v.$c-border; margin-top: 6px; }
     }
 

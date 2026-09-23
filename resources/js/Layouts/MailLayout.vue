@@ -67,10 +67,25 @@ function toggleTheme() {
 // «Сообщить о проблеме» доступно с любой страницы: так и узнаём, где именно не сработало.
 const feedback = ref(false);
 
+// Выход в два щелчка без окна браузера «Подтвердите действие»: первый показывает рядом
+// красную кнопку «Выйти», второй (по ней) выходит. Не нажали — через 5 секунд кнопка прячется.
+const exitAsk = ref(false);
+let exitTimer = null;
+function askExit() {
+    exitAsk.value = !exitAsk.value;
+    clearTimeout(exitTimer);
+    if (exitAsk.value) exitTimer = setTimeout(() => { exitAsk.value = false; }, 5000);
+}
 function logout() {
-    if (!window.confirm('Выйти из почты?')) return;
+    clearTimeout(exitTimer);
+    exitAsk.value = false;
     router.post('/mail/logout');
 }
+// Щелчок мимо и Escape прячут кнопку.
+function exitOutside(e) { if (exitAsk.value && !e.target.closest('.rail__exitbox, .sheet__item--exit')) exitAsk.value = false; }
+function exitEsc(e) { if (e.key === 'Escape') exitAsk.value = false; }
+onMounted(() => { document.addEventListener('click', exitOutside, true); document.addEventListener('keydown', exitEsc); });
+onBeforeUnmount(() => { document.removeEventListener('click', exitOutside, true); document.removeEventListener('keydown', exitEsc); clearTimeout(exitTimer); });
 </script>
 
 <template>
@@ -101,9 +116,12 @@ function logout() {
             <button class="rail__item" type="button" title="Тёмная / светлая тема" style="border: none; background: none; cursor: pointer" @click="toggleTheme" aria-label="Тёмная / светлая тема">
                 <Icon :name="isDark ? 'sun' : 'moon'" />
             </button>
-            <button v-if="user" class="rail__item" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" @click="logout" aria-label="Выйти">
-                <Icon name="logout" />
-            </button>
+            <span v-if="user" class="rail__exitbox">
+                <button class="rail__item" :class="{ 'rail__item--on': exitAsk }" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" :aria-expanded="exitAsk" aria-label="Выйти" @click="askExit">
+                    <Icon name="logout" />
+                </button>
+                <button v-if="exitAsk" class="rail__exit" type="button" @click="logout"><Icon name="logout" :size="15" />Выйти</button>
+            </span>
             <div class="rail__avatar" :title="user">{{ initials }}</div>
         </aside>
 
@@ -137,7 +155,10 @@ function logout() {
                     <Icon :name="isDark ? 'sun' : 'moon'" :size="20" />{{ isDark ? 'Светлая тема' : 'Тёмная тема' }}
                 </button>
                 <!-- 334: «Выйти» стояло наравне с разделами и читалось как раздел. -->
-                <button class="sheet__item sheet__item--exit" type="button" @click="logout"><Icon name="logout" :size="20" />Выйти из почты</button>
+                <!-- Первое касание — вопрос прямо на кнопке, второе — выход. -->
+                <button class="sheet__item sheet__item--exit" :class="{ 'sheet__item--exit-ask': exitAsk }" type="button" @click="exitAsk ? logout() : askExit()">
+                    <Icon name="logout" :size="20" />{{ exitAsk ? 'Нажмите ещё раз, чтобы выйти' : 'Выйти из почты' }}
+                </button>
                 <button class="sheet__item sheet__item--close" type="button" @click="more = false">Закрыть</button>
             </div>
         </div>
