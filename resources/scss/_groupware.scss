@@ -16,6 +16,7 @@
     &:hover { background: v.$c-surface-2; color: v.$c-text; }
 }
 .mnav__item:hover .mnav__more, .mnav__item:focus-within .mnav__more { opacity: 1; }
+.mnav__more + .mnav__count { margin-left: 4px; }
 // С мышью «···» появляется только при наведении и места не держит: невидимая, она отбирала у имени
 // папки 35 px, и на 1024 px «Входящие» обрезались до «Входя…».
 @media (hover: hover) {
@@ -23,8 +24,7 @@
     .mnav__item:hover .mnav__more, .mnav__item:focus-within .mnav__more { display: inline; }
     // Счётчик — по-прежнему у правого края, пока «···» спрятана.
     .mnav__more + .mnav__count { margin-left: auto; }
-    .mnav__item:hover .mnav__more + .mnav__count, .mnav__item:focus-within .mnav__more + .mnav__count { margin-left: 4px; }
-}
+    .mnav__item:hover .mnav__more + .mnav__count, .mnav__item:focus-within }
 .mnav__more + .mnav__count { margin-left: 4px; }
 .mnav__count { margin-left: auto; font-size: 12px; color: v.$c-faint; font-variant-numeric: tabular-nums; }
 .mnav__item--on .mnav__count { color: v.$c-accent-ink; font-weight: 600; }
