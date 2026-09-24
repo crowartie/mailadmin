@@ -1571,8 +1571,9 @@ button.mrow__av:hover, button.mrow__av:focus-visible { box-shadow: 0 0 0 2px v.$
     }
 }
 
-// Совсем узкий телефон: «Сохранить» прячем — черновик и так сохраняется сам.
-@media (max-width: 380px) {
+// Телефон: «Сохранить» прячем — черновик и так сохраняется сам, а на 390 px из-за этой кнопки
+// корзина уезжала на вторую строку.
+@media (max-width: 480px) {
     .compose__save { display: none; }
 }
 
