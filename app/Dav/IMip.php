@@ -37,7 +37,8 @@ class IMip extends IMipPlugin
 
         try {
             $email = (new Email())
-                ->from(new Address($from))
+                // С нашего домена — с именем организатора (как в обычных письмах), а не голым адресом.
+                ->from(in_array(strtolower(explode('@', $from)[1] ?? ''), $domains, true) ? new Address($from, \App\Services\Mail\MailBuilder::senderName($from)) : new Address($from))
                 ->to(new Address($to))
                 ->subject($subject)
                 ->text("Приглашение на встречу во вложении.\n\n" . $subject)

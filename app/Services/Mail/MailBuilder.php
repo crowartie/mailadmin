@@ -35,12 +35,11 @@ class MailBuilder
     public function build(array $form, array $files = [], array $cloud = [], bool $forSend = false): Email
     {
         $settings = Setting::for($this->session->user());
-        $fromName = trim((string) ($settings['display_name'] ?? '')) ?: $this->session->user();
+        $fromName = self::senderName($this->session->user(), $settings);
         $fromMail = $this->pickFrom($form['from'] ?? null);
         if ($fromMail !== strtolower($this->session->user()) && collect(self::sharedSenders($this->session->user()))->firstWhere('mail', $fromMail)) {
             // От имени общего ящика — его имя (настройки ящика, иначе имя из карточки), а не имя пишущего.
-            $fromName = trim((string) (Setting::for($fromMail)['display_name'] ?? ''))
-                ?: (\App\Models\Vmail\Mailbox::query()->where('username', $fromMail)->value('name') ?: $fromMail);
+            $fromName = self::senderName($fromMail);
         }
 
         $email = (new Email())->from(new Address($fromMail, $fromName))->subject((string) ($form['subject'] ?? ''));
@@ -321,6 +320,23 @@ class MailBuilder
         return [$kept, $links];
     }
 
+
+    /**
+     * Имя отправителя в «От кого»: своё из настроек веб-почты, иначе ФИО из справочника, иначе адрес.
+     * Раньше без своего имени (так у 112 из 115 ящиков) в письме стояло «"vvv@innotec.su" <vvv@innotec.su>»:
+     * получатель не видел, кто пишет, а спам-фильтры (Яндекс) принимают такое за робота.
+     */
+    public static function senderName(string $mail, ?array $settings = null): string
+    {
+        $mail = strtolower(trim($mail));
+        $own = trim((string) (($settings ?? Setting::for($mail))['display_name'] ?? ''));
+        if ($own !== '' && strcasecmp($own, $mail) !== 0) {
+            return $own;
+        }
+        $dir = trim((string) \App\Models\Vmail\Mailbox::query()->where('username', $mail)->value('name'));
+
+        return $dir !== '' ? $dir : $mail;
+    }
 
     /** Заголовок черновика с выбранным файлом облака (base64 от JSON {path, name, size}). */
     public const CLOUD_HEADER = 'X-Mailadmin-Cloud';
