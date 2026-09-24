@@ -375,7 +375,17 @@ function onKey(e) {
     if (e.code === 'KeyS') { e.preventDefault(); saveDraft(false); }
 }
 
-watch([to, cc, bcc, subject, html, from, keepAttachments], () => { dirty.value = true; }, { deep: true });
+watch([to, cc, bcc, subject, from, keepAttachments], () => { dirty.value = true; }, { deep: true });
+// Текст: правкой считаем всё, кроме подмены ссылок на картинки самими картинками при открытии
+// (embedServerImages) — иначе открытый и сразу закрытый ответ оставлял черновик.
+const noSrc = (s) => (s || '').replace(/\ssrc="[^"]*"/g, '');
+let htmlSeen = html.value;
+watch(html, (v) => {
+    // Сравнение дорогое (в разметке мегабайты картинок) — только пока в ней были ссылки на сервер.
+    const same = htmlSeen.includes('/mail/api/message/') && noSrc(v) === noSrc(htmlSeen);
+    htmlSeen = v;
+    if (!same) dirty.value = true;
+});
 
 // Подпись следует за полем «От»: у общего ящика — его собственная, у своих адресов — личная.
 // Блок подписи (div.sig) заменяется целиком; текст письма, цитата и пересланное не трогаются.
@@ -417,6 +427,7 @@ function saveOnHide() {
 onMounted(() => {
     dirty.value = false;
     autosave = setInterval(() => saveDraft(true), 30000);
+    editor.value?.embedServerImages();
     document.addEventListener('visibilitychange', saveOnHide);
     setTimeout(() => {
         if (to.value.length) editor.value?.focusStart();

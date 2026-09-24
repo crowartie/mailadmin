@@ -85,6 +85,9 @@ class MailBuilder
                 $email->getHeaders()->addTextHeader(self::CLOUD_HEADER, base64_encode((string) json_encode($f, JSON_UNESCAPED_UNICODE)));
             }
         }
+        // Картинки исходного письма (ответ с цитатой, пересылка, открытый черновик) приходят ссылками
+        // на наш же сервер — получатель их не откроет. Раньше так и уходили: битые картинки у получателя.
+        $html = $this->embedServerImages($html);
         // Картинки, встроенные редактором как data: (логотип в подписи, снимок из буфера) — во вложения с cid:
         // Gmail и часть клиентов data:-картинки в письмах не показывают, cid показывают все.
         $n = 0;
@@ -504,5 +507,41 @@ class MailBuilder
         }
 
         return $out;
+    }
+
+    /**
+     * Ссылки на картинки исходного письма (/mail/api/message/<папка>/<номер>/attachment/<n>) — в data:,
+     * дальше они встраиваются в письмо как обычные картинки (cid:).
+     *
+     * Такие ссылки ставит просмотр письма: картинки из текста он отдаёт ссылкой, а не строкой data:
+     * (см. MessageBody). Окно письма подменяет их само (Editor.embedServerImages), здесь — запасной
+     * путь: письмо отправили раньше, чем картинки успели подгрузиться. Исходного письма уже нет —
+     * картинку убираем: ссылка на чужой для получателя сервер ему ни к чему.
+     */
+    private function embedServerImages(string $html): string
+    {
+        if (! str_contains($html, '/mail/api/message/')) {
+            return $html;
+        }
+        $cache = [];
+
+        return preg_replace_callback('#src=(["\'])(?:https?://[^/"\']+)?/mail/api/message/([^/"\'?]+)/(\d+)/attachment/(\d+)(?:\?[^"\']*)?\1#i', function ($m) use (&$cache) {
+            $key = $m[2] . '/' . $m[3] . '/' . $m[4];
+            if (! array_key_exists($key, $cache)) {
+                $cache[$key] = null;
+                try {
+                    $part = $this->store->attachment(rawurldecode($m[2]), (int) $m[3], (int) $m[4]);
+                    $mime = strtolower($part->getMimeType());
+                    $data = $part->getContent();
+                    if (str_starts_with($mime, 'image/') && $data !== '' && strlen($data) <= 10_000_000) {
+                        $cache[$key] = 'data:' . $mime . ';base64,' . base64_encode($data);
+                    }
+                } catch (\Throwable) {
+                    // письма уже нет или оно недоступно — картинку убираем ниже
+                }
+            }
+
+            return 'src=' . $m[1] . ($cache[$key] ?? '') . $m[1];
+        }, $html) ?? $html;
     }
 }

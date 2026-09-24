@@ -145,8 +145,36 @@ watch(() => props.modelValue, (v) => {
     checkBlank();
 });
 
+// Картинка из текста исходного письма — ссылка на наш же сервер (см. MessageBody).
+const SERVER_IMG = /^\/mail\/api\/message\/.+\/attachment\/\d+/;
+const asDataUrl = (blob) => new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = no; fr.readAsDataURL(blob); });
+
 defineExpose({
     focus: () => el.value?.focus(),
+    /**
+     * Подставить сами картинки вместо ссылок на них. Ссылка в письме не годится: получатель её
+     * не откроет, а у черновика после сохранения меняется номер, и картинка в окне ломалась.
+     * Возвращает, сколько подставлено; что не вышло — встроит сервер при сохранении (MailBuilder).
+     */
+    embedServerImages: async () => {
+        const root = el.value;
+        if (!root) return 0;
+        const imgs = [...root.querySelectorAll('img')].filter((i) => SERVER_IMG.test(i.getAttribute('src') || ''));
+        let n = 0;
+        await Promise.all(imgs.map(async (img) => {
+            try {
+                const r = await fetch(img.getAttribute('src'), { credentials: 'same-origin' });
+                if (!r.ok) return;
+                const b = await r.blob();
+                if (!b.type.startsWith('image/') || b.size > 10_000_000) return;
+                img.setAttribute('src', await asDataUrl(b));
+                n++;
+            } catch { /* останется ссылкой — встроит сервер */ }
+        }));
+        if (n) sync();
+
+        return n;
+    },
     /**
      * Заменить только блок подписи, не переписывая поле целиком: смена отправителя
      * переписывала весь текст, курсор прыгал в начало, а история отмены (Ctrl+Z) стиралась.

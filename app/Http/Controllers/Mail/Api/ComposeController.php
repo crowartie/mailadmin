@@ -22,7 +22,9 @@ class ComposeController extends Controller
         'cc' => ['nullable', 'string', 'max:5000'],
         'bcc' => ['nullable', 'string', 'max:5000'],
         'subject' => ['nullable', 'string', 'max:998'],
-        'html' => ['nullable', 'string', 'max:2000000'],
+        // Картинки из текста исходного письма окно письма встраивает строкой data: (Editor.embedServerImages),
+        // и разметка с парой фотографий легко перерастает 2 МБ — старый предел не давал сохранить черновик.
+        'html' => ['nullable', 'string', 'max:30000000'],
         'inReplyTo' => ['nullable', 'string', 'max:998'],
         'references' => ['nullable', 'string', 'max:5000'],
         'answeredFolder' => ['nullable', 'string'],
