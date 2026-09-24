@@ -1457,7 +1457,10 @@ button.mrow__av:hover, button.mrow__av:focus-visible { box-shadow: 0 0 0 2px v.$
 
 // ── Письма в работе: вкладки внизу окна письма ───────────────
 // Со строкой вкладок окно письма не может занимать всю высоту панели — делит её со строкой.
-.mread--tabs .compose { min-height: 0; max-height: none; flex: 1 1 0; margin-bottom: 12px; }
+// Обёртка окна письма (одна на вкладку): занимает всё место панели, кроме строки вкладок.
+.mread__cmp { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.mread__cmp .compose { flex: 1 1 auto; }
+.mread--tabs .compose { margin-bottom: 12px; }
 .ctabs {
     flex-shrink: 0;
     display: flex;
@@ -1517,7 +1520,7 @@ button.mrow__av:hover, button.mrow__av:focus-visible { box-shadow: 0 0 0 2px v.$
 .ctabs-pill { display: none; }
 @media (max-width: 860px) {
     .ctabs { display: none; }
-    .mread--tabs .compose { max-height: calc(100% - 36px); }
+    
     .ctabs-pill {
         display: flex; flex-direction: column; align-items: center; gap: 8px;
         position: fixed; left: 12px; right: 12px; z-index: 60;

@@ -763,10 +763,11 @@ onBeforeUnmount(() => {
             <section class="mread" :class="{ 'mread--tabs': showTabs }">
                 <!-- Все письма в работе смонтированы, видно только открытое: свёрнутое не теряет
                      ни текста, ни курсора, ни выбранных файлов. -->
+                <!-- Обёртка нужна: у окна письма два корня (просмотрщик вложений и само окно), а v-show
+                     на таком компоненте не действует — свёрнутые окна оставались видны. -->
                 <template v-for="t in composeTabs" :key="t.token">
+                    <div v-if="!t.placeholder" v-show="compose && compose.token === t.token" class="mread__cmp">
                     <Compose
-                        v-if="!t.placeholder"
-                        v-show="compose && compose.token === t.token"
                         :ref="(el) => setComposeRef(t.token, el)"
                         :compose="t"
                         :active="!!compose && compose.token === t.token"
@@ -779,6 +780,7 @@ onBeforeUnmount(() => {
                         @draft="onDraftSaved"
                         @meta="(m) => (t.meta = m)"
                     />
+                    </div>
                 </template>
                 <MessageView
                     v-if="!compose && open"
