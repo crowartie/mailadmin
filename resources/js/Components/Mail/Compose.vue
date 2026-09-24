@@ -539,7 +539,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             <button class="ib" type="button" title="Ещё" aria-label="Ещё" @click="openMenu('more', $event)"><Icon name="dots" :size="17" /></button>
             <span class="grow" />
             <span class="status">{{ status }}</span>
-            <button class="ib" type="button" title="Сохранить черновик (Ctrl+S)" aria-label="Сохранить черновик" @click="saveDraft()"><Icon name="edit" :size="16" /></button>
+            <button class="ib compose__save" type="button" title="Сохранить черновик (Ctrl+S)" aria-label="Сохранить черновик" @click="saveDraft()"><Icon name="edit" :size="16" /></button>
             <button class="ib ib--danger" type="button" title="Удалить черновик и закрыть" aria-label="Удалить черновик и закрыть" @click="discard"><Icon name="trash" :size="16" /></button>
         </div>
 

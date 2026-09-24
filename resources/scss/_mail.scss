@@ -522,6 +522,9 @@
     &__who-btn { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; padding: 0; border: none; background: none; font: inherit; color: inherit; cursor: pointer; text-align: left; border-radius: 6px; }
     &__who-btn:hover b { text-decoration: underline; text-underline-offset: 3px; }
     &__who-btn b, &__who-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    // Тесно — сначала сжимается адрес, потом имя: раньше оба обрезались поровну,
+    // и «Попов Алексей Владимир…» соседствовал с «popovav@innotec…».
+    &__who-btn .msg__mail { flex: 0 1000 auto; min-width: 60px; }
 }
 
 .mnav__owner {
@@ -1218,6 +1221,19 @@ select.input { padding-right: 28px; }
     // отображаемое имя и подделывают в мошеннических письмах.
     .msg__from { white-space: normal; }
     .msg__mail { display: block; margin-left: 0; font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
+    // Кнопка с именем — строчная, и display: block у адреса в ней не работал: адрес стоял
+    // рядом с именем и обрезался. Ставим их друг под другом.
+    .msg__who-btn { flex-direction: column; align-items: flex-start; gap: 0; }
+    .msg__who-btn .msg__mail { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+    .msg__who-btn b { white-space: normal; }
+    // Быстрый ответ: поле ввода — во всю строку, кнопки под ним (поле сжималось до 57 px).
+    .quick__row { flex-wrap: wrap; }
+    .quick__row input { flex: 1 1 100%; }
+    .quick__row .btn { flex: 1; justify-content: center; }
+    // Нижняя панель письма: все кнопки в одну строку, надпись о сохранении — над ними.
+    .compose__foot { gap: 2px; padding: 10px 8px; }
+    .compose__foot .status { order: -1; flex-basis: 100%; padding: 0 4px 4px; }
+    .compose__foot .status:empty { display: none; }
     // Кнопки письма — отдельной строкой: иначе они вместе с датой съедали ширину,
     // и адрес отправителя рвался посреди домена.
     .msg__hd { flex-wrap: wrap; }
@@ -1235,6 +1251,9 @@ select.input { padding-right: 28px; }
     .rule > div:nth-child(3) { grid-column: 2 / -1; }
     // Панель действий письма: на телефоне только значки, в одну-две строки
     .mread__bar .ib { font-size: 0; gap: 0; padding: 8px; }
+    // На 390 px корзина уезжала на вторую строку.
+    .mread__bar { padding: 8px; gap: 2px; }
+    .mread__bar .sep { margin: 0 2px; }
     // Круглая кнопка «Написать» висит в правом нижнем углу — нижняя подпись списка не должна под ней прятаться.
     .mlist__more { padding-bottom: 84px; }
     .mread__bar .ib.mobile-only { display: inline-flex !important; }
@@ -1551,3 +1570,14 @@ button.mrow__av:hover, button.mrow__av:focus-visible { box-shadow: 0 0 0 2px v.$
         &__head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; span { font-size: 12.5px; color: v.$c-muted; } }
     }
 }
+
+// Совсем узкий телефон: «Сохранить» прячем — черновик и так сохраняется сам.
+@media (max-width: 380px) {
+    .compose__save { display: none; }
+}
+
+// Карантин: описание — под заголовком, вровень с ним (а не со стрелкой «назад»).
+.qhint { margin: 0 0 14px 46px; max-width: 70ch; font-size: 13px; color: v.$c-muted; }
+@media (max-width: 860px) { .qhint { margin-left: 0; } }
+// Контакты на телефоне: подпись книги («Сотрудники») отбирала ширину у имени — имена обрезались.
+@media (max-width: 600px) { .crow .crow__book { display: none; } }

@@ -151,7 +151,8 @@
     .cl-side { width: auto; flex: 0 0 auto; border-right: none; border-bottom: 1px solid v.$c-border; padding: 10px 12px; }
     .cl-side__up { height: 46px; font-size: 15px; border-radius: 12px; }
     .cl-nav { flex-direction: row; overflow-x: auto; margin: 0; }
-    .cl-nav__item { width: auto; white-space: nowrap; }
+    // Пункты в строку не сжимаются: раньше «Все файлы» наезжали на значок «Недавних».
+    .cl-nav__item { width: auto; white-space: nowrap; flex: 0 0 auto; }
     .cl-nav__title, .cl-nav__row, .cl-nav__hint, .cl-quota { display: none; }
     .cl-hide-sm { display: none; }
     .cl-row, .cl-row--head { grid-template-columns: 30px minmax(0, 1fr) 76px 70px; }
@@ -160,4 +161,10 @@
     .cl-details { position: fixed; inset: 0 0 64px 0; width: auto; z-index: 30; }
     .cl-up { left: 16px; right: 16px; width: auto; bottom: 76px; }
     .cl-drop { display: none; }
+}
+// Телефон: под имя файла оставалось 91 px. Кнопки строки прячем — они есть в карточке файла,
+// которая открывается нажатием на строку.
+@media (max-width: 600px) {
+    .cl-row, .cl-row--head { grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; padding: 0 12px; }
+    .cl-acts, .cl-row--head > span:last-child { display: none; }
 }

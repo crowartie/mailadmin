@@ -59,7 +59,7 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
                 <button class="ib" type="button" title="Обновить" @click="reload" aria-label="Обновить"><Icon name="refresh" :size="16" /></button>
             </div>
             <!-- 280: текст шёл во всю ширину экрана мелким бледным шрифтом. -->
-            <p class="hint" style="margin: 0 0 14px 46px; max-width: 70ch; font-size: 13px; color: var(--muted)">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а вы сможете добавить отправителя в исключения, чтобы фильтр больше его не трогал. Через {{ keepDays }} {{ plural(keepDays, 'день', 'дня', 'дней') }} карантин чистится сам.</p>
+            <p class="hint qhint">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а вы сможете добавить отправителя в исключения, чтобы фильтр больше его не трогал. Через {{ keepDays }} {{ plural(keepDays, 'день', 'дня', 'дней') }} карантин чистится сам.</p>
             <section class="card mlist" style="width: auto; max-width: 1100px; flex: none; border-right: 1px solid var(--border); overflow: hidden">
                 <div v-if="ask" class="attn" style="margin: 12px 18px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
                     <Icon name="check" :size="16" /><span>Это не спам? Больше не задерживать письма</span>
