@@ -376,6 +376,9 @@
 .mread {
     flex: 1;
     min-width: 0;
+    // Панель письма сжимается по ширине самой области чтения, а не окна: колонки тянут мышью,
+    // и при одной и той же ширине окна письму может достаться и 550, и 1000 px.
+    container: mread / inline-size;
     display: flex;
     flex-direction: column;
     background: v.$c-bg;
@@ -397,22 +400,6 @@
 
     &__scroll { flex: 1; overflow-y: auto; padding: 18px 22px 40px; }
 
-    // На ноутбучных 1280–1440 панель не помещалась в одну строку, и «Спам» с «Удалить»
-    // переносились под «Ответить» — ровно туда, где по ним промахиваются.
-    // Поджимаем отступы и убираем подпись у самой редкой кнопки, оставляя значок.
-    @media (max-width: 1560px) {
-        &__bar { padding: 10px 12px; gap: 2px; }
-        &__bar .ib { padding: 0 6px; gap: 4px; }
-        &__bar .sep { margin: 0 2px; }
-        &__bar .ib--wide { font-size: 0; gap: 0; }
-    }
-
-    // Ноутбуки 1280–1400: места хватает только на значки. Подпись остаётся у «Ответить» —
-    // это основное действие; у остальных кнопок текст всплывает подсказкой при наведении.
-    @media (max-width: 1400px) {
-        &__bar .ib:not(.ib--keep) { font-size: 0; gap: 0; min-width: 30px; padding: 0 5px; }
-        &__bar { gap: 1px; }
-    }
 
     &__title {
         display: flex;
@@ -631,6 +618,27 @@
     &--danger:hover { color: v.$c-no; background: v.$c-no-soft; }
     &--sm { height: 28px; min-width: 28px; }
     &:disabled { opacity: .4; cursor: default; }
+}
+
+// Панель письма, когда области чтения тесно: раньше «Спам» и «Удалить» переносились под «Ответить» —
+// ровно туда, где по ним промахиваются. Сначала поджимаем отступы и убираем подпись у самой
+// редкой кнопки, потом оставляем подпись только у «Ответить» (текст — в подсказке при наведении).
+// Только на компьютере: у телефона своя панель (ниже, max-width: 860px).
+@media (min-width: 861px) {
+    @container mread (max-width: 940px) {
+        .mread__bar { padding: 10px 12px; gap: 2px; }
+        .mread__bar .ib { padding: 0 6px; gap: 4px; }
+        .mread__bar .sep { margin: 0 2px; }
+        .mread__bar .ib--wide { font-size: 0; gap: 0; }
+    }
+    @container mread (max-width: 800px) {
+        .mread__bar .ib:not(.ib--keep) { font-size: 0; gap: 0; min-width: 30px; padding: 0 5px; }
+        .mread__bar { gap: 1px; }
+    }
+    @container mread (max-width: 520px) {
+        .mread__bar { padding: 8px; }
+        .mread__bar .sep { display: none; }
+    }
 }
 
 // ── Всплывающие меню ─────────────────────────────────────────
