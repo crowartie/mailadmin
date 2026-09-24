@@ -645,8 +645,10 @@ function closeTab(token) {
 }
 // Alt+1…5 — к письму в работе (Ctrl+цифра браузер забирает себе: переключает свои вкладки).
 function onTabKey(e) {
-    if (!e.altKey || e.ctrlKey || e.metaKey || !/^[1-9]$/.test(e.key) || !settings.value.shortcuts) return;
-    const t = composeTabs.value[Number(e.key) - 1];
+    // Цифру берём по физической клавише: на Mac Option+1 даёт «¡», а не «1».
+    const d = /^Digit([1-9])$/.exec(e.code || '')?.[1] || (/^[1-9]$/.test(e.key) ? e.key : null);
+    if (!e.altKey || e.ctrlKey || e.metaKey || !d || !settings.value.shortcuts) return;
+    const t = composeTabs.value[Number(d) - 1];
     if (!t) return;
     e.preventDefault();
     openTab(t.token);
