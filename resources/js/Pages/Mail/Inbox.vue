@@ -271,7 +271,19 @@ function go(path, f = 'all') {
     load(1);
 }
 function setFilter(f) { filter.value = f; load(1); }
-function search(q) { query.value = q; load(1); }
+function search(q) {
+    query.value = q;
+    // Переписка с человеком — по всем папкам сразу: его письма во «Входящих», свои — в «Отправленных».
+    if (/^\s*переписка:/i.test(q || '')) everywhere.value = true;
+    load(1);
+}
+/** Вся переписка с человеком (кружок в строке, меню письма, карточка отправителя). */
+function correspondence(mail) {
+    if (!mail) return;
+    menu.value = null;
+    mobileRead.value = false;
+    search('переписка:' + mail);
+}
 async function refresh() { await reload(false); }
 
 // ── Чтение ────────────────────────────────────────────────────
@@ -447,6 +459,13 @@ function openMenu(e, uid, kind = 'context') {
     track('menu.open', kind + ', писем ' + uids.length);
 }
 const menuRow = computed(() => (menu.value?.uids?.length === 1 ? list.value.messages.find((m) => m.uid === menu.value.uids[0]) || open.value : null));
+// Собеседник в строке меню: в «Отправленных» и «Черновиках» — получатель.
+const menuPerson = computed(() => {
+    const m = menuRow.value;
+    if (!m) return null;
+    const out = folderInfo.value.role === 'sent' || folderInfo.value.role === 'drafts';
+    return out && m.toMail ? { mail: m.toMail, name: m.toName || m.toMail } : { mail: m.from?.mail, name: m.from?.name || m.from?.mail };
+});
 
 function snooze(at) {
     const uids = menu.value?.uids || [];
@@ -663,6 +682,7 @@ onBeforeUnmount(() => {
                 @jump="jumpToDate"
                 @filter="setFilter"
                 @search="search"
+                @person="correspondence"
                 @refresh="refresh"
                 @menu="navOpen = true"
             />
@@ -727,6 +747,7 @@ onBeforeUnmount(() => {
                 <!-- Как в Kerio (обращение №39): письма уходят файлами .eml, получатель открывает исходное письмо целиком -->
                 <button class="pop__item" type="button" title="Письма уйдут файлами, получатель откроет их как письма" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
                 <button class="pop__item" type="button" title="Открыть как новое письмо: те же получатели, тема, текст и вложения" @click="openThen('again')"><Icon name="edit" :size="16" />Изменить как новое</button>
+                <button v-if="menuPerson && menuPerson.mail" class="pop__item" type="button" :title="'Письма от ' + menuPerson.mail + ' и ему во всех папках'" @click="correspondence(menuPerson.mail)"><Icon name="users" :size="16" />Вся переписка с {{ menuPerson.name }}</button>
                 <div class="pop__sep" />
             </template>
             <!-- Для пачки писем показываем оба действия: раньше предлагался единственный пункт

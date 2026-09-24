@@ -74,4 +74,13 @@ class SearchQueryTest extends TestCase
     {
         return new \Webklex\PHPIMAP\Query\WhereQuery(new \Webklex\PHPIMAP\Client(\Webklex\PHPIMAP\Config::make()));
     }
+
+    /** «переписка:» — одно условие «от, кому, копия или скрытая копия» в префиксной записи IMAP. */
+    public function test_вся_переписка_с_человеком(): void
+    {
+        $q = (new SearchQuery('переписка:ivanov@example.ru'))->apply($this->emptyQuery());
+        $raw = $q->generate_query();
+
+        $this->assertStringStartsWith('OR FROM "ivanov@example.ru" OR TO "ivanov@example.ru" OR CC "ivanov@example.ru" BCC "ivanov@example.ru"', $raw);
+    }
 }

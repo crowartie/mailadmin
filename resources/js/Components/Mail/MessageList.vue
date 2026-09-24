@@ -29,10 +29,14 @@ const props = defineProps({
     edge: { type: String, default: '' },   // что дочитывается: 'more' — ниже, 'newer' — выше
     selectedAll: Boolean,                  // выбраны все письма выборки, а не только загруженные
 });
-const emit = defineEmits(['open', 'toggle', 'select-all', 'select-folder', 'clear', 'act', 'context', 'more', 'newer', 'jump', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
+const emit = defineEmits(['open', 'toggle', 'select-all', 'select-folder', 'clear', 'person', 'act', 'context', 'more', 'newer', 'jump', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
 
 // При поиске по всем папкам у двух писем может совпасть UID — ключ строки с папкой.
 const rowKey = (m) => (m.folder || '') + ':' + m.uid;
+// Кто «собеседник» в строке: в «Отправленных» и «Черновиках» — получатель, иначе — отправитель.
+const outgoing = () => props.folderRole === 'sent' || props.folderRole === 'drafts';
+const personMail = (m) => (outgoing() && m.toMail ? m.toMail : m.from.mail);
+const personName = (m) => (outgoing() && m.toMail ? (m.toName || m.toMail) : (m.from.name || m.from.mail));
 
 /**
  * Подпись группы перед строкой письма — «Сегодня», «Вчера», «Сентябрь».
@@ -56,9 +60,9 @@ function toggleSelectMode() {
 
 // Поле поиска: «Везде» — простые слова по всему письму; остальное превращает каждое
 // слово в оператор («от:Иван от:Петров»). Операторы, написанные руками, не трогаем.
-const SCOPES = { from: 'от', to: 'кому', subject: 'тема', body: 'текст' };
-const SCOPE_LABELS = { all: 'Везде', from: 'От кого', to: 'Кому', subject: 'Тема', body: 'В тексте' };
-const SCOPE_HINTS = { all: 'Поиск по письмам', from: 'От кого: имя или адрес', to: 'Кому: имя или адрес', subject: 'Слова из темы', body: 'Слова из текста письма' };
+const SCOPES = { from: 'от', to: 'кому', with: 'переписка', subject: 'тема', body: 'текст' };
+const SCOPE_LABELS = { all: 'Везде', from: 'От кого', to: 'Кому', with: 'Переписка', subject: 'Тема', body: 'В тексте' };
+const SCOPE_HINTS = { all: 'Поиск по письмам', from: 'От кого: имя или адрес', to: 'Кому: имя или адрес', with: 'Адрес — все письма от него и ему', subject: 'Слова из темы', body: 'Слова из текста письма' };
 function loadScope() { try { return SCOPES[localStorage.getItem('mail.searchScope')] ? localStorage.getItem('mail.searchScope') : 'all'; } catch (e) { return 'all'; } }
 const scope = ref(loadScope());
 watch(scope, (v) => { try { localStorage.setItem('mail.searchScope', v); } catch (e) { /* приватный режим */ } });
@@ -359,7 +363,10 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
                 <span class="mrow__dot" />
                 <!-- В «Отправленных» и «Черновиках» рядом стоит имя получателя — буквы берём оттуда же,
                      иначе кружок и подпись противоречат друг другу. -->
-                <span class="mrow__av" :style="{ '--av-h': hue(folderRole === 'sent' || folderRole === 'drafts' ? (m.toMail || m.from.mail) : m.from.mail) }">{{ (folderRole === 'sent' || folderRole === 'drafts') && m.toName ? initials(m.toName, '') : initials(m.from.name, m.from.mail) }}</span>
+                <!-- Щелчок по кружку — вся переписка с этим человеком (как в Яндексе). -->
+                <button class="mrow__av" type="button" :style="{ '--av-h': hue(personMail(m)) }"
+                        :title="'Вся переписка с ' + personName(m)" :aria-label="'Вся переписка с ' + personName(m)"
+                        @click.stop="$emit('person', personMail(m))">{{ (folderRole === 'sent' || folderRole === 'drafts') && m.toName ? initials(m.toName, '') : initials(m.from.name, m.from.mail) }}</button>
                 <span class="mrow__body">
                     <span class="mrow__from">
                         <b :title="m.from.mail">{{ folderRole === 'sent' || folderRole === 'drafts' ? (m.toName || m.from.name) : m.from.name }}</b>

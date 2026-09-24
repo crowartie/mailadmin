@@ -44,7 +44,8 @@ function writeTo() {
 function findAll() {
     const mail = card.value.mail;
     card.value = null;
-    emit('search', 'от:' + mail);
+    // Вся переписка — письма от него и ему во всех папках, а не только входящие от него.
+    emit('search', 'переписка:' + mail);
 }
 function inContacts() {
     const mail = card.value.mail;
@@ -309,7 +310,7 @@ const isDraft = computed(() => props.folderRole === 'drafts');
             </div>
             <button class="pop__item" type="button" @click="copyAddress"><Icon name="copy" :size="15" />Копировать адрес</button>
             <button class="pop__item" type="button" @click="writeTo"><Icon name="edit" :size="15" />Написать письмо</button>
-            <button class="pop__item" type="button" @click="findAll"><Icon name="search" :size="15" />Найти все письма</button>
+            <button class="pop__item" type="button" @click="findAll"><Icon name="search" :size="15" />Вся переписка</button>
             <button class="pop__item" type="button" @click="inContacts"><Icon name="users" :size="15" />В контактах</button>
         </Popover>
 

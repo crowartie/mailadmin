@@ -62,6 +62,8 @@ final class MessageSummary
             'subject' => $subject !== '' ? $subject : '(без темы)',
             'from' => $from ?? Mime::NO_SENDER,
             'toName' => $to['name'] ?? null,
+            // Адрес получателя — для «Вся переписка» из «Отправленных», где в строке стоит он, а не отправитель.
+            'toMail' => $to['mail'] ?? null,
             'date' => $date,
             'seen' => in_array('\\seen', $flags, true),
             'flagged' => in_array('\\flagged', $flags, true),
@@ -240,6 +242,7 @@ final class MessageSummary
             // иначе в списке стоит «popovav@innotec.su» вместо «Попов Андрей Викторович».
             'from' => self::fromOf($message),
             'toName' => $to ? Directory::fill(Mime::address($to->personal, $to->mail))['name'] : null,
+            'toMail' => $to ? strtolower((string) $to->mail) : null,
             // Дата библиотеки бывает невозможной («0200» из пояса без знака) — тогда время получения.
             'date' => $date && Mime::plausible($date) ? $date->toIso8601String()
                 : (($d = Mime::parseDate((string) $date)) ? $d->toIso8601String() : self::receivedAt($this->client, (int) $message->getUid())),

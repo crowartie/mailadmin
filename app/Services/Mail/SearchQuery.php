@@ -9,6 +9,7 @@ use Webklex\PHPIMAP\Query\WhereQuery;
  * Строка поиска с операторами → IMAP SEARCH.
  *
  *   от:иванов   кому:buh@   тема:счёт   текст:договор   есть:флажок   есть:непрочитанное   есть:вложение
+ *   переписка:ivanov@ — вся переписка с человеком: от него, ему, с ним в копии (как «клик по адресату» в Яндексе и Outlook)
  *   до:2026-09-01   после:2026-08-01   свободный текст — по всему письму
  *
  * Английские синонимы: from: to: subject: is:flagged is:unread has:attachment before: after:
@@ -81,6 +82,11 @@ class SearchQuery
                     break;
                 case 'кому': case 'to':
                     $q->whereTo($value);
+                    break;
+                case 'переписка': case 'with':
+                    // OR FROM x OR TO x OR CC x BCC x — префиксная запись IMAP: одно условие на письмо,
+                    // где человек стоит в любом из полей. BCC — для своих отправленных со скрытой копией.
+                    $q->orWhere()->whereFrom($value)->orWhere()->whereTo($value)->orWhere()->whereCc($value)->whereBcc($value);
                     break;
                 case 'тема': case 'subject':
                     $q->whereSubject($value);
