@@ -71,7 +71,9 @@
     .check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; }
 }
 .mobile-only { display: none; }
-.desktop-only { display: inline; }
+// На компьютере desktop-only ничего не меняет: раньше здесь стояло display: inline, и оно
+// перебивало inline-flex у кнопок — значок у «Всем», «Встречи», «Печати» съезжал вверх и
+// прилипал к подписи.
 
 // ── Задачи (левая колонка календаря)
 .task__add { display: flex; flex-direction: column; gap: 4px; padding: 2px 8px 6px; }

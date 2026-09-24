@@ -154,7 +154,7 @@ export function useHotkeys(ctx) {
             case 'Escape':
                 if (ctx.menu.value) ctx.menu.value = null;
                 else if (ctx.selected.value.length) ctx.selected.value = [];
-                else { ctx.open.value = null; ctx.mobileRead.value = false; }
+                else ctx.closeMessage();
                 break;
             default:
                 break;

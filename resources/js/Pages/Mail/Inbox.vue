@@ -291,6 +291,13 @@ function correspondence(mail) {
     search('переписка:' + mail);
 }
 async function refresh() { await reload(false); }
+/** Закрыть письмо справа (кнопка-крестик, Esc): строка в списке остаётся выбранной курсором. */
+function closeMessage() {
+    ++openSeq;   // письмо, которое ещё грузится, не должно всплыть после закрытия
+    opening.value = null;
+    open.value = null;
+    mobileRead.value = false;
+}
 
 // ── Чтение ────────────────────────────────────────────────────
 async function openMessage(uid, e, rowFolder = null, held = false) {
@@ -711,7 +718,7 @@ function restoreTabs() {
 // Разбор нажатий — в useHotkeys; здесь остаётся только подписка (см. onMounted).
 const { onKey } = useHotkeys({
     settings, list, cursor, open, selected, menu, compose, dialog, help, mobileRead, listRef,
-    act, openMessage, toggle, startCompose, go, rolePath,
+    act, openMessage, closeMessage, toggle, startCompose, go, rolePath,
 });
 
 onMounted(() => {
@@ -858,6 +865,7 @@ onBeforeUnmount(() => {
                     @quick="quickReply"
                     @context="openMenu"
                     @back="mobileRead = false"
+                    @close="closeMessage"
                     @unsubscribe="unsubscribe"
                     @search="search"
                     @toast="showToast"

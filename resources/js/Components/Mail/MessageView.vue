@@ -17,7 +17,7 @@ const props = defineProps({
     settings: { type: Object, default: () => ({}) },
     user: String,
 });
-const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search', 'print', 'toast']);
+const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search', 'print', 'toast', 'close']);
 
 // Карточка адресата — как в Mail.ru: по щелчку на имени всплывают адрес и действия.
 const card = ref(null);   // { x, y, name, mail }
@@ -286,6 +286,10 @@ const isDraft = computed(() => props.folderRole === 'drafts');
         <button v-if="folderRole !== 'spam'" class="ib" type="button" v-bind="btn('Спам', '!')" @click="$emit('act', 'spam', [message.uid])"><Icon name="spam" :size="17" /></button>
         <button v-else class="ib" type="button" title="Не спам" @click="$emit('act', 'notspam', [message.uid])"><Icon name="inbox" :size="17" />Не спам</button>
         <button class="ib ib--danger" type="button" v-bind="btn('Удалить', '#')" @click="$emit('act', 'delete', [message.uid])"><Icon name="trash" :size="17" />Удалить</button>
+        <!-- Закрыть письмо: раньше справа оставалось последнее открытое, пока не откроешь другое
+             или не обновишь страницу. На телефоне для этого есть «К списку» слева. -->
+        <span class="sep desktop-only" />
+        <button class="ib desktop-only" type="button" v-bind="btn('Закрыть письмо', 'Esc')" @click="$emit('close')"><Icon name="x" :size="17" /></button>
     </div>
 
     <div class="mread__scroll">
