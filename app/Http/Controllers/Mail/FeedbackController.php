@@ -46,7 +46,9 @@ class FeedbackController extends Controller
 
         return Inertia::render('Mail/Feedback', [
             'user' => $user,
-            'settings' => ['theme' => 'system'],
+            // Тема — выбранная человеком: с 'system' страница у светлой почты на тёмной Windows
+            // открывалась тёмной и перекрашивала следующие страницы.
+            'settings' => ['theme' => \App\Models\Webmail\Setting::for($user)['theme'] ?? 'system'],
             'tickets' => $tickets,
             'open' => $open,
             'kinds' => FeedbackTicket::KINDS,

@@ -1,6 +1,6 @@
 <script setup>
 // Карантин сотрудника: письма, которые сервер посчитал спамом и не доставил. «Доставить» кладёт письмо во «Входящие».
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
@@ -8,7 +8,7 @@ import { api } from '../../mail/api';
 import { plural, size, when } from '../../mail/format';
 import { ask as confirmAsk } from '../../confirm';
 
-const props = defineProps({ user: String, settings: Object, items: Array, keepDays: { type: Number, default: 14 } });
+const props = defineProps({ user: String, settings: Object, items: Array, keepDays: { type: Number, default: 14 }, spamPath: { type: String, default: 'Junk' } });
 const items = ref(props.items || []);
 const busy = ref('');
 const ask = ref(null); // { from, domain, busy }
@@ -48,20 +48,20 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
 <template>
     <Head title="Карантин" />
     <MailLayout :user="user" :theme="settings.theme">
-        <div class="mail" style="display: block">
-            <section class="mlist" style="max-width: 1100px; margin: 0 auto; width: 100%; border: 0">
-                <div class="mlist__meta" style="padding: 14px 18px 6px">
-                    <a href="/mail" class="ib ib--sm"><Icon name="back" :size="16" />Почта</a>
-                    <!-- 279: заголовок страницы был бледнее соседней ссылки «Почта» — порядок
-                         важности на экране получался обратный. -->
-                    <h1 style="font-size: 18px; font-weight: 700; margin: 0 0 0 8px; color: var(--text)">Карантин</h1>
-                    <span class="grow" />
-                    <span>{{ items.length }} {{ plural(items.length, 'письмо', 'письма', 'писем') }}</span>
-                    <button class="ib ib--sm" type="button" title="Обновить" @click="reload" aria-label="Обновить"><Icon name="refresh" :size="14" /></button>
-                </div>
-                <!-- 280: текст шёл во всю ширину экрана мелким бледным шрифтом. -->
-                <p class="hint" style="padding: 0 18px 10px; margin: 0; max-width: 70ch; font-size: 13px; color: var(--muted)">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а вы сможете добавить отправителя в исключения, чтобы фильтр больше его не трогал. Через {{ keepDays }} {{ plural(keepDays, 'день', 'дня', 'дней') }} карантин чистится сам.</p>
-                <div v-if="ask" class="attn" style="margin: 0 18px 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+        <!-- Шапка и карточка — как у «Настроек» и «Справки»: раньше страница прилипала к верху,
+             а описание стояло левее заголовка. -->
+        <div class="mset">
+            <div class="page-head" style="margin-bottom: 8px; max-width: 1100px">
+                <Link href="/mail" class="ib" title="К письмам" aria-label="К письмам"><Icon name="back" :size="18" /></Link>
+                <h1>Карантин</h1>
+                <span class="page-head__count">{{ items.length }} {{ plural(items.length, 'письмо', 'письма', 'писем') }}</span>
+                <span style="flex: 1" />
+                <button class="ib" type="button" title="Обновить" @click="reload" aria-label="Обновить"><Icon name="refresh" :size="16" /></button>
+            </div>
+            <!-- 280: текст шёл во всю ширину экрана мелким бледным шрифтом. -->
+            <p class="hint" style="margin: 0 0 14px 46px; max-width: 70ch; font-size: 13px; color: var(--muted)">Сюда попадают письма, которые сервер посчитал спамом или опасными и не положил во «Входящие». Если письмо нужное — «Доставить»: оно придёт как обычно, а вы сможете добавить отправителя в исключения, чтобы фильтр больше его не трогал. Через {{ keepDays }} {{ plural(keepDays, 'день', 'дня', 'дней') }} карантин чистится сам.</p>
+            <section class="card mlist" style="width: auto; max-width: 1100px; flex: none; border-right: 1px solid var(--border); overflow: hidden">
+                <div v-if="ask" class="attn" style="margin: 12px 18px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
                     <Icon name="check" :size="16" /><span>Это не спам? Больше не задерживать письма</span>
                     <button class="btn btn--sm btn--primary" type="button" :disabled="ask.busy" @click="notSpam('address')">с адреса {{ ask.from }}</button>
                     <button class="btn btn--sm" type="button" :disabled="ask.busy" @click="notSpam('domain')">со всего домена @{{ ask.domain }}</button>
@@ -86,7 +86,7 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
                         Карантин пуст — ничего подозрительного за последние {{ keepDays }} {{ plural(keepDays, 'день', 'дня', 'дней') }}.
                         <div style="margin-top: 14px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap">
                             <a class="btn btn--sm btn--primary" href="/mail">Во «Входящие»</a>
-                            <a class="btn btn--sm" href="/mail/folder/Junk">Открыть «Спам»</a>
+                            <a class="btn btn--sm" :href="'/mail/folder/' + encodeURIComponent(spamPath)">Открыть «Спам»</a>
                             <a class="btn btn--sm" href="/mail/help#spam">Как это работает</a>
                         </div>
                     </div>

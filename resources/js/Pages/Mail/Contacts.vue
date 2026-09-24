@@ -221,8 +221,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
         <div class="mail" :class="{ 'mail--read': mobileRead }">
             <nav class="mnav" :class="{ 'mnav--open': navOpen }" aria-label="Книги">
                 <button class="btn btn--primary" type="button" style="margin: 0 0 10px" @click="create"><Icon name="plus" :size="16" />Новый контакт</button>
-                <button class="mnav__item" :class="{ 'mnav__item--on': filter === 'all' }" type="button" @click="go('all')"><span>Все контакты</span><span class="mnav__count">{{ all.length }}</span></button>
-                <button class="mnav__item" :class="{ 'mnav__item--on': filter === 'favorites' }" type="button" @click="go('favorites')"><span>Избранные</span><span class="mnav__count">{{ favorites || '' }}</span></button>
+                <!-- Значки у всех трёх пунктов: раньше были только у «Истории», и подписи стояли вразнобой. -->
+                <button class="mnav__item" :class="{ 'mnav__item--on': filter === 'all' }" type="button" @click="go('all')"><Icon name="users" :size="16" style="color: var(--faint)" /><span>Все контакты</span><span class="mnav__count">{{ all.length }}</span></button>
+                <button class="mnav__item" :class="{ 'mnav__item--on': filter === 'favorites' }" type="button" @click="go('favorites')"><Icon name="star" :size="16" style="color: var(--faint)" /><span>Избранные</span><span class="mnav__count">{{ favorites || '' }}</span></button>
                 <button class="mnav__item" :class="{ 'mnav__item--on': filter === 'history' }" type="button" title="Адреса из переписки, которых нет в книгах" @click="go('history')"><Icon name="clock" :size="16" style="color: var(--faint)" /><span>История общения</span><span class="mnav__count">{{ filter === 'history' && history.length ? history.length : '' }}</span></button>
                 <div class="mnav__group">Книги</div>
                 <button v-for="b in books" :key="b.uri" class="mnav__item" :class="{ 'mnav__item--on': filter === b.uri }" type="button" :title="b.description" @click="go(b.uri)">

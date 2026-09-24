@@ -28,6 +28,8 @@ class QuarantineController extends Controller
             'items' => $this->items($imap->user()),
             // 284: на странице было зашито «14 дней» независимо от настройки сервера.
             'keepDays' => (int) (\App\Models\AppSetting::group('quarantine')['keep_days'] ?? 14),
+            // Папка «Спам» называется по-разному (Junk, «Спам», перенесённые из Kerio) — ссылку не зашиваем.
+            'spamPath' => rescue(fn () => (new \App\Services\Mail\MailStore($imap->client()))->rolePath('spam'), 'Junk', false) ?: 'Junk',
         ]);
     }
 

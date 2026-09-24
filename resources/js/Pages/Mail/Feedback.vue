@@ -233,10 +233,7 @@ function backToList() {
                     </button>
 
                     <div v-if="!list.length" class="fbchat__empty">
-                        <div>
-                            <Icon name="warn" :size="28" style="opacity: .4" />
-                            <p class="hint" style="margin: 10px 0 0">Здесь появятся ваши обращения.<br>Нажмите «Сообщить о проблеме».</p>
-                        </div>
+                        <p class="hint" style="margin: 0">Обращений пока нет.</p>
                     </div>
                 </div>
 
@@ -306,6 +303,15 @@ function backToList() {
 
                 <div v-else-if="list.length" class="fbchat__body fbchat__empty">
                     <p class="hint" style="margin: 0">Выберите обращение слева.</p>
+                </div>
+                <!-- Обращений нет: раньше правая половина пустовала, а подсказка ютилась в узкой левой. -->
+                <div v-else class="fbchat__body fbchat__empty">
+                    <div>
+                        <Icon name="warn" :size="32" style="opacity: .4" />
+                        <p style="margin: 12px 0 4px; font-weight: 600">Здесь появятся ваши обращения</p>
+                        <p class="hint" style="margin: 0 0 16px; max-width: 42ch">Что-то не работает, неудобно или есть идея — напишите администратору прямо отсюда. Страницу и браузер система приложит сама.</p>
+                        <button class="btn btn--primary" type="button" @click="creating = true"><Icon name="plus" :size="16" />Сообщить о проблеме</button>
+                    </div>
                 </div>
             </div>
           </div>

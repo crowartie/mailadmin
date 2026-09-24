@@ -45,9 +45,12 @@ class SetupController extends Controller
         $issuer = (string) ($cert['issuer'] ?? '');
         $security = AppSetting::group('security');
 
+        $user = (string) $request->session()->get('mail.user', '');
+
         return Inertia::render('Mail/Setup', [
-            'user' => (string) $request->session()->get('mail.user', ''),
-            'settings' => ['theme' => 'system'],
+            'user' => $user,
+            // Страница открывается и без входа (по QR с телефона) — тогда тема как в системе.
+            'settings' => ['theme' => $user !== '' ? (\App\Models\Webmail\Setting::for($user)['theme'] ?? 'system') : 'system'],
             'domain' => $domain,
             'base' => $base,
             'email' => $email,
