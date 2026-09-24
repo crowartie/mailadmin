@@ -287,12 +287,13 @@ function correspondence(mail) {
 async function refresh() { await reload(false); }
 
 // ── Чтение ────────────────────────────────────────────────────
-async function openMessage(uid, e) {
+async function openMessage(uid, e, rowFolder = null) {
     if (e && (e.ctrlKey || e.metaKey)) { toggle(uid); return; }
     if (e && e.shiftKey && cursor.value) { rangeSelect(uid); return; }
     cursor.value = uid;
     compose.value = null;
-    const row = list.value.messages.find((m) => m.uid === uid);
+    // В поиске по всем папкам номера писем разных папок могут совпасть — ищем строку и по папке.
+    const row = list.value.messages.find((m) => m.uid === uid && (!rowFolder || m.folder === rowFolder));
     if (folderInfo.value.role === 'drafts') { openDraft(uid); return; }
     // Гасить весь список на время загрузки письма не нужно: от этого он мигал на каждый клик.
     const want = ++openSeq;
@@ -306,9 +307,10 @@ async function openMessage(uid, e) {
         open.value = m;
         mobileRead.value = true;
         // В общей папке сервер по умолчанию не отмечает письмо прочитанным (флаг там один на всех).
-        if (row && !row.seen && m.markedSeen !== false) { row.seen = true; bump(folder.value, -1); }
+        if (row && !row.seen && m.markedSeen !== false) { row.seen = true; bump(row.folder || folder.value, -1); }
         // Цепочка ответов — фоном, чтобы письмо показывалось сразу.
-        api.thread(folder.value, uid).then((t) => {
+        // Цепочка — из папки самого письма: в поиске по всем папкам номер из другой папки давал чужую цепочку.
+        api.thread(m.folder || row?.folder || folder.value, uid).then((t) => {
             if (!open.value || open.value.uid !== m.uid || open.value.folder !== m.folder) return;
             open.value.thread = Array.isArray(t) ? t : (t?.messages || []);
             open.value.threadHidden = Array.isArray(t) ? 0 : (t?.hidden || 0);
@@ -448,17 +450,20 @@ function forwardAsAttachment(uids) {
 const { colStyle, resizing, startResize, resetCol } = useColumns();
 
 // ── Меню ──────────────────────────────────────────────────────
-function openMenu(e, uid, kind = 'context') {
+function openMenu(e, uid, kind = 'context', rowFolder = null) {
     e.preventDefault?.();
     const uids = uid == null ? [...selected.value] : (selected.value.includes(uid) ? [...selected.value] : [uid]);
     if (!uids.length) return;
     const r = e.currentTarget?.getBoundingClientRect?.();
     const x = e.clientX || (r ? r.left : 100);
     const y = e.clientY || (r ? r.bottom + 4 : 100);
-    menu.value = { kind, x, y, uids };
+    // В поиске по всем папкам меню помнит папку строки: действие уйдёт туда, где письмо лежит.
+    menu.value = { kind, x, y, uids, folder: uids.length === 1 && list.value.everywhere ? rowFolder : null };
     track('menu.open', kind + ', писем ' + uids.length);
 }
-const menuRow = computed(() => (menu.value?.uids?.length === 1 ? list.value.messages.find((m) => m.uid === menu.value.uids[0]) || open.value : null));
+const menuRow = computed(() => (menu.value?.uids?.length === 1
+    ? list.value.messages.find((m) => m.uid === menu.value.uids[0] && (!menu.value.folder || m.folder === menu.value.folder)) || open.value
+    : null));
 // Собеседник в строке меню: в «Отправленных» и «Черновиках» — получатель.
 const menuPerson = computed(() => {
     const m = menuRow.value;

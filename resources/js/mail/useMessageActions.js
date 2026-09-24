@@ -29,12 +29,35 @@ export function useMessageActions(ctx) {
         remind: 'Напомню, если не ответят',
     };
 
+    /**
+     * Куда уходит действие: [{ folder, uids }]. Обычно — текущая папка. В поиске по всем папкам
+     * строка знает свою папку: раньше действие уходило в текущую, и «Удалить» у письма из
+     * «Отправленных» задело бы письмо «Входящих» с тем же номером (номера у папок свои).
+     * $pin — папка строки, по которой открыли меню, или открытого письма (одно письмо).
+     */
+    function targets(uids, pin = null) {
+        if (!ctx.list.value.everywhere) return [{ folder: ctx.folder.value, uids }];
+        const out = new Map();
+        for (const u of uids) {
+            let folders = uids.length === 1 && pin ? [pin] : [...new Set(ctx.list.value.messages.filter((m) => m.uid === u).map((m) => m.folder).filter(Boolean))];
+            if (!folders.length && ctx.open.value?.uid === u) folders = [ctx.open.value.folder];
+            for (const f of folders) {
+                if (!out.has(f)) out.set(f, []);
+                out.get(f).push(u);
+            }
+        }
+        return [...out].map(([folder, list]) => ({ folder, uids: list }));
+    }
+    /** Строка попадает под действие: номер совпал, а в поиске по всем папкам — и папка. */
+    const hits = (groups) => (m) => groups.some((g) => g.uids.includes(m.uid) && (!m.folder || m.folder === g.folder));
+
     /** Убрать строки с экрана и поправить счётчики, не дожидаясь сервера. */
-    function removeRows(uids) {
+    function removeRows(uids, groups = null) {
         const set = new Set(uids);
+        const hit = groups ? hits(groups) : (m) => set.has(m.uid);
         let unreadGone = 0;
         ctx.list.value.messages = ctx.list.value.messages.filter((m) => {
-            if (set.has(m.uid)) {
+            if (hit(m)) {
                 if (!m.seen) unreadGone++;
 
                 return false;
@@ -53,10 +76,16 @@ export function useMessageActions(ctx) {
 
     async function runAct(p, opts = {}) {
         // Вся папка — это тысячи писем частями по 500: ждём дольше обычной минуты.
-        const r = await api.action(p.folder, p.uids, p.op, p.extra, p.extra?.all ? { ...opts, timeout: 600000 } : opts);
+        const o = p.extra?.all ? { ...opts, timeout: 600000 } : opts;
+        let r = null;
+        let skipped = 0;
+        for (const g of p.groups || [{ folder: p.folder, uids: p.uids }]) {
+            r = await api.action(g.folder, g.uids, p.op, p.extra, o);
+            skipped += Number(r?.skipped || 0);
+        }
         if (r?.folders) ctx.folders.value = r.folders;
 
-        return r;
+        return r ? { ...r, skipped } : r;
     }
 
     /** Довести отложенное действие до сервера немедленно (ушли со страницы, сделали другое). */
@@ -100,8 +129,8 @@ export function useMessageActions(ctx) {
     }
 
     /** Экран меняем сразу; что именно поменять — зависит от действия. */
-    function applyToScreen(op, uids, extra) {
-        const rows = ctx.list.value.messages.filter((m) => uids.includes(m.uid));
+    function applyToScreen(op, uids, extra, groups) {
+        const rows = ctx.list.value.messages.filter(hits(groups));
         const opened = ctx.open.value && uids.includes(ctx.open.value.uid) ? ctx.open.value : null;
         switch (op) {
             case 'seen':
@@ -129,7 +158,7 @@ export function useMessageActions(ctx) {
                 break;
             case 'delete': case 'move': case 'archive': case 'spam':
             case 'notspam': case 'lists': case 'snooze': case 'unsnooze':
-                removeRows(uids);
+                removeRows(uids, groups);
                 break;
             default:
                 break;
@@ -144,9 +173,9 @@ export function useMessageActions(ctx) {
         return confirmAsk(forever ? `Стереть ${what} навсегда? Восстановить будет нельзя.` : `Удалить ${what}?`, { ok: forever ? 'Стереть' : 'Удалить', danger: true });
     }
 
-    function defer(op, uids, extra, label, secs, opened = null, mobileRead = false) {
+    function defer(op, uids, extra, label, secs, opened = null, mobileRead = false, groups = null) {
         flushPendingAct();
-        pending = { folder: ctx.folder.value, uids, op, extra, seconds: secs, timer: null, opened, mobileRead };
+        pending = { folder: ctx.folder.value, uids, groups, op, extra, seconds: secs, timer: null, opened, mobileRead };
         ctx.showToast({ text: label, actionLabel: 'Отменить', seconds: secs }, 0);
         const tick = () => {
             if (!pending) return;
@@ -186,6 +215,10 @@ export function useMessageActions(ctx) {
 
     async function act(op, uids, extra = {}, deferrable = true) {
         if (!uids?.length) return;
+        // Одно письмо из меню строки или из открытого письма — его папка известна точно.
+        const pin = ctx.menu.value?.folder && sameSet(uids, ctx.menu.value.uids || []) ? ctx.menu.value.folder
+            : (uids.length === 1 && ctx.open.value?.uid === uids[0] ? ctx.open.value.folder : null);
+        const groups = targets(uids, pin);
         ctx.menu.value = null;
         // Выбраны все письма папки (а не только загруженные) — действие уходит на всю выборку сервера.
         const all = ctx.selectedAll?.value && ctx.selectedAll.value.folder === ctx.folder.value && sameSet(uids, ctx.selected.value) ? ctx.selectedAll.value : null;
@@ -203,7 +236,7 @@ export function useMessageActions(ctx) {
         // Что было открыто до действия — чтобы вернуть на экран при отмене.
         const opened = ctx.open.value && uids.includes(ctx.open.value.uid) ? ctx.open.value : null;
         const mobileRead = !!ctx.mobileRead.value;
-        applyToScreen(op, uids, extra);
+        applyToScreen(op, uids, extra, groups);
 
         const label = `${NAMES[op] || ''}${count > 1 ? ` · ${count} ${plural(count, 'письмо', 'письма', 'писем')}` : ''}`;
         const secs = Number(ctx.settings.value.undo_seconds ?? 5);
@@ -212,13 +245,13 @@ export function useMessageActions(ctx) {
         // Перетащили письмо мышью не в ту папку или ошиблись со «Спамом» — отмена нужна
         // так же, как при удалении. Раньше эти действия уходили на сервер сразу.
         if (deferrable && secs > 0 && DEFERRABLE.includes(op)) {
-            defer(op, uids, extra, label, secs, opened, mobileRead);
+            defer(op, uids, extra, label, secs, opened, mobileRead, groups);
 
             return;
         }
 
         try {
-            const r = await runAct({ folder: ctx.folder.value, uids, op, extra });
+            const r = await runAct({ folder: ctx.folder.value, uids, groups, op, extra });
             // Сервер сообщает, со сколькими письмами получилось: раньше из двадцати выделенных
             // могло отложиться девятнадцать, и сообщение всё равно было победным.
             const skipped = Number(r?.skipped || 0);

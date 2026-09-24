@@ -347,10 +347,10 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
                 tabindex="0"
                 role="button"
                 :aria-label="(m.seen ? '' : 'Непрочитанное. ') + m.from.name + '. ' + m.subject"
-                @keydown.enter.prevent="$emit('open', m.uid, $event)"
+                @keydown.enter.prevent="$emit('open', m.uid, $event, m.folder)"
                 @keydown.space.prevent="$emit('toggle', m.uid, $event)"
-                @click="selectMode ? $emit('toggle', m.uid) : $emit('open', m.uid, $event)"
-                @contextmenu.prevent="$emit('context', $event, m.uid)"
+                @click="selectMode ? $emit('toggle', m.uid) : $emit('open', m.uid, $event, m.folder)"
+                @contextmenu.prevent="$emit('context', $event, m.uid, 'context', m.folder)"
                 @dragstart="onDragStart($event, m)"
             >
                 <span class="cb" :class="{ 'cb--on': selectedSet.has(m.uid) }" role="checkbox" tabindex="0"
