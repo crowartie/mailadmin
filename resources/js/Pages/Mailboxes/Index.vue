@@ -52,9 +52,10 @@ const filtersList = [
     { key: 'service', label: 'Служебные' },
 ];
 
-// Имя шире: ФИО переносились на две строки. Колонка перед статусом — под кнопки «Открыть» и
-// «Закрыть вход», они видны при наведении, поэтому ей нужно не меньше 200 px.
-const COLS = '36px minmax(220px, 1.8fr) minmax(100px, .7fr) 150px 140px minmax(200px, 1fr) 110px';
+// Кнопки «Открыть» и «Закрыть вход» видны только при наведении — они всплывают поверх строки
+// (mbx-row ниже), своей колонки у них нет. Раньше колонка под них держала 200 px пустоты,
+// а ФИО переносились на две строки.
+const COLS = '36px minmax(0, 2fr) minmax(110px, 1fr) 150px 140px 110px';
 
 function initials(row) {
     const source = row.name || row.username;
@@ -109,13 +110,13 @@ function close() {
 
         <div class="card card--flush">
             <div class="thead" :style="{ gridTemplateColumns: COLS }">
-                <span></span><span>Сотрудник</span><span>Подразделение</span><span>Занято</span><span>Службы</span><span></span><span>Статус</span>
+                <span></span><span>Сотрудник</span><span>Подразделение</span><span>Занято</span><span>Службы</span><span>Статус</span>
             </div>
 
             <div
                 v-for="row in mailboxes.data"
                 :key="row.username"
-                class="row row--link"
+                class="row row--link mbx-row"
                 :class="{ 'row--on': editing && editing.username === row.username }"
                 :style="{ gridTemplateColumns: COLS }"
                 @click="open(row)"
@@ -191,3 +192,9 @@ function close() {
         </template>
     </AppLayout>
 </template>
+
+<style scoped>
+.mbx-row { position: relative; }
+.mbx-row .row__actions { position: absolute; right: 130px; top: 50%; transform: translateY(-50%); padding: 4px; border-radius: 10px; background: var(--surface); }
+.mbx-row:hover .row__actions, .mbx-row.row--on .row__actions { background: var(--surface-2); }
+</style>

@@ -78,12 +78,16 @@ const filteredEmployees = computed(() => (props.employees || []).filter((e) => !
                 </div>
                 <form class="card card--pad span-2" @submit.prevent="pol.post('/security/policies', { preserveScroll: true })">
                     <div class="card__title">Политики</div>
+                    <!-- Числа — отдельной строкой над переключателями: в узкой колонке сетки подпись
+                         «Пароль не короче» ломалась на три строки. -->
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px 40px; margin-bottom: 14px">
+                        <div class="field__row" style="white-space: nowrap"><span>Пароль не короче</span><input v-model="pol.min_password" class="input" type="number" aria-label="Минимальная длина пароля" min="6" max="64" style="width: 70px; height: 34px"><span>символов, смена раз в</span><input v-model="pol.password_days" class="input" type="number" min="0" style="width: 80px; height: 34px"><span>дн</span></div>
+                        <div class="field__row" style="white-space: nowrap" title="Галочка «Не выходить на этом устройстве» при входе в веб-почту и в её настройках. 0 — выключено: галочки нет, запомненные устройства сразу забываются."><span>Веб-почта помнит устройство</span><input v-model.number="pol.remember_days" class="input" type="number" aria-label="Сколько дней помнить устройство" min="0" max="365" style="width: 70px; height: 34px"><span>дн, 0 — не запоминать</span></div>
+                    </div>
                     <div class="toggles--3">
-                        <div class="field__row"><span>Пароль не короче</span><input v-model="pol.min_password" class="input" type="number" aria-label="Минимальная длина пароля" min="6" max="64" style="width: 70px; height: 34px"><span>символов, смена раз в</span><input v-model="pol.password_days" class="input" type="number" min="0" style="width: 80px; height: 34px"><span>дн</span></div>
                         <Toggle v-model="pol.admin_2fa" label="2FA обязательна для администраторов" />
                         <Toggle v-model="pol.all_2fa_internet" label="2FA обязательна для всех при входе из интернета" />
                         <Toggle v-model="pol.notify_new_device" label="Уведомлять сотрудника о входе с нового устройства" />
-                        <div class="field__row" title="Галочка «Не выходить на этом устройстве» при входе в веб-почту и в её настройках. 0 — выключено: галочки нет, запомненные устройства сразу забываются."><span>Веб-почта помнит устройство</span><input v-model.number="pol.remember_days" class="input" type="number" aria-label="Сколько дней помнить устройство" min="0" max="365" style="width: 70px; height: 34px"><span>дн, 0 — не запоминать</span></div>
                         <Toggle v-model="pol.app_passwords" label="Разрешить пароли приложений для IMAP/SMTP" />
                         <Toggle v-model="pol.telegram_security" label="Сообщать в Telegram о блокировках и входах админов" />
                     </div>
