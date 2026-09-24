@@ -156,7 +156,7 @@ defineExpose({
      * не откроет, а у черновика после сохранения меняется номер, и картинка в окне ломалась.
      * Возвращает, сколько подставлено; что не вышло — встроит сервер при сохранении (MailBuilder).
      */
-    embedServerImages: async () => {
+    embedServerImages: async (beforeSync) => {
         const root = el.value;
         if (!root) return 0;
         const imgs = [...root.querySelectorAll('img')].filter((i) => SERVER_IMG.test(i.getAttribute('src') || ''));
@@ -171,7 +171,7 @@ defineExpose({
                 n++;
             } catch { /* останется ссылкой — встроит сервер */ }
         }));
-        if (n) sync();
+        if (n) { beforeSync?.(); sync(); }
 
         return n;
     },
