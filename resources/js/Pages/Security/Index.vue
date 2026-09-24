@@ -61,7 +61,7 @@ const filteredEmployees = computed(() => (props.employees || []).filter((e) => !
                 <div class="card card--pad">
                     <div class="card__title">Блокировки</div>
                     <div v-if="!bans.length" class="empty">Сейчас никто не заблокирован</div>
-                    <div v-for="b in bans" :key="b.ip + b.jail" class="kv"><span class="mono" style="color: inherit">{{ b.ip }}</span><span class="row__sub" style="flex: 1; margin-left: 12px">{{ b.why }} · {{ b.where }}</span><button class="btn btn--sm" type="button" @click="post('/security/unban', { ip: b.ip })">Снять</button></div>
+                    <div v-for="b in bans" :key="b.ip + b.jail" class="kv"><span class="mono" style="color: inherit; flex: 0 0 130px">{{ b.ip }}</span><span class="row__sub" style="flex: 1">{{ b.why }} · {{ b.where }}</span><button class="btn btn--sm" type="button" @click="post('/security/unban', { ip: b.ip })">Снять</button></div>
                     <div v-if="failedTop.length" style="margin-top: 12px">
                         <div class="group-title">Больше всего неверных паролей за сутки</div>
                         <div v-for="f in failedTop" :key="f.ip" class="kv"><span class="mono" style="color: inherit">{{ f.ip }}</span><span style="display: flex; gap: 8px; align-items: center"><b>{{ f.n }}</b><button v-if="!bans.some((b) => b.ip === f.ip)" class="btn btn--sm" type="button" @click="post('/security/ban', { ip: f.ip })">Заблокировать</button></span></div>

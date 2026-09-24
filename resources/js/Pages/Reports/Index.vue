@@ -53,8 +53,8 @@ const wrap = ref(true);
                 </div>
 
                 <div class="card card--flush">
-                    <div class="thead" style="grid-template-columns: 130px minmax(0, 1fr) 80px auto"><span>Когда</span><span>Отчёт</span><span>Размер</span><span /></div>
-                    <div v-for="r in rows" :key="r.kind + r.file" class="row row--click" :class="{ 'row--on': open && open.kind === r.kind && open.file === r.file }" style="grid-template-columns: 130px minmax(0, 1fr) 80px auto" @click="show(r)">
+                    <div class="thead" style="grid-template-columns: 130px minmax(0, 1fr) 80px 80px"><span>Когда</span><span>Отчёт</span><span>Размер</span><span /></div>
+                    <div v-for="r in rows" :key="r.kind + r.file" class="row row--click" :class="{ 'row--on': open && open.kind === r.kind && open.file === r.file }" style="grid-template-columns: 130px minmax(0, 1fr) 80px 80px" @click="show(r)">
                         <span class="mono">{{ r.date }}</span>
                         <span>{{ r.title }}<span class="row__sub" style="display: block">{{ r.kind }}/{{ r.file }}</span></span>
                         <span class="row__sub">{{ kb(r.size) }}</span>

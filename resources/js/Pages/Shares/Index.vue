@@ -131,7 +131,10 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
 <style scoped>
 .srow { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 12px; align-items: start; padding: 8px 18px; border-top: 1px solid var(--border); }
 .srow__folder { display: flex; align-items: center; gap: 8px; padding-top: 4px; font-weight: 500; }
-.srow__people { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.srow__person { display: inline-flex; align-items: center; gap: 6px; }
+/* Люди — ровными колонками: имя | уровень | крестик. Раньше шли сплошным потоком, и списки
+   уровней стояли вразнобой, как слова в строке. */
+.srow__people { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 6px 28px; }
+.srow__person { display: grid; grid-template-columns: minmax(0, 1fr) 120px 24px; align-items: center; gap: 8px; }
+.srow__person > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .input--sm { height: 28px; padding: 0 6px; font-size: 12.5px; width: 120px; }
 </style>

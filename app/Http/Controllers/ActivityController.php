@@ -70,6 +70,16 @@ class ActivityController extends Controller
         $timeline = $base($from)->select(DB::raw("$bucket b"), DB::raw('count(*) n'), DB::raw('count(distinct user) users'))
             ->groupBy('b')->orderBy(DB::raw('min(at)'))->get()
             ->map(fn ($r) => ['b' => $r->b, 'n' => (int) $r->n, 'users' => (int) $r->users])->all();
+        // Пустые часы и дни — тоже столбиками: раньше час без действий просто выпадал, и под
+        // одинаковыми столбиками шло «04:00, 06:00» — будто 05:00 не существовало.
+        $step = $period === 'day' ? 'hour' : 'day';
+        $have = collect($timeline)->keyBy('b');
+        $filled = [];
+        for ($t = $from->copy()->add(1, $step)->startOf($step); $t <= now(); $t->add(1, $step)) {
+            $k = $t->format($period === 'day' ? 'H:00' : 'd.m');
+            $filled[] = $have[$k] ?? ['b' => $k, 'n' => 0, 'users' => 0];
+        }
+        $timeline = $filled;
 
         $users = DB::table('webmail_activity')->where('at', '>=', now()->subDays(30))->distinct()->orderBy('user')->pluck('user')->all();
 

@@ -52,7 +52,9 @@ const filtersList = [
     { key: 'service', label: 'Служебные' },
 ];
 
-const COLS = '36px minmax(220px, 1.4fr) minmax(120px, 1fr) 170px 140px minmax(120px, 1fr) 110px';
+// Имя шире: ФИО переносились на две строки. Колонка перед статусом — под кнопки «Открыть» и
+// «Закрыть вход», они видны при наведении, поэтому ей нужно не меньше 200 px.
+const COLS = '36px minmax(220px, 1.8fr) minmax(100px, .7fr) 150px 140px minmax(200px, 1fr) 110px';
 
 function initials(row) {
     const source = row.name || row.username;

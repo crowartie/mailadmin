@@ -89,12 +89,12 @@ const tiles = computed(() => [
                 <div class="kv"><span>Уложено в «Рассылки» общими правилами</span><b>{{ t.toNews || 0 }}</b></div>
                 <div class="kv"><span>Заблокировано вложений и вирусов</span><b>{{ t.banned || 0 }}</b></div>
                 <div class="divider" />
-                <div class="group-title">Кто сработал в оценке</div>
+                <div class="group-title" style="margin: 12px 0 4px">Кто сработал в оценке</div>
                 <div class="kv"><span>Bayes (наша обученная база)</span><b>{{ t.bayes || 0 }}</b></div>
                 <div class="kv"><span>Чёрные списки ссылок (URIBL, SURBL, DBL)</span><b>{{ t.uribl || 0 }}</b></div>
                 <div class="kv"><span>Отпечатки писем Pyzor / Razor</span><b>{{ t.pyzor || 0 }} / {{ t.razor || 0 }}</b></div>
                 <div class="divider" />
-                <div class="group-title">Отбито на входе, письмо не принималось</div>
+                <div class="group-title" style="margin: 12px 0 4px">Отбито на входе, письмо не принималось</div>
                 <div class="kv"><span>Серверы из чёрных списков (postscreen)</span><b>{{ t.dnsbl || 0 }}</b></div>
                 <div class="kv"><span>Подделка нашего домена без входа</span><b>{{ t.authreq || 0 }}</b></div>
                 <div class="kv"><span>Все отказы на этапе приёма</span><b>{{ t.rejects || 0 }}</b></div>

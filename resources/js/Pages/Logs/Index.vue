@@ -60,7 +60,8 @@ async function doTrace(id = trace.value) {
 }
 const exportUrl = computed(() => `/logs/export?${new URLSearchParams({ type: type.value, q: q.value, period: period.value })}`);
 const STEP = { ok: 'var(--ok)', warn: 'var(--warn)', no: 'var(--no)', acc: 'var(--accent)' };
-const COLS = '80px 90px minmax(0, 1.1fr) minmax(0, 1fr)';
+// «Что» шире: длинная причина отказа растягивалась столбиком на десять строк.
+const COLS = '76px 84px minmax(0, 1fr) minmax(0, 1.3fr)';
 </script>
 
 <template>
@@ -81,8 +82,8 @@ const COLS = '80px 90px minmax(0, 1.1fr) minmax(0, 1fr)';
                     <span class="mono faint" :title="e.time">{{ e.ts }}</span>
                     <span><span class="chip" :class="`chip--${KIND[e.kind]?.[1] || 'off'}`">{{ KIND[e.kind]?.[0] || e.kind }}</span></span>
                     <span class="mono ellipsis" :title="e.who">{{ e.who }}</span>
-                    <span class="row__sub" style="display: flex; align-items: flex-start; gap: 6px">
-                        <span style="flex: 1">{{ e.what }}</span>
+                    <span class="row__sub" style="display: flex; align-items: center; gap: 6px">
+                        <span class="clamp3" style="flex: 1" :title="e.what">{{ e.what }}</span>
                         <button v-if="e.qid || e.msgid" class="ib ib--sm" type="button" title="Путь письма" @click="doTrace(e.qid || e.msgid)" aria-label="Путь письма"><Icon name="chevron" :size="14" /></button>
                     </span>
                 </div>

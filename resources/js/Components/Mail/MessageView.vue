@@ -194,9 +194,13 @@ function ownLetter(m) {
     return ['sent', 'drafts'].includes(m.folderRole || props.folderRole);
 }
 
+// Пустые абзацы в начале письма: наша форма оставляет над подписью место под текст, и письмо
+// из одного файла с подписью показывалось с дырой в полэкрана. Только при показе.
+const LEADING_EMPTY = /^(?:\s|<br\s*\/?>|<(p|div)(?:\s[^>]*)?>(?:\s|&nbsp;|<br\s*\/?>)*<\/\1>)+/i;
+
 function body(m) {
     if (!m.html) return null;
-    const html = withoutLinksBlock(m);
+    const html = withoutLinksBlock(m).replace(LEADING_EMPTY, '');
     return imagesShown(m) ? html.replace(/\sdata-blocked-(src|srcset|background)=/gi, ' $1=') : html;
 }
 

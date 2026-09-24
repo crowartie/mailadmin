@@ -43,7 +43,7 @@ const short = (u) => (u || '').replace(/@.*/, '');
             <span class="hint" v-if="oldest">записи с {{ (oldest || '').slice(0, 10) }}, хранятся 90 дней</span>
         </template>
 
-        <div class="card" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px">
+        <div class="card" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; padding: 12px 16px">
             <div class="seg">
                 <button v-for="[k, t] in PERIODS" :key="k" type="button" class="seg__item" :class="{ 'seg__item--on': period === k }" @click="period = k">{{ t }}</button>
             </div>
@@ -52,7 +52,7 @@ const short = (u) => (u || '').replace(/@.*/, '');
                 <option v-for="u in users" :key="u" :value="u">{{ u }}</option>
             </select>
             <label class="toggle"><input v-model="master" type="checkbox"><span class="toggle__track" />Включая просмотр администратором</label>
-            <span class="hint" style="margin-left: auto">Сравнение — с таким же периодом до этого. Содержимое писем, адреса и текст поиска не записываются.</span>
+            <span class="hint" style="flex-basis: 100%">Сравнение — с таким же периодом до этого. Содержимое писем, адреса и текст поиска не записываются.</span>
         </div>
 
         <div class="tiles tiles--5" style="margin-bottom: 14px">
@@ -67,12 +67,12 @@ const short = (u) => (u || '').replace(/@.*/, '');
             </div>
         </div>
 
-        <div class="card" style="margin-bottom: 14px">
-            <div class="thead" style="padding: 0 0 8px"><span>Ход по времени{{ period === 'day' ? ' (по часам)' : ' (по дням)' }}</span></div>
+        <div class="card" style="margin-bottom: 14px; padding: 14px 18px">
+            <div class="thead" style="padding: 0 0 10px; margin-bottom: 10px"><span>Ход по времени{{ period === 'day' ? ' (по часам)' : ' (по дням)' }}</span></div>
             <div v-if="timeline.length" style="display: flex; gap: 3px; align-items: flex-end; height: 90px">
-                <div v-for="t in timeline" :key="t.b" :title="`${t.b}: действий ${t.n}, сотрудников ${t.users}`" style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0">
+                <div v-for="(t, i) in timeline" :key="t.b" :title="`${t.b}: действий ${t.n}, сотрудников ${t.users}`" style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0">
                     <div style="width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; opacity: .85" :style="{ height: Math.max(2, Math.round((t.n / maxT) * 70)) + 'px' }" />
-                    <span class="row__sub" style="font-size: 10px; white-space: nowrap; overflow: hidden">{{ t.b }}</span>
+                    <span class="row__sub" style="font-size: 11px; white-space: nowrap; overflow: hidden">{{ timeline.length > 16 && (timeline.length - 1 - i) % 2 ? ' ' : t.b }}</span>
                 </div>
             </div>
             <div v-else class="empty">Записей за период нет.</div>
@@ -120,7 +120,7 @@ const short = (u) => (u || '').replace(/@.*/, '');
 
         <div class="grid-2-1" style="grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; align-items: start">
             <div class="card card--flush">
-                <div class="thead" style="grid-template-columns: 90px minmax(0, 1fr)"><span><Icon name="warn" :size="14" /> Ошибки</span><span>{{ errors.length ? errors.length + ' за период' : 'ни одной' }}</span></div>
+                <div class="thead" style="grid-template-columns: 90px minmax(0, 1fr)"><span class="thead__ico"><Icon name="warn" :size="14" />Ошибки</span><span>{{ errors.length ? errors.length + ' за период' : 'ни одной' }}</span></div>
                 <div v-for="(e, i) in errors" :key="i" class="row" style="grid-template-columns: 90px minmax(0, 1fr)">
                     <span class="mono row__sub">{{ when(e.at) }}</span>
                     <span><b>{{ short(e.user) }}</b> · {{ e.action }} · {{ e.status }}<span class="row__sub" style="display: block">{{ e.error || e.detail }} <span style="opacity: .7">{{ e.client }}</span></span></span>
@@ -128,7 +128,7 @@ const short = (u) => (u || '').replace(/@.*/, '');
                 <div v-if="!errors.length" class="empty">Ошибок сервера у сотрудников не было.</div>
             </div>
             <div class="card card--flush">
-                <div class="thead" style="grid-template-columns: 90px minmax(0, 1fr) 70px"><span><Icon name="clock" :size="14" /> Долго</span><span>ответы дольше 3 секунд</span><span>мс</span></div>
+                <div class="thead" style="grid-template-columns: 90px minmax(0, 1fr) 70px"><span class="thead__ico"><Icon name="clock" :size="14" />Долго</span><span>ответы дольше 3 секунд</span><span>мс</span></div>
                 <div v-for="(s, i) in slow" :key="i" class="row" style="grid-template-columns: 90px minmax(0, 1fr) 70px">
                     <span class="mono row__sub">{{ when(s.at) }}</span>
                     <span><b>{{ short(s.user) }}</b> · {{ s.action }}<span v-if="s.folder" class="row__sub"> · {{ FOLDER[s.folder] || s.folder }}</span><span v-if="s.detail" class="row__sub"> · {{ s.detail }}</span></span>

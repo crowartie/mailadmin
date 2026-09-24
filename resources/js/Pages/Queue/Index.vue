@@ -64,7 +64,8 @@ async function act(op, ids = [...selected.value]) {
 }
 onMounted(() => { timer = setInterval(refresh, 30000); });
 onBeforeUnmount(() => clearInterval(timer));
-const COLS = '22px 100px 60px minmax(0, 1fr) minmax(0, 1fr) 80px 120px minmax(0, 1.2fr)';
+// Номер письма Postfix — до 15 знаков моноширинным: в 100 px он налезал на время.
+const COLS = '22px 130px 60px minmax(0, 1fr) minmax(0, 1fr) 80px 120px minmax(0, 1.2fr)';
 </script>
 
 <template>
