@@ -18,9 +18,10 @@ class ComposeController extends Controller
 {
     private const RULES = [
         'from' => ['nullable', 'email'],
-        'to' => ['nullable', 'string', 'max:5000'],
-        'cc' => ['nullable', 'string', 'max:5000'],
-        'bcc' => ['nullable', 'string', 'max:5000'],
+        // Две сотни внешних адресов — это уже больше 5000 знаков; рассылку по списку упирали в предел.
+        'to' => ['nullable', 'string', 'max:50000'],
+        'cc' => ['nullable', 'string', 'max:50000'],
+        'bcc' => ['nullable', 'string', 'max:50000'],
         'subject' => ['nullable', 'string', 'max:998'],
         // Картинки из текста исходного письма окно письма встраивает строкой data: (Editor.embedServerImages),
         // и разметка с парой фотографий легко перерастает 2 МБ — старый предел не давал сохранить черновик.

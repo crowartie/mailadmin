@@ -194,7 +194,29 @@ async function load(page = 1, keepOpen = false, silent = false, offset = null) {
         if (!silent) { selected.value = []; selectedAll.value = null; }
         if (!keepOpen) { open.value = null; cursor.value = null; }
         syncUrl();
-    } catch (e) { fail(e); } finally { if (!silent) loading.value = false; }
+    } catch (e) {
+        // Отбор по удалённой метке, старая ссылка с отбором — показываем все письма папки:
+        // раньше оставались ошибка и список, не совпадающий с тем, что написано в шапке.
+        if (filter.value !== 'all' && !query.value && (e?.status === 404 || e?.status === 422)) {
+            filter.value = 'all';
+            showToast({ text: 'Этого отбора больше нет — показаны все письма' });
+            await load(page, keepOpen, silent, offset);
+            return;
+        }
+        // Папку удалили или переименовали в другом окне — во «Входящие». Иначе на экране оставался
+        // список прежней папки под новым названием, и действия ушли бы не в ту папку.
+        const inbox = rolePath('inbox') || 'INBOX';
+        if (e?.status === 404 && folder.value !== inbox && /Папка не найдена/.test(e?.message || '')) {
+            showToast({ text: 'Папки «' + folderName.value + '» больше нет — открыты «Входящие»', error: true }, 6000);
+            folder.value = inbox;
+            filter.value = 'all';
+            query.value = '';
+            syncUrl();
+            await load(1, false, silent);
+            return;
+        }
+        fail(e);
+    } finally { if (!silent) loading.value = false; }
 }
 
 /** Перечитать то, что уже на экране (после действия, по приходу почты), не сбивая прокрутку. */
