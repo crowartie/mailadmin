@@ -10,6 +10,7 @@ import FolderNav from '../../Components/Mail/FolderNav.vue';
 import MessageList from '../../Components/Mail/MessageList.vue';
 import MessageView from '../../Components/Mail/MessageView.vue';
 import Compose from '../../Components/Mail/Compose.vue';
+import ComposeTabs from '../../Components/Mail/ComposeTabs.vue';
 import Popover from '../../Components/Mail/Popover.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import Dialog from '../../Components/Mail/Dialog.vue';
@@ -105,7 +106,12 @@ function setSort(v) {
     load(1);
 }
 let openSeq = 0;
-const compose = ref(null);
+const compose = ref(null);        // письмо, открытое сейчас справа
+// Письма в работе (вкладки внизу): открытое и свёрнутые. Свёрнутое окно не закрывается, а прячется.
+const composeTabs = ref([]);
+watch(compose, (c) => {
+    if (c && !composeTabs.value.some((t) => t.token === c.token)) composeTabs.value.push(c);
+});
 const menu = ref(null);      // { kind, x, y, uids, folder, label }
 const toast = ref(null);
 const dialog = ref(null);    // { kind, ... }
@@ -571,14 +577,72 @@ function printOpen(m) {
 // ── Написать ──────────────────────────────────────────────────
 // Вся работа с формой письма, отправкой и отменой — в useCompose.
 const {
-    startCompose, openThen, openDraft, onDraftSaved, onComposeClose,
+    startCompose, openThen, openDraft, onDraftSaved, onComposeClose, MAX_TABS,
     send, undoSend, flushPending, quickReply, meetingFrom, unsubscribe,
     showOutbox, cancelOutbox, parseList,
 } = useCompose({
-    props, settings, folders, folder, folderInfo, compose, open, cursor, mobileRead,
+    props, settings, folders, folder, folderInfo, compose, composeTabs, open, cursor, mobileRead,
     menu, toast, list, dialog, outboxCount,
     load, reload, refresh, fail, showToast, flushPendingAct, rolePath, router,
 });
+
+// ── Письма в работе (вкладки) ─────────────────────────────────
+// Строку показываем, когда есть что свернуть: больше одного письма или одно свёрнутое.
+const showTabs = computed(() => composeTabs.value.length > 1 || (composeTabs.value.length === 1 && !compose.value));
+const composeRefs = {};
+function setComposeRef(token, el) { if (el) composeRefs[token] = el; else delete composeRefs[token]; }
+function openTab(token) {
+    const t = composeTabs.value.find((x) => x.token === token);
+    if (!t) return;
+    if (t.placeholder) { openDraft(t.draftUid); return; }
+    compose.value = t;
+    mobileRead.value = true;
+}
+function closeTab(token) {
+    const t = composeTabs.value.find((x) => x.token === token);
+    if (!t) return;
+    // Закрыть = как крестик в самом окне: письмо остаётся в «Черновиках», внизу — «Удалить».
+    if (t.placeholder || !composeRefs[token]) { composeTabs.value = composeTabs.value.filter((x) => x.token !== token); return; }
+    composeRefs[token].close();
+}
+// Alt+1…5 — к письму в работе (Ctrl+цифра браузер забирает себе: переключает свои вкладки).
+function onTabKey(e) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || !/^[1-9]$/.test(e.key) || !settings.value.shortcuts) return;
+    const t = composeTabs.value[Number(e.key) - 1];
+    if (!t) return;
+    e.preventDefault();
+    openTab(t.token);
+}
+// «Удалить» в сообщении после закрытия письма: черновик больше не нужен.
+async function onToastAction() {
+    const t = toast.value;
+    if (!t?.draft) { undoToast(); return; }
+    toast.value = null;
+    try {
+        const uid = await t.draft();
+        if (!uid) return;
+        await api.action(rolePath('drafts'), [uid], 'delete');
+        showToast({ text: 'Черновик удалён' }, 2000);
+        onDraftSaved();
+    } catch (e) { fail(e); }
+}
+// После перезагрузки страницы вкладки возвращаются: свёрнутыми, по номерам черновиков.
+// Письмо открывается из черновика по щелчку — так страница не грузит пять писем сразу.
+const TABS_KEY = 'mail.composeTabs.' + (props.user || '');
+watch(
+    () => composeTabs.value.map((t) => ({ uid: t.placeholder ? t.draftUid : (t.meta?.draftUid ?? null), subject: t.meta?.subject ?? t.subject ?? '', to: t.meta?.to ?? '', mode: t.meta?.mode ?? t.mode })),
+    (rows) => { try { localStorage.setItem(TABS_KEY, JSON.stringify(rows.filter((r) => r.uid).slice(0, 5))); } catch { /* приватное окно */ } },
+    { deep: true },
+);
+function restoreTabs() {
+    let rows = [];
+    try { rows = JSON.parse(localStorage.getItem(TABS_KEY) || '[]'); } catch { rows = []; }
+    if (!Array.isArray(rows)) return;
+    rows.slice(0, 5).forEach((r, i) => {
+        if (!r?.uid || composeTabs.value.some((t) => (t.meta?.draftUid ?? t.draftUid) === r.uid)) return;
+        composeTabs.value.push({ token: -(i + 1), placeholder: true, draftUid: r.uid, mode: r.mode || 'draft', meta: { subject: r.subject, to: r.to, mode: r.mode, saved: 'в черновиках' } });
+    });
+}
 
 // ── Горячие клавиши ───────────────────────────────────────────
 // Разбор нажатий — в useHotkeys; здесь остаётся только подписка (см. onMounted).
@@ -589,6 +653,8 @@ const { onKey } = useHotkeys({
 
 onMounted(() => {
     document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onTabKey);
+    restoreTabs();
     window.addEventListener('beforeunload', flushPending);
     window.addEventListener('popstate', onPopState);
     // Опрос «есть ли новое»: 20 с, пока что-то происходит, и до 60 с в тишине.
@@ -617,6 +683,7 @@ onBeforeUnmount(() => {
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('popstate', onPopState);
     window.removeEventListener('beforeunload', flushPending);
+    document.removeEventListener('keydown', onTabKey);
     stopPolling();
     flushPending();
 });
@@ -693,21 +760,28 @@ onBeforeUnmount(() => {
             />
             <div class="mail__rs" title="Потяните, чтобы изменить ширину; двойной щелчок — как было" @pointerdown="startResize('list', $event)" @dblclick="resetCol('list')" />
 
-            <section class="mread">
-                <Compose
-                    v-if="compose"
-                    :key="compose.token"
-                    :compose="compose"
-                    :identities="identities"
-                    :settings="settings"
-                    :cloud="cloud"
-                    @close="onComposeClose"
-                    @send="send"
-                    @toast="showToast"
-                    @draft="onDraftSaved"
-                />
+            <section class="mread" :class="{ 'mread--tabs': showTabs }">
+                <!-- Все письма в работе смонтированы, видно только открытое: свёрнутое не теряет
+                     ни текста, ни курсора, ни выбранных файлов. -->
+                <template v-for="t in composeTabs" :key="t.token">
+                    <Compose
+                        v-if="!t.placeholder"
+                        v-show="compose && compose.token === t.token"
+                        :ref="(el) => setComposeRef(t.token, el)"
+                        :compose="t"
+                        :active="!!compose && compose.token === t.token"
+                        :identities="identities"
+                        :settings="settings"
+                        :cloud="cloud"
+                        @close="(o) => onComposeClose(o, t)"
+                        @send="(p) => send(p, t)"
+                        @toast="showToast"
+                        @draft="onDraftSaved"
+                        @meta="(m) => (t.meta = m)"
+                    />
+                </template>
                 <MessageView
-                    v-else-if="open"
+                    v-if="!compose && open"
                     :message="open"
                     :folder="folder"
                     :folder-role="folderInfo.role"
@@ -725,23 +799,26 @@ onBeforeUnmount(() => {
                     @print="printOpen"
                     @meeting="meetingFrom"
                 />
-                <div v-else-if="selected.length" class="mread__empty">
+                <div v-else-if="!compose && selected.length" class="mread__empty">
                     <b>Выбрано {{ selected.length }}</b>
                     <span>Действия — на панели над списком или клавишами:
                         <span class="kbd">e</span> архив <span class="kbd">#</span> удалить <span class="kbd">v</span> в папку <span class="kbd">l</span> метка</span>
                 </div>
-                <div v-else-if="!list.messages.length && folderInfo.role === 'inbox' && filter === 'all' && !query && !loading" class="mread__empty">
+                <div v-else-if="!compose && !list.messages.length && folderInfo.role === 'inbox' && filter === 'all' && !query && !loading" class="mread__empty">
                     <div class="mread__ok"><Icon name="check" :size="32" /></div>
                     <b>Всё разобрано</b>
                     <span>Новых писем нет.</span>
                 </div>
-                <div v-else class="mread__empty">
+                <div v-else-if="!compose" class="mread__empty">
                     <span>Выберите письмо слева</span>
                     <span class="hint"><span class="kbd">j</span> <span class="kbd">k</span> — по списку, <span class="kbd">c</span> — написать, <span class="kbd">?</span> — все клавиши</span>
                 </div>
+                <ComposeTabs v-if="showTabs" :tabs="composeTabs" :active="compose ? compose.token : null" :max="MAX_TABS" @open="openTab" @close="closeTab" @new="startCompose('new')" />
             </section>
 
             <button class="fab" type="button" title="Написать" @click="startCompose('new')" aria-label="Написать"><Icon name="edit" :size="24" /></button>
+            <!-- Телефон: вместо строки вкладок — кнопка «N письма в работе» над списком. -->
+            <ComposeTabs v-if="composeTabs.length && !compose" variant="pill" :tabs="composeTabs" :max="MAX_TABS" @open="openTab" @close="closeTab" />
         </div>
 
         <!-- Контекстное меню письма -->
@@ -940,6 +1017,6 @@ onBeforeUnmount(() => {
 
         <ShortcutsHelp v-if="help" @close="help = false" />
         <PrintPreview v-if="printing" :message="printing" @close="printing = null" />
-        <Toast :toast="toast" @action="undoToast" @close="toast = null" />
+        <Toast :toast="toast" @action="onToastAction" @close="toast = null" />
     </MailLayout>
 </template>

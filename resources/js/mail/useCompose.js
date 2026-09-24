@@ -10,7 +10,11 @@ import { track } from './track';
  * Отправка, как и действия над письмами, уходит на сервер не сразу: N секунд (Настройки →
  * Общие) письмо ждёт, и «Отменить» возвращает форму вместе с приложенными файлами.
  *
- * @param {object} ctx props, settings, folders, folder, folderInfo, compose, open, cursor,
+ * Писем в работе может быть несколько (вкладки внизу, как в Outlook): ctx.compose — открытое
+ * сейчас, ctx.composeTabs — все, включая свёрнутые. Новое письмо попадает во вкладки само
+ * (watch в Inbox); здесь — предел, закрытие и отправка конкретной вкладки.
+ *
+ * @param {object} ctx props, settings, folders, folder, folderInfo, compose, composeTabs, open, cursor,
  *                     mobileRead, menu, toast, list, dialog, outboxCount
  *                     + load, refresh, fail, showToast, flushPendingAct, rolePath, router
  */
@@ -22,6 +26,21 @@ export function useCompose(ctx) {
     let seq = 0;
 
     const identities = () => ctx.props.identities || [];
+
+    /** Писем в работе не больше пяти: дальше вкладки не помещаются и путают. */
+    const MAX_TABS = 5;
+    function roomForTab() {
+        if ((ctx.composeTabs?.value?.length || 0) < MAX_TABS) return true;
+        ctx.showToast({ text: 'Открыто ' + MAX_TABS + ' писем — закройте одно, чтобы начать новое', error: true });
+
+        return false;
+    }
+    /** Убрать вкладку письма (отправлено, закрыто); если оно было открыто — окно пустеет. */
+    function dropTab(tab) {
+        if (!tab) return;
+        ctx.composeTabs.value = ctx.composeTabs.value.filter((t) => t.token !== tab.token);
+        if (ctx.compose.value?.token === tab.token) ctx.compose.value = null;
+    }
 
     /** Подпись зависит от поля «От»: у общего ящика (info и т. п.) — его собственная. */
     function signatureText(fromMail) {
@@ -88,6 +107,7 @@ export function useCompose(ctx) {
         if (extra) text = '';
         ctx.menu.value = null;
         if (mode === 'draft') { openDraft(m.uid); return; }
+        if (!roomForTab()) return;
         const c = { token: ++seq, mode, to: [], cc: [], bcc: [], subject: '', html: '', from: sharedFrom(m) || '' };
         if (mode === 'new') {
             // «Написать письмо» из карточки адресата: адресат уже подставлен.
@@ -167,16 +187,35 @@ export function useCompose(ctx) {
     }
 
     async function openDraft(uid) {
+        // Черновик уже открыт во вкладке — показываем её, а не второе окно того же письма.
+        const tabs = ctx.composeTabs.value;
+        const idx = tabs.findIndex((t) => (t.meta?.draftUid ?? t.draftUid) === uid);
+        if (idx >= 0 && !tabs[idx].placeholder) {
+            ctx.compose.value = tabs[idx];
+            ctx.mobileRead.value = true;
+            return;
+        }
+        if (idx < 0 && !roomForTab()) return;
         try {
             const d = await api.openDraft(uid);
-            ctx.compose.value = {
+            const c = {
                 token: ++seq, mode: 'draft', ...d,
                 to: parseList(d.to), cc: parseList(d.cc), bcc: parseList(d.bcc),
                 keepAttachments: d.attachments?.length > 0,
                 sourceFolder: ctx.rolePath('drafts'), sourceUid: uid,
             };
+            // Вкладка, восстановленная после перезагрузки страницы, — на своё место в строке.
+            const at = ctx.composeTabs.value.findIndex((t) => t.placeholder && t.draftUid === uid);
+            if (at >= 0) ctx.composeTabs.value.splice(at, 1, c);
+            ctx.compose.value = c;
             ctx.mobileRead.value = true;
         } catch (e) {
+            const at = ctx.composeTabs.value.findIndex((t) => t.placeholder && t.draftUid === uid);
+            if (at >= 0) {
+                ctx.composeTabs.value.splice(at, 1);
+                ctx.showToast({ text: 'Этого черновика уже нет — его отправили или удалили', error: true });
+                return;
+            }
             ctx.fail(e);
         }
     }
@@ -187,12 +226,13 @@ export function useCompose(ctx) {
         if (ctx.folderInfo.value.role === 'drafts') ctx.reload(false);
     }
 
-    function onComposeClose(opts) {
+    function onComposeClose(opts, tab = ctx.compose.value) {
         if (opts?.discard && opts.draftUid) {
             api.action(ctx.rolePath('drafts'), [opts.draftUid], 'delete').then(ctx.refresh).catch(() => {});
         }
-        ctx.compose.value = null;
-        if (!ctx.open.value) ctx.mobileRead.value = false;
+        const wasOpen = ctx.compose.value?.token === tab?.token;
+        dropTab(tab);
+        if (wasOpen && !ctx.open.value) ctx.mobileRead.value = false;
     }
 
     async function doSend(payload) {
@@ -207,8 +247,8 @@ export function useCompose(ctx) {
         return { token: ++seq, mode: 'new', ...f, to: parseList(f.to), cc: parseList(f.cc), bcc: parseList(f.bcc), attachments: [] };
     }
 
-    function send(payload) {
-        ctx.compose.value = null;
+    function send(payload, tab = ctx.compose.value) {
+        dropTab(tab);
         if (!ctx.open.value) ctx.mobileRead.value = false;
         if (payload.sendAt) {
             doSend(payload)
@@ -244,7 +284,7 @@ export function useCompose(ctx) {
                     .catch(() => {})
                     .then(() => doSend(p.payload))
                     .then(() => ctx.showToast({ text: 'Письмо отправлено' }, 2000))
-                    .catch((e) => { ctx.fail(e); ctx.compose.value = { ...formToCompose(p.payload.form), files: p.payload.files }; });
+                    .catch((e) => { ctx.fail(e); ctx.compose.value = { ...formToCompose(p.payload.form), files: p.payload.files, error: e.message }; });
 
                 return;
             }
@@ -360,6 +400,7 @@ export function useCompose(ctx) {
         if (mailto) {
             const [addr, qs] = mailto[1].split('?');
             const subj = new URLSearchParams(qs || '').get('subject') || 'Unsubscribe';
+            if (!roomForTab()) return;
             ctx.compose.value = { token: ++seq, mode: 'new', to: [{ name: '', mail: addr }], cc: [], bcc: [], subject: subj, html: '<p>Unsubscribe</p>' };
             ctx.mobileRead.value = true;   // на телефоне окно письма иначе остаётся за кадром
         }
@@ -385,7 +426,7 @@ export function useCompose(ctx) {
     }
 
     return {
-        startCompose, openThen, openDraft, onDraftSaved, onComposeClose,
+        startCompose, openThen, openDraft, onDraftSaved, onComposeClose, MAX_TABS,
         send, undoSend, flushPending, quickReply, meetingFrom, unsubscribe,
         showOutbox, cancelOutbox, parseList,
     };

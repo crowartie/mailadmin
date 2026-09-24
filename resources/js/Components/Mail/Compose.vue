@@ -19,8 +19,11 @@ const props = defineProps({
     settings: { type: Object, default: () => ({}) },
     cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50, personal: false }) },
     limits: { type: Object, default: () => ({ messageMb: 25, maxFiles: 20 }) },
+    // Письмо открыто сейчас. Свёрнутое во вкладку («Письма в работе») не закрывается, а прячется:
+    // так сохраняются текст, курсор и приложенные файлы.
+    active: { type: Boolean, default: true },
 });
-const emit = defineEmits(['close', 'send', 'toast', 'draft']);
+const emit = defineEmits(['close', 'send', 'toast', 'draft', 'meta']);
 
 const c = props.compose;
 const to = ref(c.to || []);
@@ -69,6 +72,7 @@ function flushRecipients() {
 const fileInput = ref(null);
 let autosave = null;
 let saving = false;      // черновик уже сохраняется — второй запрос дал бы дубль
+let inflight = Promise.resolve();   // идущее сохранение: «Удалить» после закрытия ждёт его, чтобы знать номер черновика
 let closed = false;      // окно закрыто штатно, при размонтировании сохранять не нужно
 
 // Просмотр вложений прямо из окна письма: унаследованные от пересылаемого письма — с сервера, свои — из файла (data:).
@@ -180,7 +184,13 @@ function filesKey() {
 }
 let savedFilesKey = null;
 
-async function saveDraft(silent = false) {
+function saveDraft(silent = false) {
+    if (saving) return inflight;
+    inflight = doSaveDraft(silent);
+    return inflight;
+}
+
+async function doSaveDraft(silent = false) {
     if (!dirty.value && silent) return;
     if (saving) return;   // предыдущее сохранение ещё идёт
     saving = true;
@@ -242,15 +252,38 @@ async function discard() {
 
 function close() {
     closed = true;
-    track('compose.close', dirty.value && worthSaving() ? 'черновик сохранён' : 'без изменений');
-    if (dirty.value && worthSaving()) {
-        saveDraft(true);
-        // Окно закрывается, и надпись «Черновик сохранён» внутри него пропадает вместе с ним —
-        // без этого человек не знает, потерян текст или нет.
-        emit('toast', { text: 'Черновик сохранён — он в папке «Черновики»' });
+    const keep = worthSaving();
+    track('compose.close', dirty.value && keep ? 'черновик сохранён' : 'без изменений');
+    const saved = dirty.value && keep ? saveDraft(true) : inflight;
+    if (keep && (dirty.value || draftUid.value || saving)) {
+        // Окно закрывается без вопросов, а внизу — где письмо и «Удалить», если черновик не нужен.
+        // Без этого человек не знает, потерян текст или нет.
+        emit('toast', {
+            text: '«' + (subject.value.trim() || 'Без темы') + '» — в «Черновиках»',
+            actionLabel: 'Удалить',
+            draft: () => Promise.resolve(saved).then(() => draftUid.value),
+        });
     }
     emit('close');
 }
+
+// Свернули во вкладку — сохраняем сразу, не дожидаясь автосохранения: письмо должно
+// оказаться в «Черновиках», даже если браузер закроют следом.
+watch(() => props.active, (on, was) => {
+    if (was && !on && dirty.value && worthSaving()) saveDraft(true);
+});
+
+// Что показать на вкладке: тема, кому, когда сохранено, есть ли несохранённые правки.
+watch(
+    () => ({
+        subject: subject.value, to: to.value.length ? (to.value[0].name || to.value[0].mail) + (to.value.length > 1 ? ' и ещё ' + (to.value.length - 1) : '') : '',
+        saved: status.value, dirty: dirty.value, draftUid: draftUid.value, mode: c.mode,
+    }),
+    (m) => emit('meta', m),
+    { immediate: true, deep: true },
+);
+
+defineExpose({ close });
 
 // Файлы из личного облака: карточками во вложения; уже выбранный второй раз не добавляется.
 const picker = ref(false);

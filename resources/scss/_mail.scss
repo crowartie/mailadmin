@@ -1454,3 +1454,84 @@ select.input { padding-right: 28px; }
 // Кружок в строке списка — кнопка «Вся переписка»: сбрасываем вид кнопки, подсвечиваем при наведении.
 button.mrow__av { border: 0; padding: 0; font-family: inherit; cursor: pointer; transition: box-shadow .12s; }
 button.mrow__av:hover, button.mrow__av:focus-visible { box-shadow: 0 0 0 2px v.$c-accent; outline: none; }
+
+// ── Письма в работе: вкладки внизу окна письма ───────────────
+// Со строкой вкладок окно письма не может занимать всю высоту панели — делит её со строкой.
+.mread--tabs .compose { min-height: 0; max-height: none; flex: 1 1 0; margin-bottom: 12px; }
+.ctabs {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: v.$c-surface;
+    border-top: 1px solid v.$c-border;
+    box-shadow: 0 -4px 14px rgba(27, 36, 48, .06);
+    overflow-x: auto;
+
+    &__cap { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: v.$c-muted; flex-shrink: 0; }
+    &__new {
+        width: 38px; height: 38px; flex-shrink: 0; border: 1px dashed v.$c-border-2; border-radius: 10px;
+        background: none; color: v.$c-accent-ink; display: flex; align-items: center; justify-content: center; cursor: pointer;
+        &:hover { background: v.$c-accent-soft; }
+    }
+    &__count { font-size: 12px; color: v.$c-muted; white-space: nowrap; flex-shrink: 0; }
+    .grow { flex: 1; }
+}
+.ctab {
+    width: 232px;
+    height: 40px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 0;
+    border-radius: 10px;
+    border: 1px solid v.$c-border-2;
+    background: v.$c-surface;
+
+    &:hover { background: v.$c-surface-2; }
+    &--on, &--on:hover { border-color: v.$c-accent; background: v.$c-accent-soft; color: v.$c-accent-ink; }
+    &--err .ctab__txt span { color: v.$c-no-ink; }
+    &--err svg { color: v.$c-no; }
+    &--wide { width: 100%; }
+
+    &__main {
+        flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 0 0 12px;
+        border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 10px;
+        &:focus-visible { outline: 2px solid v.$c-accent; outline-offset: -2px; }
+    }
+    &__txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+    &__txt b, &__txt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    &__txt b { font-size: 13px; font-weight: 600; }
+    &__txt span { font-size: 11.5px; color: v.$c-muted; }
+    &__dot { width: 8px; height: 8px; border-radius: 50%; background: v.$c-warn; flex-shrink: 0; }
+    &__x {
+        width: 26px; height: 26px; flex-shrink: 0; border: 0; border-radius: 6px; background: none; color: v.$c-muted;
+        display: flex; align-items: center; justify-content: center; cursor: pointer;
+        &:hover { background: v.$c-border; color: v.$c-text; }
+    }
+}
+// Телефон: кнопка «N письма в работе» и список над ней; на компьютере её нет.
+.ctabs-pill { display: none; }
+@media (max-width: 860px) {
+    .ctabs { display: none; }
+    .mread--tabs .compose { max-height: calc(100% - 36px); }
+    .ctabs-pill {
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+        position: fixed; left: 12px; right: 12px; z-index: 60;
+        bottom: calc(16px + 56px + env(safe-area-inset-bottom));
+        pointer-events: none;
+
+        &__btn {
+            pointer-events: auto; height: 44px; padding: 0 16px; border: 0; border-radius: 22px; background: var(--toast-bg); color: var(--toast-ink);
+            font: inherit; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 20px rgba(27, 36, 48, .3);
+        }
+        &__list {
+            pointer-events: auto; align-self: stretch; display: flex; flex-direction: column; gap: 8px; padding: 12px;
+            border-radius: 16px; background: v.$c-surface; border: 1px solid v.$c-border; box-shadow: v.$shadow-pop;
+        }
+        &__head { display: flex; align-items: center; justify-content: space-between; font-size: 14px; span { font-size: 12.5px; color: v.$c-muted; } }
+    }
+}
