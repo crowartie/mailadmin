@@ -52,7 +52,8 @@ class SecurityController extends Controller
             'bans' => array_map(fn ($b) => $b + ['where' => Fail2ban::where($b['ip'])], $bans ?? []),
             'jails' => $tab === 'bans' ? $this->f2b->jails() : [],
             'sessions' => $this->sessions->all(null, $request->session()->getId()),
-            'policies' => AppSetting::group('security'),
+            // remember_days: «Не выходить на этом устройстве» в веб-почте (см. RememberDevice), по умолчанию 90.
+            'policies' => AppSetting::group('security') + ['remember_days' => \App\Services\Mail\RememberDevice::days()],
             'fail2ban' => AppSetting::group('fail2ban'),
             'failedTop' => $stats['failedLogins'] ?? [],
         ];
@@ -197,7 +198,12 @@ class SecurityController extends Controller
         $data = $request->validate([
             'min_password' => ['required', 'integer', 'min:6', 'max:64'], 'password_days' => ['required', 'integer', 'min:0', 'max:3650'],
             'admin_2fa' => ['boolean'], 'all_2fa_internet' => ['boolean'], 'notify_new_device' => ['boolean'], 'app_passwords' => ['boolean'], 'telegram_security' => ['boolean'],
+            'remember_days' => ['required', 'integer', 'min:0', 'max:365'],
         ]);
+        // Выключили запоминание — все запомненные устройства забываются сразу, а не через 90 дней.
+        if ((int) $data['remember_days'] === 0) {
+            \Illuminate\Support\Facades\DB::table('webmail_remember')->delete();
+        }
         AppSetting::put('security', $data);
         AdminAction::log('settings.update', 'политики безопасности');
 
