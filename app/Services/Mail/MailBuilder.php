@@ -87,7 +87,11 @@ class MailBuilder
         }
         // Картинки исходного письма (ответ с цитатой, пересылка, открытый черновик) приходят ссылками
         // на наш же сервер — получатель их не откроет. Раньше так и уходили: битые картинки у получателя.
-        $html = $this->embedServerImages($html);
+        $html = self::embedServerImages($html, function (string $path, int $uid, int $index) {
+            $part = $this->store->attachment($path, $uid, $index);
+
+            return [$part->getMimeType(), $part->getContent()];
+        });
         // Картинки, встроенные редактором как data: (логотип в подписи, снимок из буфера) — во вложения с cid:
         // Gmail и часть клиентов data:-картинки в письмах не показывают, cid показывают все.
         $n = 0;
@@ -523,21 +527,22 @@ class MailBuilder
      * путь: письмо отправили раньше, чем картинки успели подгрузиться. Исходного письма уже нет —
      * картинку убираем: ссылка на чужой для получателя сервер ему ни к чему.
      */
-    private function embedServerImages(string $html): string
+    /** @param callable(string $path, int $uid, int $index): array{0:string,1:string} $fetch тип и содержимое части письма */
+    public static function embedServerImages(string $html, callable $fetch): string
     {
         if (! str_contains($html, '/mail/api/message/')) {
             return $html;
         }
         $cache = [];
 
-        return preg_replace_callback('#src=(["\'])(?:https?://[^/"\']+)?/mail/api/message/([^/"\'?]+)/(\d+)/attachment/(\d+)(?:\?[^"\']*)?\1#i', function ($m) use (&$cache) {
+        return preg_replace_callback('#src=(["\'])(?:https?://[^/"\']+)?/mail/api/message/([^/"\'?]+)/(\d+)/attachment/(\d+)(?:\?[^"\']*)?\1#i', function ($m) use (&$cache, $fetch) {
             $key = $m[2] . '/' . $m[3] . '/' . $m[4];
             if (! array_key_exists($key, $cache)) {
                 $cache[$key] = null;
                 try {
-                    $part = $this->store->attachment(rawurldecode($m[2]), (int) $m[3], (int) $m[4]);
-                    $mime = strtolower($part->getMimeType());
-                    $data = $part->getContent();
+                    [$mime, $data] = $fetch(rawurldecode($m[2]), (int) $m[3], (int) $m[4]);
+                    $mime = strtolower((string) $mime);
+                    $data = (string) $data;
                     if (str_starts_with($mime, 'image/') && $data !== '' && strlen($data) <= 10_000_000) {
                         $cache[$key] = 'data:' . $mime . ';base64,' . base64_encode($data);
                     }
