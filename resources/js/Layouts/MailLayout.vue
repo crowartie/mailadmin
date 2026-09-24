@@ -37,7 +37,10 @@ const services = computed(() => [
 // «Ещё» на телефоне: в нижней панели помещается только четыре пункта.
 const more = ref(false);
 
+// Буквы в кружке — из имени (как видят получатели), а не из адреса: «ВВ», а не «VV».
 const initials = computed(() => {
+    const words = String(page.props.mailName || '').trim().split(/\s+/).filter((w) => /^[\p{L}]/u.test(w));
+    if (words.length && !String(page.props.mailName).includes('@')) return (words[0][0] + (words[1] ? words[1][0] : '')).toUpperCase();
     const local = (props.user || '').split('@')[0];
     return local.slice(0, 2).toUpperCase() || '·';
 });

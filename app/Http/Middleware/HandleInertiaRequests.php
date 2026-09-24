@@ -58,6 +58,9 @@ class HandleInertiaRequests extends Middleware
                 ] : null,
             ],
             'mailUser' => fn () => $request->session()->get('mail.user'),
+            // Имя, которым подписываются письма (своё из настроек или ФИО из справочника) — для кружка в рельсе.
+            'mailName' => fn () => $isAdminArea || ! $request->session()->get('mail.user') ? null
+                : \App\Services\Mail\MailBuilder::senderName((string) $request->session()->get('mail.user')),
             // Пункт «Облако» в рельсе — только когда облако сотрудников включено в админке.
             'cloudPersonal' => fn () => ! $isAdminArea && \App\Services\Cloud\PersonalCloud::enabled(),
             // Новые ответы по обращениям — точка на значке «Поддержка» в рельсе веб-почты.

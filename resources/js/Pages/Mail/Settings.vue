@@ -24,6 +24,7 @@ const props = defineProps({
     // Адреса и порты почтовых программ приходят с сервера (HelpController::hosts):
     // раньше каждый раздел писал их у себя и все три расходились.
     hosts: { type: Object, default: () => ({}) },
+    directoryName: { type: String, default: '' },
 });
 
 // Правило для папки (обращение №38): у каждой папки, куда письма вообще можно складывать,
@@ -286,7 +287,15 @@ const shortcuts = [
                         <form class="card mset__section" @submit.prevent="saveGeneral">
                             <h2>Общие</h2>
                             <div class="mset__cols">
-                                <div class="field"><label>Имя отправителя</label><input v-model="s.display_name" class="input" placeholder="Как вас видят получатели"></div>
+                                <div class="field">
+                                    <label for="mset-name">Имя отправителя</label>
+                                    <input id="mset-name" v-model="s.display_name" class="input" :placeholder="directoryName || 'Как вас видят получатели'">
+                                    <!-- Пустое поле не значит «без имени»: в письма уходит ФИО из справочника. Раньше это было не видно. -->
+                                    <span v-if="!(s.display_name || '').trim()" class="hint" style="margin: 4px 0 0">
+                                        <template v-if="directoryName">Получатели видят: <b>{{ directoryName }}</b> — из справочника сотрудников. Впишите своё, если нужно иначе.</template>
+                                        <template v-else>Сейчас в письмах стоит только адрес — впишите имя.</template>
+                                    </span>
+                                </div>
                                 <!-- 201: адрес выглядел полем ввода, хотя менять его может только администратор. -->
                                 <div class="field"><label>Адрес</label><div class="field__row" style="align-items: baseline; gap: 10px; min-height: 38px"><b class="mono">{{ user }}</b><span class="hint" style="margin: 0">меняет администратор</span></div></div>
                                 <div class="field">

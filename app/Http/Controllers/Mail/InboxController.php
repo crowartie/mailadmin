@@ -89,6 +89,8 @@ class InboxController extends Controller
             // Один источник адресов на всё приложение: раньше «Телефон и программы»,
             // «Безопасность» и справка называли разные хосты и разные порты SMTP.
             'hosts' => \App\Http\Controllers\Mail\HelpController::hosts($imap->user()),
+            // Что уйдёт в письмах, если своё имя не задано: ФИО из справочника сотрудников.
+            'directoryName' => (string) \App\Models\Vmail\Mailbox::query()->where('username', $imap->user())->value('name'),
         ]);
     }
 }
