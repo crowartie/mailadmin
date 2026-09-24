@@ -853,8 +853,6 @@ onBeforeUnmount(() => {
                     :labels="labels"
                     :settings="settings"
                     :user="user"
-                    :held="isHeld"
-                    @hold="holdMessage"
                     @act="act"
                     @reply="startCompose"
                     @quick="quickReply"
@@ -974,8 +972,9 @@ onBeforeUnmount(() => {
                 <button class="pop__item mobile-only" type="button" @click="menu = { ...menu, kind: 'label' }"><Icon name="tag" :size="16" />Метка…</button>
                 <button class="pop__item mobile-only" type="button" @click="menu = { ...menu, kind: 'snooze' }"><Icon name="clock" :size="16" />Отложить…</button>
                 <button class="pop__item mobile-only" type="button" @click="menu = null; printOpen(open)"><Icon name="print" :size="16" />Печать</button>
-                <button v-if="folderInfo.role !== 'drafts'" class="pop__item mobile-only" type="button" @click="holdMessage(open)"><Icon name="pin" :size="16" />{{ isHeld ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
                 <div class="pop__sep mobile-only" />
+                <!-- Панель письма заполнена до края: лишняя кнопка переносила «Удалить» на вторую строку. -->
+                <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Вкладка внизу: письмо перед глазами, пока пишете другое" @click="holdMessage(open)"><Icon name="pin" :size="16" />{{ isHeld ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
             </template>
             <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Письмо уйдёт файлом, получатель откроет его как письмо" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
             <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Пометить непрочитанным</button>
