@@ -24,8 +24,8 @@
     .mnav__item:hover .mnav__more, .mnav__item:focus-within .mnav__more { display: inline; }
     // Счётчик — по-прежнему у правого края, пока «···» спрятана.
     .mnav__more + .mnav__count { margin-left: auto; }
-    .mnav__item:hover .mnav__more + .mnav__count, .mnav__item:focus-within }
-.mnav__more + .mnav__count { margin-left: 4px; }
+    .mnav__item:hover .mnav__more + .mnav__count, .mnav__item:focus-within .mnav__more + .mnav__count { margin-left: 4px; }
+}
 .mnav__count { margin-left: auto; font-size: 12px; color: v.$c-faint; font-variant-numeric: tabular-nums; }
 .mnav__item--on .mnav__count { color: v.$c-accent-ink; font-weight: 600; }
 .mnav__foot { display: flex; gap: 4px; padding: 8px 4px 0; border-top: 1px solid v.$c-border; }
