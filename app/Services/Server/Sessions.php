@@ -47,6 +47,21 @@ class Sessions
             $groups[$key]['me'] = $groups[$key]['me'] || $s->id === $currentSessionId;
         }
         $out = array_values($groups);
+        // Запомненные устройства, у которых сеанс уже кончился: по ним войдут без пароля — их тоже видно и можно завершить.
+        $withSession = array_flip(array_merge(...array_map(fn ($g) => explode(',', substr($g['id'], 4)), $out ?: [['id' => 'web:']])));
+        foreach ($onlyUser ? \App\Services\Mail\RememberDevice::list($onlyUser) : [] as $r) {
+            if ($r->session_id && isset($withSession[$r->session_id]) && isset($alive[$r->session_id])) {
+                foreach ($out as &$g) {
+                    if (in_array($r->session_id, explode(',', substr($g['id'], 4)), true)) {
+                        $g['remembered'] = true;
+                    }
+                }
+                unset($g);
+                continue;
+            }
+            $out[] = ['id' => 'remember:' . $r->id, 'user' => $r->user, 'device' => 'Веб-почта · ' . ($r->device ?: 'браузер'), 'ip' => $r->ip,
+                'seen' => $r->last_used_at ? \Illuminate\Support\Carbon::parse($r->last_used_at)->toIso8601String() : null, 'kind' => 'web', 'me' => false, 'count' => 1, 'remembered' => true];
+        }
         foreach ($this->imap() as $row) {
             if ($onlyUser && $row['user'] !== $onlyUser) {
                 continue;
@@ -87,6 +102,9 @@ class Sessions
             $sids = array_filter(explode(',', substr($id, 4)));
             DB::table('sessions')->whereIn('id', $sids)->delete();
             MailSession::query()->whereIn('id', $sids)->delete();
+            \App\Services\Mail\RememberDevice::revokeSessions($sids);
+        } elseif (str_starts_with($id, 'remember:')) {
+            \App\Services\Mail\RememberDevice::revokeId((int) substr($id, 9));
         } elseif (str_starts_with($id, 'imap:')) {
             [, $user] = explode(':', $id, 3) + [null, null];
             if ($user) {
@@ -101,6 +119,7 @@ class Sessions
             DB::table('sessions')->where('id', $sid)->delete();
         }
         MailSession::query()->where('user', $user)->delete();
+        \App\Services\Mail\RememberDevice::revokeUser($user);
         Ctl::run('kick', [$user]);
     }
 }

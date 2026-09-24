@@ -9,6 +9,7 @@ use App\Models\MailLogin;
 use App\Models\MailSession;
 use App\Models\Webmail\Setting;
 use App\Services\Mail\ImapSession;
+use App\Services\Mail\RememberDevice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -36,12 +37,13 @@ class LoginController extends Controller
             return redirect('/mail');
         }
 
-        return Inertia::render('Mail/Login', ['domain' => config('areas.default_domain', 'innotec.su')]);
+        return Inertia::render('Mail/Login', ['domain' => config('areas.default_domain', 'innotec.su'), 'rememberDays' => RememberDevice::days()]);
     }
 
     public function store(Request $request, Google2FA $google2fa): RedirectResponse
     {
-        $data = $request->validate(['login' => ['required', 'string', 'max:255'], 'password' => ['required', 'string']]);
+        $data = $request->validate(['login' => ['required', 'string', 'max:255'], 'password' => ['required', 'string'], 'remember' => ['nullable', 'boolean']]);
+        $remember = $request->boolean('remember');
         $login = strtolower(trim($data['login']));
         if (! str_contains($login, '@')) {
             $login .= '@' . config('areas.default_domain', 'innotec.su');
@@ -77,12 +79,12 @@ class LoginController extends Controller
         $settings = Setting::for($login, true);
         if (! empty($settings['totp_enabled']) && ! empty($settings['totp_secret'])) {
             // Пароль верен — ждём код. Сессия почты ещё не открыта.
-            $request->session()->put('mail.pending', ['user' => $login, 'secret' => Crypt::encryptString($data['password'])]);
+            $request->session()->put('mail.pending', ['user' => $login, 'secret' => Crypt::encryptString($data['password']), 'remember' => $remember]);
 
             return redirect('/mail/login/code');
         }
 
-        return $this->complete($request, $login, $data['password'], $profile);
+        return $this->complete($request, $login, $data['password'], $profile, $remember);
     }
 
     public function code(Request $request): Response|RedirectResponse
@@ -117,11 +119,11 @@ class LoginController extends Controller
         }
         $request->session()->forget('mail.pending');
 
-        return $this->complete($request, $pending['user'], Crypt::decryptString($pending['secret']), EmployeeProfile::for($pending['user']));
+        return $this->complete($request, $pending['user'], Crypt::decryptString($pending['secret']), EmployeeProfile::for($pending['user']), ! empty($pending['remember']));
     }
 
     /** Открыть сессию почты, записать вход, заметить новое устройство, потребовать 2FA, если велел админ. */
-    private function complete(Request $request, string $login, string $password, EmployeeProfile $profile): RedirectResponse
+    private function complete(Request $request, string $login, string $password, EmployeeProfile $profile, bool $remember = false): RedirectResponse
     {
         $device = MailSession::device($request->userAgent());
         // Устройство знакомо, если с него уже входили (в т.ч. как «новое») за последние 90 дней.
@@ -131,6 +133,9 @@ class LoginController extends Controller
 
         ImapSession::login($request, $login, $password);
         MailSession::seen($request, $login);
+        if ($remember) {
+            RememberDevice::issue($request, $login, $password);
+        }
         MailLogin::record($request, $login, $known || ! $everLogged ? 'ok' : 'new_device');
 
         if (! $known && $everLogged && (AppSetting::group('security')['notify_new_device'] ?? true)) {
@@ -161,6 +166,8 @@ class LoginController extends Controller
 
     public function destroy(Request $request): RedirectResponse
     {
+        // «Выйти» — значит и не пускать больше по запомненному устройству.
+        RememberDevice::forget($request);
         MailSession::query()->where('id', $request->session()->getId())->delete();
         $request->session()->forget(['mail.user', 'mail.secret', 'mail.master', 'mail.force2fa', 'mail.pending']);
         $request->session()->regenerate();

@@ -71,4 +71,6 @@ Schedule::command('activity:prune')->dailyAt('04:40')->withoutOverlapping();
 // Корзина личного облака: удалённое дольше срока стирается из Nextcloud.
 // Облако сотрудника: срок хранения файлов — до уборки корзины, чтобы убранное сегодня не стёрлось сразу.
 Schedule::command('cloud:expire')->dailyAt('04:30')->withoutOverlapping();
+// Истёкшие ключи «Не выходить на этом устройстве».
+Schedule::call(fn () => \App\Services\Mail\RememberDevice::prune())->dailyAt('04:40')->name('remember-prune')->withoutOverlapping();
 Schedule::command('cloud:purge-trash')->dailyAt('04:45')->withoutOverlapping();

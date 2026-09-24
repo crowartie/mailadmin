@@ -164,6 +164,7 @@ Route::middleware('area:mail')->group(function () {
             Route::delete('security/app-passwords/{id}', [MailSecurityController::class, 'destroyAppPassword'])->whereNumber('id');
             Route::post('security/sessions/kick', [MailSecurityController::class, 'kick']);
             Route::post('security/sessions/kick-others', [MailSecurityController::class, 'kickOthers']);
+            Route::post('security/remember', [MailSecurityController::class, 'remember']);
 
             Route::get('rules', [RulesController::class, 'show']);
             Route::put('rules', [RulesController::class, 'update']);

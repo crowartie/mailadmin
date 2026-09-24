@@ -91,7 +91,7 @@ function saveAccess() { access.post(`${base}/access`, { preserveScroll: true });
 async function act(url, data = {}, message = null) { if (message && !(await confirmAsk(message, { ok: 'Да', danger: true }))) return; router.post(url, data, { preserveScroll: true }); }
 async function impersonate() { if (await confirmAsk(`Открыть веб-почту ${props.mailbox.username} от его имени? Действие попадёт в журнал.`, { ok: 'Открыть' })) router.post(`${base}/impersonate`); }
 function when(iso) { if (!iso) return '—'; const d = new Date(iso); const diff = (Date.now() - d) / 60000; if (diff < 1) return 'сейчас'; if (diff < 60) return Math.round(diff) + ' мин назад'; if (diff < 1440) return Math.round(diff / 60) + ' ч назад'; return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
-const LOGIN = { ok: 'вход', new_device: 'новое устройство', bad_password: 'неверный пароль', blocked: 'заблокирован', bad_code: 'неверный код' };
+const LOGIN = { ok: 'вход', new_device: 'новое устройство', remember: 'запомненное устройство', bad_password: 'неверный пароль', blocked: 'заблокирован', bad_code: 'неверный код' };
 
 // ── Общие папки ящика (как в Kerio: владелец или админ открывает папку коллегам) ──
 const shares = ref(null);   // { folders: [{path,name,depth,shares:[{mail,name,level}]}], candidates }
@@ -312,7 +312,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
                     <p v-if="!(mailbox.appPasswords || []).length" class="hint">Паролей приложений нет — телефон и программы входят основным паролем.</p>
                     <button class="btn btn--danger" type="button" style="margin-top: 8px" @click="act(`${base}/kick`, { all: true }, 'Отключить все устройства? Сеансы завершатся, пароли приложений перестанут работать.')">Отключить все устройства</button>
                     <div class="group-title">Последние входы</div>
-                    <div v-for="(l, i) in mailbox.logins || []" :key="i" class="kv"><span style="color: inherit">{{ l.device }} <span class="mono faint">{{ l.ip }}</span></span><span><span class="chip" :class="l.result === 'ok' ? 'chip--ok' : l.result === 'new_device' ? 'chip--warn' : 'chip--no'">{{ LOGIN[l.result] || l.result }}</span> <span class="faint">{{ when(l.at) }}</span></span></div>
+                    <div v-for="(l, i) in mailbox.logins || []" :key="i" class="kv"><span style="color: inherit">{{ l.device }} <span class="mono faint">{{ l.ip }}</span></span><span><span class="chip" :class="l.result === 'ok' || l.result === 'remember' ? 'chip--ok' : l.result === 'new_device' ? 'chip--warn' : 'chip--no'">{{ LOGIN[l.result] || l.result }}</span> <span class="faint">{{ when(l.at) }}</span></span></div>
                     <p v-if="!(mailbox.logins || []).length" class="hint">Входов в веб-почту ещё не было.</p>
                 </template>
 

@@ -185,6 +185,7 @@ export const api = {
     deleteAppPassword: (id) => request('DELETE', `/mail/api/security/app-passwords/${id}`),
     kickSession: (id) => request('POST', '/mail/api/security/sessions/kick', { id }),
     kickOthers: () => request('POST', '/mail/api/security/sessions/kick-others'),
+    rememberDevice: (on) => request('POST', '/mail/api/security/remember', { on }),
 
     // Контакты.
     books: () => request('GET', '/mail/api/contacts/books'),

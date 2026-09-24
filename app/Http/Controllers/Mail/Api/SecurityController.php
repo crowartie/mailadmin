@@ -40,6 +40,8 @@ class SecurityController extends Controller
             'sessions' => $this->sessions->all($user, $request->session()->getId()),
             'logins' => MailLogin::query()->where('user', $user)->orderByDesc('id')->limit(15)->get()->map(fn (MailLogin $l) => ['at' => $l->created_at->toIso8601String(), 'ip' => $l->ip, 'result' => $l->result, 'device' => \App\Models\MailSession::device($l->agent)]),
             'minPassword' => (int) (AppSetting::group('security')['min_password'] ?? 10),
+            'remember' => \App\Services\Mail\RememberDevice::isCurrent($request),
+            'rememberDays' => \App\Services\Mail\RememberDevice::days(),
         ]);
     }
 
@@ -112,15 +114,31 @@ class SecurityController extends Controller
     {
         $data = $request->validate(['id' => ['required', 'string', 'max:200']]);
         // Только свои сеансы.
-        $mine = array_column($this->sessions->all($imap->user()), 'id');
+        $mine = array_column($this->sessions->all($imap->user(), $request->session()->getId()), 'id');
         abort_unless(in_array($data['id'], $mine, true), 403);
         $this->sessions->kick($data['id']);
 
         return response()->json(['sessions' => $this->sessions->all($imap->user(), $request->session()->getId())]);
     }
 
+    /** «Не выходить на этом устройстве» — включить или выключить из настроек. */
+    public function remember(Request $request, ImapSession $imap): JsonResponse
+    {
+        $on = (bool) $request->validate(['on' => ['required', 'boolean']])['on'];
+        if ($on) {
+            abort_if($imap->isMaster(), 422, 'Во входе администратора устройство не запоминается');
+            abort_unless(\App\Services\Mail\RememberDevice::days() > 0, 422, 'Администратор выключил запоминание устройств');
+            \App\Services\Mail\RememberDevice::issue($request, $imap->user(), $imap->password());
+        } else {
+            \App\Services\Mail\RememberDevice::forget($request);
+        }
+
+        return response()->json(['remember' => $on, 'sessions' => $this->sessions->all($imap->user(), $request->session()->getId())]);
+    }
+
     public function kickOthers(Request $request, ImapSession $imap): JsonResponse
     {
+        \App\Services\Mail\RememberDevice::revokeUser($imap->user(), $request->session()->getId());
         foreach ($this->sessions->all($imap->user(), $request->session()->getId()) as $s) {
             if (! $s['me']) {
                 $this->sessions->kick($s['id']);

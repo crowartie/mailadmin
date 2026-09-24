@@ -103,7 +103,7 @@ function say(text, error = false) {
 const {
     sec, secError, twofa, twofaCode, twofaPassword, newAppPassword, createdPassword,
     loadSecurity, copyPassword, startTwofa, enableTwofa, disableTwofa,
-    createAppPassword, revokeAppPassword, kickSession, kickOthers,
+    createAppPassword, revokeAppPassword, kickSession, kickOthers, setRemember,
 } = useSecuritySettings({ busy, say, ask, force2fa: props.force2fa });
 // Открыли сразу «Безопасность» — читаем её данные, не дожидаясь щелчка по разделу.
 if (props.section === 'security') loadSecurity();
@@ -562,16 +562,20 @@ const shortcuts = [
                         </div>
 
                         <div class="card mset__section">
+                            <label v-if="sec && sec.rememberDays" class="mset__remember">
+                                <input type="checkbox" :checked="sec.remember" @change="setRemember($event.target.checked)">
+                                <span><b style="font-weight: 600">Не выходить на этом устройстве</b><span class="sub" style="display: block">{{ sec.rememberDays }} дней без повторного входа; срок продлевается, пока вы пользуетесь почтой. На чужом или общем компьютере не включайте.</span></span>
+                            </label>
                             <h2>Где вы вошли <span class="grow" /><button v-if="sec && sec.sessions.some((s) => !s.me)" class="btn btn--sm" type="button" @click="kickOthers">Завершить все, кроме этого</button></h2>
                             <div class="mset__list">
                                 <div v-for="s in (sec ? sec.sessions : [])" :key="s.id" class="mset__li">
                                     <Icon :name="s.kind === 'web' ? 'laptop' : 'phone'" :size="16" style="color: var(--faint)" />
-                                    <div class="grow"><div>{{ s.device }}<span v-if="s.me" class="chip chip--acc" style="margin-left: 8px">это вы</span><span v-if="s.count > 1" class="chip chip--off" style="margin-left: 8px" title="Одинаковые сеансы с этого браузера и адреса; «Завершить» закроет все">{{ s.count }} {{ plural(s.count, 'сеанс', 'сеанса', 'сеансов') }}</span></div><div class="sub mono">{{ s.ip }}<template v-if="s.seen"> · {{ when(s.seen) }}</template></div></div>
+                                    <div class="grow"><div>{{ s.device }}<span v-if="s.me" class="chip chip--acc" style="margin-left: 8px">это вы</span><span v-if="s.remembered" class="chip chip--ok" style="margin-left: 8px" title="Вход без пароля, пока не завершите">запомнено</span><span v-if="s.count > 1" class="chip chip--off" style="margin-left: 8px" title="Одинаковые сеансы с этого браузера и адреса; «Завершить» закроет все">{{ s.count }} {{ plural(s.count, 'сеанс', 'сеанса', 'сеансов') }}</span></div><div class="sub mono">{{ s.ip }}<template v-if="s.seen"> · {{ when(s.seen) }}</template></div></div>
                                     <button v-if="!s.me" class="btn btn--sm" type="button" @click="kickSession(s)">Завершить</button>
                                 </div>
                             </div>
                             <div v-if="sec && sec.logins.length" class="grp" style="margin-top: 6px">Последние входы</div>
-                            <div v-for="(l, i) in (sec ? sec.logins : [])" :key="i" class="kv"><span>{{ when(l.at, true) }} · {{ l.device }}</span><b style="font-weight: 500" :style="{ color: l.result === 'ok' || l.result === 'new_device' ? 'var(--ok)' : 'var(--no)' }">{{ { ok: 'вход', new_device: 'вход с нового устройства', bad_password: 'неверный пароль', bad_code: 'неверный код', blocked: 'заблокировано' }[l.result] || l.result }} · <span class="mono">{{ l.ip }}</span></b></div>
+                            <div v-for="(l, i) in (sec ? sec.logins : [])" :key="i" class="kv"><span>{{ when(l.at, true) }} · {{ l.device }}</span><b style="font-weight: 500" :style="{ color: ['ok', 'new_device', 'remember'].includes(l.result) ? 'var(--ok)' : 'var(--no)' }">{{ { ok: 'вход', new_device: 'вход с нового устройства', remember: 'вход на запомненном устройстве', bad_password: 'неверный пароль', bad_code: 'неверный код', blocked: 'заблокировано' }[l.result] || l.result }} · <span class="mono">{{ l.ip }}</span></b></div>
                         </div>
 
                         <div class="card mset__section" style="max-width: 560px">

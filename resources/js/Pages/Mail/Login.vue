@@ -2,7 +2,7 @@
 import { useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
-const props = defineProps({ domain: String });
+const props = defineProps({ domain: String, rememberDays: { type: Number, default: 90 } });
 const page = usePage();
 const flash = computed(() => {
     const f = { ...(page.props.flash || {}) };
@@ -12,7 +12,8 @@ const flash = computed(() => {
     return f;
 });
 
-const form = useForm({ login: '', password: '' });
+// «Не выходить на этом устройстве»: по умолчанию выключено — компьютер может быть общим.
+const form = useForm({ login: '', password: '', remember: false });
 function submit() {
     form.post('/mail/login');
 }
@@ -91,6 +92,10 @@ function watchInput(e) {
                 <p v-else-if="cyrillic" class="hint" style="margin: 0; color: var(--warn-ink)">В пароле русские буквы — возможно, не переключена раскладка.</p>
             </div>
 
+            <label v-if="rememberDays" class="auth__remember">
+                <input v-model="form.remember" type="checkbox">
+                <span>Не выходить на этом устройстве<span class="hint" style="display: block; margin: 0">{{ rememberDays }} дней без повторного входа. Не ставьте на чужом или общем компьютере.</span></span>
+            </label>
             <button class="btn btn--primary" type="submit" style="height: 44px" :disabled="form.processing">Войти</button>
             <p class="hint" style="margin: 0">Тот же пароль, что в почтовой программе и на телефоне.</p>
             <p class="hint" style="margin: 0; display: flex; gap: 14px; flex-wrap: wrap"><a href="/mail/setup">Подключить телефон или программу</a><a href="/mail/help">Справка по почте</a></p>

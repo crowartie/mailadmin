@@ -118,6 +118,18 @@ export function useSecuritySettings(ctx) {
         }
     }
 
+    /** «Не выходить на этом устройстве» из настроек. */
+    async function setRemember(on) {
+        try {
+            const r = await api.rememberDevice(on);
+            sec.value.remember = r.remember;
+            sec.value.sessions = r.sessions;
+            ctx.say(on ? 'Это устройство запомнено — почта не будет просить пароль ' + sec.value.rememberDays + ' дней' : 'Устройство забыто — после конца сеанса почта попросит пароль');
+        } catch (e) {
+            ctx.say(e.message, true);
+        }
+    }
+
     async function kickOthers() {
         try {
             const r = await api.kickOthers();
@@ -131,6 +143,6 @@ export function useSecuritySettings(ctx) {
     return {
         sec, secError, twofa, twofaCode, twofaPassword, newAppPassword, createdPassword,
         loadSecurity, copyPassword, startTwofa, enableTwofa, disableTwofa,
-        createAppPassword, revokeAppPassword, kickSession, kickOthers,
+        createAppPassword, revokeAppPassword, kickSession, kickOthers, setRemember,
     };
 }

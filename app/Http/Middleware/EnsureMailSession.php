@@ -17,7 +17,8 @@ class EnsureMailSession
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (! $request->session()->has('mail.user')) {
+        // Сеанс кончился, но устройство запомнено («Не выходить») — открываем новый без пароля.
+        if (! $request->session()->has('mail.user') && ! \App\Services\Mail\RememberDevice::restore($request)) {
             // Запросу веб-почты — понятный 401, а не переадресация: fetch шёл за ней на страницу входа,
             // и в окне «войдите заново» показывался её HTML-код.
             if ($request->expectsJson() || $request->is('mail/api/*')) {
@@ -51,6 +52,9 @@ class EnsureMailSession
                 // Сам почтовый сервер не отвечает — не разлогиниваем, просим подождать.
                 abort(503, 'Почтовый сервер не отвечает — попробуйте через минуту');
             }
+            // Запомненные устройства с прежним паролем тоже больше не годятся.
+            \App\Services\Mail\RememberDevice::revokeUser((string) $request->session()->get('mail.user'));
+            \Illuminate\Support\Facades\Cookie::queue(\Illuminate\Support\Facades\Cookie::forget(\App\Services\Mail\RememberDevice::COOKIE));
             foreach (['mail.user', 'mail.secret', 'mail.master', 'mail.force2fa', 'mail.pending'] as $key) {
                 $request->session()->forget($key);
             }
