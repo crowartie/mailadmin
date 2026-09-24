@@ -625,19 +625,20 @@
 // редкой кнопки, потом оставляем подпись только у «Ответить» (текст — в подсказке при наведении).
 // Только на компьютере: у телефона своя панель (ниже, max-width: 860px).
 @media (min-width: 861px) {
-    @container mread (max-width: 940px) {
+    @container mread (max-width: 900px) {
         .mread__bar { padding: 10px 12px; gap: 2px; }
         .mread__bar .ib { padding: 0 6px; gap: 4px; }
         .mread__bar .sep { margin: 0 2px; }
         .mread__bar .ib--wide { font-size: 0; gap: 0; }
     }
-    @container mread (max-width: 800px) {
+    @container mread (max-width: 740px) {
         .mread__bar .ib:not(.ib--keep) { font-size: 0; gap: 0; min-width: 30px; padding: 0 5px; }
         .mread__bar { gap: 1px; }
     }
-    @container mread (max-width: 520px) {
+    @container mread (max-width: 560px) {
         .mread__bar { padding: 8px; }
         .mread__bar .sep { display: none; }
+        .mread__bar .ib.ib--keep { font-size: 0; gap: 0; }
     }
 }
 
