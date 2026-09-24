@@ -1499,6 +1499,10 @@ button.mrow__av:hover, button.mrow__av:focus-visible { box-shadow: 0 0 0 2px v.$
     &--err .ctab__txt span { color: v.$c-no-ink; }
     &--err svg { color: v.$c-no; }
     &--wide { width: 100%; }
+    // Удерживаемое прочитанное письмо: серое и с пунктиром, чтобы не спутать с тем, что пишется.
+    &--read { background: v.$c-surface-2; border-style: dashed; color: v.$c-muted; }
+    &--read .ctab__txt b { font-weight: 500; color: v.$c-text; }
+    &--read.ctab--on, &--read.ctab--on:hover { border-style: solid; border-color: v.$c-muted; background: v.$c-surface; color: v.$c-text; }
 
     &__main {
         flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 0 0 12px;

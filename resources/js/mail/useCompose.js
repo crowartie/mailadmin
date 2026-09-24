@@ -27,11 +27,11 @@ export function useCompose(ctx) {
 
     const identities = () => ctx.props.identities || [];
 
-    /** Писем в работе не больше пяти: дальше вкладки не помещаются и путают. */
+    /** Писем в работе не больше пяти (вместе с удерживаемыми): дальше вкладки не помещаются и путают. */
     const MAX_TABS = 5;
-    function roomForTab() {
+    function roomForTab(what = 'начать новое') {
         if ((ctx.composeTabs?.value?.length || 0) < MAX_TABS) return true;
-        ctx.showToast({ text: 'Открыто ' + MAX_TABS + ' писем — закройте одно, чтобы начать новое', error: true });
+        ctx.showToast({ text: 'Внизу уже ' + MAX_TABS + ' вкладок — закройте одну, чтобы ' + what, error: true });
 
         return false;
     }
@@ -426,7 +426,7 @@ export function useCompose(ctx) {
     }
 
     return {
-        startCompose, openThen, openDraft, onDraftSaved, onComposeClose, MAX_TABS,
+        startCompose, openThen, openDraft, onDraftSaved, onComposeClose, MAX_TABS, roomForTab,
         send, undoSend, flushPending, quickReply, meetingFrom, unsubscribe,
         showOutbox, cancelOutbox, parseList,
     };

@@ -16,8 +16,9 @@ const props = defineProps({
     labels: { type: Array, default: () => [] },
     settings: { type: Object, default: () => ({}) },
     user: String,
+    held: Boolean,   // письмо закреплено вкладкой «под рукой»
 });
-const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search', 'print', 'toast']);
+const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search', 'print', 'toast', 'hold']);
 
 // Карточка адресата — как в Mail.ru: по щелчку на имени всплывают адрес и действия.
 const card = ref(null);   // { x, y, name, mail }
@@ -279,6 +280,9 @@ const isDraft = computed(() => props.folderRole === 'drafts');
         <button class="ib desktop-only" type="button" v-bind="btn('Отложить', 'z')" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" /></button>
         <button class="ib" type="button" :class="{ 'ib--on': message.flagged }" v-bind="btn('Флажок', 's')" @click="$emit('act', message.flagged ? 'unflag' : 'flag', [message.uid])"><Icon name="flag" :size="17" /></button>
         <span class="grow" />
+        <button v-if="!isDraft" class="ib desktop-only" type="button" :class="{ 'ib--on': held }" :aria-pressed="held"
+            :title="held ? 'Убрать из вкладок внизу' : 'Держать под рукой: вкладка внизу, письмо перед глазами, пока пишете другое'"
+            :aria-label="held ? 'Убрать из вкладок' : 'Держать под рукой'" @click="$emit('hold', message)"><Icon name="pin" :size="17" /></button>
         <button class="ib desktop-only" type="button" title="Печать" aria-label="Печать" @click="print"><Icon name="print" :size="17" /></button>
         <button class="ib" type="button" title="Ещё" aria-label="Ещё действия" @click="$emit('context', $event, message.uid, 'more')"><Icon name="dots" :size="17" /></button>
         <!-- Опасные действия — отдельной группой у правого края, подальше от «Ответить»: иначе промахи по корзинке (обращение №12). -->

@@ -1,6 +1,7 @@
 <script setup>
-// Письма в работе: строка вкладок внизу окна письма (как в Outlook). Сюда попадают только
-// письма, которые пишутся; просмотренные письма — это выделение в списке, их тут нет.
+// Письма в работе: строка вкладок внизу окна письма (как в Outlook). Сюда попадают письма,
+// которые пишутся, и прочитанные, закреплённые кнопкой «Держать под рукой» (серые, «только
+// чтение»). Просто просмотренные письма — это выделение в списке, их тут нет.
 // На телефоне вместо строки — кнопка «N письма в работе» со списком.
 import { computed, ref } from 'vue';
 import Icon from '../Icon.vue';
@@ -18,6 +19,13 @@ const TITLES = { reply: 'Ответ', replyAll: 'Ответ всем', forward: 
 const ICONS = { reply: 'reply', replyAll: 'reply', forward: 'fwd', forwardAttach: 'fwd' };
 
 const rows = computed(() => props.tabs.map((t) => {
+    if (t.kind === 'read') {
+        return {
+            token: t.token, read: true, title: (t.subject || '').trim() || 'Без темы',
+            sub: [t.from, 'только чтение'].filter(Boolean).join(' · '),
+            icon: 'mail', on: t.token === props.active, dirty: false, error: false,
+        };
+    }
     const m = t.meta || {};
     const mode = m.mode || t.mode;
     const on = t.token === props.active;
@@ -41,13 +49,13 @@ function pick(token) { open.value = false; emit('open', token); }
 <template>
     <div v-if="variant === 'bar'" class="ctabs" role="tablist" aria-label="Письма в работе">
         <span class="ctabs__cap">В работе</span>
-        <div v-for="r in rows" :key="r.token" class="ctab" :class="{ 'ctab--on': r.on, 'ctab--err': r.error }" role="presentation">
+        <div v-for="r in rows" :key="r.token" class="ctab" :class="{ 'ctab--on': r.on, 'ctab--err': r.error, 'ctab--read': r.read }" role="presentation">
             <button class="ctab__main" type="button" role="tab" :aria-selected="r.on" :title="r.title + (r.sub ? ' — ' + r.sub : '')" @click="$emit('open', r.token)">
                 <Icon :name="r.icon" :size="15" />
                 <span class="ctab__txt"><b>{{ r.title }}</b><span>{{ r.sub }}</span></span>
             </button>
             <span v-if="r.dirty" class="ctab__dot" title="Последние правки ещё сохраняются" />
-            <button class="ctab__x" type="button" title="Закрыть — письмо останется в «Черновиках»" :aria-label="'Закрыть «' + r.title + '» — письмо останется в черновиках'" @click="$emit('close', r.token)"><Icon name="x" :size="13" /></button>
+            <button class="ctab__x" type="button" :title="r.read ? 'Убрать вкладку — письмо останется на месте' : 'Закрыть — письмо останется в «Черновиках»'" :aria-label="'Закрыть «' + r.title + '»' + (r.read ? '' : ' — письмо останется в черновиках')" @click="$emit('close', r.token)"><Icon name="x" :size="13" /></button>
         </div>
         <button v-if="tabs.length < max" class="ctabs__new" type="button" title="Новое письмо (c)" aria-label="Новое письмо" @click="$emit('new')"><Icon name="plus" :size="15" /></button>
         <span class="grow" />
@@ -57,7 +65,7 @@ function pick(token) { open.value = false; emit('open', token); }
     <div v-else class="ctabs-pill">
         <div v-if="open" class="ctabs-pill__list" role="dialog" aria-label="Письма в работе">
             <div class="ctabs-pill__head"><b>Письма в работе</b><span>{{ tabs.length }} из {{ max }}</span></div>
-            <div v-for="r in rows" :key="r.token" class="ctab ctab--wide" :class="{ 'ctab--err': r.error }">
+            <div v-for="r in rows" :key="r.token" class="ctab ctab--wide" :class="{ 'ctab--err': r.error, 'ctab--read': r.read }">
                 <button class="ctab__main" type="button" @click="pick(r.token)">
                     <Icon :name="r.icon" :size="15" />
                     <span class="ctab__txt"><b>{{ r.title }}</b><span>{{ r.sub }}</span></span>

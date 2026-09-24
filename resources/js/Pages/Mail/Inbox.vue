@@ -293,13 +293,14 @@ function correspondence(mail) {
 async function refresh() { await reload(false); }
 
 // ── Чтение ────────────────────────────────────────────────────
-async function openMessage(uid, e, rowFolder = null) {
+async function openMessage(uid, e, rowFolder = null, held = false) {
     if (e && (e.ctrlKey || e.metaKey)) { toggle(uid); return; }
     if (e && e.shiftKey && cursor.value) { rangeSelect(uid); return; }
-    cursor.value = uid;
     compose.value = null;
     // В поиске по всем папкам номера писем разных папок могут совпасть — ищем строку и по папке.
-    const row = list.value.messages.find((m) => m.uid === uid && (!rowFolder || m.folder === rowFolder));
+    const row = list.value.messages.find((m) => m.uid === uid && (!rowFolder || m.folder === rowFolder || (!m.folder && rowFolder === folder.value)));
+    // Удерживаемое письмо может лежать не в этом списке — тогда строку с тем же номером не подсвечиваем.
+    cursor.value = held && !row ? null : uid;
     if (folderInfo.value.role === 'drafts') { openDraft(uid); return; }
     // Гасить весь список на время загрузки письма не нужно: от этого он мигал на каждый клик.
     const want = ++openSeq;
@@ -307,7 +308,7 @@ async function openMessage(uid, e, rowFolder = null) {
     try {
         // При поиске по всем папкам строка знает свою папку — иначе письмо открывалось бы
         // из текущей и не находилось.
-        const m = await api.message(row?.folder || folder.value, uid);
+        const m = await api.message(row?.folder || rowFolder || folder.value, uid);
         // Пока ответ шёл, человек мог кликнуть другое письмо — устаревший ответ не показываем.
         if (want !== openSeq) return;
         open.value = m;
@@ -321,7 +322,13 @@ async function openMessage(uid, e, rowFolder = null) {
             open.value.thread = Array.isArray(t) ? t : (t?.messages || []);
             open.value.threadHidden = Array.isArray(t) ? 0 : (t?.hidden || 0);
         }).catch(() => {});
-    } catch (e) { if (want === openSeq) fail(e); } finally { if (want === openSeq) opening.value = null; }
+        return true;
+    } catch (e) {
+        // Удерживаемого письма уже нет (перенесли, удалили) — вкладка уберёт себя сама.
+        if (held && e?.status === 404) return 'missing';
+        if (want === openSeq) fail(e);
+        return false;
+    } finally { if (want === openSeq) opening.value = null; }
 }
 
 function bump(path, delta, totalDelta = 0) {
@@ -577,7 +584,7 @@ function printOpen(m) {
 // ── Написать ──────────────────────────────────────────────────
 // Вся работа с формой письма, отправкой и отменой — в useCompose.
 const {
-    startCompose, openThen, openDraft, onDraftSaved, onComposeClose, MAX_TABS,
+    startCompose, openThen, openDraft, onDraftSaved, onComposeClose, MAX_TABS, roomForTab,
     send, undoSend, flushPending, quickReply, meetingFrom, unsubscribe,
     showOutbox, cancelOutbox, parseList,
 } = useCompose({
@@ -594,6 +601,7 @@ function setComposeRef(token, el) { if (el) composeRefs[token] = el; else delete
 function openTab(token) {
     const t = composeTabs.value.find((x) => x.token === token);
     if (!t) return;
+    if (t.kind === 'read') { openHeld(t); return; }
     if (t.placeholder) { openDraft(t.draftUid); return; }
     compose.value = t;
     mobileRead.value = true;
@@ -602,7 +610,8 @@ function closeTab(token) {
     const t = composeTabs.value.find((x) => x.token === token);
     if (!t) return;
     // Закрыть = как крестик в самом окне: письмо остаётся в «Черновиках», внизу — «Удалить».
-    if (t.placeholder || !composeRefs[token]) { composeTabs.value = composeTabs.value.filter((x) => x.token !== token); return; }
+    // Удерживаемое письмо закрывается молча: сохранять нечего, само письмо остаётся на месте.
+    if (t.kind === 'read' || t.placeholder || !composeRefs[token]) { composeTabs.value = composeTabs.value.filter((x) => x.token !== token); return; }
     composeRefs[token].close();
 }
 // Alt+1…5 — к письму в работе (Ctrl+цифра браузер забирает себе: переключает свои вкладки).
@@ -626,11 +635,59 @@ async function onToastAction() {
         onDraftSaved();
     } catch (e) { fail(e); }
 }
+// ── Держать под рукой ─────────────────────────────────────────
+// Прочитанное письмо само во вкладки не попадает: это выделение в списке. Но пока пишешь ответ,
+// бывает нужно держать перед глазами другое письмо (номер счёта, реквизиты) — его закрепляют
+// кнопкой. Такая вкладка серая, «только чтение», закрывается без вопросов и занимает место
+// в тех же пяти.
+let heldSeq = 0;
+const heldToken = () => 1000000 + ++heldSeq;   // не пересекается с номерами окон письма
+const sameMsg = (t, m) => t.kind === 'read' && m && t.uid === m.uid && t.folder === (m.folder || folder.value);
+const heldOf = (m) => composeTabs.value.find((t) => sameMsg(t, m));
+const isHeld = computed(() => !!open.value && !!heldOf(open.value));
+// Какая вкладка горит: окно письма или открытое сейчас удерживаемое письмо.
+const activeTab = computed(() => (compose.value ? compose.value.token : (open.value ? heldOf(open.value)?.token ?? null : null)));
+
+function holdMessage(m) {
+    menu.value = null;
+    if (!m) return;
+    const had = heldOf(m);
+    if (had) {
+        composeTabs.value = composeTabs.value.filter((t) => t !== had);
+        showToast({ text: 'Письмо убрано из вкладок' }, 2000);
+        return;
+    }
+    if (!roomForTab('закрепить письмо')) return;
+    composeTabs.value.push({
+        token: heldToken(), kind: 'read', folder: m.folder || folder.value, uid: m.uid,
+        subject: m.subject || '', from: m.from?.name || m.from?.mail || '',
+    });
+    showToast({ text: 'Письмо под рукой — вкладка внизу, Alt+' + composeTabs.value.length }, 3000);
+}
+async function openHeld(t) {
+    // Письмо из другой папки открываем в его папке: иначе «Удалить» или «В папку» ушли бы в текущую
+    // папку и задели письмо с тем же номером. В поиске по всем папкам строки и так знают свою папку.
+    if (!list.value.everywhere && folder.value !== t.folder) {
+        folder.value = t.folder;
+        filter.value = 'all';
+        query.value = '';
+        pushUrl();
+        await load(1);
+    }
+    const r = await openMessage(t.uid, null, t.folder, true);
+    if (r === 'missing') {
+        composeTabs.value = composeTabs.value.filter((x) => x !== t);
+        showToast({ text: 'Этого письма уже нет там, где оно было, — его перенесли или удалили', error: true }, 5000);
+    }
+}
+
 // После перезагрузки страницы вкладки возвращаются: свёрнутыми, по номерам черновиков.
 // Письмо открывается из черновика по щелчку — так страница не грузит пять писем сразу.
 const TABS_KEY = 'mail.composeTabs.' + (props.user || '');
 watch(
-    () => composeTabs.value.map((t) => ({ uid: t.placeholder ? t.draftUid : (t.meta?.draftUid ?? null), subject: t.meta?.subject ?? t.subject ?? '', to: t.meta?.to ?? '', mode: t.meta?.mode ?? t.mode })),
+    () => composeTabs.value.map((t) => (t.kind === 'read'
+        ? { kind: 'read', folder: t.folder, uid: t.uid, subject: t.subject, from: t.from }
+        : { uid: t.placeholder ? t.draftUid : (t.meta?.draftUid ?? null), subject: t.meta?.subject ?? t.subject ?? '', to: t.meta?.to ?? '', mode: t.meta?.mode ?? t.mode })),
     (rows) => { try { localStorage.setItem(TABS_KEY, JSON.stringify(rows.filter((r) => r.uid).slice(0, 5))); } catch { /* приватное окно */ } },
     { deep: true },
 );
@@ -639,6 +696,12 @@ function restoreTabs() {
     try { rows = JSON.parse(localStorage.getItem(TABS_KEY) || '[]'); } catch { rows = []; }
     if (!Array.isArray(rows)) return;
     rows.slice(0, 5).forEach((r, i) => {
+        if (r?.kind === 'read') {
+            if (r.uid && r.folder && !composeTabs.value.some((t) => sameMsg(t, r))) {
+                composeTabs.value.push({ token: heldToken(), kind: 'read', folder: r.folder, uid: r.uid, subject: r.subject || '', from: r.from || '' });
+            }
+            return;
+        }
         if (!r?.uid || composeTabs.value.some((t) => (t.meta?.draftUid ?? t.draftUid) === r.uid)) return;
         composeTabs.value.push({ token: -(i + 1), placeholder: true, draftUid: r.uid, mode: r.mode || 'draft', meta: { subject: r.subject, to: r.to, mode: r.mode, saved: 'в черновиках' } });
     });
@@ -766,7 +829,7 @@ onBeforeUnmount(() => {
                 <!-- Обёртка нужна: у окна письма два корня (просмотрщик вложений и само окно), а v-show
                      на таком компоненте не действует — свёрнутые окна оставались видны. -->
                 <template v-for="t in composeTabs" :key="t.token">
-                    <div v-if="!t.placeholder" v-show="compose && compose.token === t.token" class="mread__cmp">
+                    <div v-if="!t.placeholder && t.kind !== 'read'" v-show="compose && compose.token === t.token" class="mread__cmp">
                     <Compose
                         :ref="(el) => setComposeRef(t.token, el)"
                         :compose="t"
@@ -790,6 +853,8 @@ onBeforeUnmount(() => {
                     :labels="labels"
                     :settings="settings"
                     :user="user"
+                    :held="isHeld"
+                    @hold="holdMessage"
                     @act="act"
                     @reply="startCompose"
                     @quick="quickReply"
@@ -815,7 +880,7 @@ onBeforeUnmount(() => {
                     <span>Выберите письмо слева</span>
                     <span class="hint"><span class="kbd">j</span> <span class="kbd">k</span> — по списку, <span class="kbd">c</span> — написать, <span class="kbd">?</span> — все клавиши</span>
                 </div>
-                <ComposeTabs v-if="showTabs" :tabs="composeTabs" :active="compose ? compose.token : null" :max="MAX_TABS" @open="openTab" @close="closeTab" @new="startCompose('new')" />
+                <ComposeTabs v-if="showTabs" :tabs="composeTabs" :active="activeTab" :max="MAX_TABS" @open="openTab" @close="closeTab" @new="startCompose('new')" />
             </section>
 
             <button class="fab" type="button" title="Написать" @click="startCompose('new')" aria-label="Написать"><Icon name="edit" :size="24" /></button>
@@ -832,6 +897,7 @@ onBeforeUnmount(() => {
                 <button class="pop__item" type="button" title="Письма уйдут файлами, получатель откроет их как письма" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
                 <button class="pop__item" type="button" title="Открыть как новое письмо: те же получатели, тема, текст и вложения" @click="openThen('again')"><Icon name="edit" :size="16" />Изменить как новое</button>
                 <button v-if="menuPerson && menuPerson.mail" class="pop__item" type="button" :title="'Письма от ' + menuPerson.mail + ' и ему во всех папках'" @click="correspondence(menuPerson.mail)"><Icon name="users" :size="16" />Вся переписка с {{ menuPerson.name }}</button>
+                <button v-if="menu.uids.length === 1" class="pop__item" type="button" title="Вкладка внизу: письмо перед глазами, пока пишете другое" @click="holdMessage(menuRow)"><Icon name="pin" :size="16" />{{ heldOf(menuRow) ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
                 <div class="pop__sep" />
             </template>
             <!-- Для пачки писем показываем оба действия: раньше предлагался единственный пункт
@@ -908,6 +974,7 @@ onBeforeUnmount(() => {
                 <button class="pop__item mobile-only" type="button" @click="menu = { ...menu, kind: 'label' }"><Icon name="tag" :size="16" />Метка…</button>
                 <button class="pop__item mobile-only" type="button" @click="menu = { ...menu, kind: 'snooze' }"><Icon name="clock" :size="16" />Отложить…</button>
                 <button class="pop__item mobile-only" type="button" @click="menu = null; printOpen(open)"><Icon name="print" :size="16" />Печать</button>
+                <button v-if="folderInfo.role !== 'drafts'" class="pop__item mobile-only" type="button" @click="holdMessage(open)"><Icon name="pin" :size="16" />{{ isHeld ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
                 <div class="pop__sep mobile-only" />
             </template>
             <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Письмо уйдёт файлом, получатель откроет его как письмо" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
