@@ -62,6 +62,18 @@ class Sessions
             $out[] = ['id' => 'remember:' . $r->id, 'user' => $r->user, 'device' => 'Веб-почта · ' . ($r->device ?: 'браузер'), 'ip' => $r->ip,
                 'seen' => $r->last_used_at ? \Illuminate\Support\Carbon::parse($r->last_used_at)->toIso8601String() : null, 'kind' => 'web', 'me' => false, 'count' => 1, 'remembered' => true];
         }
+        // Телефоны с мобильным приложением: вход по токену, без сессии (MobileDevices).
+        try {
+            $apps = $onlyUser ? \App\Services\Mail\MobileDevices::list($onlyUser)
+                : DB::table('mobile_devices')->where('last_seen_at', '>=', now()->subDays(\App\Services\Mail\MobileDevices::days()))->orderByDesc('last_seen_at')->limit(200)->get()->all();
+        } catch (\Throwable) {
+            $apps = [];   // таблицы ещё нет
+        }
+        foreach ($apps as $d) {
+            $out[] = ['id' => 'app:' . $d->id, 'user' => $d->user, 'device' => \App\Services\Mail\MobileDevices::label($d) . ($d->app_version !== '' ? ' · версия ' . $d->app_version : ''),
+                'ip' => $d->ip, 'seen' => $d->last_seen_at ? \Illuminate\Support\Carbon::parse($d->last_seen_at)->toIso8601String() : null,
+                'kind' => 'app', 'me' => 'app:' . $d->id === $currentSessionId, 'count' => 1];
+        }
         foreach ($this->imap() as $row) {
             if ($onlyUser && $row['user'] !== $onlyUser) {
                 continue;
@@ -105,6 +117,8 @@ class Sessions
             \App\Services\Mail\RememberDevice::revokeSessions($sids);
         } elseif (str_starts_with($id, 'remember:')) {
             \App\Services\Mail\RememberDevice::revokeId((int) substr($id, 9));
+        } elseif (str_starts_with($id, 'app:')) {
+            \App\Services\Mail\MobileDevices::revoke((int) substr($id, 4));
         } elseif (str_starts_with($id, 'imap:')) {
             [, $user] = explode(':', $id, 3) + [null, null];
             if ($user) {
@@ -120,6 +134,9 @@ class Sessions
         }
         MailSession::query()->where('user', $user)->delete();
         \App\Services\Mail\RememberDevice::revokeUser($user);
+        // Телефоны с приложением ходят в ящик служебным входом — без отзыва токена они работали бы
+        // и после смены пароля, блокировки или удаления ящика.
+        \App\Services\Mail\MobileDevices::revokeUser($user);
         Ctl::run('kick', [$user]);
     }
 }

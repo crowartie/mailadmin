@@ -32,6 +32,8 @@ class MailSession extends Model
             default => 'устройство',
         };
         $browser = match (true) {
+            // Своё мобильное приложение: «MailadminApp/1.2.0 (Android 15; Pixel 9)».
+            (bool) preg_match('#MailadminApp/([0-9][0-9A-Za-z.\-]*)#', $ua, $m) => 'приложение ' . $m[1],
             str_contains($ua, 'YaBrowser') => 'Яндекс Браузер',
             str_contains($ua, 'Edg/') => 'Edge',
             str_contains($ua, 'OPR/') => 'Opera',

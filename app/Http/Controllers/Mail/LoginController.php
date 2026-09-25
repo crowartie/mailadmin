@@ -139,7 +139,7 @@ class LoginController extends Controller
         MailLogin::record($request, $login, $known || ! $everLogged ? 'ok' : 'new_device');
 
         if (! $known && $everLogged && (AppSetting::group('security')['notify_new_device'] ?? true)) {
-            $this->notifyNewDevice($login, $device, $request->ip());
+            self::notifyNewDevice($login, $device, $request->ip());
         }
         if ($profile->exists && $profile->require_2fa) {
             $request->session()->put('mail.force2fa', true);
@@ -150,7 +150,8 @@ class LoginController extends Controller
         return redirect()->intended('/mail');
     }
 
-    private function notifyNewDevice(string $user, string $device, string $ip): void
+    /** Письмо сотруднику «вход с нового устройства» (веб-почта и мобильное приложение). */
+    public static function notifyNewDevice(string $user, string $device, string $ip): void
     {
         try {
             $email = (new Email())

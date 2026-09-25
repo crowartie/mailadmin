@@ -41,7 +41,9 @@ class RecordActivity
         }
         $status = $response->getStatusCode();
         $input = $request->isMethod('GET') ? [] : $request->input();
-        $desc = ActivityMap::describe($request->method(), $request->path(), $request->query(), $input, count($request->allFiles()));
+        // Приложение ходит в тот же API под /api/v1 — для журнала это те же действия, что /mail/api.
+        $path = preg_replace('#^api/v1/#', 'mail/api/', $request->path());
+        $desc = ActivityMap::describe($request->method(), $path, $request->query(), $input, count($request->allFiles()));
         if ($desc === null && $status < 500) {
             return;
         }

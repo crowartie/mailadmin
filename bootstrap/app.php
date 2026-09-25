@@ -19,6 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function () {
             // Веб-почта — вторая зона того же приложения, на своём порту.
             \Illuminate\Support\Facades\Route::middleware('web')->group(base_path('routes/mail.php'));
+            // Мобильное приложение — на том же адресе веб-почты, но без сессии и CSRF (вход по токену).
+            \Illuminate\Support\Facades\Route::middleware('api')->group(base_path('routes/mobile.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -45,6 +47,7 @@ return Application::configure(basePath: dirname(__DIR__))
             '2fa' => EnsureTwoFactorVerified::class,
             'mail.auth' => EnsureMailSession::class,
             'mail.activity' => \App\Http\Middleware\RecordActivity::class,
+            'mobile.token' => \App\Http\Middleware\MobileToken::class,
             'role' => EnforceRole::class,
         ]);
         // Неавторизованных ведём на вход своей зоны.

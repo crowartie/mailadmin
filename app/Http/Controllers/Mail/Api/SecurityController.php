@@ -37,7 +37,7 @@ class SecurityController extends Controller
             'required' => (bool) $profile->require_2fa,
             'appPasswordsAllowed' => (bool) (AppSetting::group('security')['app_passwords'] ?? true),
             'appPasswords' => AppPassword::query()->where('username', $user)->orderByDesc('id')->get()->map(fn (AppPassword $p) => ['id' => $p->id, 'name' => $p->name, 'created' => $p->created_at?->toIso8601String(), 'lastUsed' => $p->last_used_at?->toIso8601String()]),
-            'sessions' => $this->sessions->all($user, $request->session()->getId()),
+            'sessions' => $this->sessions->all($user, $this->current($request, $imap)),
             'logins' => MailLogin::query()->where('user', $user)->orderByDesc('id')->limit(15)->get()->map(fn (MailLogin $l) => ['at' => $l->created_at->toIso8601String(), 'ip' => $l->ip, 'result' => $l->result, 'device' => \App\Models\MailSession::device($l->agent)]),
             'minPassword' => (int) (AppSetting::group('security')['min_password'] ?? 10),
             'remember' => \App\Services\Mail\RememberDevice::isCurrent($request),
@@ -81,7 +81,7 @@ class SecurityController extends Controller
     public function twofaDisable(Request $request, ImapSession $imap): JsonResponse
     {
         $data = $request->validate(['password' => ['required', 'string']]);
-        abort_unless(hash_equals($imap->password(), $data['password']), 422, 'Пароль указан неверно');
+        abort_unless($imap->checkPassword($data['password']), 422, 'Пароль указан неверно');
         Setting::patch($imap->user(), ['totp_secret' => null, 'totp_enabled' => false]);
 
         return response()->json(['ok' => true]);
@@ -93,7 +93,7 @@ class SecurityController extends Controller
     {
         abort_unless((bool) (AppSetting::group('security')['app_passwords'] ?? true), 403, 'Пароли приложений отключены администратором');
         $data = $request->validate(['name' => ['required', 'string', 'max:60'], 'password' => ['required', 'string']]);
-        abort_unless(hash_equals($imap->password(), $data['password']), 422, 'Пароль указан неверно');
+        abort_unless($imap->checkPassword($data['password']), 422, 'Пароль указан неверно');
         abort_if(AppPassword::query()->where('username', $imap->user())->count() >= 10, 422, 'Слишком много паролей приложений — отзовите ненужные');
         $gen = AppPassword::generate();
         $row = AppPassword::create(['username' => $imap->user(), 'name' => $data['name'], 'password' => $gen['hash'], 'active' => true]);
@@ -114,11 +114,11 @@ class SecurityController extends Controller
     {
         $data = $request->validate(['id' => ['required', 'string', 'max:200']]);
         // Только свои сеансы.
-        $mine = array_column($this->sessions->all($imap->user(), $request->session()->getId()), 'id');
+        $mine = array_column($this->sessions->all($imap->user(), $this->current($request, $imap)), 'id');
         abort_unless(in_array($data['id'], $mine, true), 403);
         $this->sessions->kick($data['id']);
 
-        return response()->json(['sessions' => $this->sessions->all($imap->user(), $request->session()->getId())]);
+        return response()->json(['sessions' => $this->sessions->all($imap->user(), $this->current($request, $imap))]);
     }
 
     /** «Не выходить на этом устройстве» — включить или выключить из настроек. */
@@ -126,25 +126,32 @@ class SecurityController extends Controller
     {
         $on = (bool) $request->validate(['on' => ['required', 'boolean']])['on'];
         if ($on) {
-            abort_if($imap->isMaster(), 422, 'Во входе администратора устройство не запоминается');
+            abort_if($imap->isMaster() || $imap->isApp(), 422, 'Во входе администратора или из приложения устройство не запоминается');
             abort_unless(\App\Services\Mail\RememberDevice::days() > 0, 422, 'Администратор выключил запоминание устройств');
             \App\Services\Mail\RememberDevice::issue($request, $imap->user(), $imap->password());
         } else {
             \App\Services\Mail\RememberDevice::forget($request);
         }
 
-        return response()->json(['remember' => $on, 'sessions' => $this->sessions->all($imap->user(), $request->session()->getId())]);
+        return response()->json(['remember' => $on, 'sessions' => $this->sessions->all($imap->user(), $this->current($request, $imap))]);
     }
 
     public function kickOthers(Request $request, ImapSession $imap): JsonResponse
     {
-        \App\Services\Mail\RememberDevice::revokeUser($imap->user(), $request->session()->getId());
-        foreach ($this->sessions->all($imap->user(), $request->session()->getId()) as $s) {
+        \App\Services\Mail\RememberDevice::revokeUser($imap->user(), $this->current($request, $imap));
+        foreach ($this->sessions->all($imap->user(), $this->current($request, $imap)) as $s) {
             if (! $s['me']) {
                 $this->sessions->kick($s['id']);
             }
         }
 
-        return response()->json(['sessions' => $this->sessions->all($imap->user(), $request->session()->getId())]);
+        return response()->json(['sessions' => $this->sessions->all($imap->user(), $this->current($request, $imap))]);
     }
+
+    /** Какой сеанс «этот»: в веб-почте — сессия, в приложении — его устройство (app:N, см. Sessions::all). */
+    private function current(Request $request, ImapSession $imap): string
+    {
+        return $imap->isApp() ? 'app:' . $request->session()->get('mail.app') : $request->session()->getId();
+    }
+
 }

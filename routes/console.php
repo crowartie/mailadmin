@@ -73,4 +73,6 @@ Schedule::command('activity:prune')->dailyAt('04:40')->withoutOverlapping();
 Schedule::command('cloud:expire')->dailyAt('04:30')->withoutOverlapping();
 // Истёкшие ключи «Не выходить на этом устройстве».
 Schedule::call(fn () => \App\Services\Mail\RememberDevice::prune())->dailyAt('04:40')->name('remember-prune')->withoutOverlapping();
+// Входы мобильного приложения, которыми давно не пользовались (MobileDevices::days()).
+Schedule::call(fn () => \App\Services\Mail\MobileDevices::prune())->dailyAt('04:42')->name('mobile-prune')->withoutOverlapping();
 Schedule::command('cloud:purge-trash')->dailyAt('04:45')->withoutOverlapping();

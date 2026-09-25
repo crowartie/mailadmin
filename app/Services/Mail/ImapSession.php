@@ -59,10 +59,53 @@ class ImapSession
         return (bool) $this->request->session()->get('mail.master');
     }
 
-    /** Логин для IMAP/Sieve: в режиме администратора — «user*master». */
+    /**
+     * Запрос мобильного приложения (вход по токену, MobileToken). Пароля сотрудника у сервера нет —
+     * в ящик идём служебным входом, как администратор, но действия остаются действиями сотрудника:
+     * в журнале это не «просмотр администратором».
+     */
+    public function isApp(): bool
+    {
+        return (bool) $this->request->session()->get('mail.app');
+    }
+
+    /** Открыть «сеанс» приложения на время одного запроса: сессия в памяти, служебный вход. */
+    public static function forApp(Request $request, string $username, int $deviceId): void
+    {
+        $imap = config('areas.imap');
+        if (empty($imap['master_user']) || empty($imap['master_password'])) {
+            throw new \RuntimeException('MAIL_IMAP_MASTER_USER / MAIL_IMAP_MASTER_PASSWORD не заданы');
+        }
+        $store = new \Illuminate\Session\Store('mobile', new \Illuminate\Session\ArraySessionHandler(1));
+        $store->put('mail.user', strtolower($username));
+        $store->put('mail.secret', Crypt::encryptString($imap['master_password']));
+        $store->put('mail.app', $deviceId);
+        $request->setLaravelSession($store);
+    }
+
+    /** Логин для IMAP/Sieve: у администратора и у приложения — «user*master». */
     public function loginName(): string
     {
-        return $this->isMaster() ? $this->user() . '*' . config('areas.imap.master_user') : $this->user();
+        return $this->isMaster() || $this->isApp() ? $this->user() . '*' . config('areas.imap.master_user') : $this->user();
+    }
+
+    /**
+     * Введённый пароль совпадает с паролем ящика (подтверждение опасных действий: снять 2FA,
+     * пароль приложения). В веб-почте пароль сеанса известен; у приложения и администратора
+     * его нет — проверяем честным входом в IMAP.
+     */
+    public function checkPassword(string $typed): bool
+    {
+        if (! $this->isMaster() && ! $this->isApp()) {
+            return hash_equals($this->password(), $typed);
+        }
+        try {
+            self::verify($this->user(), $typed);
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /** Проверить пароль входом в IMAP; бросает исключение, если пара неверна. */
@@ -108,8 +151,8 @@ class ImapSession
     public function smtp(): EsmtpTransport
     {
         $smtp = config('areas.smtp');
-        if ($this->isMaster()) {
-            // У администратора нет пароля сотрудника: отправляем через локальный relay (mynetworks).
+        if ($this->isMaster() || $this->isApp()) {
+            // У администратора и приложения нет пароля сотрудника: отправляем через локальный relay (mynetworks).
             return self::smtpLocal();
         }
         $transport = new EsmtpTransport($smtp['host'], (int) $smtp['port'], false);
