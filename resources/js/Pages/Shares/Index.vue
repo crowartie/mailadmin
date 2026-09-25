@@ -65,6 +65,8 @@ const byPerson = computed(() => {
     return out;
 });
 const owners = computed(() => [...new Set(rows.value.map((r) => r.owner))]);
+// «Чей ящик»: все ящики, включая служебные (props.owners); имя не owners — оно уже занято строкой выше.
+const ownerChoices = computed(() => (props.owners.length ? props.owners : props.candidates));
 
 function say(text, error = false) { flash.value = { text, error }; setTimeout(() => { flash.value = null; }, 4500); }
 async function reload() { const r = await http('GET', '/shares/json'); rows.value = r.rows; }
@@ -113,7 +115,7 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
         <div class="card card--pad" style="margin-bottom: 16px">
             <div class="group-title">Открыть доступ</div>
             <div class="field__row" style="flex-wrap: wrap">
-                <select v-model="add.owner" class="input" aria-label="Чей ящик" style="width: 240px; height: 34px"><option value="" disabled>чей ящик…</option><option v-for="c in (owners.length ? owners : candidates)" :key="'o' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
+                <select v-model="add.owner" class="input" aria-label="Чей ящик" style="width: 240px; height: 34px"><option value="" disabled>чей ящик…</option><option v-for="c in ownerChoices" :key="'o' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
                 <select v-model="add.with" class="input" aria-label="Кому дать доступ" style="width: 240px; height: 34px" :disabled="!add.owner"><option value="" disabled>кому…</option><option v-for="c in candidates.filter((x) => x.mail !== add.owner)" :key="'w' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
                 <!-- Папка — после выбора «кому»: сначала решаем, кому открываем, потом что. -->
                 <template v-if="add.owner && add.with">
