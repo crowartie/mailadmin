@@ -7,7 +7,7 @@ import Icon from '../../Components/Icon.vue';
 import { http } from '../../admin/http';
 import { ask as confirmAsk } from '../../confirm';
 
-const props = defineProps({ rows: Array, candidates: Array, levels: Object });
+const props = defineProps({ rows: Array, candidates: Array, owners: { type: Array, default: () => [] }, levels: Object });
 
 const rows = ref(props.rows);
 const view = ref('owners');   // owners | people
@@ -113,7 +113,7 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
         <div class="card card--pad" style="margin-bottom: 16px">
             <div class="group-title">Открыть доступ</div>
             <div class="field__row" style="flex-wrap: wrap">
-                <select v-model="add.owner" class="input" aria-label="Чей ящик" style="width: 240px; height: 34px"><option value="" disabled>чей ящик…</option><option v-for="c in candidates" :key="'o' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
+                <select v-model="add.owner" class="input" aria-label="Чей ящик" style="width: 240px; height: 34px"><option value="" disabled>чей ящик…</option><option v-for="c in (owners.length ? owners : candidates)" :key="'o' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
                 <select v-model="add.with" class="input" aria-label="Кому дать доступ" style="width: 240px; height: 34px" :disabled="!add.owner"><option value="" disabled>кому…</option><option v-for="c in candidates.filter((x) => x.mail !== add.owner)" :key="'w' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
                 <!-- Папка — после выбора «кому»: сначала решаем, кому открываем, потом что. -->
                 <template v-if="add.owner && add.with">

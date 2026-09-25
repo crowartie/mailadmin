@@ -43,6 +43,10 @@ class SharesController extends Controller
         return [
             'rows' => $rows,
             'candidates' => FolderShares::candidates(''),
+            // «Чей ящик» — и служебные ящики (info@, продажи): их как раз чаще всего и открывают.
+            // «Кому» — только люди (candidates).
+            'owners' => \App\Models\Vmail\Mailbox::query()->where('active', 1)->orderBy('name')->get(['username', 'name'])
+                ->map(fn ($m) => ['mail' => $m->username, 'name' => $m->name ?: $m->username])->all(),
             'levels' => FolderShares::TITLES,
         ];
     }
