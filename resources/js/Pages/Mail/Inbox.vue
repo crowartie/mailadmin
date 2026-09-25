@@ -180,13 +180,24 @@ const edge = ref('');   // '', 'more', 'newer'
 const anchored = (fn) => (listRef.value?.keepAnchor ? listRef.value.keepAnchor(fn) : fn());
 
 /** Новая выборка: с начала (или со страницы из адреса, или с места перехода к дате). */
+/**
+ * Ответ сервера без писем, которые ждут удаления (переноса) в окне «Отменить»: иначе перечитанный
+ * список возвращал их на место (обращение №50, см. useMessageActions.isPendingGone).
+ */
+function withoutPending(r) {
+    const messages = (r.messages || []).filter((m) => !isPendingGone(m));
+    const gone = (r.messages || []).length - messages.length;
+
+    return gone ? { ...r, messages, total: Math.max(0, (r.total || 0) - gone) } : r;
+}
+
 async function load(page = 1, keepOpen = false, silent = false, offset = null) {
     if (!silent) loading.value = true;
     try {
         const at = offset ?? (Math.max(1, page) - 1) * PAGE;
         // Тихая перезагрузка (после действия, по приходу почты) счётчики папок не запрашивает:
         // их приносит отдельный опрос состояния.
-        const r = await api.list(folder.value, listQuery({ offset: at, limit: PAGE, folders: !silent }));
+        const r = withoutPending(await api.list(folder.value, listQuery({ offset: at, limit: PAGE, folders: !silent })));
         // Место оказалось за концом списка (удалили всё в хвосте) — показать последние письма.
         if (!r.messages.length && at > 0 && at >= r.total) return load(1, keepOpen, silent, Math.max(0, r.total - PAGE));
         list.value = { messages: r.messages, total: r.total, offset: r.offset ?? at, page: 1, pages: 1, everywhere: !!r.everywhere, skipped: r.skipped || [], seq: ++listSeq };
@@ -225,7 +236,7 @@ async function reload(silent = true) {
     const n = Math.min(Math.max(cur.messages.length, PAGE), 200);
     if (!silent) loading.value = true;
     try {
-        const r = await api.list(folder.value, listQuery({ offset: cur.offset || 0, limit: n, folders: !silent }));
+        const r = withoutPending(await api.list(folder.value, listQuery({ offset: cur.offset || 0, limit: n, folders: !silent })));
         if (list.value.seq !== cur.seq) return;   // пока ждали, открыли другую папку
         const apply = () => {
             // Хвост дальше перечитанного куска оставляем как есть — он подтянется прокруткой.
@@ -242,7 +253,7 @@ async function loadMore() {
     if (edge.value || loading.value || (cur.offset || 0) + cur.messages.length >= cur.total) return;
     edge.value = 'more';
     try {
-        const r = await api.list(folder.value, listQuery({ offset: (cur.offset || 0) + cur.messages.length, limit: PAGE, folders: false }));
+        const r = withoutPending(await api.list(folder.value, listQuery({ offset: (cur.offset || 0) + cur.messages.length, limit: PAGE, folders: false })));
         if (list.value.seq !== cur.seq) return;
         await anchored(() => {
             let messages = merge(list.value.messages, r.messages);
@@ -261,7 +272,7 @@ async function loadNewer() {
     edge.value = 'newer';
     try {
         const from = Math.max(0, cur.offset - PAGE);
-        const r = await api.list(folder.value, listQuery({ offset: from, limit: cur.offset - from, folders: false }));
+        const r = withoutPending(await api.list(folder.value, listQuery({ offset: from, limit: cur.offset - from, folders: false })));
         if (list.value.seq !== cur.seq) return;
         await anchored(() => {
             let messages = merge(r.messages, list.value.messages);
@@ -391,7 +402,7 @@ function selectAll() {
 
 // ── Действия ──────────────────────────────────────────────────
 // Сами действия и окно отмены — в useMessageActions.
-const { act, flushPendingAct, undoAct, undoToast } = useMessageActions({
+const { act, flushPendingAct, undoAct, undoToast, isPendingGone } = useMessageActions({
     list, folder, folders, selected, open, mobileRead, menu, toast, settings, folderInfo,
     showToast, fail, load, reload, refillAfter, bump, selectedAll,
     // Отмена отправки живёт в useCompose, а он создаётся ниже — иначе ему неоткуда взять

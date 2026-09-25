@@ -103,6 +103,19 @@ export function useMessageActions(ctx) {
             .catch((e) => { if (!keepalive) { ctx.fail(e); ctx.reload(false); } });
     }
 
+    /**
+     * Письмо ждёт удаления (переноса, архива, спама) в окне «Отменить» — на экране его быть не должно,
+     * что бы ни вернул сервер. Обращение №50: удалил одно, сразу второе — второе действие доводило
+     * первое до сервера и перечитывало список, а в нём второе письмо ещё лежало (его удаление само
+     * ждало своих секунд) и возвращалось на место.
+     */
+    function isPendingGone(m) {
+        if (!pending || !DEFERRABLE.includes(pending.op)) return false;
+        if (!ctx.list.value.everywhere && pending.folder !== ctx.folder.value) return false;
+
+        return hits(pending.groups || [{ folder: pending.folder, uids: pending.uids }])(m);
+    }
+
     /** «Отменить» у отложенного действия. Возвращает false, если отменять нечего. */
     function undoAct() {
         if (!pending) return false;
@@ -267,5 +280,5 @@ export function useMessageActions(ctx) {
         }
     }
 
-    return { act, removeRows, runAct, flushPendingAct, undoAct, undoToast };
+    return { act, removeRows, runAct, flushPendingAct, undoAct, undoToast, isPendingGone };
 }
