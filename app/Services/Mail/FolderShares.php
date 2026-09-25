@@ -98,6 +98,30 @@ class FolderShares
         self::forgetCaches($owner, $with);
     }
 
+    /**
+     * Один уровень на все папки ящика: «читать всё, но без права писать от имени ящика».
+     * Владелец по «Входящим» и так получает все папки — для него это обычный set('INBOX').
+     * Порядок важен: set('INBOX') снимает права со всех остальных папок (понижение уровня),
+     * поэтому папки раздаются уже после него. Возвращает, сколько папок открыто.
+     */
+    public function setAll(string $owner, string $with, string $level): int
+    {
+        $this->set($owner, 'INBOX', $with, $level);
+        if ($level === 'owner') {
+            return 0;
+        }
+        $store = new MailStore(ImapSession::master($owner));
+        $n = 1;
+        foreach (self::allFolders($store) as $path) {
+            Ctl::run('acl-delete', [strtolower($owner), $path, strtolower(trim($with))], 20);
+            Ctl::out('acl-set', array_merge([strtolower($owner), $path, strtolower(trim($with))], self::LEVELS[$level]), 30);
+            $n++;
+        }
+        self::forgetCaches($owner, $with);
+
+        return $n;
+    }
+
     /** Все свои папки ящика, кроме «Входящих» (UTF-8). */
     private static function allFolders(MailStore $store): array
     {

@@ -144,14 +144,20 @@ class EmployeeController extends Controller
         $model = Mailbox::query()->findOrFail($mailbox);
         $data = $request->validate(['folder' => ['required', 'string', 'max:200'], 'with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor,owner']]);
         $svc = new \App\Services\Mail\FolderShares();
+        // «*» — все папки ящика одним уровнем (форма «Открыть доступ» на странице «Общий доступ»).
+        $all = $data['folder'] === '*';
         try {
-            $svc->set($model->username, \App\Services\Mail\FolderShares::utf8($data['folder']), $data['with'], $data['level']);
+            if ($all) {
+                $svc->setAll($model->username, $data['with'], $data['level']);
+            } else {
+                $svc->set($model->username, \App\Services\Mail\FolderShares::utf8($data['folder']), $data['with'], $data['level']);
+            }
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (\RuntimeException $e) {
             return response()->json(['message' => 'Не удалось выдать доступ: ' . mb_substr($e->getMessage(), 0, 200)], 500);
         }
-        AdminAction::log('mailbox.update', $model->username, 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» открыта для ' . $data['with'] . ' (' . (\App\Services\Mail\FolderShares::TITLES[$data['level']] ?? $data['level']) . ')');
+        AdminAction::log('mailbox.update', $model->username, ($all ? 'все папки открыты' : 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» открыта') . ' для ' . $data['with'] . ' (' . (\App\Services\Mail\FolderShares::TITLES[$data['level']] ?? $data['level']) . ')');
 
         return $this->shares($mailbox);
     }

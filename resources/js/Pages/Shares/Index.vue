@@ -1,6 +1,6 @@
 <script setup>
 // Общий доступ: все открытые папки всех ящиков — по ящикам и по сотрудникам, смена уровня, закрытие, доложить права.
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import AppLayout from '../../Layouts/AppLayout.vue';
 import Icon from '../../Components/Icon.vue';
@@ -15,6 +15,28 @@ const q = ref('');
 const busy = ref(false);
 const flash = ref(null);
 const add = ref({ owner: '', folder: 'INBOX', with: '', level: 'reader' });
+// Папки выбранного ящика — для списка «какую папку». Раньше можно было открыть только «Входящие».
+const ownerFolders = ref([]);
+const foldersLoading = ref(false);
+watch(() => add.value.owner, async (owner) => {
+    ownerFolders.value = [];
+    add.value.folder = 'INBOX';
+    if (!owner) return;
+    foldersLoading.value = true;
+    try {
+        const r = await http('GET', `/mailboxes/${encodeURIComponent(owner)}/shares`);
+        if (add.value.owner === owner) ownerFolders.value = (r.folders || []).map((f) => ({ path: f.path, name: f.name, depth: f.depth || 0 }));
+    } catch (e) { say(e.message, true); } finally { foldersLoading.value = false; }
+});
+// Уровни зависят от папки: владельцем — только по «Входящим» (это весь ящик и право писать от его имени).
+const addLevels = computed(() => (add.value.folder === 'INBOX' ? ['reader', 'editor', 'owner'] : ['reader', 'editor']));
+watch(addLevels, (list) => { if (!list.includes(add.value.level)) add.value.level = 'reader'; });
+const addHint = computed(() => {
+    const f = add.value.folder; const l = add.value.level;
+    if (f === '*') return l === 'reader' ? 'Все папки ящика — только читать: без права писать от имени ящика и что-либо удалять.' : 'Все папки ящика — читать, раскладывать и удалять письма, но не писать от имени ящика.';
+    if (f === 'INBOX') return l === 'owner' ? 'Владелец: все папки ящика и право писать от его имени.' : l === 'editor' ? 'Редактор «Входящих» получает и системные папки: «Отправленные», «Черновики», «Спам», «Корзину», «Архив».' : 'Читатель видит только «Входящие».';
+    return 'Откроется только эта папка.';
+});
 
 const ROLE_ORDER = { inbox: 0, drafts: 1, sent: 2, archive: 3, lists: 4, spam: 5, trash: 6 };
 const filtered = computed(() => rows.value.filter((r) => !q.value || `${r.owner} ${r.ownerName} ${r.with} ${r.withName} ${r.folderName}`.toLowerCase().includes(q.value.toLowerCase())));
@@ -60,7 +82,12 @@ async function remove(r) {
 async function grant() {
     if (!add.value.owner || !add.value.with) return;
     busy.value = true;
-    try { await http('POST', `/mailboxes/${encodeURIComponent(add.value.owner)}/shares`, { folder: add.value.folder, with: add.value.with, level: add.value.level }); await reload(); say('Доступ выдан'); add.value.with = ''; }
+    try {
+        await http('POST', `/mailboxes/${encodeURIComponent(add.value.owner)}/shares`, { folder: add.value.folder, with: add.value.with, level: add.value.level });
+        await reload();
+        say(add.value.folder === '*' ? 'Доступ ко всем папкам выдан' : 'Доступ выдан');
+        add.value.with = '';
+    }
     catch (e) { say(e.message, true); } finally { busy.value = false; }
 }
 async function sync() {
@@ -87,12 +114,19 @@ function levelOptions(r) { const base = r.role === 'inbox' ? ['reader', 'editor'
             <div class="group-title">Открыть доступ</div>
             <div class="field__row" style="flex-wrap: wrap">
                 <select v-model="add.owner" class="input" aria-label="Чей ящик" style="width: 240px; height: 34px"><option value="" disabled>чей ящик…</option><option v-for="c in candidates" :key="'o' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
-                <select v-model="add.folder" class="input" aria-label="Папка" style="width: 150px; height: 34px"><option value="INBOX">Входящие</option></select>
-                <select v-model="add.with" class="input" aria-label="Кому дать доступ" style="width: 240px; height: 34px"><option value="" disabled>кому…</option><option v-for="c in candidates.filter((x) => x.mail !== add.owner)" :key="'w' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
-                <select v-model="add.level" class="input" aria-label="Уровень доступа" style="width: 130px; height: 34px"><option v-for="(t, k) in levels" :key="k" :value="k">{{ t }}</option></select>
+                <select v-model="add.with" class="input" aria-label="Кому дать доступ" style="width: 240px; height: 34px" :disabled="!add.owner"><option value="" disabled>кому…</option><option v-for="c in candidates.filter((x) => x.mail !== add.owner)" :key="'w' + c.mail" :value="c.mail">{{ c.name }} — {{ c.mail }}</option></select>
+                <!-- Папка — после выбора «кому»: сначала решаем, кому открываем, потом что. -->
+                <template v-if="add.owner && add.with">
+                    <select v-model="add.folder" class="input" aria-label="Какую папку" style="width: 220px; height: 34px" :disabled="foldersLoading">
+                        <option value="*">Все папки</option>
+                        <option value="INBOX">Входящие (весь ящик)</option>
+                        <option v-for="f in ownerFolders.filter((x) => x.path.toUpperCase() !== 'INBOX')" :key="f.path" :value="f.path">{{ '  '.repeat(f.depth) }}{{ f.name }}</option>
+                    </select>
+                    <select v-model="add.level" class="input" aria-label="Уровень доступа" style="width: 130px; height: 34px"><option v-for="k in addLevels" :key="k" :value="k">{{ levels[k] }}</option></select>
+                </template>
                 <button class="btn btn--primary" type="button" :disabled="busy || !add.owner || !add.with" @click="grant">Открыть</button>
             </div>
-            <p class="hint">Доступ по «Входящим» — это доступ к ящику: редактор получает системные папки, владелец — все папки и право писать от имени ящика. Отдельные папки открываются в карточке сотрудника.</p>
+            <p class="hint">{{ add.owner && add.with ? addHint : 'Выберите, чей ящик и кому открыть доступ, — дальше можно выбрать папку: одну, «Входящие» (доступ к ящику) или все папки сразу.' }}</p>
         </div>
 
         <template v-if="view === 'owners'">
