@@ -7,6 +7,7 @@ import AttachmentViewer from './AttachmentViewer.vue';
 import AttachedMail from './AttachedMail.vue';
 import { isEmpty, isEml, isImg, isOffice, viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
+import { uiSimple } from '../../mail/uiMode';
 import { addrList, initials, size, when } from '../../mail/format';
 
 const props = defineProps({
@@ -263,6 +264,23 @@ const isDraft = computed(() => props.folderRole === 'drafts');
 <template>
     <div class="mread__bar">
         <button class="ib mobile-only" type="button" title="К списку" aria-label="К списку писем" style="display: none" @click="$emit('back')"><Icon name="back" :size="18" /></button>
+        <!-- Простой вид (mail/uiMode): семь подписанных действий, редкое — в «⋯ Ещё»
+             (метка, флажок, встреча, печать, спам). Жалоба: четырнадцать кнопок, десять из них — значки без подписи. -->
+        <template v-if="uiSimple && !isDraft">
+            <button class="ib ib--keep" type="button" :title="noReply ? 'Отправитель — автоматический адрес, ответ, скорее всего, никто не прочитает' : tip('Ответить', 'r')" @click="$emit('reply', settings.reply_all ? 'replyAll' : 'reply', message)"><Icon name="reply" :size="16" />Ответить</button>
+            <button class="ib" type="button" v-bind="btn('Ответить всем', 'a')" @click="$emit('reply', 'replyAll', message)"><Icon name="replyall" :size="16" />Всем</button>
+            <button class="ib" type="button" v-bind="btn('Переслать', 'f')" @click="$emit('reply', 'forward', message)"><Icon name="fwd" :size="16" />Переслать</button>
+            <span class="sep" />
+            <button class="ib" type="button" v-bind="btn('Архив', 'e')" @click="$emit('act', 'archive', [message.uid])"><Icon name="archive" :size="17" />Архив</button>
+            <button class="ib" type="button" v-bind="btn('В папку', 'v')" @click="$emit('context', $event, message.uid, 'move')"><Icon name="folder" :size="17" />В папку</button>
+            <button class="ib" type="button" v-bind="btn('Отложить', 'z')" @click="$emit('context', $event, message.uid, 'snooze')"><Icon name="clock" :size="17" />Отложить</button>
+            <span class="grow" />
+            <button class="ib" type="button" title="Ещё: метка, флажок, встреча, печать, спам" aria-label="Ещё действия" @click="$emit('context', $event, message.uid, 'more')"><Icon name="dots" :size="17" /></button>
+            <span class="sep" />
+            <button class="ib ib--danger" type="button" v-bind="btn('Удалить', '#')" @click="$emit('act', 'delete', [message.uid])"><Icon name="trash" :size="17" />Удалить</button>
+            <button class="ib desktop-only" type="button" v-bind="btn('Закрыть письмо', 'Esc')" @click="$emit('close')"><Icon name="x" :size="17" /></button>
+        </template>
+        <template v-else>
         <template v-if="isDraft">
             <button class="ib" type="button" @click="$emit('reply', 'draft', message)"><Icon name="edit" :size="16" />Продолжить черновик</button>
         </template>
@@ -294,6 +312,7 @@ const isDraft = computed(() => props.folderRole === 'drafts');
              или не обновишь страницу. На телефоне для этого есть «К списку» слева. -->
         <span class="sep desktop-only" />
         <button class="ib desktop-only" type="button" v-bind="btn('Закрыть письмо', 'Esc')" @click="$emit('close')"><Icon name="x" :size="17" /></button>
+        </template>
     </div>
 
     <div class="mread__scroll">

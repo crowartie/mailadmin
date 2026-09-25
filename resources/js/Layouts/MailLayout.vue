@@ -4,6 +4,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Components/Icon.vue';
 import FeedbackDialog from '../Components/Mail/FeedbackDialog.vue';
 import ConfirmHost from '../Components/ConfirmHost.vue';
+import Popover from '../Components/Mail/Popover.vue';
+import { initUi, setUiSimple, uiSimple } from '../mail/uiMode';
 
 const props = defineProps({
     user: String,
@@ -36,6 +38,19 @@ const services = computed(() => [
 
 // «Ещё» на телефоне: в нижней панели помещается только четыре пункта.
 const more = ref(false);
+
+// Вид интерфейса (простой / подробный) — из настроек сотрудника, см. mail/uiMode.
+initUi(!!page.props.uiSimple);
+watch(() => page.props.uiSimple, (v) => initUi(!!v));
+
+// Меню по инициалам: настройки, справка, обращение, тема, вид и выход. Раньше это были шесть
+// значков без подписей внизу полосы — непонятно, что есть что (жалоба «перегружено»).
+const meMenu = ref(null);   // { x, y } — где открыто
+function openMe(e) {
+    if (meMenu.value) { meMenu.value = null; return; }
+    const r = e.currentTarget.getBoundingClientRect();
+    meMenu.value = { x: r.right + 10, y: r.bottom - 330 };
+}
 
 // Буквы в кружке — из имени (как видят получатели), а не из адреса: «ВВ», а не «VV».
 const initials = computed(() => {
@@ -106,27 +121,15 @@ onBeforeUnmount(() => { document.removeEventListener('click', exitOutside, true)
             >
                 <Icon :name="s.icon" />
             </Link>
+            <!-- Подключить телефон и программы — одним щелчком, не через настройки. -->
+            <Link class="rail__item" :class="{ 'rail__item--on': current.startsWith('/mail/setup') }" href="/mail/setup" title="Телефон и программы: подключить почту" aria-label="Телефон и программы">
+                <Icon name="mobile" />
+            </Link>
             <div class="rail__spacer" />
-            <Link class="rail__item" :class="{ 'rail__item--on': current.startsWith('/mail/settings') }" href="/mail/settings" title="Настройки">
-                <Icon name="sliders" />
-            </Link>
-            <Link class="rail__item" :class="{ 'rail__item--on': current.startsWith('/mail/help') }" href="/mail/help" title="Справка">
-                <Icon name="info" />
-            </Link>
-            <button v-if="user" class="rail__item" type="button" :title="feedbackNew ? 'Есть ответ по обращению' : 'Сообщить о проблеме'" style="border: none; background: none; cursor: pointer; position: relative" @click="feedback = true">
-                <Icon name="warn" />
+            <button class="rail__me" :class="{ 'rail__me--on': meMenu }" type="button" :title="user" :aria-expanded="!!meMenu" aria-label="Меню: настройки, справка, тема, выход" @click="openMe">
+                {{ initials }}
                 <span v-if="feedbackNew" class="rail__badge">{{ feedbackNew }}</span>
             </button>
-            <button class="rail__item" type="button" title="Тёмная / светлая тема" style="border: none; background: none; cursor: pointer" @click="toggleTheme" aria-label="Тёмная / светлая тема">
-                <Icon :name="isDark ? 'sun' : 'moon'" />
-            </button>
-            <span v-if="user" class="rail__exitbox">
-                <button class="rail__item" :class="{ 'rail__item--on': exitAsk }" type="button" title="Выйти" style="border: none; background: none; cursor: pointer" :aria-expanded="exitAsk" aria-label="Выйти" @click="askExit">
-                    <Icon name="logout" />
-                </button>
-                <button v-if="exitAsk" class="rail__exit" type="button" @click="logout"><Icon name="logout" :size="15" />Выйти</button>
-            </span>
-            <div class="rail__avatar" :title="user">{{ initials }}</div>
         </aside>
 
         <slot />
@@ -149,6 +152,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', exitOutside, true)
             <div class="sheet__panel" role="dialog" aria-label="Ещё">
                 <Link class="sheet__item" href="/mail/settings" @click="more = false"><Icon name="sliders" :size="20" />Настройки</Link>
                 <Link class="sheet__item" href="/mail/help" @click="more = false"><Icon name="info" :size="20" />Справка</Link>
+                <Link class="sheet__item" href="/mail/setup" @click="more = false"><Icon name="mobile" :size="20" />Телефон и программы</Link>
                 <!-- 270, 271: на телефоне «Сообщить о проблеме» пропадало совсем,
                      хотя справка обещает кнопку на любой странице. -->
                 <button class="sheet__item" type="button" @click="more = false; feedback = true">
@@ -157,6 +161,9 @@ onBeforeUnmount(() => { document.removeEventListener('click', exitOutside, true)
                 </button>
                 <button class="sheet__item" type="button" @click="toggleTheme">
                     <Icon :name="isDark ? 'sun' : 'moon'" :size="20" />{{ isDark ? 'Светлая тема' : 'Тёмная тема' }}
+                </button>
+                <button class="sheet__item" type="button" :aria-pressed="uiSimple" @click="setUiSimple(!uiSimple)">
+                    <Icon name="eye" :size="20" />Простой вид<Icon v-if="uiSimple" name="check" :size="20" style="margin-left: auto" />
                 </button>
                 <!-- 334: «Выйти» стояло наравне с разделами и читалось как раздел. -->
                 <!-- Первое касание — вопрос прямо на кнопке, второе — выход. -->
@@ -167,6 +174,22 @@ onBeforeUnmount(() => { document.removeEventListener('click', exitOutside, true)
             </div>
         </div>
 
+        <Popover v-if="meMenu" :x="meMenu.x" :y="meMenu.y" :width="250" @close="meMenu = null">
+            <div class="pop__me"><b>{{ page.props.mailName || user }}</b><span>{{ user }}</span></div>
+            <div class="pop__sep" />
+            <Link class="pop__item" href="/mail/settings" @click="meMenu = null"><Icon name="sliders" :size="16" />Настройки</Link>
+            <Link class="pop__item" href="/mail/help" @click="meMenu = null"><Icon name="info" :size="16" />Справка</Link>
+            <button class="pop__item" type="button" @click="meMenu = null; feedback = true">
+                <Icon name="warn" :size="16" />Сообщить о проблеме<span v-if="feedbackNew" class="chip chip--warn" style="margin-left: auto">{{ feedbackNew }}</span>
+            </button>
+            <div class="pop__sep" />
+            <button class="pop__item" type="button" @click="toggleTheme"><Icon :name="isDark ? 'sun' : 'moon'" :size="16" />{{ isDark ? 'Светлая тема' : 'Тёмная тема' }}</button>
+            <button class="pop__item" type="button" role="menuitemcheckbox" :aria-checked="uiSimple" title="Меньше кнопок на панели письма и в меню правой кнопки" @click="setUiSimple(!uiSimple)">
+                <Icon name="eye" :size="16" />Простой вид<Icon v-if="uiSimple" name="check" :size="16" style="margin-left: auto; color: var(--accent-ink)" />
+            </button>
+            <div class="pop__sep" />
+            <button class="pop__item pop__item--danger" type="button" @click="logout"><Icon name="logout" :size="16" />Выйти</button>
+        </Popover>
         <FeedbackDialog v-if="feedback" @close="feedback = false" />
         <ConfirmHost />
     </div>

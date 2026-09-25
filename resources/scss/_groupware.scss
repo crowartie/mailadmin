@@ -17,14 +17,18 @@
 }
 .mnav__item:hover .mnav__more, .mnav__item:focus-within .mnav__more { opacity: 1; }
 .mnav__more + .mnav__count { margin-left: 4px; }
-// С мышью «···» появляется только при наведении и места не держит: невидимая, она отбирала у имени
-// папки 35 px, и на 1024 px «Входящие» обрезались до «Входя…».
+// С мышью «···» проявляется ПОВЕРХ правого края строки, ничего не сдвигая: раньше невидимая кнопка
+// отбирала у имени папки 35 px («Входя…» на 1024 px), а когда её прятали через display, счётчик
+// при наведении прыгал влево.
+.mnav__item { position: relative; }
 @media (hover: hover) {
-    .mnav__more { display: none; }
-    .mnav__item:hover .mnav__more, .mnav__item:focus-within .mnav__more { display: inline; }
-    // Счётчик — по-прежнему у правого края, пока «···» спрятана.
+    .mnav__more {
+        position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+        margin: 0; padding: 4px 6px; background: v.$c-surface-2; pointer-events: none;
+    }
+    .mnav__item:hover .mnav__more, .mnav__item:focus-within .mnav__more { pointer-events: auto; }
+    .mnav__item--on .mnav__more { background: v.$c-accent-soft; }
     .mnav__more + .mnav__count { margin-left: auto; }
-    .mnav__item:hover .mnav__more + .mnav__count, .mnav__item:focus-within .mnav__more + .mnav__count { margin-left: 4px; }
 }
 .mnav__count { margin-left: auto; font-size: 12px; color: v.$c-faint; font-variant-numeric: tabular-nums; }
 .mnav__item--on .mnav__count { color: v.$c-accent-ink; font-weight: 600; }

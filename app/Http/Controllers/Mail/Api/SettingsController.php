@@ -33,6 +33,7 @@ class SettingsController extends Controller
             'quick_replies' => ['nullable', 'array', 'max:8'],
             'quick_replies.*' => ['string', 'max:200'],
             'shortcuts' => ['nullable', 'boolean'],
+            'ui_simple' => ['nullable', 'boolean'],
             'preview' => ['nullable', 'boolean'],
             'unread_highlight' => ['nullable', 'boolean'],
             'unread_color' => ['nullable', 'regex:/^(#[0-9a-fA-F]{6})?$/'],

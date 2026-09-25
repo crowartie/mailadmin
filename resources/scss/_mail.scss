@@ -16,7 +16,8 @@
 .mnav {
     width: var(--nav-w, 232px);
     flex: 0 0 var(--nav-w, 232px);
-    background: v.$c-surface;
+    // Колонка папок — тоном фона, список писем — белым: зоны читаются сразу.
+    background: v.$c-bg;
     border-right: 1px solid v.$c-border;
     display: flex;
     flex-direction: column;
@@ -618,6 +619,9 @@
     &:hover { background: v.$c-surface-2; color: v.$c-text; }
     // Опасное действие (удалить): краснеет только при наведении, чтобы глаз заранее видел, куда жмёт.
     &--on { background: v.$c-accent-soft; color: v.$c-accent-ink; }
+    // Главное действие панели письма («Ответить») — одно и выделено цветом.
+    &--keep { background: v.$c-accent-soft; color: v.$c-accent-ink; font-weight: 600; }
+    &--keep:hover { background: v.$c-accent-soft; color: v.$c-accent-ink; filter: brightness(.97); }
     &--danger:hover { color: v.$c-no; background: v.$c-no-soft; }
     &--sm { height: 28px; min-width: 28px; }
     &:disabled { opacity: .4; cursor: default; }
@@ -1600,3 +1604,48 @@ button.mrow__av:hover, button.mrow__av:focus-visible { box-shadow: 0 0 0 2px v.$
 @media (max-width: 860px) { .qhint { margin-left: 0; } }
 // Контакты на телефоне: подпись книги («Сотрудники») отбирала ширину у имени — имена обрезались.
 @media (max-width: 600px) { .crow .crow__book { display: none; } }
+
+// Кнопка с инициалами внизу полосы: открывает меню «настройки, справка, тема, вид, выход».
+// Раньше там стояли шесть значков без подписей — непонятно, что есть что.
+.rail__me {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: v.$c-accent-soft;
+    color: v.$c-accent-ink;
+    font: inherit;
+    font-weight: 600;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+
+    &:hover, &--on { border-color: v.$c-accent; }
+    &:focus-visible { outline: 2px solid v.$c-accent; outline-offset: 2px; }
+    .rail__badge { top: -4px; right: -6px; }
+}
+.pop__me {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px 10px;
+    b { font-size: 14px; }
+    span { font-size: 12.5px; color: v.$c-muted; }
+}
+
+// ── Простой вид (html[data-ui="simple"], см. mail/uiMode.js) ──────────────
+// Галочка у письма — только при наведении, у выбранных и в режиме выбора: место под неё остаётся,
+// поэтому строка не сдвигается.
+html[data-ui="simple"] .mrow .cb { opacity: 0; }
+html[data-ui="simple"] .mrow:hover .cb, html[data-ui="simple"] .mrow--checked .cb,
+html[data-ui="simple"] .mlist--select .mrow .cb, html[data-ui="simple"] .mrow .cb:focus-visible { opacity: 1; }
+// Буквы горячих клавиш в меню — шум для большинства; они есть в подсказках и в справке «?».
+html[data-ui="simple"] .pop__item .k:not(.k--keep) { display: none; }
+// Значки «ответить, переслать, скачать» у каждого письма цепочки — только у письма под мышью.
+html[data-ui="simple"] .msg__acts { opacity: 0; transition: opacity .12s; }
+html[data-ui="simple"] .msg:hover .msg__acts, html[data-ui="simple"] .msg__acts:focus-within { opacity: 1; }
+@media (hover: none) { html[data-ui="simple"] .msg__acts { opacity: 1; } }

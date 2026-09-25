@@ -36,6 +36,7 @@ class Setting extends Model
         'unread_color' => '',         // свой цвет подсветки (#rrggbb); пусто — синий темы
         'show_images' => 'ask',
         'totp_enabled' => false,
+        'ui_simple' => false,         // простой вид: меньше кнопок на панели письма и в меню, галочки по наведению
     ];
 
     /** Ключи, которые никогда не уходят в интерфейс. */

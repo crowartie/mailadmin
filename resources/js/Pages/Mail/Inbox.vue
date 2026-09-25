@@ -24,6 +24,7 @@ import { useHotkeys } from '../../mail/useHotkeys';
 import { useLiveUpdates } from '../../mail/useLiveUpdates';
 import { useMessageActions } from '../../mail/useMessageActions';
 import { useUrlState } from '../../mail/useUrlState';
+import { uiSimple } from '../../mail/uiMode';
 
 const props = defineProps({
     user: String,
@@ -931,6 +932,32 @@ onBeforeUnmount(() => {
 
         <!-- Контекстное меню письма -->
         <Popover v-if="menu && menu.kind === 'context'" :x="menu.x" :y="menu.y" @close="menu = null">
+            <!-- Простой вид (mail/uiMode): 11 строк вместо 18, редкое — в «Ещё ▸». -->
+            <template v-if="uiSimple">
+                <template v-if="menuRow && folderInfo.role !== 'drafts'">
+                    <button class="pop__item" type="button" @click="openThen('reply')"><Icon name="reply" :size="16" />Ответить</button>
+                    <button class="pop__item" type="button" @click="openThen('forward')"><Icon name="fwd" :size="16" />Переслать</button>
+                    <div class="pop__sep" />
+                </template>
+                <template v-if="menu.uids.length > 1">
+                    <button class="pop__item" type="button" @click="act('seen', menu.uids)"><Icon name="eye" :size="16" />Прочитано</button>
+                    <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Непрочитано</button>
+                </template>
+                <button v-else class="pop__item" type="button" @click="act(menuRow && !menuRow.seen ? 'seen' : 'unseen', menu.uids)"><Icon name="eye" :size="16" />{{ menuRow && !menuRow.seen ? 'Прочитано' : 'Непрочитано' }}</button>
+                <button class="pop__item" type="button" @click="act(menuRow?.flagged ? 'unflag' : 'flag', menu.uids)"><Icon name="flag" :size="16" />{{ menuRow?.flagged ? 'Снять флажок' : 'Флажок' }}</button>
+                <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'snooze' }"><Icon name="clock" :size="16" />Отложить до…</button>
+                <div class="pop__sep" />
+                <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'move' }"><Icon name="folder" :size="16" />В папку…</button>
+                <button class="pop__item" type="button" @click="act('archive', menu.uids)"><Icon name="archive" :size="16" />Архив</button>
+                <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'label' }"><Icon name="tag" :size="16" />Метка…</button>
+                <div class="pop__sep" />
+                <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'ctxmore' }"><Icon name="dots" :size="16" />Ещё<Icon name="chevron" :size="15" style="margin-left: auto; color: var(--faint)" /></button>
+                <div class="pop__sep" />
+                <button v-if="folderInfo.role !== 'spam'" class="pop__item" type="button" @click="askSender('spam', menu.uids)"><Icon name="spam" :size="16" />Спам</button>
+                <button v-else class="pop__item" type="button" @click="askSender('ham', menu.uids)"><Icon name="inbox" :size="16" />Не спам</button>
+                <button class="pop__item pop__item--danger" type="button" @click="act('delete', menu.uids)"><Icon name="trash" :size="16" />{{ folderInfo.role === 'trash' ? 'Удалить навсегда' : 'Удалить' }}</button>
+            </template>
+            <template v-else>
             <template v-if="menuRow && folderInfo.role !== 'drafts'">
                 <button class="pop__item" type="button" @click="openThen('reply')"><Icon name="reply" :size="16" />Ответить<span class="k">r</span></button>
                 <button class="pop__item" type="button" @click="openThen('forward')"><Icon name="fwd" :size="16" />Переслать<span class="k">f</span></button>
@@ -961,6 +988,21 @@ onBeforeUnmount(() => {
             <button v-if="folderInfo.role !== 'lists' && folderInfo.role !== 'spam'" class="pop__item" type="button" @click="askSender('lists', menu.uids)"><Icon name="ul" :size="16" />Рассылка</button>
             <button v-if="folderInfo.role === 'snoozed'" class="pop__item" type="button" @click="act('unsnooze', menu.uids)"><Icon name="inbox" :size="16" />Вернуть во Входящие</button>
             <button class="pop__item pop__item--danger" type="button" @click="act('delete', menu.uids)"><Icon name="trash" :size="16" />{{ folderInfo.role === 'trash' ? 'Удалить навсегда' : 'Удалить' }}<span class="k">#</span></button>
+            </template>
+        </Popover>
+
+        <!-- «Ещё ▸» из меню правой кнопки в простом виде: то, что нужно редко. -->
+        <Popover v-if="menu && menu.kind === 'ctxmore'" :x="menu.x" :y="menu.y" @close="menu = null">
+            <template v-if="menuRow && folderInfo.role !== 'drafts'">
+                <button class="pop__item" type="button" title="Письма уйдут файлами, получатель откроет их как письма" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
+                <button class="pop__item" type="button" title="Открыть как новое письмо: те же получатели, тема, текст и вложения" @click="openThen('again')"><Icon name="edit" :size="16" />Изменить как новое</button>
+                <button v-if="menuPerson && menuPerson.mail" class="pop__item" type="button" :title="'Письма от ' + menuPerson.mail + ' и ему во всех папках'" @click="correspondence(menuPerson.mail)"><Icon name="users" :size="16" />Вся переписка с {{ menuPerson.name }}</button>
+                <button v-if="menu.uids.length === 1" class="pop__item" type="button" title="Вкладка внизу: письмо перед глазами, пока пишете другое" @click="holdMessage(menuRow)"><Icon name="pin" :size="16" />{{ heldOf(menuRow) ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
+            </template>
+            <button v-else-if="menu.uids.length > 1 && folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Все выбранные письма уйдут вложениями в одном письме" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением ({{ menu.uids.length }})</button>
+            <button v-if="folderInfo.role !== 'lists' && folderInfo.role !== 'spam'" class="pop__item" type="button" @click="askSender('lists', menu.uids)"><Icon name="ul" :size="16" />Это рассылка</button>
+            <button v-if="folderInfo.role === 'snoozed'" class="pop__item" type="button" @click="act('unsnooze', menu.uids)"><Icon name="inbox" :size="16" />Вернуть во Входящие</button>
+            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])"><Icon name="download" :size="16" />Скачать письмо (.eml)<span v-if="menu.uids.length > 1" class="k k--keep">только первое</span></a>
         </Popover>
 
         <Popover v-if="menu && menu.kind === 'snooze'" :x="menu.x" :y="menu.y" @close="menu = null">
@@ -1009,7 +1051,18 @@ onBeforeUnmount(() => {
         <Popover v-if="menu && menu.kind === 'more'" :x="menu.x" :y="menu.y" @close="menu = null">
             <!-- 341: на телефоне панель действий письма не вмещала все кнопки, поэтому
                  те, что там спрятаны, добавлены сюда — на широком экране они не показываются. -->
-            <template v-if="open && menu.uids.length === 1 && menu.uids[0] === open.uid">
+            <template v-if="open && menu.uids.length === 1 && menu.uids[0] === open.uid && uiSimple">
+                <!-- Простой вид: всё, что убрано с панели письма. -->
+                <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'label' }"><Icon name="tag" :size="16" />Метка…</button>
+                <button class="pop__item" type="button" @click="act(open.flagged ? 'unflag' : 'flag', [open.uid])"><Icon name="flag" :size="16" />{{ open.flagged ? 'Снять флажок' : 'Флажок' }}</button>
+                <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" @click="menu = null; meetingFrom(open)"><Icon name="cal" :size="16" />Назначить встречу</button>
+                <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Вкладка внизу: письмо перед глазами, пока пишете другое" @click="holdMessage(open)"><Icon name="pin" :size="16" />{{ isHeld ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
+                <button class="pop__item" type="button" @click="menu = null; printOpen(open)"><Icon name="print" :size="16" />Печать</button>
+                <button v-if="folderInfo.role !== 'spam'" class="pop__item" type="button" @click="act('spam', [open.uid])"><Icon name="spam" :size="16" />Спам</button>
+                <button v-else class="pop__item" type="button" @click="act('notspam', [open.uid])"><Icon name="inbox" :size="16" />Не спам</button>
+                <div class="pop__sep" />
+            </template>
+            <template v-else-if="open && menu.uids.length === 1 && menu.uids[0] === open.uid">
                 <button class="pop__item mobile-only" type="button" @click="menu = null; startCompose('replyAll', open)"><Icon name="replyall" :size="16" />Ответить всем</button>
                 <button class="pop__item mobile-only" type="button" @click="menu = null; meetingFrom(open)"><Icon name="cal" :size="16" />Назначить встречу</button>
                 <button class="pop__item mobile-only" type="button" @click="menu = { ...menu, kind: 'label' }"><Icon name="tag" :size="16" />Метка…</button>
@@ -1023,8 +1076,8 @@ onBeforeUnmount(() => {
             <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Пометить непрочитанным</button>
             <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'remind' }"><Icon name="bell" :size="16" />Напомнить, если не ответят…</button>
             <!-- Оба пункта работают с одним письмом: при выделенной пачке честно говорим, с каким именно. -->
-            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])"><Icon name="download" :size="16" />Скачать .eml<span v-if="menu.uids.length > 1" class="k">только первое</span></a>
-            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0]) + '?inline=1'" target="_blank" rel="noopener"><Icon name="code" :size="16" />Показать оригинал<span v-if="menu.uids.length > 1" class="k">только первое</span></a>
+            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0])"><Icon name="download" :size="16" />Скачать .eml<span v-if="menu.uids.length > 1" class="k k--keep">только первое</span></a>
+            <a class="pop__item" :href="api.rawUrl(folder, menu.uids[0]) + '?inline=1'" target="_blank" rel="noopener"><Icon name="code" :size="16" />Показать оригинал<span v-if="menu.uids.length > 1" class="k k--keep">только первое</span></a>
         </Popover>
 
         <Popover v-if="menu && menu.kind === 'remind'" :x="menu.x" :y="menu.y" @close="menu = null">

@@ -7,6 +7,7 @@ import Icon from '../../Components/Icon.vue';
 import Editor from '../../Components/Mail/Editor.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import { plural, size, when as whenCommon } from '../../mail/format';
+import { uiSimple, setUiSimple } from '../../mail/uiMode';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import { api } from '../../mail/api';
 import { useSecuritySettings } from '../../mail/useSecuritySettings';
@@ -329,6 +330,8 @@ const shortcuts = [
                             </div>
                             <!-- 198: тот же переключатель в разделе «Горячие клавиши» сохранялся сразу,
                                  а здесь ждал кнопки «Сохранить». Теперь одинаково. -->
+                            <!-- Простой вид: меньше кнопок на панели письма и в меню правой кнопки (mail/uiMode). -->
+                            <label class="toggle" title="Меньше кнопок на панели письма и в меню правой кнопки; галочки у писем — при наведении"><input :checked="uiSimple" type="checkbox" @change="setUiSimple($event.target.checked)"><span class="toggle__track" />Простой вид <span class="hint" style="margin: 0">— меньше кнопок, редкое убрано в «Ещё»; сохраняется сразу</span></label>
                             <label class="toggle"><input v-model="s.shortcuts" type="checkbox" @change="saveOne({ shortcuts: s.shortcuts })"><span class="toggle__track" />Горячие клавиши <span class="hint" style="margin: 0">— сохраняется сразу</span></label>
                             <label class="toggle"><input v-model="s.reply_all" type="checkbox"><span class="toggle__track" />По умолчанию отвечать всем</label>
                             <label class="toggle" title="Флаг «прочитано» в общей папке один на всех: если его ставит каждый, кто заглянул, владелец и коллеги перестают видеть, что письмо ещё никто не разбирал. Отметить письмо можно кнопкой «Прочитано»."><input v-model="s.shared_mark_seen" type="checkbox"><span class="toggle__track" />В общих папках (чужой ящик) отмечать письмо прочитанным при открытии</label>
