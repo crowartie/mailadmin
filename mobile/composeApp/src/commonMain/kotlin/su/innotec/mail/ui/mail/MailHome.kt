@@ -61,6 +61,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -130,7 +131,11 @@ private fun WithDrawer(content: @Composable (open: () -> Unit) -> Unit) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     su.innotec.mail.platform.BackHandler(drawer.isOpen) { scope.launch { drawer.close() } }
+    // Жестом от края не открываем: он перехватывал смахивание строк (удаление вместо папок).
+    // clipToBounds — закрытая панель не должна вылезать левее своей области (на планшете — на полосу разделов).
     ModalNavigationDrawer(
+        modifier = Modifier.clipToBounds(),
+        gesturesEnabled = drawer.isOpen,
         drawerState = drawer,
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = P.surface, modifier = Modifier.width(300.dp)) {

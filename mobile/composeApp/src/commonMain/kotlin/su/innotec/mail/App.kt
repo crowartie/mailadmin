@@ -120,7 +120,8 @@ private fun Main() {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val kind = when {
             maxWidth >= 1100.dp -> WindowKind.WIDE
-            maxWidth >= 720.dp -> WindowKind.TABLET
+            // Планшет вертикально (~740 dp) — как телефон: две колонки там слишком узкие для письма.
+            maxWidth >= 900.dp -> WindowKind.TABLET
             else -> WindowKind.PHONE
         }
         CompositionLocalProvider(LocalWindow provides kind) {
