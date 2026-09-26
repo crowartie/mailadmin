@@ -85,7 +85,7 @@ final class AttachedMessage
             'to' => MailAddresses::of($m->getTo()),
             'cc' => MailAddresses::of($m->getCc()),
             'date' => $date ? $date->toIso8601String() : null,
-            'html' => $html !== '' ? MailHtml::sanitize($html) : null,
+            'html' => $html !== '' ? MessageBody::dropForeignServerImages(MailHtml::sanitize($html), '', 0) : null,
             'text' => $text !== '' ? $text : null,
             'attachments' => $attachments,
             'size' => strlen($raw),

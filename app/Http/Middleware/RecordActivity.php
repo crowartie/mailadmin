@@ -45,7 +45,7 @@ class RecordActivity
         if (! $e || $e->getMessage() === '') {
             return null;
         }
-        $text = preg_replace(['/\S+@\S+/u', '/«[^»]*»/u', '/"[^"]*"/u'], ['…', '«…»', '"…"'], $e->getMessage());
+        $text = preg_replace(['/\S*@\S*/u', '/«[^»]*»/u', '/"[^"]*"/u'], ['…', '«…»', '"…"'], $e->getMessage());
 
         return mb_substr((string) $text, 0, 160);
     }

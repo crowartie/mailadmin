@@ -154,11 +154,12 @@ class ComposeController extends Controller
             $path = 'outbox/' . $imap->user() . '/' . uniqid('', true) . '.eml';
             Storage::disk('local')->put($path, $email->toString());
             $recipients = array_map(fn ($a) => $a->getAddress(), array_merge($email->getTo(), $email->getCc(), $email->getBcc()));
-            \App\Services\Cloud\LocalFiles::claimStaged($imap->user(), MailBuilder::stagedTokens($form), Outgoing::messageId($email), $email->getSubject());
             $row = Outbox::create([
                 'user' => $imap->user(), 'from' => $email->getFrom()[0]->getAddress(), 'recipients' => $recipients,
                 'subject' => $email->getSubject(), 'path' => $path, 'send_at' => $at,
             ]);
+            // Файлы — за письмом только после того, как оно легло в очередь: упади запись, они бы повисли привязанными к письму, которого нет.
+            \App\Services\Cloud\LocalFiles::claimStaged($imap->user(), MailBuilder::stagedTokens($form), Outgoing::messageId($email), $email->getSubject());
             // Черновик удаляем сразу: письмо теперь живёт в очереди.
             if (! empty($form['draftUid'])) {
                 $drafts = $store->rolePath('drafts');
@@ -235,7 +236,7 @@ class ComposeController extends Controller
             'references' => $m['references'],
             'attachments' => $m['attachments'],
             'cloudFiles' => MailBuilder::draftCloudFiles($head),
-            'staged' => MailBuilder::draftStaged($head, $imap->user()),
+            'staged' => MailBuilder::draftStaged($head, $imap->user(), (string) ($m['html'] ?? '')),
         ]);
     }
 
@@ -252,6 +253,11 @@ class ComposeController extends Controller
         $raw = Storage::disk('local')->get($row->path);
         if ($raw) {
             $store->append($store->rolePath('drafts'), $raw, ['\\Seen', '\\Draft']);
+            // Большие файлы письма снова «ничьи»: черновик покажет их карточками (по ссылкам в тексте),
+            // их можно убрать, а «Удалить черновик» не оставит их в хранилище навсегда.
+            if (preg_match('/^Message-ID:\s*<?([^>\r\n]+)>?/mi', $raw, $mm)) {
+                \App\Services\Cloud\LocalFiles::unclaim($imap->user(), $mm[1]);
+            }
         }
         Storage::disk('local')->delete($row->path);
         $row->delete();

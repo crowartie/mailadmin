@@ -95,7 +95,12 @@ export function useCompose(ctx) {
         return (s || '').split(/,(?![^<]*>)/).map((p) => p.trim()).filter(Boolean).map((p) => {
             const m = p.match(/^"?([^"<]*)"?\s*<([^>]+)>$/);
 
-            return m ? { name: m[1].trim(), mail: m[2].trim() } : { name: '', mail: p };
+            const a = m ? { name: m[1].trim(), mail: m[2].trim() } : { name: '', mail: p };
+            // Черновик сохраняется и с неверным адресом — при открытии он должен быть подсвечен, иначе
+            // «Отправить» активна, а отказ приходит уже с сервера.
+            a.bad = !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(a.mail);
+
+            return a;
         });
     }
 

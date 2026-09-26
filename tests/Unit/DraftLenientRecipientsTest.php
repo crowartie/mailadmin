@@ -42,6 +42,7 @@ class DraftLenientRecipientsTest extends TestCase
     public function test_причина_отказа_без_адресов_и_имён(): void
     {
         $this->assertSame('Неверный адрес: …', RecordActivity::reason(new HttpException(422, 'Неверный адрес: petrov@mail')));
+        $this->assertSame('Неверный адрес: …', RecordActivity::reason(new HttpException(422, 'Неверный адрес: petrov@')));
         $this->assertSame('«…» весит 600 МБ', RecordActivity::reason(new HttpException(422, '«Отчёт.pdf» весит 600 МБ')));
         $v = ValidationException::withMessages(['files.0' => 'x', 'from' => 'y']);
         $this->assertSame('Проверка полей: files.0, from', RecordActivity::reason($v));

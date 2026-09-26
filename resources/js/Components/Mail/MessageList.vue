@@ -151,8 +151,18 @@ let raf = 0;
 // Колесо вверх в самом верху списка прокрутки не даёт (scrollTop уже 0) — ловим его отдельно (см. @wheel).
 const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; checkEdges(Date.now() > quietUntil); }); };
 // Прокрутка не всплывает — слушаем на перехвате: так видна прокрутка любого контейнера, где бы список ни стоял.
-onMounted(() => { document.addEventListener('scroll', onScroll, { passive: true, capture: true }); nextTick(() => checkEdges()); });
-onBeforeUnmount(() => { document.removeEventListener('scroll', onScroll, { capture: true }); if (raf) cancelAnimationFrame(raf); });
+let visObs = null;
+onMounted(() => {
+    document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    nextTick(() => checkEdges());
+    // На телефоне список скрыт, пока открыто письмо; вернулись — список мог стать короче экрана,
+    // и без этой проверки дочитывание не запустится до первой прокрутки.
+    if (window.IntersectionObserver && rowsBox.value) {
+        visObs = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) nextTick(() => checkEdges()); });
+        visObs.observe(rowsBox.value);
+    }
+});
+onBeforeUnmount(() => { document.removeEventListener('scroll', onScroll, { capture: true }); if (raf) cancelAnimationFrame(raf); visObs?.disconnect(); });
 // Список пришёл короче экрана (или дочитался) — проверить края ещё раз, иначе прокрутки не будет вовсе.
 watch(() => [props.list.messages.length, props.list.seq, props.edge, props.loading].join('|'), () => nextTick(() => checkEdges()));
 

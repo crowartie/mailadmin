@@ -396,24 +396,42 @@ class MailBuilder
             return [];
         }
         $found = \App\Services\Cloud\LocalFiles::staged($this->session->user(), $tokens)->keyBy('token');
-        $out = [];
+        $names = [];
         foreach ((array) $form['staged'] as $s) {
-            $f = $found[(string) ($s['token'] ?? '')] ?? null;
+            $names[(string) ($s['token'] ?? '')] = (string) ($s['name'] ?? 'файл');
+        }
+        // Срок ссылки — от отправки, а не от дня, когда файл положили: черновик мог пролежать неделю.
+        $days = (int) \App\Services\Cloud\LocalFiles::settings()['expire_days'];
+        $expires = $days > 0 ? now()->addDays($days)->toDateString() : null;
+        $out = [];
+        foreach ($tokens as $token) {
+            $f = $found[$token] ?? null;
             if (! $f || ! is_file($f->fullPath())) {
-                throw \App\Exceptions\MailException::notFound('«' . mb_substr((string) ($s['name'] ?? 'файл'), 0, 80) . '» больше нет в хранилище — уберите его из письма и приложите заново');
+                // Файл уже ушёл с другим письмом (черновик открыт в двух окнах) или его убрала уборка.
+                $gone = \App\Models\Webmail\CloudFile::query()->where('token', $token)->whereNotNull('message_id')->exists();
+                $name = mb_substr($names[$token] ?? 'файл', 0, 80);
+                throw \App\Exceptions\MailException::notFound($gone
+                    ? '«' . $name . '» уже отправлен с другим письмом — уберите его из этого или приложите заново'
+                    : '«' . $name . '» больше нет в хранилище — уберите его из письма и приложите заново');
             }
-            $out[] = ['name' => $f->name, 'size' => (int) $f->size, 'url' => $f->url(), 'expires' => $f->expires_at?->toDateString()];
+            $out[] = ['name' => $f->name, 'size' => (int) $f->size, 'url' => $f->url(), 'expires' => $expires];
         }
 
         return $out;
     }
 
     /** Заранее положенные файлы черновика — карточками для окна письма. @return array<int,array{token:string,name:string,size:int}> */
-    public static function draftStaged(string $head, string $user): array
+    public static function draftStaged(string $head, string $user, string $html = ''): array
     {
         preg_match_all('/^' . self::STAGED_HEADER . ':\s*([A-Za-z0-9_-]{20,64})\s*$/mi', $head, $m);
+        $tokens = $m[1] ?? [];
+        // Черновик из отменённой отложенной отправки заголовков не имеет — файлы узнаём по ссылкам в тексте.
+        if ($html !== '' && \App\Services\Cloud\LocalFiles::enabled()) {
+            $host = (string) parse_url(\App\Services\Cloud\LocalFiles::base(), PHP_URL_HOST);
+            $tokens = array_values(array_unique(array_merge($tokens, \App\Services\Cloud\LocalFiles::tokensIn($html, $host))));
+        }
 
-        return \App\Services\Cloud\LocalFiles::staged($user, $m[1] ?? [])
+        return \App\Services\Cloud\LocalFiles::staged($user, $tokens)
             ->map(fn ($f) => ['token' => $f->token, 'name' => $f->name, 'size' => (int) $f->size])->values()->all();
     }
 

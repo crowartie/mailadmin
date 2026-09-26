@@ -39,11 +39,16 @@ class MobileRelease
             return null;
         }
 
+        // Сумму считаем по самому файлу (с кэшем по его дате и размеру): подменили .apk, забыв latest.json, —
+        // приложение отказалось бы ставить «повреждённый» файл без объяснений.
+        $stamp = filemtime($apk) . ':' . filesize($apk);
+        $sha = (string) \Illuminate\Support\Facades\Cache::remember('mobile.apk.sha256:' . $stamp, 86400 * 30, fn () => hash_file('sha256', $apk));
+
         return [
             'version' => (string) $d['version'],
             'code' => (int) ($d['code'] ?? 0),
             'size' => (int) filesize($apk),
-            'sha256' => (string) ($d['sha256'] ?? ''),
+            'sha256' => $sha,
             'notes' => (string) ($d['notes'] ?? ''),
             'date' => (string) ($d['date'] ?? date('Y-m-d', (int) filemtime($apk))),
         ];

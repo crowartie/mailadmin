@@ -51,8 +51,9 @@ function dropCloud(i) { cloudPicked.value.splice(i, 1); dirty.value = true; }
 // с ходом загрузки у файла; в письмо уходит готовая ссылка. Черновик помнит такие файлы.
 const staged = ref(Array.isArray(c.staged) ? c.staged.map((f) => ({ key: f.token, name: f.name, size: f.size || 0, token: f.token, state: 'ready', pct: 100, error: '' })) : []);
 let stageSeq = 0;
+let discarded = false;   // письмо удалили: файлам, которые ещё грузились, в хранилище делать нечего
 function stageFile(f) {
-    const item = ref({ key: 'n' + (++stageSeq), name: f.name, size: f.size, token: null, state: 'upload', pct: 0, error: '' }).value;
+    const item = ref({ key: 'n' + (++stageSeq), name: f.name, size: f.size, token: null, state: 'upload', pct: 0, error: '', file: f }).value;
     staged.value.push(item);
     const it = () => staged.value.find((x) => x.key === item.key);
     item.promise = new Promise((resolve) => {
@@ -67,13 +68,16 @@ function stageFile(f) {
         xhr.upload.onload = () => { const x = it(); if (x) { x.state = 'check'; x.pct = 100; } };
         const fail = (text) => { const x = it(); if (x) { x.state = 'error'; x.error = text; } resolve(false); };
         xhr.onerror = () => fail('нет связи с сервером');
+        xhr.timeout = 60 * 60 * 1000;   // час: 500 МБ по медленному каналу
+        xhr.ontimeout = () => fail('загрузка шла слишком долго');
         xhr.onabort = () => resolve(false);
         xhr.onload = () => {
             let r = {};
             try { r = JSON.parse(xhr.responseText || '{}'); } catch { r = {}; }
-            if (xhr.status !== 200 || !r.token) { fail(r.message || ('ошибка ' + xhr.status)); return; }
+            if (xhr.status !== 200 || !r.token) { fail(xhr.status === 419 || xhr.status === 401 ? 'сеанс окончен — обновите страницу' : (r.message || ('ошибка ' + xhr.status))); return; }
             const x = it();
-            if (!x) { api.unstage(r.token).catch(() => {}); resolve(false); return; }   // убрали, пока грузился
+            // Убрали, пока грузился, или письмо удалили — файл в хранилище не нужен.
+            if (!x || discarded) { api.unstage(r.token).catch(() => {}); resolve(false); return; }
             Object.assign(x, { token: r.token, state: 'ready', pct: 100, error: '' });
             dirty.value = true;   // черновик должен запомнить файл
             resolve(true);
@@ -82,6 +86,7 @@ function stageFile(f) {
         fd.append('file', f, f.name);
         xhr.send(fd);
     });
+    return item;
 }
 function dropStaged(i) {
     const [x] = staged.value.splice(i, 1);
@@ -236,6 +241,7 @@ function payload(extra = {}) {
 }
 
 async function send(sendAt = null) {
+    if (waitingStage.value) return;   // «Отправить» уже нажато, письмо ждёт загрузку файлов
     flushRecipients();
     if (!canSend.value) {
         emit('toast', { text: 'Укажите получателя', error: true });
@@ -346,7 +352,8 @@ async function discard() {
         || (html.value || '').replace(/<[^>]+>/g, '').trim();
     if (something && !(await confirmAsk('Удалить письмо вместе с черновиком? Восстановить его будет нельзя.', { ok: 'Удалить', danger: true }))) return;
     closed = true;
-    // Черновик удаляют — его большим файлам в хранилище делать нечего.
+    discarded = true;
+    // Черновик удаляют — его большим файлам в хранилище делать нечего (те, что ещё грузятся, отзовутся по окончании).
     staged.value.forEach((x) => { if (x.xhr && x.state === 'upload') x.xhr.abort(); if (x.token) api.unstage(x.token).catch(() => {}); });
     track('compose.discard', something ? 'с текстом' : 'пустое');
     emit('close', { discard: true, draftUid: draftUid.value });
@@ -356,8 +363,14 @@ function close() {
     closed = true;
     const keep = worthSaving();
     track('compose.close', dirty.value && keep ? 'черновик сохранён' : 'без изменений');
-    const saved = dirty.value && keep ? saveDraft(true) : inflight;
-    if (keep && (dirty.value || draftUid.value || saving)) {
+    let saved = dirty.value && keep ? saveDraft(true) : inflight;
+    // Большой файл ещё грузится: черновик пересохраняется, когда файл доедет, — иначе он терялся из
+    // черновика молча и лежал в хранилище без письма.
+    if (keep && stageBusy.value) {
+        const pending = staged.value.map((x) => x.promise).filter(Boolean);
+        saved = Promise.resolve(saved).then(() => Promise.all(pending)).then(() => (staged.value.some((x) => x.state === 'ready') ? doSaveDraft(true) : null)).then(() => draftUid.value);
+    }
+    if (keep && (dirty.value || draftUid.value || saving || stageBusy.value)) {
         // Окно закрывается без вопросов, а внизу — где письмо и «Удалить», если черновик не нужен.
         // Без этого человек не знает, потерян текст или нет.
         emit('toast', {
@@ -462,7 +475,12 @@ function fitForSend() {
         files.value.forEach((f, i) => { if (!viaCloud.value.has(i) && (big < 0 || f.size > files.value[big].size)) big = i; });
         if (big < 0) break;
         const f = files.value[big];
-        if (props.cloud?.stage) { removeFile(big); stageFile(f); } else { const s = new Set(viaCloud.value); s.add(big); viaCloud.value = s; }
+        if (props.cloud?.stage) {
+            removeFile(big);
+            const item = stageFile(f);
+            // Не загрузился — вернуть файл во вложения, чтобы письмо можно было отправить как было.
+            item.promise.then((ok) => { if (!ok && !closed) { const i = staged.value.indexOf(item); if (i >= 0) staged.value.splice(i, 1); files.value.push(f); } });
+        } else { const s = new Set(viaCloud.value); s.add(big); viaCloud.value = s; }
         moved++;
     }
     if (moved) emit('toast', { text: `Письмо больше ${Math.round(MAX_MESSAGE / 1048576)} МБ — ${moved} ${plural(moved, 'файл уйдёт', 'файла уйдут', 'файлов уйдут')} ссылкой` }, 6000);
@@ -667,7 +685,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                 <span class="att__main"><Icon name="cloud" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></span>
                 <button class="att__btn" type="button" title="Убрать" aria-label="Убрать" @click="dropCloud(i)"><Icon name="x" :size="13" /></button>
             </span>
-            <span v-if="(cloud.enabled || cloudPicked.length) && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель скачает по ссылке из письма</span>
+            <span v-if="(cloud.enabled || cloudPicked.length) && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ plural(cloudCount, 'файл уйдёт ссылкой', 'файла уйдут ссылкой', 'файлов уйдут ссылкой') }} — получатель скачает по ссылке из письма</span>
             <!-- Предупреждение показываем и при включённом облаке: часть файлов всё равно
                  уходит внутри письма, а вес считаем вместе с унаследованными. -->
             <span v-if="encoded(inMailSize) + bodySize > MAX_MESSAGE" class="chip chip--no" style="height: 28px">{{ size(encoded(inMailSize) + bodySize) }} — больше {{ Math.round(MAX_MESSAGE / 1048576) }} МБ: у многих получателей не пройдёт{{ cloud.enabled ? ', при отправке крупные файлы уйдут ссылкой' : '' }}</span>

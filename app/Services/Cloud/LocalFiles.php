@@ -187,6 +187,18 @@ final class LocalFiles
         return $n;
     }
 
+    /** Отложенную отправку отменили: файлы письма снова ждут отправки (черновик их покажет и сможет убрать). */
+    public static function unclaim(string $user, string $messageId): int
+    {
+        $messageId = trim($messageId, '<> ');
+        if ($messageId === '') {
+            return 0;
+        }
+
+        return CloudFile::query()->where('source', 'local')->where('user', strtolower($user))->where('message_id', $messageId)
+            ->update(['message_id' => null, 'subject' => null]);
+    }
+
     /** Файл убрали из письма до отправки. @param string[] $tokens */
     public static function discardStaged(string $user, array $tokens): int
     {

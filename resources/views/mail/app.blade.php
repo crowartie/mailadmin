@@ -1,7 +1,10 @@
 @php
     $domain = config('areas.default_domain');
     $size = $r ? number_format($r['size'] / 1048576, 1, ',', ' ') . ' МБ' : '';
-    $date = $r ? \Illuminate\Support\Carbon::parse($r['date'])->translatedFormat('j F Y') : '';
+    $date = '';
+    if ($r) {
+        try { $date = \Illuminate\Support\Carbon::parse($r['date'])->translatedFormat('j F Y'); } catch (\Throwable) { $date = (string) $r['date']; }
+    }
     // «Что нового» пишется в CHANGELOG строками «- …»; продолжения строк склеиваем с предыдущим пунктом.
     $notes = [];
     // /u обязателен: без него \R принимает байт 0x85 внутри буквы «х» за перевод строки и режет текст.

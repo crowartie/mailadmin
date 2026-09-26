@@ -31,6 +31,14 @@ class ForeignServerImagesTest extends TestCase
         $this->assertSame('', MessageBody::dropForeignServerImages($html, 'INBOX', 52));
     }
 
+    public function test_после_чистки_разметки_тоже_работает(): void
+    {
+        $html = '<p>x</p><img src="/mail/api/message/INBOX/3401/attachment/0?inline=1" alt="0"><img src="/mail/api/message/INBOX/52/attachment/1?inline=1">';
+        $out = MessageBody::dropForeignServerImages(\App\Services\Mail\MailHtml::sanitize($html), 'INBOX', 52);
+        $this->assertStringNotContainsString('3401', $out);
+        $this->assertStringContainsString('/52/attachment/1', $out);
+    }
+
     public function test_без_ссылок_без_изменений(): void
     {
         $html = '<p>x</p><img src="data:image/png;base64,AAAA">';

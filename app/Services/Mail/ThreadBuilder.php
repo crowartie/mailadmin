@@ -168,7 +168,9 @@ class ThreadBuilder
 
 
     /** Приставка ответа или пересылки в начале темы: «Re:», «Fwd:», «Ответ:»… */
-    private const REPLY_PREFIX = '/^\s*(re|fw|fwd|ответ|пересылка|вх|исх)\s*(\[\d+\])?\s*:/iu';
+    private const PREFIXES = 're|fw|fwd|aw|wg|sv|vs|tr|ответ|отв|пересылка|вх|исх';
+
+    private const REPLY_PREFIX = '/^\s*(' . self::PREFIXES . ')\s*(\[\d+\])?\s*:/iu';
 
     /** Автоматический адрес: такие письма — уведомления, а не переписка (как NOREPLY в веб-почте). */
     private const AUTOMATIC = '/^(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer[-_.]?daemon|bounce[sd]?|postmaster|nobody|notifications?)@/i';
@@ -198,7 +200,7 @@ class ThreadBuilder
     {
         $s = trim($subject);
         // Приставки повторяются («Re: Fw: Re: …»), поэтому снимаем их по кругу.
-        while (preg_match('/^\s*(re|fw|fwd|ответ|пересылка|вх|исх)\s*(\[\d+\])?\s*:\s*/iu', $s, $m)) {
+        while (preg_match('/^\s*(' . self::PREFIXES . ')\s*(\[\d+\])?\s*:\s*/iu', $s, $m)) {
             $s = mb_substr($s, mb_strlen($m[0]));
         }
 
@@ -254,6 +256,14 @@ class ThreadBuilder
                 foreach ($this->tree->folder($p)->query()->whereUidIn($uids)->setFetchBody(false)->setFetchFlags(true)->get() as $m) {
                     // Сервер ищет подстроку — сверяем тему целиком; и склеиваем только письмо с ответами на него.
                     if (! self::sameConversationBySubject($subject, (string) Charset::header((string) ($m->getSubject()->first() ?? '')))) {
+                        continue;
+                    }
+                    // Ответ человека на уведомление не должен подтягивать в переписку остальные уведомления.
+                    $auto = false;
+                    foreach (MailAddresses::of($m->getFrom()) as $a) {
+                        $auto = $auto || self::automaticSender($a['mail']);
+                    }
+                    if ($auto) {
                         continue;
                     }
                     $common = false;
