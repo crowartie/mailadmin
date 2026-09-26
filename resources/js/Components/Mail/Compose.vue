@@ -163,6 +163,10 @@ const totalSize = computed(() => files.value.reduce((s, f) => s + f.size, 0) + k
 // Файлы, которые реально уйдут внутри письма (не ссылкой через облако).
 // Унаследованное вложение крупнее порога при отправке тоже уйдёт ссылкой — сервер решает по размеру.
 const keptCloud = (a) => !!props.cloud?.enabled && (a.size || 0) >= CLOUD_FROM;
+// Вложения в письме кодируются: 3 байта → 4 знака. Сервер сравнивает с пределом уже закодированный
+// размер (ComposeController::checkSize), и окно должно считать так же: раньше письмо на 35 МБ окно
+// пропускало, а сервер при пределе 40 МБ отказывал уже после загрузки.
+const encoded = (b) => Math.ceil(b * 4 / 3);
 const inMailSize = computed(() => files.value.reduce((s, f, i) => s + (viaCloud.value.has(i) ? 0 : f.size), 0)
     + (keepAttachments.value ? existing.value : []).reduce((s, a) => s + (keptCloud(a) ? 0 : (a.size || 0)), 0));
 // Файлы, которые уйдут ссылкой, в черновик не кладём: 500 МБ в IMAP при каждом автосохранении —
@@ -379,8 +383,14 @@ function onCloudAttach(r) {
 }
 
 function addFiles(list) {
-    for (const f of list) {
-        if (files.value.length >= MAX_FILES) {
+    // Порог облака — на каждый файл, а предел письма — на все вместе: десять файлов по 7 МБ проходили
+    // порог по одному и не проходили вместе, и человек сам отмечал каждый «ссылкой». Теперь новые файлы
+    // идут в письмо от мелких к крупным, пока влезают; что не влезло — уходит ссылкой само.
+    let room = MAX_MESSAGE - encoded(inMailSize.value);
+    let rerouted = 0;
+    const byLink = (f) => props.cloud?.enabled && f.size < CLOUD_FROM && encoded(f.size) > room;
+    for (const f of [...list].sort((a, b) => a.size - b.size)) {
+        if (files.value.length + staged.value.length >= MAX_FILES) {
             emit('toast', { text: `К письму можно приложить не больше ${MAX_FILES} файлов — остальные не добавлены. Сложите их в архив.`, error: true });
             break;
         }
@@ -401,16 +411,23 @@ function addFiles(list) {
             emit('toast', { text: `«${f.name}» такого же размера уже приложен — второй раз не добавляю`, error: true });
             continue;
         }
-        if (props.cloud?.stage && f.size >= CLOUD_FROM) {
+        const tooMuch = byLink(f);
+        if (props.cloud?.stage && (f.size >= CLOUD_FROM || tooMuch)) {
             if (staged.value.some((x) => x.name === f.name && x.size === f.size)) {
                 emit('toast', { text: `«${f.name}» такого же размера уже приложен — второй раз не добавляю`, error: true });
                 continue;
             }
+            if (tooMuch) rerouted++;
             stageFile(f);
             continue;
         }
+        if (tooMuch) rerouted++;
         files.value.push(f);
-        if (props.cloud?.enabled && f.size >= CLOUD_FROM) { const s = new Set(viaCloud.value); s.add(files.value.length - 1); viaCloud.value = s; }
+        if (props.cloud?.enabled && (f.size >= CLOUD_FROM || tooMuch)) { const s = new Set(viaCloud.value); s.add(files.value.length - 1); viaCloud.value = s; }
+        else room -= encoded(f.size);
+    }
+    if (rerouted) {
+        emit('toast', { text: `Вместе файлы не помещаются в письмо (предел ${Math.round(MAX_MESSAGE / 1048576)} МБ) — ${rerouted} ${rerouted === 1 ? 'файл уйдёт' : 'файла уйдут'} ссылкой, получатель скачает по ссылке из письма` }, 7000);
     }
     dirty.value = true;
 }
@@ -618,8 +635,8 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             <span v-if="(cloud.enabled || cloudPicked.length) && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель скачает по ссылке из письма</span>
             <!-- Предупреждение показываем и при включённом облаке: часть файлов всё равно
                  уходит внутри письма, а вес считаем вместе с унаследованными. -->
-            <span v-if="inMailSize > MAX_MESSAGE" class="chip chip--no" style="height: 28px">{{ size(inMailSize) }} — больше предела почты ({{ Math.round(MAX_MESSAGE / 1048576) }} МБ), письмо не уйдёт</span>
-            <span v-else-if="inMailSize > MAX_MESSAGE * 0.6" class="chip chip--warn" style="height: 28px">{{ size(inMailSize) }} — большое письмо может не пройти у получателя</span>
+            <span v-if="encoded(inMailSize) > MAX_MESSAGE" class="chip chip--no" style="height: 28px">{{ size(inMailSize) }} — больше предела почты ({{ Math.round(MAX_MESSAGE / 1048576) }} МБ), письмо не уйдёт</span>
+            <span v-else-if="encoded(inMailSize) > MAX_MESSAGE * 0.6" class="chip chip--warn" style="height: 28px">{{ size(inMailSize) }} — большое письмо может не пройти у получателя</span>
         </div>
 
         <div class="compose__foot">

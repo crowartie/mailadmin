@@ -439,7 +439,10 @@ class ComposeModel(val start: ComposeStart) {
      */
     fun keptViaCloud(a: Attachment): Boolean = meta.cloud.enabled && a.size >= meta.cloud.thresholdMb.toLong() * 1024 * 1024
 
-    /** Сколько места займут вложения внутри письма (без ушедших ссылкой). */
+    /**
+     * Сколько места займут вложения внутри письма (без ушедших ссылкой). Сервер сравнивает с пределом
+     * закодированный размер (3 байта → 4 знака) — считаем так же, см. [encoded].
+     */
     fun inMailSize(): Long = files.withIndex().filter { it.index !in viaCloud }.sumOf { it.value.size } +
         existing.filter { it.index in keep && !keptViaCloud(it) }.sumOf { it.size }
 
@@ -449,12 +452,15 @@ class ComposeModel(val start: ComposeStart) {
         val maxFiles = meta.limits.maxFiles
         if (files.size + keep.size > maxFiles) return "Не больше $maxFiles файлов в одном письме"
         val limit = meta.limits.messageMb.toLong() * 1024 * 1024
-        if (inMailSize() > limit) return "Файлы тяжелее предела почты (${meta.limits.messageMb} МБ)" + if (meta.cloud.enabled) " — отметьте крупные «ссылкой»" else ""
+        if (encoded(inMailSize()) > limit) return "Файлы тяжелее предела почты (${meta.limits.messageMb} МБ)" + if (meta.cloud.enabled) " — отметьте крупные «ссылкой»" else ""
         return null
     }
 }
 
 data class DomainWarn(val text: String, val suggestion: String?)
+
+/** Размер вложения внутри письма после кодирования (base64: 3 байта → 4 знака) — так считает сервер. */
+fun encoded(bytes: Long): Long = (bytes * 4 + 2) / 3
 
 /** Папка облака для крупных вложений писем. */
 const val CLOUD_DIR = "Вложения из почты"
@@ -517,12 +523,25 @@ private fun ComposeView(m: ComposeModel) {
         val cap = (if (m.meta.cloud.enabled) m.meta.cloud.maxMb else m.meta.limits.messageMb).toLong() * 1024 * 1024
         list.filter { it.size > cap }.forEach { Toasts.show("«${it.name}» больше ${cap / 1048576} МБ — такой файл не отправить, даже ссылкой") }
         var toDraft = false
-        list.filter { it.size <= cap }.forEach { f ->
+        // Порог облака — на файл, предел письма — на все вместе (как в веб-почте): новые файлы идут в письмо
+        // от мелких к крупным, пока влезают; что не влезло — уходит ссылкой само, а не тупиком при отправке.
+        var room = m.meta.limits.messageMb.toLong() * 1024 * 1024 - encoded(m.inMailSize())
+        var rerouted = 0
+        list.filter { it.size <= cap }.sortedBy { it.size }.forEach { f ->
+            val tooMuch = m.meta.cloud.enabled && f.size < threshold && encoded(f.size) > room
+            if (tooMuch) rerouted++
+            val link = f.size >= threshold || tooMuch
             when {
-                m.meta.cloud.personal && f.size >= threshold -> m.uploadToCloud(f, sendScope)
-                else -> { m.files.add(f); if (m.meta.cloud.enabled && f.size >= threshold) m.viaCloud.add(m.files.lastIndex); toDraft = true }
+                m.meta.cloud.personal && link -> m.uploadToCloud(f, sendScope)
+                else -> {
+                    m.files.add(f)
+                    if (m.meta.cloud.enabled && link) m.viaCloud.add(m.files.lastIndex) else room -= encoded(f.size)
+                    toDraft = true
+                }
             }
         }
+        if (rerouted > 0) Toasts.show("Вместе файлы не помещаются в письмо (предел ${m.meta.limits.messageMb} МБ) — $rerouted " +
+            (if (rerouted == 1) "файл уйдёт" else "файла уйдут") + " ссылкой")
         m.dirty = true
         // Загрузка — сразу и не в окне: закроют окно — файл всё равно догрузится в черновик.
         if (toDraft) sendScope.launch { m.saveDraft() }
@@ -944,7 +963,7 @@ private fun Attachments(m: ComposeModel) {
         val limit = m.meta.limits.messageMb.toLong() * 1024 * 1024
         val used = m.inMailSize()
         if (limit > 0 && used > limit * 6 / 10) Text(
-            if (used > limit) "Вложения ${Fmt.size(used)} — больше предела ${m.meta.limits.messageMb} МБ" + (if (m.meta.cloud.enabled) ": отметьте крупные «Ссылкой»" else "")
+            if (encoded(used) > limit) "Вложения ${Fmt.size(used)} — больше предела ${m.meta.limits.messageMb} МБ" + (if (m.meta.cloud.enabled) ": отметьте крупные «Ссылкой»" else "")
             else "Вложения ${Fmt.size(used)} из ${m.meta.limits.messageMb} МБ — у некоторых получателей предел меньше" + (if (m.meta.cloud.enabled) ", крупные лучше «Ссылкой»" else ""),
             Modifier.padding(horizontal = 4.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = if (used > limit) P.no else P.muted,
         )
