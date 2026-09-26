@@ -157,6 +157,7 @@ export const api = {
 
     send: (form, opts) => request('POST', '/mail/api/send', form, opts),
     draft: (form) => request('POST', '/mail/api/draft', form),
+    unstage: (token) => request('DELETE', '/mail/api/compose/stage/' + encodeURIComponent(token)),
     openDraft: (uid) => request('GET', `/mail/api/draft/${uid}`),
     outbox: () => request('GET', '/mail/api/outbox'),
     cancelOutbox: (id) => request('DELETE', `/mail/api/outbox/${id}`),
@@ -242,6 +243,12 @@ export function composeForm(c, files = []) {
     files.forEach((file) => fd.append('files[]', file, file.name));
     (c.cloud || []).forEach((i) => fd.append('cloud[]', String(i)));
     (c.keepIndexes || []).forEach((i) => fd.append('keepIndexes[]', String(i)));
+    // Большие файлы, заранее положенные в хранилище: сервер вставит ссылки на них, заливать нечего.
+    (c.staged || []).forEach((f, i) => {
+        fd.append(`staged[${i}][token]`, f.token);
+        if (f.name) fd.append(`staged[${i}][name]`, f.name);
+        if (f.size !== undefined && f.size !== null) fd.append(`staged[${i}][size]`, String(f.size));
+    });
     // Файлы из облака: сервер при отправке сам вставит ссылки на них.
     (c.cloudFiles || []).forEach((f, i) => {
         fd.append(`cloudFiles[${i}][path]`, f.path);

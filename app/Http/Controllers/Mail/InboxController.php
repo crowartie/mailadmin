@@ -46,7 +46,9 @@ class InboxController extends Controller
             // Индикатор занятого места: разметка в панели папок была, данных не было.
             'quota' => $store->quota(),
             'cloud' => ['enabled' => \App\Services\Cloud\Cloud::enabled(), 'thresholdMb' => \App\Services\Cloud\Cloud::thresholdMb(), 'maxMb' => \App\Services\Cloud\Cloud::maxMb(),
-                'personal' => \App\Services\Cloud\PersonalCloud::enabled()],
+                'personal' => \App\Services\Cloud\PersonalCloud::enabled(),
+                // Большие файлы кладутся в хранилище сразу при прикреплении (только своё хранилище).
+                'stage' => \App\Services\Cloud\Cloud::provider() === 'local'],
             // Предупреждение о тяжёлом письме раньше срабатывало по зашитым 20 МБ и не было
             // связано с настоящим пределом почтового сервера. Отдаём его форме вместе
             // с пределом на число файлов, который проверяет ComposeController.

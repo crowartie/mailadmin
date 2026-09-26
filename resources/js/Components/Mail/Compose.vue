@@ -9,7 +9,7 @@ import Editor from './Editor.vue';
 import Popover from './Popover.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
 import { viewable, viewerItems, localViewable, localViewerItems } from '../../mail/attachments';
-import { api, composeForm } from '../../mail/api';
+import { api, composeForm, xsrf } from '../../mail/api';
 import { addrString, presets, size, toLocalInput, when } from '../../mail/format';
 import { ask as confirmAsk } from '../../confirm';
 
@@ -44,6 +44,60 @@ function dropMail(i) { attachedMails.value.splice(i, 1); dirty.value = true; }
 // Файлы из облака сотрудника: здесь — карточки, как вложения; ссылки на них сервер вставит при отправке.
 const cloudPicked = ref(Array.isArray(c.cloudFiles) ? c.cloudFiles.map((f) => ({ path: f.path, name: f.name, size: f.size || 0 })) : []);
 function dropCloud(i) { cloudPicked.value.splice(i, 1); dirty.value = true; }
+
+// ── Большие файлы — в хранилище сразу ──
+// Раньше файл крупнее порога ехал на сервер только по «Отправить», и там же проходил антивирус и
+// запись в хранилище: по журналу 18–25 секунд ожидания. Теперь всё это идёт, пока человек пишет,
+// с ходом загрузки у файла; в письмо уходит готовая ссылка. Черновик помнит такие файлы.
+const staged = ref(Array.isArray(c.staged) ? c.staged.map((f) => ({ key: f.token, name: f.name, size: f.size || 0, token: f.token, state: 'ready', pct: 100, error: '' })) : []);
+let stageSeq = 0;
+function stageFile(f) {
+    const item = ref({ key: 'n' + (++stageSeq), name: f.name, size: f.size, token: null, state: 'upload', pct: 0, error: '' }).value;
+    staged.value.push(item);
+    const it = () => staged.value.find((x) => x.key === item.key);
+    item.promise = new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        item.xhr = xhr;
+        xhr.open('POST', '/mail/api/compose/stage');
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.setRequestHeader('X-XSRF-TOKEN', xsrf());
+        xhr.upload.onprogress = (e) => { const x = it(); if (x && e.lengthComputable) x.pct = Math.min(99, Math.round(e.loaded / e.total * 100)); };
+        // Файл дошёл — дальше сервер проверяет его антивирусом и кладёт в хранилище.
+        xhr.upload.onload = () => { const x = it(); if (x) { x.state = 'check'; x.pct = 100; } };
+        const fail = (text) => { const x = it(); if (x) { x.state = 'error'; x.error = text; } resolve(false); };
+        xhr.onerror = () => fail('нет связи с сервером');
+        xhr.onabort = () => resolve(false);
+        xhr.onload = () => {
+            let r = {};
+            try { r = JSON.parse(xhr.responseText || '{}'); } catch { r = {}; }
+            if (xhr.status !== 200 || !r.token) { fail(r.message || ('ошибка ' + xhr.status)); return; }
+            const x = it();
+            if (!x) { api.unstage(r.token).catch(() => {}); resolve(false); return; }   // убрали, пока грузился
+            Object.assign(x, { token: r.token, state: 'ready', pct: 100, error: '' });
+            dirty.value = true;   // черновик должен запомнить файл
+            resolve(true);
+        };
+        const fd = new FormData();
+        fd.append('file', f, f.name);
+        xhr.send(fd);
+    });
+}
+function dropStaged(i) {
+    const [x] = staged.value.splice(i, 1);
+    if (!x) return;
+    if (x.xhr && x.state === 'upload') x.xhr.abort();
+    // Файл черновика оставляем: черновик мог сохраниться с ним, а уборка удалит его сама, если письмо не уйдёт.
+    if (x.token && !(c.staged || []).some((s) => s.token === x.token)) api.unstage(x.token).catch(() => {});
+    dirty.value = true;
+}
+const stageBusy = computed(() => staged.value.some((x) => x.state === 'upload' || x.state === 'check'));
+function stageLabel(x) {
+    if (x.state === 'upload') return 'загрузка ' + x.pct + '%';
+    if (x.state === 'check') return 'проверка антивирусом…';
+    if (x.state === 'error') return 'не загрузился: ' + x.error;
+    return 'в хранилище, уйдёт ссылкой';
+}
 const keepAttachments = ref(c.keepAttachments ?? (c.mode === 'forward'));
 const draftUid = ref(c.draftUid || null);
 // Черновик при каждом сохранении перекладывается под новым UID. Вложения, унаследованные
@@ -58,6 +112,7 @@ const menuAt = ref({ x: 0, y: 0 });
 const customAt = ref(toLocalInput(new Date(Date.now() + 3600000)));
 const dirty = ref(false);
 const status = ref('');
+const waitingStage = ref(false);   // «Отправить» нажато, ждём загрузки больших файлов
 const drop = ref(false);
 const editor = ref(null);
 const toInput = ref(null);
@@ -99,7 +154,7 @@ const MAX_FILES = props.limits?.maxFiles || 20;
 const MAX_MESSAGE = (props.limits?.messageMb || 25) * 1024 * 1024;
 const viaCloud = ref(new Set());   // индексы файлов, которые уйдут ссылкой
 // Считаем и унаследованные вложения крупнее порога: они тоже уйдут ссылкой.
-const cloudCount = computed(() => viaCloud.value.size + cloudPicked.value.length + (keepAttachments.value ? existing.value.filter((a) => keptCloud(a)).length : 0));
+const cloudCount = computed(() => viaCloud.value.size + cloudPicked.value.length + staged.value.length + (keepAttachments.value ? existing.value.filter((a) => keptCloud(a)).length : 0));
 function toggleCloud(i) { const s = new Set(viaCloud.value); s.has(i) ? s.delete(i) : s.add(i); viaCloud.value = s; dirty.value = true; }
 // Вес письма — свои файлы плюс унаследованные от пересылаемого. Раньше предупреждение
 // считало только свои, и пересылка с 40 МБ уходила молча.
@@ -141,6 +196,7 @@ function payload(extra = {}) {
         html: html.value,
         cloud: props.cloud?.enabled ? [...viaCloud.value] : [],
         cloudFiles: cloudPicked.value.map((f) => ({ ...f })),
+        staged: staged.value.filter((x) => x.state === 'ready' && x.token).map((x) => ({ token: x.token, name: x.name, size: x.size })),
         inReplyTo: c.inReplyTo,
         references: c.references,
         answeredFolder: c.answeredFolder,
@@ -169,6 +225,20 @@ async function send(sendAt = null) {
     if (!subject.value.trim() && !(await confirmAsk('Отправить письмо без темы?', { ok: 'Отправить' }))) return;
     const warns = [...to.value, ...cc.value, ...bcc.value].filter((a) => a.warn).map((a) => a.warn);
     if (warns.length && !(await confirmAsk(warns.join('\n') + '\n\nПисьмо, скорее всего, не дойдёт. Отправить всё равно?', { ok: 'Отправить всё равно', danger: true }))) return;
+    // Большие файлы ещё грузятся — ждём их здесь, с ходом загрузки у файлов, а не молча.
+    if (stageBusy.value) {
+        waitingStage.value = true;
+        status.value = 'Письмо уйдёт, как только загрузятся файлы…';
+        await Promise.all(staged.value.map((x) => x.promise).filter(Boolean));
+        waitingStage.value = false;
+        status.value = '';
+        if (closed) return;
+    }
+    const broken = staged.value.filter((x) => x.state === 'error');
+    if (broken.length) {
+        emit('toast', { text: '«' + broken[0].name + '» не загрузился: ' + broken[0].error + '. Уберите его или приложите заново.', error: true });
+        return;
+    }
     menu.value = null;
     dirty.value = false;
     closed = true;
@@ -239,7 +309,7 @@ async function doSaveDraft(silent = false) {
 function worthSaving() {
     if (to.value.length || cc.value.length || bcc.value.length) return true;
     if (subject.value.trim()) return true;
-    if (files.value.length) return true;              // приложил файл и закрыл — файл терялся
+    if (files.value.length || staged.value.length) return true;   // приложил файл и закрыл — файл терялся
     const box = document.createElement('div');
     box.innerHTML = html.value || '';
     box.querySelectorAll('div.sig, blockquote').forEach((n) => n.remove());
@@ -249,10 +319,12 @@ function worthSaving() {
 
 /** Удалить черновик и закрыть окно — действие необратимое, поэтому спрашиваем. */
 async function discard() {
-    const something = to.value.length || subject.value.trim() || files.value.length
+    const something = to.value.length || subject.value.trim() || files.value.length || staged.value.length
         || (html.value || '').replace(/<[^>]+>/g, '').trim();
     if (something && !(await confirmAsk('Удалить письмо вместе с черновиком? Восстановить его будет нельзя.', { ok: 'Удалить', danger: true }))) return;
     closed = true;
+    // Черновик удаляют — его большим файлам в хранилище делать нечего.
+    staged.value.forEach((x) => { if (x.xhr && x.state === 'upload') x.xhr.abort(); if (x.token) api.unstage(x.token).catch(() => {}); });
     track('compose.discard', something ? 'с текстом' : 'пустое');
     emit('close', { discard: true, draftUid: draftUid.value });
 }
@@ -327,6 +399,14 @@ function addFiles(list) {
         // за разные месяцы). Раньше второй молча не добавлялся, и человек повторял попытку.
         if (files.value.some((x) => x.name === f.name && x.size === f.size)) {
             emit('toast', { text: `«${f.name}» такого же размера уже приложен — второй раз не добавляю`, error: true });
+            continue;
+        }
+        if (props.cloud?.stage && f.size >= CLOUD_FROM) {
+            if (staged.value.some((x) => x.name === f.name && x.size === f.size)) {
+                emit('toast', { text: `«${f.name}» такого же размера уже приложен — второй раз не добавляю`, error: true });
+                continue;
+            }
+            stageFile(f);
             continue;
         }
         files.value.push(f);
@@ -502,7 +582,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             </template>
         </Editor>
 
-        <div v-if="files.length || cloudPicked.length || attachedMails.length || (keepAttachments && existing.length)" class="compose__atts">
+        <div v-if="files.length || staged.length || cloudPicked.length || attachedMails.length || (keepAttachments && existing.length)" class="compose__atts">
             <!-- Письмо, приложенное целиком: уйдёт файлом .eml, получатель откроет его как письмо -->
             <span v-for="(x, i) in attachedMails" :key="'m' + x.folder + x.uid" class="att att--mail" :title="'Письмо «' + x.name + '» уйдёт вложением'">
                 <span class="att__main"><Icon name="mail" :size="13" /><span class="name">{{ x.name }}</span><span class="sz">письмо</span></span>
@@ -524,6 +604,12 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                 <button v-if="cloud.enabled" type="button" :title="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой, а не вложением'" @click="toggleCloud(i)" :aria-label="viaCloud.has(i) ? 'Вложить в письмо' : 'Отправить ссылкой, а не вложением'"><Icon :name="viaCloud.has(i) ? 'clip' : 'cloud'" :size="13" /></button>
                 <button type="button" title="Убрать" @click="removeFile(i)" aria-label="Убрать"><Icon name="x" :size="13" /></button>
             </span>
+            <!-- Большие файлы: грузятся в хранилище сразу, ход загрузки — у самого файла -->
+            <span v-for="(x, i) in staged" :key="x.key" class="att att--cloud att--stage" :class="{ 'att--bad': x.state === 'error' }" :title="x.name + ' — ' + stageLabel(x)">
+                <span class="att__main"><Icon :name="x.state === 'error' ? 'warn' : 'cloud'" :size="13" /><span class="name">{{ x.name }}</span><span class="sz">{{ size(x.size) }} · {{ stageLabel(x) }}</span></span>
+                <span v-if="x.state === 'upload' || x.state === 'check'" class="att__bar" :class="{ 'att__bar--busy': x.state === 'check' }"><i :style="{ width: x.pct + '%' }" /></span>
+                <button class="att__btn" type="button" title="Убрать" aria-label="Убрать" @click="dropStaged(i)"><Icon name="x" :size="13" /></button>
+            </span>
             <!-- Файлы из облака: уйдут ссылкой, получатель скачает по щелчку -->
             <span v-for="(f, i) in cloudPicked" :key="'c' + f.path" class="att att--cloud" :title="f.name + ' — из облака, уйдёт ссылкой'">
                 <span class="att__main"><Icon name="cloud" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span></span>
@@ -538,7 +624,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
 
         <div class="compose__foot">
             <span class="split">
-                <button class="btn btn--primary" type="button" :disabled="!canSend" :title="canSend ? 'Отправить (Ctrl+Enter)' : whyCannotSend" @click="send()">
+                <button class="btn btn--primary" type="button" :disabled="!canSend || waitingStage" :title="canSend ? 'Отправить (Ctrl+Enter)' : whyCannotSend" @click="send()">
                     <Icon name="send" :size="15" />Отправить
                 </button>
                 <button class="btn btn--primary" type="button" aria-label="Отправить позже" :title="canSend ? 'Отправить позже' : whyCannotSend" :disabled="!canSend" @click="openMenu('later', $event)">

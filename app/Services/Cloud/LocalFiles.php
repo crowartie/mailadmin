@@ -156,6 +156,43 @@ final class LocalFiles
         return rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
     }
 
+    /**
+     * Заранее положенные файлы человека, ещё не привязанные к письму.
+     *
+     * @param  string[]  $tokens
+     * @return \Illuminate\Support\Collection<int,CloudFile>
+     */
+    public static function staged(string $user, array $tokens): \Illuminate\Support\Collection
+    {
+        if (! $tokens) {
+            return collect();
+        }
+
+        return CloudFile::query()->whereIn('token', $tokens)->where('source', 'local')->where('user', strtolower($user))->whereNull('message_id')->get();
+    }
+
+    /** Письмо ушло: файлы — его, срок ссылки считается от отправки. @param string[] $tokens */
+    public static function claimStaged(string $user, array $tokens, string $messageId, ?string $subject): int
+    {
+        $days = (int) self::settings()['expire_days'];
+        $n = 0;
+        foreach (self::staged($user, $tokens) as $f) {
+            $f->message_id = trim($messageId, '<> ');
+            $f->subject = $subject !== null ? mb_substr($subject, 0, 255) : null;
+            $f->expires_at = $days > 0 ? now()->addDays($days)->endOfDay() : null;
+            $f->save();
+            $n++;
+        }
+
+        return $n;
+    }
+
+    /** Файл убрали из письма до отправки. @param string[] $tokens */
+    public static function discardStaged(string $user, array $tokens): int
+    {
+        return self::discardTokens(self::staged($user, $tokens)->pluck('token')->all());
+    }
+
     /** Убрать файлы по токенам (откат, когда письмо не ушло). @param string[] $tokens */
     public static function discardTokens(array $tokens): int
     {
@@ -250,13 +287,21 @@ final class LocalFiles
      *
      * @return int сколько удалено
      */
+    /** Сколько дней ждёт письма заранее положенный файл (черновик бросили) — потом удаляется. */
+    public const STAGED_DAYS = 30;
+
     public function purge(): int
     {
+        $n = 0;
+        foreach (CloudFile::query()->where('source', 'local')->whereNull('message_id')->where('created_at', '<', now()->subDays(self::STAGED_DAYS))->cursor() as $f) {
+            @unlink($f->fullPath());
+            $f->delete();
+            $n++;
+        }
         $keep = (int) self::settings()['keep_days'];
         if ($keep <= 0) {
-            return 0;
+            return $n;
         }
-        $n = 0;
         foreach (CloudFile::query()->where('source', 'local')->whereNotNull('expires_at')->where('expires_at', '<', now()->subDays($keep))->cursor() as $f) {
             @unlink($f->fullPath());
             $f->delete();

@@ -57,7 +57,37 @@ class ComposeController extends Controller
         'cloudFiles.*.path' => ['required', 'string', 'max:2000'],
         'cloudFiles.*.name' => ['nullable', 'string', 'max:255'],
         'cloudFiles.*.size' => ['nullable', 'integer', 'min:0'],
+        // Файлы, заранее положенные в хранилище (stage): в письмо уходит ссылка, файл уже проверен.
+        'staged' => ['nullable', 'array', 'max:20'],
+        'staged.*.token' => ['required', 'string', 'regex:/^[A-Za-z0-9_-]{20,64}$/'],
+        'staged.*.name' => ['nullable', 'string', 'max:255'],
+        'staged.*.size' => ['nullable', 'integer', 'min:0'],
     ];
+
+    /**
+     * Большой файл — в хранилище сразу при прикреплении. Раньше он ехал в запросе «Отправить»,
+     * и уже там проходил антивирус, контрольную сумму и копирование: по журналу 18–25 секунд
+     * ожидания после нажатия. Теперь это время уходит, пока человек пишет письмо.
+     */
+    public function stage(Request $request, ImapSession $imap): JsonResponse
+    {
+        abort_unless(\App\Services\Cloud\Cloud::provider() === 'local', 409, 'Заранее класть файлы можно только в своё хранилище');
+        $request->validate(['file' => ['required', 'file', 'max:' . (\App\Services\Cloud\Cloud::maxMb() * 1024)]]);
+        $file = $request->file('file');
+        MailBuilder::assertUploaded($file);
+        set_time_limit(600);
+        $r = (new \App\Services\Cloud\LocalFiles())->publish($file->getRealPath(), $file->getClientOriginalName(), $imap->user());
+
+        return response()->json(['token' => $r['token'], 'name' => $file->getClientOriginalName(), 'size' => (int) $file->getSize(), 'url' => $r['url'], 'expires' => $r['expires']]);
+    }
+
+    /** Файл убрали из письма до отправки — в хранилище ему делать нечего (только ещё не отправленный и свой). */
+    public function unstage(ImapSession $imap, string $token): JsonResponse
+    {
+        $n = \App\Services\Cloud\LocalFiles::discardStaged($imap->user(), [$token]);
+
+        return response()->json(['removed' => $n]);
+    }
 
     /**
      * Предел на размер письма — тот же, что у почтового сервера.
@@ -121,6 +151,7 @@ class ComposeController extends Controller
             $path = 'outbox/' . $imap->user() . '/' . uniqid('', true) . '.eml';
             Storage::disk('local')->put($path, $email->toString());
             $recipients = array_map(fn ($a) => $a->getAddress(), array_merge($email->getTo(), $email->getCc(), $email->getBcc()));
+            \App\Services\Cloud\LocalFiles::claimStaged($imap->user(), MailBuilder::stagedTokens($form), Outgoing::messageId($email), $email->getSubject());
             $row = Outbox::create([
                 'user' => $imap->user(), 'from' => $email->getFrom()[0]->getAddress(), 'recipients' => $recipients,
                 'subject' => $email->getSubject(), 'path' => $path, 'send_at' => $at,
@@ -137,6 +168,8 @@ class ComposeController extends Controller
         }
 
         $messageId = $out->send($email, $form);
+        // Письмо ушло — заранее положенные файлы теперь принадлежат ему (до этого откат их не трогает).
+        \App\Services\Cloud\LocalFiles::claimStaged($imap->user(), MailBuilder::stagedTokens($form), $messageId, $email->getSubject());
 
         if (! empty($form['remindDays'])) {
             Reminder::create([
@@ -199,6 +232,7 @@ class ComposeController extends Controller
             'references' => $m['references'],
             'attachments' => $m['attachments'],
             'cloudFiles' => MailBuilder::draftCloudFiles($head),
+            'staged' => MailBuilder::draftStaged($head, $imap->user()),
         ]);
     }
 

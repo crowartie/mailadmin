@@ -89,6 +89,9 @@ Route::post('action', [ActionController::class, 'store']);
 
 Route::post('send', [ComposeController::class, 'send']);
 Route::post('draft', [ComposeController::class, 'draft']);
+// Большой файл — в хранилище сразу при прикреплении, а не в момент «Отправить» (разбор журнала 26.09).
+Route::post('compose/stage', [ComposeController::class, 'stage']);
+Route::delete('compose/stage/{token}', [ComposeController::class, 'unstage'])->where('token', '[A-Za-z0-9_-]{20,64}');
 Route::get('draft/{uid}', [ComposeController::class, 'openDraft'])->where('uid', '[1-9][0-9]*');
 Route::get('outbox', [ComposeController::class, 'outbox']);
 Route::delete('outbox/{id}', [ComposeController::class, 'cancel'])->whereNumber('id');

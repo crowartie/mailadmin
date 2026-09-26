@@ -20,7 +20,7 @@ final class ActivityMap
         'cloud.rename' => 'Облако: переименовал', 'cloud.move' => 'Облако: перенёс', 'cloud.delete' => 'Облако: удалил',
         'cloud.restore' => 'Облако: вернул из корзины', 'cloud.purge' => 'Облако: удалил навсегда', 'cloud.upload' => 'Облако: загрузил файл',
         'cloud.upload-abort' => 'Облако: отменил загрузку', 'cloud.link' => 'Облако: дал ссылку', 'cloud.unlink' => 'Облако: отозвал ссылку',
-        'cloud.attach' => 'Облако: приложил к письму', 'cloud.download' => 'Облако: скачал или посмотрел',
+        'cloud.attach' => 'Облако: приложил к письму', 'compose.stage' => 'Большой файл для письма', 'cloud.download' => 'Облако: скачал или посмотрел',
         'list' => 'Листал список', 'list.date' => 'Перешёл к дате', 'search' => 'Искал', 'open' => 'Открыл письмо', 'thread' => 'Открыл переписку',
         'raw' => 'Исходник письма', 'attachment' => 'Скачал вложение', 'attachment.preview' => 'Просмотр вложения',
         'attachment.zip' => 'Скачал все вложения', 'attachment.mail' => 'Открыл вложенное письмо', 'image' => 'Картинка в тексте письма',
@@ -89,6 +89,8 @@ final class ActivityMap
             $is('action') && $method === 'POST' => self::action($input),
             $is('send') && $method === 'POST' => ['send', null, self::sendDetail($input, $files)],
             $is('draft') && $method === 'POST' => ['draft.save', 'drafts', $files > 0 ? 'файлов ' . $files : null],
+            $is('compose/stage') && $method === 'POST' => ['compose.stage', null, null],
+            $is('compose/stage/.+') => null,
             $is('draft/\d+') => ['draft.open', 'drafts', null],
             $is('outbox/\d+') && $method === 'DELETE' => ['send.cancel', null, null],
 
@@ -222,7 +224,7 @@ final class ActivityMap
     {
         $count = fn (string $k) => count(array_filter(array_map('trim', explode(',', (string) ($input[$k] ?? '')))));
         $parts = ['адресатов ' . ($count('to') + $count('cc') + $count('bcc'))];
-        $cloud = is_array($input['cloud'] ?? null) ? count($input['cloud']) : 0;
+        $cloud = (is_array($input['cloud'] ?? null) ? count($input['cloud']) : 0) + (is_array($input['staged'] ?? null) ? count($input['staged']) : 0);
         if ($files > 0) {
             $parts[] = 'файлов ' . $files;
         }

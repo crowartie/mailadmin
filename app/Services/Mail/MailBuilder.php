@@ -73,6 +73,10 @@ class MailBuilder
             // иначе пересылка письма с большим файлом упиралась бы в предел почтового сервера.
             [$kept, $keptLinks] = $this->keptAttachments($form, $forSend, $messageId, $subject, $published);
             $links = array_merge($links, $keptLinks);
+            // Заранее положенные в хранилище: ссылка готова, файл уже проверен — ничего не заливаем.
+            if ($forSend) {
+                $links = array_merge($links, $this->stagedLinks($form));
+            }
             // Файлы из облака сотрудника: ссылки берутся в момент отправки — действующие, с продлённым
             // сроком, если истёк. Файл успели удалить — письмо не уходит, человек видит, какого файла нет.
             if ($forSend && $picked) {
@@ -92,6 +96,11 @@ class MailBuilder
             // В черновике ссылок ещё нет — только отметка, какие файлы облака выбраны (вернутся карточками).
             foreach ($picked as $f) {
                 $email->getHeaders()->addTextHeader(self::CLOUD_HEADER, base64_encode((string) json_encode($f, JSON_UNESCAPED_UNICODE)));
+            }
+            // Заранее положенные файлы: черновик помнит их, и при открытии они вернутся (раньше большие
+            // файлы из черновика пропадали — их приходилось прикладывать заново).
+            foreach (self::stagedTokens($form) as $token) {
+                $email->getHeaders()->addTextHeader(self::STAGED_HEADER, $token);
             }
         }
         // Картинки исходного письма (ответ с цитатой, пересылка, открытый черновик) приходят ссылками
@@ -263,7 +272,7 @@ class MailBuilder
     }
 
     /** Файл дошёл до сервера целиком? Иначе — понятная ошибка, а не письмо без вложения. */
-    private static function assertUploaded(UploadedFile $file): void
+    public static function assertUploaded(UploadedFile $file): void
     {
         if ($file->isValid() && $file->getSize() > 0 && is_file($file->getRealPath())) {
             return;
@@ -361,6 +370,52 @@ class MailBuilder
 
     /** Заголовок черновика с выбранным файлом облака (base64 от JSON {path, name, size}). */
     public const CLOUD_HEADER = 'X-Mailadmin-Cloud';
+
+    /** Токен заранее положенного файла — в черновике, по заголовку на файл. */
+    public const STAGED_HEADER = 'X-Mailadmin-Staged';
+
+    /** @return string[] */
+    public static function stagedTokens(array $form): array
+    {
+        $out = [];
+        foreach ((array) ($form['staged'] ?? []) as $s) {
+            $t = is_array($s) ? (string) ($s['token'] ?? '') : '';
+            if (preg_match('/^[A-Za-z0-9_-]{20,64}$/', $t)) {
+                $out[$t] = true;
+            }
+        }
+
+        return array_slice(array_keys($out), 0, 20);
+    }
+
+    /** Ссылки на заранее положенные файлы. Файла нет (брошенный черновик убран уборкой) — письмо не уходит. */
+    private function stagedLinks(array $form): array
+    {
+        $tokens = self::stagedTokens($form);
+        if (! $tokens) {
+            return [];
+        }
+        $found = \App\Services\Cloud\LocalFiles::staged($this->session->user(), $tokens)->keyBy('token');
+        $out = [];
+        foreach ((array) $form['staged'] as $s) {
+            $f = $found[(string) ($s['token'] ?? '')] ?? null;
+            if (! $f || ! is_file($f->fullPath())) {
+                throw \App\Exceptions\MailException::notFound('«' . mb_substr((string) ($s['name'] ?? 'файл'), 0, 80) . '» больше нет в хранилище — уберите его из письма и приложите заново');
+            }
+            $out[] = ['name' => $f->name, 'size' => (int) $f->size, 'url' => $f->url(), 'expires' => $f->expires_at?->toDateString()];
+        }
+
+        return $out;
+    }
+
+    /** Заранее положенные файлы черновика — карточками для окна письма. @return array<int,array{token:string,name:string,size:int}> */
+    public static function draftStaged(string $head, string $user): array
+    {
+        preg_match_all('/^' . self::STAGED_HEADER . ':\s*([A-Za-z0-9_-]{20,64})\s*$/mi', $head, $m);
+
+        return \App\Services\Cloud\LocalFiles::staged($user, $m[1] ?? [])
+            ->map(fn ($f) => ['token' => $f->token, 'name' => $f->name, 'size' => (int) $f->size])->values()->all();
+    }
 
     /** Адресаты черновика как их набрали — только когда среди них есть неверный адрес. */
     public const RAW_RCPT_HEADER = 'X-Mailadmin-Draft-Recipients';

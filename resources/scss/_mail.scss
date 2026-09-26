@@ -537,6 +537,15 @@
 .mnav__chev { color: v.$c-faint; flex: 0 0 14px; transition: transform .15s; }
 .mnav__owner--open .mnav__chev { transform: rotate(90deg); }
 .att--cloud { border-color: color-mix(in srgb, var(--ok) 50%, var(--border)); background: v.$c-ok-soft; }
+// Большой файл грузится в хранилище: полоска хода внизу фишки, при проверке — бегущая.
+.att--stage { position: relative; overflow: hidden; }
+.att--bad { border-color: var(--danger, #d33); background: color-mix(in srgb, var(--danger, #d33) 8%, transparent); }
+.att__bar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: color-mix(in srgb, var(--ok) 20%, transparent);
+    i { display: block; height: 100%; background: var(--ok); transition: width .2s; }
+    &--busy i { width: 40% !important; animation: att-busy 1.1s linear infinite; }
+}
+@keyframes att-busy { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 .att {
     display: inline-flex;
     align-items: center;
