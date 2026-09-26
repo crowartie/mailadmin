@@ -221,6 +221,8 @@ actual object Notifier {
 
 actual object Updater {
     actual val canInstall: Boolean get() = false
+    actual val allowed: Boolean get() = true
+    actual fun askPermission() {}
     actual fun install(file: SavedFile): Boolean = FileStore.open(file)
 }
 

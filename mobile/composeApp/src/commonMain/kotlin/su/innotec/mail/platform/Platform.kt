@@ -114,6 +114,10 @@ expect object Notifier {
 /** Установка обновления (Android: APK из GitHub Releases). */
 expect object Updater {
     val canInstall: Boolean
+    /** Разрешено ли приложению ставить обновления (Android: «Установка из внешних источников»). */
+    val allowed: Boolean
+    /** Открыть системную настройку этого разрешения. */
+    fun askPermission()
     fun install(file: SavedFile): Boolean
 }
 

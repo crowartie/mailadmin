@@ -52,6 +52,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         AndroidCtx.activity = WeakReference(this)
+        // Вернулись из настройки «Установка из внешних источников» — продолжить установку обновления.
+        su.innotec.mail.ui.more.Updates.resume()
     }
 
     /** Нажали на уведомление — открыть письмо; «Поделиться» / mailto: из других программ — новое письмо. */

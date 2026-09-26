@@ -367,13 +367,14 @@ actual object Notifier {
 
 actual object Updater {
     actual val canInstall: Boolean get() = true
+    actual val allowed: Boolean get() = Build.VERSION.SDK_INT < Build.VERSION_CODES.O || AndroidCtx.app.packageManager.canRequestPackageInstalls()
+    actual fun askPermission() {
+        val ctx = AndroidCtx.app
+        runCatching { ctx.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
     actual fun install(file: SavedFile): Boolean {
         val ctx = AndroidCtx.app
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ctx.packageManager.canRequestPackageInstalls()) {
-            return runCatching {
-                ctx.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); false
-            }.getOrDefault(false)
-        }
+        if (!allowed) { askPermission(); return false }
         return runCatching {
             val i = Intent(Intent.ACTION_VIEW).setDataAndType(FileStore.uriOf(file), "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)

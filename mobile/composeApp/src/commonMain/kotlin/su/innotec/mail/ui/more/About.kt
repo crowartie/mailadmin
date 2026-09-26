@@ -42,6 +42,21 @@ import su.innotec.mail.ui.login.compareVersions
 import su.innotec.mail.ui.mail.SubBar
 import kotlin.time.Clock
 
+/** «Что нового» из CHANGELOG: пункты «- …» — маркером «•», продолжения строк склеены, **жирный** без звёздочек (как на странице /app). */
+fun releaseNotes(md: String): String {
+    val items = mutableListOf<String>()
+    for (line in md.lines()) {
+        val t = line.trim()
+        when {
+            t.startsWith("- ") || t.startsWith("* ") || t.startsWith("• ") -> items += t.substring(2).trim()
+            t.isNotEmpty() && items.isNotEmpty() -> items[items.lastIndex] = items.last() + " " + t
+            t.isNotEmpty() -> items += t
+        }
+    }
+    val bullet = if (items.size > 1) "• " else ""
+    return items.joinToString("\n") { bullet + it.replace(Regex("""\*\*(.+?)\*\*"""), "$1") }
+}
+
 /** Выпуск приложения — на своём сервере почты (страница /app), без GitHub и магазинов. */
 data class Release(val version: String, val notes: String, val page: String, val url: String, val size: Long, val sha256: String)
 
@@ -55,6 +70,15 @@ object Updates {
     var checking by mutableStateOf(false); private set
     var progress by mutableStateOf<Float?>(null); private set
     var lastError by mutableStateOf<String?>(null); private set
+    /** Скачано и проверено, ждёт разрешения на установку: после возврата из настроек ставится само. */
+    private var pending: su.innotec.mail.platform.SavedFile? = null
+
+    fun resume() {
+        val f = pending ?: return
+        if (!Updater.allowed) return
+        pending = null
+        Updater.install(f)
+    }
 
     suspend fun latest(): Release? {
         val api = Session.api ?: return null
@@ -101,7 +125,13 @@ object Updates {
                     val got = su.innotec.mail.platform.sha256Of(saved)
                     if (got != null && !got.equals(r.sha256, true)) { Toasts.show("Файл обновления повреждён — попробуйте ещё раз"); return@launch }
                 }
-                if (!Updater.install(saved)) Toasts.show("Разрешите установку из этого приложения и нажмите «Обновить» ещё раз")
+                if (!Updater.allowed) {
+                    // Разрешение даётся один раз; после возврата из настроек установка продолжится сама (resume).
+                    pending = saved
+                    Toasts.show("Включите «Разрешить установку приложений» и вернитесь — обновление установится само")
+                    kotlinx.coroutines.delay(1200)
+                    Updater.askPermission()
+                } else Updater.install(saved)
             } catch (e: Throwable) {
                 Toasts.show("Не удалось скачать обновление: ${e.message}")
             } finally { progress = null }
@@ -129,7 +159,7 @@ class AboutScreen : Screen() {
                         }
                         r != null -> {
                             Text("Доступна версия ${r.version}", style = MaterialTheme.typography.titleSmall, color = P.accentInk)
-                            if (r.notes.isNotBlank()) Text(r.notes.take(1500), style = MaterialTheme.typography.bodySmall, color = P.muted, modifier = Modifier.padding(vertical = 6.dp))
+                            if (r.notes.isNotBlank()) Text(releaseNotes(r.notes).take(1500), style = MaterialTheme.typography.bodySmall, color = P.muted, modifier = Modifier.padding(vertical = 6.dp))
                             Button(onClick = { Updates.install(r) }) { Text(if (Updater.canInstall) "Обновить" else "Открыть страницу загрузки") }
                         }
                         else -> OutlinedButton(onClick = { Updates.check(true) }, enabled = !Updates.checking) { Text(if (Updates.checking) "Проверяю…" else "Проверить обновления") }
