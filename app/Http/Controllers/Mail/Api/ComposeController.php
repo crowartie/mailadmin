@@ -182,12 +182,15 @@ class ComposeController extends Controller
         } catch (\Throwable) {
         }
 
+        // Черновик сохранён с неверным адресом — возвращаем строки адресатов как их набрали.
+        $raw = MailBuilder::draftRawRecipients($head);
+
         return response()->json([
             'draftUid' => $uid,
             'from' => $m['from']['mail'] ?? null,
-            'to' => $this->join($m['to']),
-            'cc' => $this->join($m['cc']),
-            'bcc' => $this->join($m['bcc'] ?? []),
+            'to' => $raw['to'] ?? $this->join($m['to']),
+            'cc' => $raw['cc'] ?? $this->join($m['cc']),
+            'bcc' => $raw['bcc'] ?? $this->join($m['bcc'] ?? []),
             'priority' => (bool) preg_match('/^X-Priority:\s*[12]\b/mi', $head),
             'receipt' => (bool) preg_match('/^Disposition-Notification-To:/mi', $head),
             'subject' => $m['subject'] === '(без темы)' ? '' : $m['subject'],

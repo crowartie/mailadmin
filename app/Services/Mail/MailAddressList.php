@@ -15,8 +15,14 @@ use Symfony\Component\Mime\Address;
 class MailAddressList
 {
 
-    /** Разобрать «Имя <адрес>, адрес2; адрес3». */
-    public static function parseAddresses(string $raw): array
+    /**
+     * Разобрать «Имя <адрес>, адрес2; адрес3».
+     *
+     * $lenient — для черновика: неверный адрес пропускается, а не обрывает сохранение. Раньше одна
+     * опечатка в «Кому» не давала сохранить черновик вовсе (по журналу — по 7–9 неудач подряд
+     * каждые 30 с), и написанное жило только в открытой вкладке.
+     */
+    public static function parseAddresses(string $raw, bool $lenient = false): array
     {
         $out = [];
         foreach (self::splitAddresses($raw) as $piece) {
@@ -46,6 +52,9 @@ class MailAddressList
                 }
             }
             if (! filter_var($ascii, FILTER_VALIDATE_EMAIL)) {
+                if ($lenient) {
+                    continue;
+                }
                 abort(422, "Неверный адрес: {$piece}");
             }
             $out[] = new Address($ascii, $name);

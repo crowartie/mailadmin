@@ -44,11 +44,20 @@ class MailBuilder
 
         $email = (new Email())->from(new Address($fromMail, $fromName))->subject((string) ($form['subject'] ?? ''));
 
+        $raw = [];
         foreach (['to', 'cc', 'bcc'] as $field) {
-            $list = MailAddressList::parseAddresses((string) ($form[$field] ?? ''));
+            $value = (string) ($form[$field] ?? '');
+            $list = MailAddressList::parseAddresses($value, ! $forSend);
             if ($list) {
                 $email->{$field}(...$list);
             }
+            $raw[$field] = $value;
+        }
+        // Черновик с неверным адресом сохраняется; сами строки адресатов кладём в заголовок как есть,
+        // чтобы при открытии человек увидел свою опечатку и исправил её, а не потерял адресата.
+        if (! $forSend && self::hasInvalid($raw)) {
+            // Пробелы через 76 знаков — чтобы длинный список можно было перенести по строкам (предел строки письма — 998).
+            $email->getHeaders()->addTextHeader(self::RAW_RCPT_HEADER, trim(chunk_split(base64_encode((string) json_encode($raw, JSON_UNESCAPED_UNICODE)), 76, ' ')));
         }
 
         // Message-ID нужен заранее: файлы в хранилище помечаются письмом, к которому приложены.
@@ -352,6 +361,32 @@ class MailBuilder
 
     /** Заголовок черновика с выбранным файлом облака (base64 от JSON {path, name, size}). */
     public const CLOUD_HEADER = 'X-Mailadmin-Cloud';
+
+    /** Адресаты черновика как их набрали — только когда среди них есть неверный адрес. */
+    public const RAW_RCPT_HEADER = 'X-Mailadmin-Draft-Recipients';
+
+    private static function hasInvalid(array $raw): bool
+    {
+        foreach ($raw as $value) {
+            if (count(MailAddressList::parseAddresses($value, true)) < count(array_filter(array_map('trim', MailAddressList::splitAddresses($value)), 'strlen'))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Адресаты черновика из заголовка (см. RAW_RCPT_HEADER). @return array{to?:string,cc?:string,bcc?:string} */
+    public static function draftRawRecipients(string $head): array
+    {
+        // Значение могло быть перенесено на несколько строк (продолжения начинаются с пробела).
+        if (! preg_match('/^' . self::RAW_RCPT_HEADER . ':([^\r\n]*(?:\r?\n[ \t][^\r\n]*)*)/mi', $head, $m)) {
+            return [];
+        }
+        $v = json_decode((string) base64_decode(preg_replace('/\s+/', '', $m[1]), true), true);
+
+        return is_array($v) ? array_map('strval', array_intersect_key($v, ['to' => 1, 'cc' => 1, 'bcc' => 1])) : [];
+    }
 
     /** Файлы облака из формы: путь обязателен, повторы убраны, не больше 20. @return array<int,array{path:string,name:string,size:int}> */
     public static function pickedCloud(array $form): array

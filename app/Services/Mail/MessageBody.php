@@ -133,7 +133,7 @@ class MessageBody
         if ($html !== null && $inline) {
             $html = strtr($html, $inline);
         }
-        $clean = $html !== null && $html !== '' ? MailHtml::sanitize($html) : null;
+        $clean = $html !== null && $html !== '' ? self::dropForeignServerImages(MailHtml::sanitize($html), $path, $uid) : null;
 
         $rawHeader = (string) ($message->getHeader()?->raw ?? '');
         $refIds = Mime::messageIds(Mime::headerValue($rawHeader, 'References') ?? $message->getReferences()->toArray());
@@ -157,6 +157,28 @@ class MessageBody
         ];
     }
 
+
+    /**
+     * Убрать картинки, которые ссылаются на наш сервер, но на другое письмо.
+     *
+     * До 25.09 ответ с цитатой уходил с картинками исходного письма в виде ссылок
+     * «/mail/api/message/INBOX/3401/attachment/0» (исправлено в MailBuilder::embedServerImages).
+     * Такие письма и ответы на них остались в ящиках: браузер тянул картинки чужого письма —
+     * 404, если его перенесли, или картинки совсем другого письма, если номер занят новым.
+     * Свои картинки письма (cid и тяжёлые вложения) ведут на это же письмо и остаются.
+     */
+    public static function dropForeignServerImages(string $html, string $path, int $uid): string
+    {
+        if (! str_contains($html, '/mail/api/message/')) {
+            return $html;
+        }
+
+        return preg_replace_callback(
+            '#<img\b[^>]*?\bsrc\s*=\s*(["\'])(?:https?://[^/"\']+)?/mail/api/message/([^/"\'?]+)/(\d+)/attachment/[^"\']*\1[^>]*>#i',
+            fn ($m) => rawurldecode($m[2]) === $path && (int) $m[3] === $uid ? $m[0] : '',
+            $html,
+        ) ?? $html;
+    }
 
     /** Полное письмо: тело, адреса, вложения. */
     public function full(Message $message, string $path): array
@@ -205,7 +227,7 @@ class MessageBody
 
         return $this->summaries->summary($message) + [
             'folder' => $path,
-            'html' => $html ? MailHtml::sanitize($html) : null,
+            'html' => $html ? self::dropForeignServerImages(MailHtml::sanitize($html), $path, (int) $message->getUid()) : null,
             'text' => $text,
             'to' => MailAddresses::of($message->getTo()),
             'cc' => MailAddresses::of($message->getCc()),

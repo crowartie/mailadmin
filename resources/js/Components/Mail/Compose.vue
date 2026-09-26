@@ -183,6 +183,9 @@ function filesKey() {
         + '#' + [...viaCloud.value].sort().join(',');
 }
 let savedFilesKey = null;
+// Сколько автосохранений подряд не удалось: строку статуса внизу окна не замечали, и человек
+// писал письмо минутами, пока черновик не сохранялся (разбор журнала 26.09).
+let failStreak = 0;
 
 function saveDraft(silent = false) {
     if (saving) return inflight;
@@ -205,6 +208,7 @@ async function doSaveDraft(silent = false) {
         savedFilesKey = key;
         dirty.value = false;
         status.value = 'Черновик сохранён ' + when(new Date().toISOString());
+        failStreak = 0;
         emit('draft', r);
     } catch (e) {
         // Раньше здесь была безличная строка, и человек не знал, что черновик не сохраняется
@@ -218,7 +222,10 @@ async function doSaveDraft(silent = false) {
             emit('toast', { text: e.message + ' Черновик дальше сохраняется без них.', error: true });
             return;
         }
-        if (!silent) emit('toast', { text: e.message, error: true });
+        failStreak++;
+        if (!silent || failStreak === 2) {
+            emit('toast', { text: 'Черновик не сохраняется: ' + (e.message || 'нет связи с сервером') + (silent ? '. Письмо пока только в этом окне — не закрывайте его.' : ''), error: true }, silent ? 8000 : undefined);
+        }
     } finally {
         saving = false;
     }

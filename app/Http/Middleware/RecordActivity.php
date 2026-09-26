@@ -33,6 +33,23 @@ class RecordActivity
         return $response;
     }
 
+    /**
+     * Причина отказа для журнала: у проверки формы — только имена полей, у своего текста —
+     * без адресов и того, что в «кавычках» (имена файлов, папок): журнал про действия, а не про содержимое.
+     */
+    public static function reason(?\Throwable $e): ?string
+    {
+        if ($e instanceof \Illuminate\Validation\ValidationException) {
+            return mb_substr('Проверка полей: ' . implode(', ', array_keys($e->errors())), 0, 160);
+        }
+        if (! $e || $e->getMessage() === '') {
+            return null;
+        }
+        $text = preg_replace(['/\S+@\S+/u', '/«[^»]*»/u', '/"[^"]*"/u'], ['…', '«…»', '"…"'], $e->getMessage());
+
+        return mb_substr((string) $text, 0, 160);
+    }
+
     private function record(Request $request, Response $response, int $ms): void
     {
         $user = (string) $request->session()->get('mail.user', '');
@@ -52,6 +69,9 @@ class RecordActivity
         if ($status >= 500) {
             $e = $response->exception ?? null;
             $error = mb_substr($e instanceof \Throwable ? (new \ReflectionClass($e))->getShortName() . ': ' . $e->getMessage() : 'ответ ' . $status, 0, 160);
+        } elseif ($status >= 400) {
+            // Без причины 422 при автосохранении черновика было не понять, что мешает (разбор 26.09).
+            $error = self::reason($response->exception ?? null);
         }
         DB::table('webmail_activity')->insert([
             'user' => mb_strtolower($user),

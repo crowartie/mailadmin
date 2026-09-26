@@ -128,6 +128,9 @@ const atEnd = computed(() => (props.list.offset || 0) + props.list.messages.leng
 function checkEdges(scrolled = false) {
     const box = rowsBox.value;
     if (!box || props.loading || props.edge) return;
+    // Список скрыт (на телефоне поверх него открыто письмо): размеры у него нулевые, «до края» выходит
+    // меньше нуля, и прокрутка письма дочитывала папку целиком — по журналу 151 запрос за 30 секунд.
+    if (!box.getClientRects().length || !box.offsetHeight) return;
     let above; let below;
     if (ownScroll()) {
         above = box.scrollTop;
