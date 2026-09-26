@@ -17,6 +17,7 @@ Route::middleware('area:mail')->group(function () {
 
         Route::middleware(['mobile.token', 'mail.activity'])->group(function () {
             Route::get('me', [MobileController::class, 'me']);
+            Route::get('compose-meta', [MobileController::class, 'composeMeta']);
             Route::delete('session', [MobileController::class, 'logout']);
             Route::post('devices/push', [MobileController::class, 'push']);
             Route::get('devices', [MobileController::class, 'devices']);

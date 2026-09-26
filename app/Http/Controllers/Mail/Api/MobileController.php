@@ -139,6 +139,31 @@ class MobileController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/v1/compose-meta — то, что веб-почта получает вместе со страницей (InboxController):
+     * от чьего имени можно писать, пределы письма и вложений, облако, квота ящика, счётчики
+     * «Ждут отправки» и «Карантин». Приложению без этого нечем проверить письмо до отправки.
+     */
+    public function composeMeta(ImapSession $imap): JsonResponse
+    {
+        $store = new \App\Services\Mail\MailStore($imap->client());
+        $user = $imap->user();
+
+        return response()->json([
+            'identities' => (new \App\Services\Mail\Outgoing($imap, $store))->identities(),
+            'limits' => ['messageMb' => \App\Http\Controllers\Mail\InboxController::messageLimitMb(), 'maxFiles' => 20],
+            'cloud' => [
+                'enabled' => \App\Services\Cloud\Cloud::enabled(),
+                'thresholdMb' => \App\Services\Cloud\Cloud::thresholdMb(),
+                'maxMb' => \App\Services\Cloud\Cloud::maxMb(),
+                'personal' => \App\Services\Cloud\PersonalCloud::enabled(),
+            ],
+            'quota' => $store->quota(),
+            'outbox' => \App\Models\Webmail\Outbox::where('user', $user)->whereIn('status', ['scheduled', 'failed'])->count(),
+            'quarantine' => \App\Http\Controllers\Mail\QuarantineController::count($user),
+        ]);
+    }
+
     /** DELETE /api/v1/session — «Выйти» в приложении: токен этого устройства больше не действует. */
     public function logout(Request $request): JsonResponse
     {

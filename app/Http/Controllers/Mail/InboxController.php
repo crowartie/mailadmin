@@ -62,7 +62,7 @@ class InboxController extends Controller
      * Спрашиваем отдельно, а не через current(): тот ради семи значений запускает семь
      * внешних программ и стоил странице 172 мс — больше, чем список папок и писем вместе.
      */
-    private static function messageLimitMb(): int
+    public static function messageLimitMb(): int
     {
         try {
             $mb = app(\App\Services\Server\AmavisConfig::class)->messageSizeMb();
