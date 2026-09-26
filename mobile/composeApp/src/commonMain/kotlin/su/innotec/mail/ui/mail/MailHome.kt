@@ -5,6 +5,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +60,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -178,6 +182,8 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
 
     LaunchedEffect(s.scrollTopSignal) { if (s.scrollTopSignal > 0) list.animateScrollToItem(0) }
     LaunchedEffect(s.query) { list.scrollToItem(0) }
+    // Продолжили работать — прокрутили список: приоткрытая жестом строка закрывается.
+    LaunchedEffect(list.isScrollInProgress) { if (list.isScrollInProgress) SwipeOpen.key = null }
     // Подгрузка при прокрутке к концу.
     LaunchedEffect(list) {
         snapshotFlow { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
@@ -399,6 +405,7 @@ private fun toggle(uid: Long) {
 }
 
 private fun openMessage(m: MessageSummary, wide: Boolean) {
+    SwipeOpen.key = null
     val folder = m.folder ?: MailStore.query.folder
     val role = MailStore.folders.firstOrNull { it.path == folder }?.role ?: m.folderRole
     if (role == "drafts") { Nav.push(ComposeScreen(ComposeStart.Draft(m.uid))); return }
@@ -406,16 +413,23 @@ private fun openMessage(m: MessageSummary, wide: Boolean) {
     if (wide) MailStore.openUid = m.uid else Nav.push(MessageScreen(folder, m.uid))
 }
 
-/** Какая строка сейчас «приоткрыта» жестом: открыта всегда одна, остальные закрываются. */
-private object SwipeOpen { var key by mutableStateOf<Long?>(null) }
+/** Какая строка сейчас «приоткрыта» жестом: открыта всегда одна; прокрутка списка или другая строка её закрывают. */
+object SwipeOpen { var key by mutableStateOf<Long?>(null) }
 
 /**
- * Жест по строке — как в почте iOS, Gmail и Outlook:
- *  · тянешь — выезжает полоса действия;
- *  · отпустил, не дотянув до середины, — полоса «залипает» открытой: её можно нажать или закрыть касанием;
- *  · дотянул за 55 % ширины — лёгкая отдача, и при отпускании действие выполняется.
- * Решение — по положению строки с поправкой на скорость (смещение + скорость × 0,18), как в UIKit:
- * короткий быстрый бросок до конца не долетает и письмо не удаляет.
+ * Жест по строке — как в почте iOS, Gmail и Outlook. После отпускания строка всегда оказывается ровно
+ * в одном из трёх положений, в промежуточном не остаётся никогда:
+ *  · закрыта — сдвиг меньше касания пальца (16 dp);
+ *  · открыта на ширину кнопки (88 dp) — любой больший сдвиг, в том числе случайный и неторопливый;
+ *    любое другое действие (прокрутка, касание письма, другая строка) её закрывает;
+ *  · действие выполнено — если:
+ *      – нажали на открытую кнопку;
+ *      – по открытой строке ещё раз провели в ту же сторону, на любую длину: повтор жеста — это намерение;
+ *      – одним уверенным жестом: строка ушла заметно дальше кнопки (140 dp), а палец ещё быстро шёл дальше;
+ *      – или дотянули за порог (45 % строки, но не дальше 200 dp).
+ *    Жест по открытой строке в обратную сторону её закрывает.
+ * Положение во время перетаскивания меняется напрямую (без очереди корутин): раньше запоздалый шаг
+ * перетаскивания отменял доводку, и строка застревала где бросили.
  */
 @Composable
 private fun SwipeRow(m: MessageSummary, onMove: (List<Long>) -> Unit, onSnooze: (List<Long>) -> Unit, content: @Composable () -> Unit) {
@@ -423,19 +437,34 @@ private fun SwipeRow(m: MessageSummary, onMove: (List<Long>) -> Unit, onSnooze: 
     val scope = rememberCoroutineScope()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val offset = remember(m.uid) { androidx.compose.animation.core.Animatable(0f) }
+    var x by remember(m.uid) { mutableStateOf(0f) }
+    var settle by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var width by remember { mutableStateOf(1f) }
     var armed by remember { mutableStateOf(false) }
-    val reveal = with(density) { 96.dp.toPx() }
-    // Порог удаления — в «сантиметрах пальца», а не в долях экрана: 45 % строки, но не дальше 200 dp.
-    // На широком планшете 55 % строки означало тянуть через пол-экрана.
+    var busy by remember(m.uid) { mutableStateOf(false) }   // действие уже выполняется — не закрывать строку
+    var startX by remember { mutableStateOf(0f) }            // где была строка, когда жест начался
+    val reveal = with(density) { 88.dp.toPx() }
+    val slop = with(density) { 16.dp.toPx() }
     val commitPx = with(density) { 200.dp.toPx() }
+    // Удаление одним движением: строка ушла заметно дальше кнопки (зона «залипания» 88…140 dp держит её
+    // открытой) и палец в момент отпускания ещё быстро шёл дальше. При 88 dp и 1000 dp/с срабатывало слишком легко.
+    val flingDist = with(density) { 140.dp.toPx() }
+    val flingPx = with(density) { 1600.dp.toPx() }          // скорость пальца, в секунду
     fun commitLine() = minOf(width * 0.45f, commitPx)
     val canRight = prefs.swipeRight != "none"
     val canLeft = prefs.swipeLeft != "none"
 
-    // Другую строку открыли — эту закрываем.
-    LaunchedEffect(SwipeOpen.key) { if (SwipeOpen.key != m.uid && offset.value != 0f) offset.animateTo(0f) }
+    fun animateTo(target: Float, after: () -> Unit = {}) {
+        settle?.cancel()
+        settle = scope.launch {
+            androidx.compose.animation.core.animate(x, target, animationSpec = androidx.compose.animation.core.tween(180)) { v, _ -> x = v }
+            after()
+        }
+    }
+
+    // Открыли другую строку или прокрутили список — эта закрывается.
+    // Своя строка, выполняющая действие, не закрывается: иначе закрытие отменило бы доводку и само действие.
+    LaunchedEffect(SwipeOpen.key) { if (SwipeOpen.key != m.uid && x != 0f && !busy) animateTo(0f) }
 
     fun perform(op: String) {
         when (op) {
@@ -447,36 +476,30 @@ private fun SwipeRow(m: MessageSummary, onMove: (List<Long>) -> Unit, onSnooze: 
             else -> MailStore.act(op, listOf(m.uid))
         }
     }
-    // Действия, после которых письмо уходит из папки: строка уезжает целиком, иначе возвращается на место.
     fun leaves(op: String) = op in setOf("delete", "archive", "spam")
 
     fun commit(right: Boolean) {
         val op = if (right) prefs.swipeRight else prefs.swipeLeft
-        scope.launch {
-            if (leaves(op)) offset.animateTo(if (right) width else -width, androidx.compose.animation.core.tween(160))
-            SwipeOpen.key = null
-            perform(op)
-            if (!leaves(op)) offset.animateTo(0f)
-        }
+        busy = true
+        SwipeOpen.key = null
+        if (leaves(op)) animateTo(if (right) width else -width) { perform(op); busy = false }
+        else { perform(op); animateTo(0f) { busy = false } }
     }
 
     val drag = androidx.compose.foundation.gestures.rememberDraggableState { d ->
         val min = if (canLeft) -width else 0f
         val max = if (canRight) width else 0f
-        val v = (offset.value + d).coerceIn(min, max)
-        scope.launch { offset.snapTo(v) }
-        val now = kotlin.math.abs(v) >= commitLine()
+        x = (x + d).coerceIn(min, max)
+        val now = kotlin.math.abs(x) >= commitLine() || (startX != 0f && x * startX > 0 && kotlin.math.abs(x) - kotlin.math.abs(startX) >= slop)
         if (now != armed) { armed = now; if (now) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) }
     }
 
     Box(Modifier.fillMaxWidth().onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }) {
-        val x = offset.value
         if (x != 0f) {
             val right = x > 0
             val op = if (right) prefs.swipeRight else prefs.swipeLeft
             val (icon, color, text) = swipeLook(op)
             val far = kotlin.math.abs(x) >= commitLine()
-            // Открытая часть подложки — от края строки до её сдвинутого края; кнопка по центру этой части.
             val revealDp = with(density) { kotlin.math.abs(x).toDp() }
             Box(Modifier.matchParentSize().background(if (far) color else color.copy(alpha = .9f))) {
                 Column(
@@ -485,32 +508,52 @@ private fun SwipeRow(m: MessageSummary, onMove: (List<Long>) -> Unit, onSnooze: 
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Ico(icon, tint = Color.White, size = if (far) 26.dp else 22.dp)
-                    Text(text, color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                    if (revealDp > 40.dp) {
+                        Ico(icon, tint = Color.White, size = if (far) 26.dp else 22.dp)
+                        Text(text, color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                    }
                 }
             }
         }
         Box(
-            Modifier.offset { androidx.compose.ui.unit.IntOffset(offset.value.roundToInt(), 0) }
+            Modifier.offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), 0) }
+                // Открытую полосу закрывает касание по строке (а не открывает письмо). Ловим только касание
+                // и только его отпускание забираем себе: жест дальше идёт в draggable, и открытую полосу
+                // можно дотянуть до действия. Прозрачный слой поверх строки съедал и жест.
+                .pointerInput(m.uid) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        if (x == 0f) return@awaitEachGesture
+                        while (true) {
+                            val c = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                            if ((c.position - down.position).getDistance() > viewConfiguration.touchSlop) break
+                            if (!c.pressed) { c.consume(); animateTo(0f); SwipeOpen.key = null; break }
+                        }
+                    }
+                }
                 .draggable(
                     state = drag,
                     orientation = androidx.compose.foundation.gestures.Orientation.Horizontal,
-                    onDragStarted = { SwipeOpen.key = m.uid },
+                    onDragStarted = { settle?.cancel(); startX = if (busy) 0f else x; SwipeOpen.key = m.uid },
                     onDragStopped = { velocity ->
-                        val projected = offset.value + velocity * 0.18f
                         armed = false
+                        val a = kotlin.math.abs(x)
+                        val wasOpen = startX != 0f
+                        val sameSide = x * startX > 0
+                        val further = a - kotlin.math.abs(startX)
+                        val flingOn = velocity * x > 0 && kotlin.math.abs(velocity) >= flingPx
                         when {
-                            kotlin.math.abs(offset.value) >= commitLine() || (kotlin.math.abs(projected) >= commitLine() * 1.5f && kotlin.math.abs(offset.value) >= commitLine() * 0.7f) ->
-                                commit(offset.value > 0)
-                            kotlin.math.abs(projected) >= reveal / 2 -> offset.animateTo(if (offset.value > 0) reveal else -reveal)
-                            else -> { offset.animateTo(0f); if (SwipeOpen.key == m.uid) SwipeOpen.key = null }
+                            a >= commitLine() -> commit(x > 0)
+                            wasOpen && sameSide && further >= slop -> commit(x > 0)
+                            wasOpen && (!sameSide || -further >= slop) -> { animateTo(0f); if (SwipeOpen.key == m.uid) SwipeOpen.key = null }
+                            !wasOpen && a >= flingDist && flingOn -> commit(x > 0)
+                            a >= slop -> animateTo(if (x > 0) reveal else -reveal)
+                            else -> { animateTo(0f); if (SwipeOpen.key == m.uid) SwipeOpen.key = null }
                         }
                     },
                 ),
         ) {
             content()
-            // Открытую полосу закрывает касание по самой строке (а не открывает письмо).
-            if (offset.value != 0f) Box(Modifier.matchParentSize().clickable { scope.launch { offset.animateTo(0f) }; SwipeOpen.key = null })
         }
     }
 }
