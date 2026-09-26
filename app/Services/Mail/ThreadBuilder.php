@@ -167,6 +167,32 @@ class ThreadBuilder
     }
 
 
+    /** Приставка ответа или пересылки в начале темы: «Re:», «Fwd:», «Ответ:»… */
+    private const REPLY_PREFIX = '/^\s*(re|fw|fwd|ответ|пересылка|вх|исх)\s*(\[\d+\])?\s*:/iu';
+
+    /** Автоматический адрес: такие письма — уведомления, а не переписка (как NOREPLY в веб-почте). */
+    private const AUTOMATIC = '/^(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer[-_.]?daemon|bounce[sd]?|postmaster|nobody|notifications?)@/i';
+
+    /**
+     * Склеивать ли по теме два письма без ссылок друг на друга. Только письмо и ответ на него
+     * («Счёт 15» и «Re: Счёт 15») или ответы между собой. Два самостоятельных письма с одной темой —
+     * уведомления «Вход в почту с нового устройства», ежедневные отчёты, рассылки — не переписка:
+     * раньше они собирались в одну «цепочку» из десятка писем (26.09.2026, приложение и веб).
+     */
+    public static function sameConversationBySubject(string $a, string $b): bool
+    {
+        if (self::bareSubject($a) !== self::bareSubject($b) || mb_strlen(self::bareSubject($a)) < 8) {
+            return false;
+        }
+
+        return (bool) preg_match(self::REPLY_PREFIX, $a) || (bool) preg_match(self::REPLY_PREFIX, $b);
+    }
+
+    public static function automaticSender(string $mail): bool
+    {
+        return (bool) preg_match(self::AUTOMATIC, trim($mail));
+    }
+
     /** Тема без «Re:», «Fwd:», «Ответ:» и прочих приставок — по ней склеиваем переписку. */
     private static function bareSubject(string $subject): string
     {
@@ -193,10 +219,17 @@ class ThreadBuilder
     {
         // Заголовок приходит закодированным (=?windows-1251?B?…?=) — сравнивать и искать
         // надо по человеческому тексту, иначе запрос уходит на сервер абракадаброй.
-        $bare = self::bareSubject((string) Charset::header((string) ($message->getSubject()->first() ?? '')));
+        $subject = (string) Charset::header((string) ($message->getSubject()->first() ?? ''));
+        $bare = self::bareSubject($subject);
         // Слишком короткая или слишком общая тема («Счёт», «Привет») склеит что попало.
         if (mb_strlen($bare) < 8) {
             return [];
+        }
+        // Уведомления с автоматических адресов переписки не образуют — не склеиваем их по теме вовсе.
+        foreach (MailAddresses::of($message->getFrom()) as $a) {
+            if (self::automaticSender($a['mail'])) {
+                return [];
+            }
         }
         $mine = [];
         foreach (['getFrom', 'getTo', 'getCc'] as $get) {
@@ -219,8 +252,9 @@ class ThreadBuilder
                 $uids = array_slice($uids, -15);
                 $previews = $this->summaries->previews($uids);
                 foreach ($this->tree->folder($p)->query()->whereUidIn($uids)->setFetchBody(false)->setFetchFlags(true)->get() as $m) {
-                    if (self::bareSubject((string) Charset::header((string) ($m->getSubject()->first() ?? ''))) !== $bare) {
-                        continue;   // сервер ищет подстроку — сверяем тему целиком
+                    // Сервер ищет подстроку — сверяем тему целиком; и склеиваем только письмо с ответами на него.
+                    if (! self::sameConversationBySubject($subject, (string) Charset::header((string) ($m->getSubject()->first() ?? '')))) {
+                        continue;
                     }
                     $common = false;
                     foreach (['getFrom', 'getTo', 'getCc'] as $get) {

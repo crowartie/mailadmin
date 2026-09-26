@@ -355,7 +355,8 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
         val t = thread
         if (t != null && t.messages.isNotEmpty()) {
             val self = su.innotec.mail.api.ThreadMessage(uid = uid, subject = m.subject, from = m.from, date = m.date, seen = true, folder = folder)
-            val all = (t.messages + self).sortedBy { Fmt.parse(it.date)?.toEpochMilliseconds() ?: 0L }
+            // Новые сверху, открытое письмо — на своём месте по дате (как в веб-почте).
+            val all = (t.messages + self).sortedByDescending { Fmt.parse(it.date)?.toEpochMilliseconds() ?: 0L }
             Text("В цепочке ${all.size} ${Fmt.plural(all.size, "письмо", "письма", "писем")}" +
                 (if (t.hidden > 0) " · показаны не все, ещё ${t.hidden} — найдёт «Вся переписка»" else ""),
                 Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp, end = 16.dp), style = MaterialTheme.typography.labelLarge, color = P.muted)
