@@ -11,8 +11,8 @@ plugins {
 }
 
 // Версия приложения — одна на все платформы. Сервер сравнивает её с minApp (/.well-known/mailadmin).
-val appVersion = "1.2.0"
-val appVersionCode = 5
+val appVersion = "1.2.1"
+val appVersionCode = 6
 
 // AppInfo.kt с версией для общего кода (User-Agent, «О программе», проверка обновлений).
 val genDir = layout.buildDirectory.dir("generated/appinfo/commonMain/kotlin")
