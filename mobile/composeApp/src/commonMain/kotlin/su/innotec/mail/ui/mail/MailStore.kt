@@ -319,7 +319,7 @@ object MailStore {
             op == "spam" -> "spam"
             op == "lists" -> "lists"
             op == "notspam" -> "ham"
-            op == "move" && targetFolder?.role == "custom" && targetFolder.owner == null && settings.askRuleOnMove -> "folder"
+            op == "move" && targetFolder?.role == "custom" && targetFolder.owner.isEmpty() && settings.askRuleOnMove -> "folder"   // owner — строка, не null
             else -> null
         }
         val askMails = if (askKind == null) emptyList() else senders ?: messages.filter { it.uid in uids }.map { it.from.mail }
