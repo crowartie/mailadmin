@@ -324,7 +324,8 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
                 Text("Пустое вложение: файл, скорее всего, приложен с ошибкой — попросите прислать его заново.", style = MaterialTheme.typography.bodySmall, color = P.muted)
             }
             Column(Modifier.padding(horizontal = 12.dp)) {
-                files.forEach { a -> AttachmentRow(a, folder, uid, attachedIndex) }
+                val views = files.mapNotNull { a -> viewItem(a, folder, uid, attachedIndex) }
+                files.forEach { a -> AttachmentRow(a, folder, uid, attachedIndex, views) }
             }
         }
         if (m.cloudFiles.isNotEmpty()) {
@@ -498,14 +499,28 @@ fun fileIcon(name: String, type: String = ""): String {
 }
 
 @Composable
-private fun AttachmentRow(a: Attachment, folder: String, uid: Long, attachedIndex: Int?) {
+/** Вложение, которое можно посмотреть прямо в приложении (картинка, PDF, документ Office через PDF сервера). */
+private fun viewItem(a: Attachment, folder: String, uid: Long, attachedIndex: Int?): su.innotec.mail.ui.ViewItem? {
+    val api = Session.api ?: return null
+    val kind = su.innotec.mail.ui.Viewable.kind(a.name, a.type) ?: return null
+    if (kind == "office" && attachedIndex != null) return null   // предпросмотра вложений из .eml сервер не делает
+    val path = if (attachedIndex == null) api.attachmentPath(folder, uid, a.index) else api.attachedPartPath(folder, uid, attachedIndex, a.index)
+    return su.innotec.mail.ui.ViewItem(a.name, path, kind, if (kind == "office") api.attachmentPreviewPath(folder, uid, a.index) else null)
+}
+
+@Composable
+private fun AttachmentRow(a: Attachment, folder: String, uid: Long, attachedIndex: Int?, views: List<su.innotec.mail.ui.ViewItem> = emptyList()) {
     val api = Session.api!!
     val path = if (attachedIndex == null) api.attachmentPath(folder, uid, a.index) else api.attachedPartPath(folder, uid, attachedIndex, a.index)
     val isEml = a.type == "message/rfc822" || a.name.endsWith(".eml", true)
     FileRow(a.name, a.size, fileIcon(a.name, a.type),
         onOpen = {
-            if (isEml && attachedIndex == null) Nav.push(AttachedMessageScreen(folder, uid, a.index))
-            else Transfers.fetch(path, a.name, Transfers.Then.OPEN)
+            val at = views.indexOfFirst { it.path == path }
+            when {
+                isEml && attachedIndex == null -> Nav.push(AttachedMessageScreen(folder, uid, a.index))
+                at >= 0 -> Nav.push(su.innotec.mail.ui.ViewerScreen(views, at))
+                else -> Transfers.fetch(path, a.name, Transfers.Then.OPEN)
+            }
         },
         onSave = { Transfers.fetch(path, a.name, Transfers.Then.SAVE) },
         onShare = { Transfers.fetch(path, a.name, Transfers.Then.SHARE) },

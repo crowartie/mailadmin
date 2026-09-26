@@ -119,3 +119,16 @@ expect object Printer {
     val available: Boolean
     fun print(title: String, html: String, loadResource: suspend (path: String) -> Pair<String, ByteArray>?): Boolean
 }
+
+/** Картинка из байтов (для просмотра вложений); большие уменьшаются до [maxSide] точек по большей стороне. */
+expect fun decodeImage(bytes: ByteArray, maxSide: Int = 4096): androidx.compose.ui.graphics.ImageBitmap?
+
+/** PDF постранично (Android — PdfRenderer). null — платформа не умеет, файл откроют в другой программе. */
+expect fun openPdf(bytes: ByteArray): PdfDoc?
+
+interface PdfDoc {
+    val pages: Int
+    /** Страница шириной [width] точек. */
+    fun render(page: Int, width: Int): androidx.compose.ui.graphics.ImageBitmap?
+    fun close()
+}

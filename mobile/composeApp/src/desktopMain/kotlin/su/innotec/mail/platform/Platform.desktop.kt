@@ -1,5 +1,6 @@
 package su.innotec.mail.platform
 
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -225,3 +226,9 @@ actual object Printer {
     actual val available: Boolean get() = false
     actual fun print(title: String, html: String, loadResource: suspend (path: String) -> Pair<String, ByteArray>?): Boolean = false
 }
+
+actual fun decodeImage(bytes: ByteArray, maxSide: Int): androidx.compose.ui.graphics.ImageBitmap? =
+    runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
+
+/** На ПК PDF открывается программой системы. */
+actual fun openPdf(bytes: ByteArray): PdfDoc? = null

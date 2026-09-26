@@ -1,5 +1,10 @@
 package su.innotec.mail.ui.more
 
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import kotlinx.io.readByteArray
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -84,7 +89,13 @@ class MailSettingsScreen : Screen() {
     override fun Content() {
         val scope = rememberCoroutineScope()
         var dialog by remember { mutableStateOf<String?>(null) }
-        LaunchedEffect(Unit) { MailStore.reloadSettings() }
+        var meta by remember { mutableStateOf<su.innotec.mail.api.ComposeMeta?>(null) }
+        var hosts by remember { mutableStateOf<su.innotec.mail.api.Hosts?>(null) }
+        LaunchedEffect(Unit) {
+            MailStore.reloadSettings()
+            meta = runCatching { Session.api!!.composeMeta() }.getOrNull()
+            hosts = runCatching { Session.api!!.me().hosts }.getOrNull()
+        }
         val s: Settings = MailStore.settings
         Column(Modifier.fillMaxSize().background(P.bg)) {
             SubBar("Настройки почты")
@@ -92,7 +103,7 @@ class MailSettingsScreen : Screen() {
                 SectionTitle("Отправитель")
                 Column(Modifier.background(P.surface)) {
                     ListRow("Имя в письмах", s.displayName.ifBlank { "как в адресной книге" }, icon = "user") { dialog = "name" }
-                    ListRow("Подпись", Html.toText(s.signature).ifBlank { "нет" }.take(120), icon = "edit") { dialog = "signature" }
+                    ListRow("Подпись", Html.toText(s.signature).ifBlank { "нет" }.take(120), icon = "edit") { Nav.push(SignatureScreen()) }
                     SwitchRow("Подпись в ответах и пересылке", checked = s.signatureReply) { v -> scope.launchSafe { patch(buildJsonObject { put("signature_reply", v) }) } }
                 }
                 SectionTitle("Письма")
@@ -102,13 +113,33 @@ class MailSettingsScreen : Screen() {
                     ListRow("Картинки из интернета", if (s.showImages == "always") "показывать всегда" else "спрашивать", icon = "img") { dialog = "images" }
                     ListRow("Быстрые ответы", s.quickReplies.filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "нет" }, icon = "reply") { dialog = "quick" }
                     SwitchRow("Общие ящики: отмечать прочитанным", "Открытое письмо в общей папке станет прочитанным для всех", s.sharedMarkSeen) { v -> scope.launchSafe { patch(buildJsonObject { put("shared_mark_seen", v) }) } }
+                    SwitchRow("Предлагать правило при переносе", "Перенесли письмо в свою папку — спросить, класть ли туда всё от этого отправителя", s.askRuleOnMove) { v -> scope.launchSafe { patch(buildJsonObject { put("ask_rule_on_move", v) }) } }
+                }
+                if (meta != null && meta!!.identities.isNotEmpty()) {
+                    SectionTitle("Мои адреса")
+                    Column(Modifier.background(P.surface)) {
+                        meta!!.identities.forEach { i ->
+                            ListRow(i.mail, when { i.primary -> "основной"; i.shared -> "общий ящик — можно писать от его имени"; else -> "дополнительный адрес" }, icon = if (i.shared) "users" else "mail") {
+                                Sys.copy(i.mail); Toasts.show("Адрес скопирован")
+                            }
+                        }
+                    }
+                }
+                hosts?.let { h ->
+                    SectionTitle("Телефон и программы")
+                    Column(Modifier.background(P.surface)) {
+                        ListRow("Входящие (IMAP)", "${h.imap} : ${h.imapPort}, SSL/TLS", icon = "inbox") { Sys.copy(h.imap); Toasts.show("Скопировано") }
+                        ListRow("Исходящие (SMTP)", "${h.smtp} : ${h.smtpPort}, SSL/TLS", icon = "send") { Sys.copy(h.smtp); Toasts.show("Скопировано") }
+                        ListRow("Календарь и контакты (CalDAV, CardDAV)", h.dav, icon = "cal") { Sys.copy(h.dav); Toasts.show("Скопировано") }
+                        Text("Outlook, Thunderbird и почта Android находят настройки сами по адресу. Для iPhone и Mac есть профиль — откройте «Настройки» веб-почты на самом устройстве. Пароль — от почты или пароль приложения («Ещё → Безопасность»).",
+                            Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall, color = P.muted)
+                    }
                 }
                 Spacer(Modifier.height(40.dp))
             }
         }
         when (dialog) {
             "name" -> InputDialog("Имя в письмах", "Имя", initial = s.displayName, onDismiss = { dialog = null }) { v -> scope.launchSafe { patch(buildJsonObject { put("display_name", v) }) } }
-            "signature" -> SignatureDialog(s.signature, onDismiss = { dialog = null }) { html -> scope.launchSafe { patch(buildJsonObject { put("signature", html) }); Toasts.show("Подпись сохранена") } }
             "undo" -> ChoiceDialog("Сколько ждать перед отправкой и удалением", listOf(0, 5, 10, 20, 30), { if (it == 0) "Не ждать" else "$it секунд" }, s.undoSeconds, onDismiss = { dialog = null }) { v ->
                 scope.launchSafe { patch(buildJsonObject { put("undo_seconds", v) }) }
             }
@@ -122,22 +153,51 @@ class MailSettingsScreen : Screen() {
     }
 }
 
-@Composable
-private fun SignatureDialog(html: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var text by remember { mutableStateOf(Html.toText(html)) }
-    val rich = html.contains("<img", true) || html.contains("<table", true)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Подпись") },
-        text = {
-            Column {
-                if (rich) Text("Подпись с картинками или таблицей удобнее править в веб-почте: здесь сохранится только текст.", style = MaterialTheme.typography.bodySmall, color = P.warnInk)
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().height(180.dp), label = { Text("Текст подписи") })
+/**
+ * Подпись с оформлением — тем же редактором, что и письмо: жирный, ссылки, логотип картинкой (до 400 КБ).
+ * В веб-почте подпись тоже с оформлением; раньше приложение правило её только текстом и теряло ссылки и логотип.
+ */
+class SignatureScreen : Screen() {
+    override val fullScreen: Boolean get() = true
+
+    @Composable
+    override fun Content() {
+        val scope = rememberCoroutineScope()
+        val editor = remember { su.innotec.mail.platform.RichEditorState(MailStore.settings.signature) }
+        var saving by remember { mutableStateOf(false) }
+        val pickImage = su.innotec.mail.platform.rememberFilePicker(multiple = false, mimes = listOf("image/*")) { list ->
+            val f = list.firstOrNull() ?: return@rememberFilePicker
+            if (f.size > 400 * 1024) { Toasts.show("Картинка больше 400 КБ — для подписи хватает ширины 300–400 точек"); return@rememberFilePicker }
+            scope.launch {
+                val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { f.open().use { it.readByteArray() } }
+                @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+                editor.image("data:${f.mime};base64," + kotlin.io.encoding.Base64.encode(bytes))
             }
-        },
-        confirmButton = { TextButton(onClick = { onDismiss(); onSave(if (text.isBlank()) "" else Html.fromText(text)) }) { Text("Сохранить") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
-    )
+        }
+        su.innotec.mail.platform.BackHandler(true) { Nav.pop() }
+        Column(Modifier.fillMaxSize().background(P.surface).imePadding()) {
+            Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconBtn("x", "Закрыть") { Nav.pop() }
+                Text("Подпись", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                TextButton(enabled = !saving, onClick = {
+                    saving = true
+                    scope.launchSafe {
+                        val h = editor.html.let { if (Html.toText(it).isBlank() && !it.contains("<img", true)) "" else it }
+                        patch(buildJsonObject { put("signature", h) })
+                        Toasts.show("Подпись сохранена"); Nav.pop()
+                    }
+                }) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
+            }
+            Divider()
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                su.innotec.mail.platform.RichEditor(editor, P.dark, "Например: С уважением, имя, должность, телефон",
+                    Modifier.fillMaxWidth().height(maxOf(200f, editor.contentHeight + 8f).dp), loadResource = { p -> su.innotec.mail.ui.Transfers.inlineResource(p) })
+                Text("Подпись добавляется к новым письмам; к ответам — если включено «Подпись в ответах и пересылке».",
+                    Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall, color = P.muted)
+            }
+            if (editor.rich && editor.focused) su.innotec.mail.ui.mail.FormatBarPublic(editor) { pickImage() }
+        }
+    }
 }
 
 @Composable

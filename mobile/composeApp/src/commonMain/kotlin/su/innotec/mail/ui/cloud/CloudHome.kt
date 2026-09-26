@@ -1,5 +1,10 @@
 package su.innotec.mail.ui.cloud
 
+import su.innotec.mail.ui.Viewable
+import su.innotec.mail.ui.ViewerScreen
+import su.innotec.mail.ui.ViewItem
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -171,8 +176,13 @@ fun CloudHome() {
     var loading by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<Pair<String, CloudItem?>?>(null) }
     var menu by remember { mutableStateOf(false) }
+    // Выбор нескольких (долгое нажатие) и поиск по открытой папке — как в веб-облаке.
+    val picked = remember { mutableStateListOf<String>() }
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val api = Session.api!!
+    LaunchedEffect(s.path, s.tab) { picked.clear(); query = ""; searching = false }
     fun reload() {
         loading = true; error = null
         scope.launch {
@@ -184,15 +194,43 @@ fun CloudHome() {
         }
     }
     LaunchedEffect(s.path, s.tab, s.version) { reload() }
-    su.innotec.mail.platform.BackHandler(s.tab == "files" && s.path.isNotEmpty()) { s.path = s.path.substringBeforeLast('/', "") }
+    su.innotec.mail.platform.BackHandler(s.tab == "files" && s.path.isNotEmpty() && picked.isEmpty() && !searching) { s.path = s.path.substringBeforeLast('/', "") }
+    su.innotec.mail.platform.BackHandler(picked.isNotEmpty()) { picked.clear() }
+    su.innotec.mail.platform.BackHandler(searching && picked.isEmpty()) { searching = false; query = "" }
     val pick = rememberFilePicker(multiple = true) { files -> CloudUploads.upload(s.path, files) { s.bump() } }
 
     Box(Modifier.fillMaxSize().background(P.bg)) {
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.background(P.surface).statusBarsPadding()) {
-                Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val chosen = listing?.items?.filter { it.path in picked }.orEmpty()
+                if (picked.isNotEmpty()) Row(Modifier.fillMaxWidth().height(56.dp).background(P.accentSoft).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconBtn("x", "Снять выбор", tint = P.accentInk) { picked.clear() }
+                    Text("${picked.size}", Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.titleMedium, color = P.accentInk)
+                    if (s.tab == "trash") {
+                        IconBtn("refresh", "Восстановить", tint = P.accentInk) { val ids = chosen.mapNotNull { it.id }; picked.clear(); scope.launchSafe { ids.forEach { api.cloudRestore(it) }; s.bump(); Toasts.show("Восстановлено: ${ids.size}") } }
+                    } else {
+                        if (chosen.none { it.dir }) IconBtn("mail", "Отправить письмом", tint = P.accentInk) {
+                            val refs = chosen.map { CloudFileRef(it.path, it.name, it.size ?: 0) }; picked.clear()
+                            Nav.push(su.innotec.mail.ui.mail.ComposeScreen(su.innotec.mail.ui.mail.ComposeStart.New(cloudFiles = refs)))
+                        }
+                        IconBtn("move", "Перенести", tint = P.accentInk) { dialog = "move-many" to null }
+                        IconBtn("trash", "Удалить", tint = P.accentInk) { dialog = "delete-many" to null }
+                    }
+                }
+                else if (searching) Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconBtn("back", "Закрыть поиск") { searching = false; query = "" }
+                    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+                    androidx.compose.material3.TextField(query, { query = it }, Modifier.weight(1f).focusRequester(focus).testTag("cloud-search"),
+                        placeholder = { Text("Поиск в этой папке") }, singleLine = true,
+                        colors = androidx.compose.material3.TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
+                    if (query.isNotEmpty()) IconBtn("x", "Очистить") { query = "" }
+                    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+                }
+                else Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (s.tab == "files" && s.path.isNotEmpty()) IconBtn("back", "Выше") { s.path = s.path.substringBeforeLast('/', "") } else Spacer(Modifier.width(12.dp))
                     Text(if (s.tab == "files") s.path.substringAfterLast('/').ifBlank { "Облако" } else "Облако", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    IconBtn("search", "Поиск") { searching = true }
                     Box {
                         IconBtn("dots", "Ещё") { menu = true }
                         DropdownMenu(menu, { menu = false }) {
@@ -235,19 +273,32 @@ fun CloudHome() {
                     l.items.isEmpty() -> Empty(if (s.tab == "trash") "trash" else "cloud", when (s.tab) { "trash" -> "Корзина пуста"; "links" -> "Ссылок нет"; "recent" -> "Пока пусто"; else -> "Папка пуста" },
                         if (s.tab == "files") "Загрузите файлы — кнопка внизу" else null)
                     else -> LazyColumn(Modifier.fillMaxSize().testTag("cloud-list")) {
-                        val items = if (s.tab == "files") l.items.sortedWith(compareBy({ !it.dir }, { it.name.lowercase() })) else l.items
+                        val all = if (s.tab == "files") l.items.sortedWith(compareBy({ !it.dir }, { it.name.lowercase() })) else l.items
+                        val items = if (query.isBlank()) all else all.filter { it.name.contains(query.trim(), ignoreCase = true) }
+                        if (items.isEmpty()) item { Text("Ничего не нашлось", Modifier.padding(24.dp), color = P.muted) }
                         items(items.size, key = { items[it].path + (items[it].id ?: 0) }) { i ->
-                            CloudRow(items[i], trash = s.tab == "trash", onOpen = { it0 ->
-                                if (it0.dir && s.tab != "trash") { s.tab = "files"; s.path = it0.path }
-                                else if (!it0.dir) Transfers.fetch(api.cloudFilePath(it0.path), it0.name, Transfers.Then.OPEN) { s.bump() }
-                            }, onAction = { kind, it0 -> dialog = kind to it0 })
+                            val it1 = items[i]
+                            val key = it1.path
+                            CloudRow(it1, trash = s.tab == "trash", selected = key in picked, selecting = picked.isNotEmpty(),
+                                onToggle = { if (key in picked) picked.remove(key) else picked.add(key) },
+                                onOpen = { it0 ->
+                                    if (it0.dir && s.tab != "trash") { s.tab = "files"; s.path = it0.path }
+                                    else if (!it0.dir) {
+                                        // Картинки, PDF и документы Office — прямо в приложении, листая файлы папки (документ — через PDF облака).
+                                        val views = items.filter { !it.dir && Viewable.kind(it.name, it.type).let { k -> k == "image" || k == "pdf" } }
+                                            .map { ViewItem(it.name, api.cloudFilePath(it.path), Viewable.kind(it.name, it.type)!!) }
+                                        val at = views.indexOfFirst { it.path == api.cloudFilePath(it0.path) }
+                                        if (at >= 0 && s.tab != "trash") Nav.push(ViewerScreen(views, at))
+                                        else Transfers.fetch(api.cloudFilePath(it0.path), it0.name, Transfers.Then.OPEN) { s.bump() }
+                                    }
+                                }, onAction = { kind, it0 -> dialog = kind to it0 })
                         }
                         item { Spacer(Modifier.height(96.dp)) }
                     }
                 }
             }
         }
-        if (s.tab == "files") ExtendedFloatingActionButton(
+        if (s.tab == "files" && picked.isEmpty()) ExtendedFloatingActionButton(
             onClick = { pick() }, containerColor = P.accent, contentColor = P.accentOn,
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).testTag("cloud-upload"),
             icon = { Ico("upload") }, text = { Text("Загрузить") },
@@ -268,6 +319,14 @@ fun CloudHome() {
             "link" -> LinkDialog(item!!, onDismiss = close) { s.bump() }
             "restore" -> { close(); scope.launchSafe { val r = api.cloudRestore(item!!.id ?: 0); s.bump(); Toasts.show("Восстановлено: ${r.path}") } }
             "purge" -> ConfirmDialog("Удалить «${item!!.name}» навсегда?", confirm = "Удалить", danger = true, onDismiss = close) { scope.launchSafe { api.cloudPurge(item.id ?: 0); s.bump() } }
+            "delete-many" -> ConfirmDialog("Удалить выбранное (${picked.size})?", "Попадёт в корзину облака, ссылки перестанут работать.", "Удалить", danger = true, onDismiss = close) {
+                val paths = picked.toList(); picked.clear()
+                scope.launchSafe { api.cloudDelete(paths); s.bump(); Toasts.show("В корзине: ${paths.size}") }
+            }
+            "move-many" -> CloudFolderPicker("Перенести выбранное (${picked.size}) в…", onDismiss = close) { to ->
+                val paths = picked.toList(); picked.clear()
+                scope.launchSafe { api.cloudMove(paths, to); s.bump(); Toasts.show("Перенесено: ${paths.size}") }
+            }
             "empty" -> ConfirmDialog("Очистить корзину облака?", "Файлы будут удалены навсегда.", "Очистить", danger = true, onDismiss = close) { scope.launchSafe { api.cloudEmptyTrash(); s.bump() } }
             "pin" -> { close(); scope.launchSafe { val on = item!!.life?.pinned != true; api.cloudPin(item.path, on); s.bump(); Toasts.show(if (on) "Закреплено — не удалится по сроку" else "Закрепление снято") } }
             "save" -> { close(); Transfers.fetch(api.cloudFilePath(item!!.path), item.name, Transfers.Then.SAVE) }
@@ -279,14 +338,15 @@ fun CloudHome() {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CloudRow(i: CloudItem, trash: Boolean, onOpen: (CloudItem) -> Unit, onAction: (String, CloudItem) -> Unit) {
+private fun CloudRow(i: CloudItem, trash: Boolean, selected: Boolean, selecting: Boolean, onToggle: () -> Unit, onOpen: (CloudItem) -> Unit, onAction: (String, CloudItem) -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().background(P.surface).combinedClickable(onClick = { onOpen(i) }, onLongClick = { menu = true }).padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().background(if (selected) P.accentSoft else P.surface)
+            .combinedClickable(onClick = { if (selecting) onToggle() else onOpen(i) }, onLongClick = onToggle).padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (i.dir) P.accentSoft else P.surface2), contentAlignment = Alignment.Center) {
-            Ico(if (i.dir) "folder" else fileIcon(i.name, i.type), tint = if (i.dir) P.accentInk else P.muted)
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (selected) P.accent else if (i.dir) P.accentSoft else P.surface2).clickable { onToggle() }, contentAlignment = Alignment.Center) {
+            if (selected) Ico("check", tint = P.accentOn) else Ico(if (i.dir) "folder" else fileIcon(i.name, i.type), tint = if (i.dir) P.accentInk else P.muted)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {

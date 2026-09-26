@@ -56,7 +56,12 @@ data class Me(
     val device: DeviceRef = DeviceRef(),
     val server: ServerInfo = ServerInfo(),
     val tokenDays: Int = 90,
+    /** Адреса и порты для почтовых программ (как в «Настройках» веб-почты). */
+    val hosts: Hosts? = null,
 )
+
+@Serializable
+data class Hosts(val imap: String = "", val imapPort: Int = 993, val smtp: String = "", val smtpPort: Int = 465, val dav: String = "", val mobileconfig: String = "")
 
 @Serializable
 data class Device(

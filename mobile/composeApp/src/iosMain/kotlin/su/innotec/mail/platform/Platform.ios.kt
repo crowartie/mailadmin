@@ -2,6 +2,7 @@
 
 package su.innotec.mail.platform
 
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -176,3 +177,9 @@ actual object Printer {
     actual val available: Boolean get() = false
     actual fun print(title: String, html: String, loadResource: suspend (path: String) -> Pair<String, ByteArray>?): Boolean = false
 }
+
+actual fun decodeImage(bytes: ByteArray, maxSide: Int): androidx.compose.ui.graphics.ImageBitmap? =
+    runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
+
+/** PDF на iPhone — через PDFKit, появится с первой сборкой на Mac; пока открывается другой программой. */
+actual fun openPdf(bytes: ByteArray): PdfDoc? = null

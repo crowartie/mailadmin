@@ -593,6 +593,10 @@ private fun DomainNotice(m: ComposeModel) {
     Divider()
 }
 
+/** Панель оформления для других экранов с редактором (подпись). */
+@Composable
+fun FormatBarPublic(e: RichEditorState, onImage: () -> Unit) = FormatBar(e, onImage)
+
 /** Кнопки оформления над клавиатурой. Нажатие не уводит курсор из поля. */
 @Composable
 private fun FormatBar(e: RichEditorState, onImage: () -> Unit) {

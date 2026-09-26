@@ -136,6 +136,8 @@ class MobileController extends Controller
             'device' => ['id' => (int) $device->id, 'name' => $device->name, 'platform' => $device->platform],
             'server' => ['version' => $this->serverVersion(), 'minApp' => self::MIN_APP, 'features' => $this->features()],
             'tokenDays' => MobileDevices::days(),
+            // Адреса и порты для почтовых программ — те же, что в «Настройках» веб-почты.
+            'hosts' => \App\Http\Controllers\Mail\HelpController::hosts($imap->user()),
         ]);
     }
 

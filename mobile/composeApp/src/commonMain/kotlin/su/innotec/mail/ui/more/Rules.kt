@@ -1,5 +1,9 @@
 package su.innotec.mail.ui.more
 
+import su.innotec.mail.ui.Fmt
+import kotlinx.datetime.atTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.LocalDate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -111,6 +115,11 @@ class RulesScreen : Screen() {
                                 Text(r.name.ifBlank { "Правило ${i + 1}" }, style = MaterialTheme.typography.bodyLarge, color = if (r.enabled) P.text else P.faint)
                                 Text(ruleSummary(r), style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
                             }
+                            // Порядок важен: правила выполняются сверху вниз (как в веб-почте), поэтому их можно переставлять.
+                            if (d.rules.size > 1) Column {
+                                IconBtn("up", "Выше", tint = if (i > 0) P.muted else P.border2) { if (i > 0) save(d.copy(rules = d.rules.toMutableList().apply { add(i - 1, removeAt(i)) })) }
+                                IconBtn("down", "Ниже", tint = if (i < d.rules.lastIndex) P.muted else P.border2) { if (i < d.rules.lastIndex) save(d.copy(rules = d.rules.toMutableList().apply { add(i + 1, removeAt(i)) })) }
+                            }
                             Switch(r.enabled, { v -> save(d.copy(rules = d.rules.mapIndexed { j, x -> if (j == i) x.copy(enabled = v) else x })) })
                         }
                         Divider()
@@ -130,13 +139,15 @@ private fun AutoReplyCard(a: AutoReply, onSave: (AutoReply) -> Unit) {
     var open by remember { mutableStateOf(false) }
     var subject by remember(a) { mutableStateOf(a.subject) }
     var body by remember(a) { mutableStateOf(a.body) }
-    var from by remember(a) { mutableStateOf(a.from ?: "") }
-    var to by remember(a) { mutableStateOf(a.to ?: "") }
+    var from by remember(a) { mutableStateOf(a.from?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }) }
+    var to by remember(a) { mutableStateOf(a.to?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }) }
+    var days by remember(a) { mutableStateOf(a.days ?: 1) }
+    var pick by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxWidth().background(P.surface).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(if (a.enabled) "Включён" else "Выключен", style = MaterialTheme.typography.bodyLarge, color = if (a.enabled) P.okInk else P.text)
-                Text(if (a.enabled) listOfNotNull(a.from?.let { "с $it" }, a.to?.let { "по $it" }).joinToString(" ").ifBlank { "без срока" } else "Отвечает всем, пока вы в отпуске",
+                Text(if (a.enabled) listOfNotNull(from?.let { "с " + Fmt.dateShort(it) }, to?.let { "по " + Fmt.dateShort(it) }).joinToString(" ").ifBlank { "без срока" } else "Отвечает всем, пока вы в отпуске",
                     style = MaterialTheme.typography.bodySmall, color = P.muted)
             }
             Switch(a.enabled, { v -> if (v && body.isBlank()) open = true else onSave(a.copy(enabled = v)) })
@@ -146,14 +157,24 @@ private fun AutoReplyCard(a: AutoReply, onSave: (AutoReply) -> Unit) {
             OutlinedTextField(subject, { subject = it }, Modifier.fillMaxWidth(), label = { Text("Тема (необязательно)") }, singleLine = true)
             OutlinedTextField(body, { body = it }, Modifier.fillMaxWidth().height(140.dp), label = { Text("Текст ответа") })
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(from, { from = it.take(10) }, Modifier.weight(1f), label = { Text("С (ГГГГ-ММ-ДД)") }, singleLine = true)
-                OutlinedTextField(to, { to = it.take(10) }, Modifier.weight(1f), label = { Text("По") }, singleLine = true)
+                Pill(from?.let { "С " + Fmt.dateShort(it) } ?: "С сегодня") { pick = "from" }
+                Pill(to?.let { "По " + Fmt.dateShort(it) } ?: "Без окончания") { pick = "to" }
+            }
+            if (from != null || to != null) TextButton(onClick = { from = null; to = null }) { Text("Без срока") }
+            Text("Отвечать одному адресу не чаще, чем раз в", style = MaterialTheme.typography.labelMedium, color = P.muted)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(1 to "день", 3 to "3 дня", 7 to "неделю").forEach { (v, t) -> su.innotec.mail.ui.Chip(t, days == v, { days = v }) }
             }
             TextButton(enabled = body.isNotBlank(), onClick = {
+                if (from != null && to != null && to!! < from!!) { Toasts.show("Дата окончания раньше начала"); return@TextButton }
                 open = false
-                onSave(AutoReply(enabled = true, subject = subject, body = body, from = from.ifBlank { null }, to = to.ifBlank { null }, days = a.days ?: 1))
+                onSave(AutoReply(enabled = true, subject = subject, body = body, from = from?.toString(), to = to?.toString(), days = days))
             }) { Text("Сохранить и включить", fontWeight = FontWeight.SemiBold) }
         }
+    }
+    pick?.let { k ->
+        val init = (if (k == "from") from else to) ?: Fmt.today()
+        su.innotec.mail.ui.calendar.DateTimePick(init.atTime(LocalTime(0, 0)), withTime = false, onDismiss = { pick = null }) { v -> if (k == "from") from = v.date else to = v.date }
     }
 }
 
