@@ -76,9 +76,12 @@ class ComposeController extends Controller
         $file = $request->file('file');
         MailBuilder::assertUploaded($file);
         set_time_limit(600);
-        $r = (new \App\Services\Cloud\LocalFiles())->publish($file->getRealPath(), $file->getClientOriginalName(), $imap->user());
+        // Имя и размер — до записи: хранилище переносит временный файл, и после этого его размер не прочитать.
+        $name = $file->getClientOriginalName();
+        $size = (int) $file->getSize();
+        $r = (new \App\Services\Cloud\LocalFiles())->publish($file->getRealPath(), $name, $imap->user());
 
-        return response()->json(['token' => $r['token'], 'name' => $file->getClientOriginalName(), 'size' => (int) $file->getSize(), 'url' => $r['url'], 'expires' => $r['expires']]);
+        return response()->json(['token' => $r['token'], 'name' => $name, 'size' => $size, 'url' => $r['url'], 'expires' => $r['expires']]);
     }
 
     /** Файл убрали из письма до отправки — в хранилище ему делать нечего (только ещё не отправленный и свой). */
