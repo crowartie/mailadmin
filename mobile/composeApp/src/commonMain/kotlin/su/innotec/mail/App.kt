@@ -1,5 +1,7 @@
 package su.innotec.mail
 
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.zIndex
 import androidx.compose.animation.AnimatedContent
@@ -125,7 +127,11 @@ fun App() {
 
 @Composable
 private fun Main() {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // Касание пустого места (не кнопки и не поля) убирает клавиатуру, как в почтовых приложениях:
+    // на планшете без кнопок иначе её не убрать, не выходя с экрана.
+    BoxWithConstraints(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { focus.clearFocus(); keyboard?.hide() } }) {
         val kind = when {
             maxWidth >= 1100.dp -> WindowKind.WIDE
             // Планшет вертикально (~740 dp) — как телефон: две колонки там слишком узкие для письма.
@@ -150,7 +156,7 @@ private fun Main() {
                     // Вложенным экранам и планшету (нет нижней панели) — отступ под системную полоску жестов.
                     Box(Modifier.weight(1f).fillMaxHeight().then(if (top != null || kind != WindowKind.PHONE) Modifier.navigationBarsPadding() else Modifier)) {
                         // Ход отправки тяжёлого письма — поверх любого экрана, над кнопкой «Написать».
-                        su.innotec.mail.ui.mail.SendProgressBar(Modifier.align(Alignment.BottomCenter).padding(bottom = 88.dp).zIndex(5f))
+                        su.innotec.mail.ui.mail.SendProgressBar(Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp).zIndex(5f))
                         AnimatedContent(targetState = top ?: Nav.section, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "nav") { s ->
                             when (s) {
                                 is Screen -> s.Content()

@@ -325,33 +325,75 @@ class ComposeModel(val start: ComposeStart) {
     )
 
     /** Сохранить черновик. Свои файлы после первого сохранения живут уже в черновике. */
+    /** Файлы, которые сейчас уходят на сервер, и сколько байт уже ушло (ход — у каждого файла в списке). */
+    var uploadingFiles by mutableStateOf<List<LocalFile>>(emptyList()); private set
+    var uploadSent by mutableStateOf(0L); private set
+    /** Сервер начал принимать данные (до этого — «Связь с сервером…»). */
+    var uploadStarted by mutableStateOf(false); private set
+    /** Во время загрузки успели ещё что-то изменить — после неё сохранить снова. */
+    private var again = false
+
+    /** Сколько уже загружено из файла [f] (null — файл сейчас не грузится). */
+    fun uploadedOf(f: LocalFile): Long? {
+        val i = uploadingFiles.indexOf(f)
+        if (i < 0) return null
+        val before = uploadingFiles.take(i).sumOf { it.size }
+        return (uploadSent - before).coerceIn(0, f.size)
+    }
+
+    /**
+     * Сохранить черновик. Свои файлы при этом загружаются на сервер и дальше живут в черновике —
+     * поэтому загрузка идёт сразу после выбора файла (как в Gmail), а не при отправке.
+     */
     suspend fun saveDraft(quiet: Boolean = true): Boolean {
         val api = Session.api ?: return false
-        if (saving) return false
+        if (saving) { again = true; return false }
         saving = true
-        val heavy = files.isNotEmpty()
-        SendProgress.start(subject, isDraft = true, heavy = heavy && !quiet || heavy && files.sumOf { it.size } > 2 * 1048576)
         try {
-            val r = api.saveDraft(form(forDraft = true)) { a, b -> SendProgress.upload(a, b) }
+            var ok: Boolean
+            do {
+                again = false
+                ok = saveOnce(api, quiet)
+            } while (ok && again)
+            return ok
+        } finally {
+            saving = false
+            uploadingFiles = emptyList(); uploadSent = 0
+            SendProgress.done()
+        }
+    }
+
+    private suspend fun saveOnce(api: su.innotec.mail.api.Api, quiet: Boolean): Boolean {
+        val batch = files.toList()
+        val batchCloud = viaCloud.mapNotNull { files.getOrNull(it) }.toSet()
+        uploadingFiles = batch; uploadSent = 0; uploadStarted = false
+        // Плашка внизу — для случая, когда окно уже закрыли, а файлы ещё грузятся (в окне ход виден у каждого файла).
+        SendProgress.start(subject, isDraft = true, heavy = batch.isNotEmpty())
+        try {
+            val r = api.saveDraft(form(forDraft = true)) { a, b -> uploadStarted = true; uploadSent = a; SendProgress.upload(a, b) }
             val uid = r.draftUid ?: return false
             draftUid = uid
             sourceFolder = r.folder ?: MailStore.folders.firstOrNull { it.role == "drafts" }?.path
             sourceUid = uid
-            if (files.isNotEmpty() || existing.isNotEmpty()) {
+            if (batch.isNotEmpty() || existing.isNotEmpty()) {
                 val d = api.openDraft(uid)
                 existing.clear(); existing.addAll(d.attachments)
                 keep.clear(); keep.addAll(d.attachments.map { it.index })
-                files.clear(); viaCloud.clear()
+                // Убираем только загруженные: файл, добавленный во время загрузки, остаётся и уйдёт следующим заходом.
+                val rest = files.filter { it !in batch }
+                val restCloud = rest.withIndex().filter { (_, f) -> f in batchCloud || viaCloud.any { files.getOrNull(it) == f } }.map { it.index }
+                files.clear(); files.addAll(rest)
+                viaCloud.clear(); viaCloud.addAll(restCloud)
+                if (rest.isNotEmpty()) again = true
             }
-            dirty = false
+            dirty = again
             if (!quiet) Toasts.show("Черновик сохранён")
             return true
         } catch (e: ApiException) {
-            if (!quiet) Toasts.error(e)
+            if (!quiet || batch.isNotEmpty()) Toasts.error(e)
             return false
         } finally {
-            saving = false
-            SendProgress.done()
+            uploadingFiles = emptyList()
         }
     }
 
@@ -394,7 +436,8 @@ fun sendWithUndo(m: ComposeModel) {
     fun doSend() {
         sendScope.launch {
             // Письмо с файлами или с крупными вложениями исходного — показать ход отправки (иначе молчание на минуты).
-            SendProgress.start(m.subject, isDraft = false, heavy = m.files.isNotEmpty() || m.existing.any { it.index in m.keep && m.keptViaCloud(it) })
+            val bigKept = m.existing.any { it.index in m.keep && m.keptViaCloud(it) }
+            SendProgress.start(m.subject, isDraft = false, heavy = m.files.isNotEmpty() || bigKept, viaCloud = bigKept || m.viaCloud.isNotEmpty())
             try {
                 val r = Session.api!!.send(m.form(forDraft = false)) { a, b -> SendProgress.upload(a, b) }
                 if (r.scheduled != null) Toasts.show("Письмо уйдёт ${Fmt.full(r.sendAt)}") else Toasts.show("Письмо отправлено")
@@ -424,6 +467,7 @@ private fun ComposeView(m: ComposeModel) {
     var dialog by remember { mutableStateOf<String?>(null) }
     var autosave by remember { mutableStateOf<Job?>(null) }
     var pendingAt by remember { mutableStateOf<String?>(null) }   // «отправить позже» ждёт подтверждений
+    var waitUpload by remember { mutableStateOf(false) }          // «Отправить» нажали во время загрузки файлов
     val scroll = rememberScrollState()
     val density = androidx.compose.ui.platform.LocalDensity.current
     var editorTop by remember { mutableStateOf(0f) }       // px от верха прокручиваемой области
@@ -438,6 +482,8 @@ private fun ComposeView(m: ComposeModel) {
             if (m.meta.cloud.enabled && f.size >= threshold) m.viaCloud.add(m.files.lastIndex)
         }
         m.dirty = true
+        // Загрузка — сразу и не в окне: закроют окно — файл всё равно догрузится в черновик.
+        if (list.isNotEmpty()) sendScope.launch { m.saveDraft() }
     }
     // Картинка в текст — как в веб-почте, до 400 КБ (встраивается в письмо); больше — уходит обычным вложением.
     val pickImage = rememberFilePicker(multiple = false, mimes = listOf("image/*")) { list ->
@@ -498,11 +544,16 @@ private fun ComposeView(m: ComposeModel) {
         }
         if (step <= 1 && m.warningsFor(m.to + m.cc + m.bcc).isNotEmpty()) { dialog = "confirm-domain"; return }
         if (step <= 2 && m.subject.isBlank()) { dialog = "confirm-subject"; return }
+        // Файлы ещё грузятся — письмо уйдёт само, как только они загрузятся (иначе загрузились бы дважды).
+        if (m.saving) { waitUpload = true; if (pendingAt == null) pendingAt = at; Toasts.show("Файлы загружаются — письмо уйдёт, как только они загрузятся"); return }
         autosave?.cancel()
         if (pendingAt != null) m.sendAt = pendingAt
         Nav.pop()
         sendWithUndo(m)
     }
+
+    // Загрузка закончилась, а «Отправить» уже нажимали — отправляем.
+    LaunchedEffect(m.saving) { if (!m.saving && waitUpload) { waitUpload = false; send(pendingAt, 3) } }
 
     Column(Modifier.fillMaxSize().background(P.surface).imePadding()) {
         // Верхняя панель
@@ -618,20 +669,27 @@ fun FormatBarPublic(e: RichEditorState, onImage: () -> Unit) = FormatBar(e, onIm
 @Composable
 private fun FormatBar(e: RichEditorState, onImage: () -> Unit) {
     var linkAsk by remember { mutableStateOf(false) }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     Divider()
-    Row(
-        Modifier.fillMaxWidth().background(P.surface2).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        FmtBtn("bold", "Жирный", e.bold) { e.cmd("bold") }
-        FmtBtn("italic", "Курсив", e.italic) { e.cmd("italic") }
-        FmtBtn("underline", "Подчёркнутый", e.underline) { e.cmd("underline") }
-        FmtBtn("link", "Ссылка", false) { linkAsk = true }
-        FmtBtn("ul", "Список", e.bullets) { e.cmd("insertUnorderedList") }
-        FmtBtn("ol", "Нумерованный список", e.numbers) { e.cmd("insertOrderedList") }
-        FmtBtn("quote", "Цитата", e.quote) { e.cmd("formatBlock", "blockquote") }
-        FmtBtn("img", "Картинка", false) { onImage() }
-        FmtBtn("eraser", "Убрать оформление", false) { e.cmd("removeFormat") }
+    Row(Modifier.fillMaxWidth().background(P.surface2), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FmtBtn("bold", "Жирный", e.bold) { e.cmd("bold") }
+            FmtBtn("italic", "Курсив", e.italic) { e.cmd("italic") }
+            FmtBtn("underline", "Подчёркнутый", e.underline) { e.cmd("underline") }
+            FmtBtn("link", "Ссылка", false) { linkAsk = true }
+            FmtBtn("ul", "Список", e.bullets) { e.cmd("insertUnorderedList") }
+            FmtBtn("ol", "Нумерованный список", e.numbers) { e.cmd("insertOrderedList") }
+            FmtBtn("quote", "Цитата", e.quote) { e.cmd("formatBlock", "blockquote") }
+            FmtBtn("img", "Картинка", false) { onImage() }
+            FmtBtn("eraser", "Убрать оформление", false) { e.cmd("removeFormat") }
+        }
+        // Закреплена справа, вне прокрутки: на узком телефоне уезжала за край. На планшете без кнопок «Назад»
+        // жест закрывал окно письма — эта кнопка убирает только клавиатуру.
+        Box(Modifier.width(1.dp).height(28.dp).background(P.border))
+        FmtBtn("keyboard-down", "Скрыть клавиатуру", false) { e.blur(); keyboard?.hide() }
     }
     if (linkAsk) su.innotec.mail.ui.InputDialog("Ссылка", "Адрес", initial = "https://", confirm = "Вставить", keyboard = KeyboardType.Uri, onDismiss = { linkAsk = false }) { raw ->
         var url = raw.trim()
@@ -736,14 +794,25 @@ fun RecipientsField(
             }
             trailing()
         }
-        hints.forEach { h ->
-            Row(Modifier.fillMaxWidth().clickable { add(Person(h.name, h.mail)); text = ""; hints = emptyList(); onChange() }.padding(start = 80.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                su.innotec.mail.ui.Avatar(h.name.ifBlank { h.mail }, h.mail, 28.dp)
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    if (h.name.isNotBlank()) Text(h.name, style = MaterialTheme.typography.bodyMedium)
-                    Text(h.mail, style = MaterialTheme.typography.bodySmall, color = P.muted)
+        // Подсказки — выпадающим списком поверх страницы (раньше строками в самой форме: всё ниже съезжало).
+        // focusable = false: поле ввода не теряет фокус, клавиатура остаётся.
+        Box(Modifier.padding(start = 72.dp)) {
+            DropdownMenu(
+                expanded = hints.isNotEmpty(), onDismissRequest = { hints = emptyList() },
+                properties = androidx.compose.ui.window.PopupProperties(focusable = false),
+                modifier = Modifier.widthIn(min = 280.dp, max = 520.dp).testTag("recipient-hints"),
+            ) {
+                hints.forEach { h ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                if (h.name.isNotBlank()) Text(h.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(h.mail, style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        },
+                        onClick = { add(Person(h.name, h.mail)); text = ""; hints = emptyList(); onChange() },
+                        leadingIcon = { su.innotec.mail.ui.Avatar(h.name.ifBlank { h.mail }, h.mail, 28.dp) },
+                    )
                 }
             }
         }
@@ -766,18 +835,41 @@ private fun Attachments(m: ComposeModel) {
                 Ico(if (cloud) "cloud" else fileIcon(a.name, a.type), size = 16.dp, tint = if (cloud) P.accentInk else P.muted); Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                    if (cloud && on) Text("крупнее ${m.meta.cloud.thresholdMb} МБ — уйдёт ссылкой на облако", style = MaterialTheme.typography.bodySmall, color = P.accentInk)
+                    val fromDraft = m.sourceFolder != null && m.sourceFolder == MailStore.folders.firstOrNull { it.role == "drafts" }?.path
+                    Text(
+                        (if (fromDraft) "загружен" else "из исходного письма") + if (cloud && on) " · крупнее ${m.meta.cloud.thresholdMb} МБ, уйдёт ссылкой на облако" else "",
+                        style = MaterialTheme.typography.bodySmall, color = if (cloud && on) P.accentInk else P.faint,
+                    )
                 }
                 Text(Fmt.size(a.size), style = MaterialTheme.typography.bodySmall, color = P.faint, modifier = Modifier.padding(end = 8.dp))
             }
         }
         m.files.toList().forEachIndexed { i, f ->
             val cloud = i in m.viaCloud
+            val done = m.uploadedOf(f)
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Ico(if (cloud) "cloud" else "clip", size = 16.dp, tint = if (cloud) P.accentInk else P.muted); Spacer(Modifier.width(8.dp))
+                if (done != null) androidx.compose.material3.CircularProgressIndicator(
+                    progress = { if (f.size > 0) done.toFloat() / f.size else 1f }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = P.accent, trackColor = P.border,
+                ) else Ico("upload", size = 16.dp, tint = P.muted)
+                Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                    Text(Fmt.size(f.size) + if (cloud) " · уйдёт ссылкой" else "", style = MaterialTheme.typography.bodySmall, color = P.faint)
+                    // Пока файл не загружен, об этом написано прямо: иначе «уйдёт ссылкой» читалось как «уже загружен».
+                    Text(
+                        // Каждый этап — словами: пользователь видит, что происходит, а не гадает.
+                        when {
+                            done == null -> "${Fmt.size(f.size)} · ждёт загрузки"
+                            !m.uploadStarted -> "Связь с сервером…"
+                            done >= f.size -> "Загружено, сервер сохраняет…"
+                            done == 0L -> "Связь установлена, в очереди на загрузку"
+                            else -> "Связь установлена, загрузка: ${Fmt.size(done)} из ${Fmt.size(f.size)}"
+                        } + if (cloud && done == null) " · уйдёт ссылкой" else "",
+                        style = MaterialTheme.typography.bodySmall, color = if (done != null) P.accentInk else P.faint,
+                    )
+                    if (done != null) androidx.compose.material3.LinearProgressIndicator(
+                        progress = { if (f.size > 0) done.toFloat() / f.size else 1f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp).clip(RoundedCornerShape(2.dp)), color = P.accent, trackColor = P.border,
+                    )
                 }
                 if (m.meta.cloud.enabled) TextButton(onClick = { if (cloud) m.viaCloud.remove(i) else m.viaCloud.add(i); m.dirty = true }) { Text(if (cloud) "Вложением" else "Ссылкой") }
                 IconBtn("x", "Убрать", tint = P.muted) {

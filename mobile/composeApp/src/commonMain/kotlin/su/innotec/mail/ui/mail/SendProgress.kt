@@ -39,29 +39,38 @@ object SendProgress {
     var total by mutableStateOf<Long?>(null); private set
     /** Файлы загружены, сервер собирает письмо и кладёт крупные вложения в облако. */
     var serverWork by mutableStateOf(false); private set
+    /** Сервер начал принимать данные — связь установлена. */
+    var started by mutableStateOf(false); private set
+    /** Крупные вложения уйдут ссылкой — сервер кладёт их в облако (дольше обычного). */
+    private var cloud = false
     private var draft = false
+    val isDraft get() = draft
 
     /** Показывать плашку, только если есть что грузить: текстовое письмо уходит за доли секунды. */
-    fun start(subject: String, isDraft: Boolean, heavy: Boolean) {
+    fun start(subject: String, isDraft: Boolean, heavy: Boolean, viaCloud: Boolean = false) {
         if (!heavy) return
-        title = subject.ifBlank { "(без темы)" }; draft = isDraft; sent = 0; total = null; serverWork = false
+        title = subject.ifBlank { "(без темы)" }; draft = isDraft; sent = 0; total = null; serverWork = false; started = false; cloud = viaCloud
     }
 
     fun upload(bytes: Long, length: Long?) {
         if (title == null) return
+        started = true
         sent = bytes; total = length
         if (length != null && length > 0 && bytes >= length) serverWork = true
     }
 
     fun done() { title = null; serverWork = false }
 
+    /** Этапы словами: связь → загрузка → работа сервера (отправка, облако). */
     fun label(): String {
-        val what = if (draft) "Сохраняется черновик" else "Отправляется"
+        val what = if (draft) "Черновик «$title»" else "Письмо «$title»"
         val t = total
         return when {
-            serverWork -> "$what «$title» — сервер кладёт крупные файлы в облако…"
-            t != null && t > 0 -> "$what «$title» — ${Fmt.size(sent)} из ${Fmt.size(t)}"
-            else -> "$what «$title»…"
+            !started -> "$what: связь с сервером…"
+            serverWork && draft -> "$what: загружено, сервер сохраняет" + if (cloud) " и кладёт файлы в облако…" else "…"
+            serverWork -> "$what: загружено, сервер отправляет" + if (cloud) " и кладёт крупные файлы в облако…" else "…"
+            t != null && t > 0 -> "$what: связь установлена, загрузка ${Fmt.size(sent)} из ${Fmt.size(t)}"
+            else -> "$what: связь установлена, загрузка…"
         }
     }
 }
@@ -71,10 +80,11 @@ object SendProgress {
 fun SendProgressBar(modifier: Modifier = Modifier) {
     val s = SendProgress
     if (s.title == null) return
+    if (s.isDraft && su.innotec.mail.Nav.stack.lastOrNull() is ComposeScreen) return
     Surface(modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 12.dp).testTag("send-progress"), shape = RoundedCornerShape(12.dp), color = P.surface, shadowElevation = 6.dp) {
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (s.serverWork) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Ico("upload", size = 16.dp, tint = P.accent)
+                if (s.serverWork || !s.started) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Ico("upload", size = 16.dp, tint = P.accent)
                 Spacer(Modifier.width(10.dp))
                 Text(s.label(), style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

@@ -21,6 +21,7 @@ internal object IconPaths {
         "search" to "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5",
         "plus" to "M12 5v14M5 12h14",
         "minus" to "M5 12h14",
+        "keyboard-down" to "M3 3h18v11H3zM7 7h.01M11 7h.01M15 7h.01M8 11h8M9 18l3 3 3-3",
         "external" to "M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6",
         "dots" to "M5 12h.01M12 12h.01M19 12h.01",
         "x" to "M6 6l12 12M18 6L6 18",

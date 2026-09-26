@@ -63,6 +63,8 @@ class RichEditorState(initialHtml: String) {
     fun link(url: String) = js("ed.link(${jsStr(url)})")
     fun image(dataUrl: String) = js("ed.image(${jsStr(dataUrl)})")
     fun focus() = js("ed.focus()")
+    /** Убрать курсор из поля (и клавиатуру — вместе с [finishInput] платформы). */
+    fun blur() = js("ed.blur()")
     fun reportCaret() = js("ed.caret()")
 
     /** Заменить текст целиком (вставка быстрого ответа, смена шаблона). */
@@ -217,6 +219,7 @@ window.ed={
   link:function(url){ later(function(){ runLink(url); }); },
   image:function(src){ later(function(){ restore(); document.execCommand('insertHTML',false,'<img src="'+src+'" alt="" style="max-width:100%;height:auto">'); sync(); }); },
   focus:function(){ restore(); caret(); },
+  blur:function(){ save(); el.blur(); },
   caret:caret
 };
 function runCmd(n,v){ restore();
