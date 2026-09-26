@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Обновление из GitHub Releases: приложение само скачивает новый APK и предлагает установить. -->
+    <!-- Обновление со своего сервера почты (/app/pochta.apk): приложение само скачивает новый APK и предлагает установить. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Мгновенные уведомления без Firebase: служба с постоянным значком (включается в настройках). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

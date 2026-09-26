@@ -60,8 +60,10 @@ class MainActivity : ComponentActivity() {
     private fun handle(i: Intent?) {
         i ?: return
         when (i.action) {
-            // Только отладочная сборка: автотест передаёт готовый токен (ux/_mdev.py), пароль в интерфейс не вводится.
-            "su.innotec.mail.DEBUG_LOGIN" -> if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            // Только отладочная сборка (debug и qa): автотест передаёт готовый токен (ux/_mdev.py), пароль в интерфейс не вводится.
+            // Именно BuildConfig.DEBUG, а не флаг debuggable из манифеста: флаг — часть APK, его можно подменить
+            // при переупаковке, а по константе R8 вырезает ветку из релиза целиком.
+            "su.innotec.mail.DEBUG_LOGIN" -> if (BuildConfig.DEBUG) {
                 val origin = i.getStringExtra("origin") ?: return
                 val token = i.getStringExtra("token") ?: return
                 Session.signIn(su.innotec.mail.data.Account(origin = origin, token = token, user = i.getStringExtra("user") ?: "", name = i.getStringExtra("name") ?: ""))

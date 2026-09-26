@@ -13,11 +13,14 @@ object Shortcuts {
     fun handle(key: String, ctrl: Boolean, shift: Boolean): Boolean {
         val uid = MailStore.openUid
         val folder = uid?.let { MailStore.folderOf(it) }
+        // Открыто окно «Написать»: второе поверх него не нужно, а Ctrl+F там — не поиск по папке
+        // (Nav.go сбросил бы стопку экранов вместе с недописанным письмом).
+        val composing = Nav.stack.lastOrNull() is ComposeScreen
         return when {
-            ctrl && !shift && key == "N" -> { Nav.push(ComposeScreen(ComposeStart.New())); true }
+            ctrl && !shift && key == "N" -> { if (!composing) Nav.push(ComposeScreen(ComposeStart.New())); true }
             ctrl && key == "R" && uid != null && folder != null -> { Nav.push(ComposeScreen(ComposeStart.Reply(folder, uid, all = shift))); true }
             ctrl && shift && key == "F" && uid != null && folder != null -> { Nav.push(ComposeScreen(ComposeStart.Forward(folder, uid))); true }
-            ctrl && !shift && key == "F" -> { Nav.go(Section.MAIL); MailStore.searchSignal++; true }
+            ctrl && !shift && key == "F" -> if (composing) false else { Nav.go(Section.MAIL); MailStore.searchSignal++; true }
             key == "F5" -> { MailStore.load(); MailStore.refreshFolders(); true }
             else -> false
         }

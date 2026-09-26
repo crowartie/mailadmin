@@ -140,19 +140,26 @@ private fun ViewPage(item: ViewItem, onZoom: (Boolean) -> Unit) {
     // Сколько скачано: крупный файл грузится заметное время, и одна крутилка выглядела как зависание.
     var got by remember(item.path) { mutableStateOf(0L to (null as Long?)) }
     val state by produceState<Loaded>(Loaded.Wait, item.path) {
+        // Открытый PDF, который не успели отдать на экран (ушли со страницы, пока шла отрисовка), закрываем сами:
+        // иначе временный файл и дескриптор PdfRenderer остались бы висеть.
+        var opened: PdfDoc? = null
         value = try {
             withContext(Dispatchers.Default) {
                 when (item.kind) {
                     "image" -> decodeImage(bytesOf(item.path) { a, b -> got = a to b })?.let { Loaded.Img(it) } ?: Loaded.Fail("Картинку не удалось показать")
                     else -> {
                         val b = bytesOf(if (item.kind == "office") item.preview ?: item.path else item.path) { a, t -> got = a to t }
-                        openPdf(b)?.let { Loaded.Pdf(it) } ?: Loaded.Fail("Здесь документ не показать")
+                        openPdf(b)?.also { opened = it }?.let { Loaded.Pdf(it) } ?: Loaded.Fail("Здесь документ не показать")
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            opened?.close()
+            throw e
         } catch (e: ApiException) {
             Loaded.Fail(if (item.kind == "office") "Сервер не смог подготовить просмотр: ${e.message}" else e.message ?: "Ошибка")
         } catch (e: Throwable) {
+            opened?.close()
             Loaded.Fail("Не удалось открыть: ${e.message ?: e::class.simpleName}")
         }
     }
@@ -228,8 +235,9 @@ private fun Zoomable(onZoom: (Boolean) -> Unit, content: @Composable () -> Unit)
 @Composable
 private fun PdfPages(doc: PdfDoc) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        // Рисуем с запасом ×2 к ширине экрана: при увеличении текст остаётся чётким.
-        val px = (constraints.maxWidth * 2).coerceAtMost(2400)
+        // Рисуем с запасом ×2 к ширине экрана: при увеличении текст остаётся чётким. Потолок 1600 px:
+        // страница A4 в ARGB — уже ~14 МБ, при 2400 px было ~33 МБ на страницу и нехватка памяти на телефонах.
+        val px = (constraints.maxWidth * 2).coerceAtMost(1600)
         LazyColumn(Modifier.fillMaxSize().testTag("viewer-pdf")) {
             items(doc.pages) { i ->
                 val bmp by produceState<ImageBitmap?>(null, i, px) { value = withContext(Dispatchers.Default) { doc.render(i, px) } }

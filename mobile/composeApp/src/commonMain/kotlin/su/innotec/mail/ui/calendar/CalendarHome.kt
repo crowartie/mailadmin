@@ -164,12 +164,8 @@ object CalStore {
         d >= s && d <= en
     }.sortedWith(compareBy({ !it.allDay }, { it.start }))
 
-    fun startDate(e: CalEvent): LocalDate = Fmt.local(e.start)?.date ?: LocalDate(1970, 1, 1)
-    /** Последний день события (у целодневных конец исключающий). */
-    fun endDate(e: CalEvent): LocalDate {
-        val end = Fmt.local(e.end) ?: return startDate(e)
-        return if (e.allDay || (end.hour == 0 && end.minute == 0 && end.date > startDate(e))) end.date.minus(DatePeriod(days = 1)) else end.date
-    }
+    fun startDate(e: CalEvent): LocalDate = eventStartDate(e)
+    fun endDate(e: CalEvent): LocalDate = eventEndDate(e)
 
     /** Перейти к дню: если он в другом месяце, подгрузить события заново. */
     fun goTo(d: LocalDate) {
@@ -199,8 +195,29 @@ object CalStore {
     fun reset() { calendars = emptyList(); events = emptyList(); tasks = emptyList(); hidden.clear(); loaded = false }
 }
 
+/**
+ * Первый день события. Целодневные сервер отдаёт как полночь своего пояса («2027-01-04T00:00:00+03:00»):
+ * переведённая в пояс устройства она может оказаться накануне, поэтому дату берём из строки как есть.
+ */
+fun eventStartDate(e: CalEvent): LocalDate =
+    (if (e.allDay) Fmt.dateOnly(e.start) else Fmt.local(e.start)?.date) ?: LocalDate(1970, 1, 1)
+
+/** Последний день события (у целодневных конец исключающий — DTEND на день позже). */
+fun eventEndDate(e: CalEvent): LocalDate {
+    val s = eventStartDate(e)
+    if (e.allDay) {
+        val d = Fmt.dateOnly(e.end) ?: return s
+        return if (d > s) d.minus(DatePeriod(days = 1)) else s
+    }
+    val end = Fmt.local(e.end) ?: return s
+    return if (end.hour == 0 && end.minute == 0 && end.date > s) end.date.minus(DatePeriod(days = 1)) else end.date
+}
+
 fun timeRange(e: CalEvent): String {
-    if (e.allDay) return "весь день"
+    if (e.allDay) {
+        val last = eventEndDate(e)
+        return if (last > eventStartDate(e)) "весь день, до ${Fmt.dateShort(last)}" else "весь день"
+    }
     val s = Fmt.local(e.start) ?: return ""
     val en = Fmt.local(e.end) ?: return Fmt.time(s)
     return if (s.date == en.date) "${Fmt.time(s)}–${Fmt.time(en)}" else "${Fmt.dateShort(s.date)}, ${Fmt.time(s)} – ${Fmt.dateShort(en.date)}, ${Fmt.time(en)}"
@@ -383,7 +400,19 @@ class EventScreen(private val start: CalEvent) : Screen() {
         var confirm by remember { mutableStateOf(false) }
         var askEdit by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
-        LaunchedEffect(Unit) { runCatching { Session.api!!.event(start.calendar, start.id) }.onSuccess { full -> e = full.copy(start = if (start.recurrenceId != null) start.start else full.start, end = if (start.recurrenceId != null) start.end else full.end) } }
+        LaunchedEffect(Unit) {
+            runCatching { Session.api!!.event(start.calendar, start.id) }.onSuccess { full ->
+                // Полная карточка — это сама серия (её DTSTART), а открыли конкретное вхождение: время оставляем
+                // от вхождения, а начало серии запоминаем отдельно — оно нужно правке «всей серии».
+                val occurrence = start.recurrenceId != null
+                e = full.copy(
+                    start = if (occurrence) start.start else full.start, end = if (occurrence) start.end else full.end,
+                    recurrenceId = start.recurrenceId ?: full.recurrenceId,
+                    masterStart = start.masterStart ?: full.masterStart ?: full.start.takeIf { full.rrule != null },
+                    masterEnd = start.masterEnd ?: full.masterEnd ?: full.end.takeIf { full.rrule != null },
+                )
+            }
+        }
         Column(Modifier.fillMaxSize().background(P.surface)) {
             SubBar("Событие") {
                 if (!e.readonly) {
@@ -398,7 +427,7 @@ class EventScreen(private val start: CalEvent) : Screen() {
                     Text(e.title, style = MaterialTheme.typography.titleLarge)
                 }
                 Spacer(Modifier.height(10.dp))
-                Line("clock", Fmt.local(e.start)?.let { Fmt.dayTitle(it.date) + ", " + timeRange(e) } ?: timeRange(e))
+                Line("clock", (if (e.allDay) eventStartDate(e) else Fmt.local(e.start)?.date)?.let { Fmt.dayTitle(it) + ", " + timeRange(e) } ?: timeRange(e))
                 e.rrule?.let { Line("repeat", repeatText(it)) }
                 if (e.location.isNotBlank()) Line("map", e.location) { Sys.openUrl("geo:0,0?q=" + su.innotec.mail.api.enc(e.location)) }
                 if (e.url.isNotBlank()) Line("link", e.url) { Sys.openUrl(e.url) }
@@ -517,9 +546,18 @@ class EventEditScreen(
     @Composable
     override fun Content() {
         val tz = CalStore.tz
-        val initStart: LocalDateTime = existing?.let { Fmt.local(it.start) } ?: prefill?.let { LocalDateTime.parse(it.start.take(16)) } ?: at
+        // Правим всю серию — отталкиваемся от её собственных даты и времени (masterStart), а не от открытого
+        // вхождения: иначе встреча «каждый понедельник», открытая 29-го, уезжала на 29-е вместе с серией
+        // (как editEvent в useEventForm.js). «Только эта встреча» — наоборот, само вхождение.
+        val baseStart = existing?.let { if (!onlyThis && it.rrule != null) it.masterStart ?: it.start else it.start }
+        val baseEnd = existing?.let { if (!onlyThis && it.rrule != null) it.masterEnd ?: it.end else it.end }
+        // Целодневные — датой из строки, без пояса устройства (см. eventStartDate).
+        val initStart: LocalDateTime = existing?.let { e -> if (e.allDay) Fmt.dateOnly(baseStart)?.atTime(LocalTime(0, 0)) else Fmt.local(baseStart) }
+            ?: prefill?.let { LocalDateTime.parse(it.start.take(16)) } ?: at
             ?: (day ?: Fmt.today()).atTime(LocalTime((Clock.System.now().toLocalDateTime(tz).hour + 1).coerceAtMost(22), 0))
-        val initEnd: LocalDateTime = existing?.let { e -> Fmt.local(e.end)?.let { if (e.allDay) it.date.minus(DatePeriod(days = 1)).atTime(LocalTime(0, 0)) else it } }
+        val initEnd: LocalDateTime = existing?.let { e ->
+            if (e.allDay) eventEndDate(e.copy(start = baseStart ?: e.start, end = baseEnd ?: e.end)).atTime(LocalTime(0, 0)) else Fmt.local(baseEnd)
+        }
             ?: prefill?.end?.let { LocalDateTime.parse(it.take(16)) }
             ?: (initStart.toInstant(tz) + kotlin.time.Duration.parse("1h")).toLocalDateTime(tz)
         var title by remember { mutableStateOf(existing?.title ?: prefill?.title ?: "") }
@@ -535,7 +573,8 @@ class EventEditScreen(
         var until by remember { mutableStateOf(r0?.until?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }) }
         var count by remember { mutableStateOf(r0?.count) }
         val byday = remember { mutableStateListOf<String>().apply { addAll(r0?.byday ?: emptyList()) } }
-        var alarm by remember { mutableStateOf(existing?.alarm ?: 15) }
+        // У нового — за 15 минут; у существующего без напоминания так и оставляем «без» (-1), а не подставляем 15.
+        var alarm by remember { mutableStateOf(if (existing != null) existing.alarm ?: -1 else 15) }
         var busy by remember { mutableStateOf(!(existing?.transparent ?: false)) }
         val people = remember { mutableStateListOf<Person>().apply { addAll((existing?.attendees ?: prefill?.attendees ?: emptyList()).map { Person(it.name, it.mail) }) } }
         var pick by remember { mutableStateOf<String?>(null) }
@@ -543,11 +582,7 @@ class EventEditScreen(
         val scope = rememberCoroutineScope()
         BackHandler(true) { Nav.pop() }
 
-        fun rule(): RRule? = if (repeat.isBlank()) null else RRule(
-            freq = repeat, interval = interval.coerceIn(1, 99), until = until?.toString(), count = if (until != null) null else count,
-            // Неделя без выбранных дней — день начала, как в веб-почте.
-            byday = if (repeat == "WEEKLY") byday.toList().ifEmpty { listOf(WD[start.date.dayOfWeek.ordinal]) } else emptyList(),
-        )
+        fun rule(): RRule? = buildRule(repeat, interval, until, count, byday, start.date)
 
         fun save() {
             if (saving) return
@@ -569,9 +604,15 @@ class EventEditScreen(
                     when {
                         existing == null -> api.createEvent(input)
                         onlyThis -> {
-                            // Отдельной встречи в серии сервер не хранит: убираем вхождение из серии и создаём вместо него своё.
-                            api.deleteEvent(existing.calendar, existing.id, existing.recurrenceId ?: existing.start)
+                            // Отдельной встречи в серии сервер не хранит: создаём своё событие и убираем вхождение из серии.
+                            // Сначала создание — если оно не удалось, серия остаётся целой; если не удалось удаление,
+                            // встреча окажется дважды, и об этом надо сказать.
                             api.createEvent(input.copy(rrule = null))
+                            try { api.deleteEvent(existing.calendar, existing.id, existing.recurrenceId ?: existing.start) }
+                            catch (e: ApiException) {
+                                if (e.isAuth) throw e
+                                Toasts.show("Встреча сохранена отдельно, но из серии не убралась: ${e.message}. Удалите её повтор вручную")
+                            }
                         }
                         else -> api.updateEvent(existing.calendar, existing.id, input)
                     }
@@ -599,7 +640,8 @@ class EventEditScreen(
                     Field(if (allDay) "Последний день" else "Конец", Fmt.dateShort(end.date) + if (allDay) "" else ", " + Fmt.time(end), Modifier.weight(1f)) { pick = "end" }
                 }
                 val writable = CalStore.calendars.filter { !it.readonly }
-                Field("Календарь", writable.firstOrNull { it.uri == calendar }?.name ?: "—") { if (existing == null) pick = "calendar" }
+                // Календарь можно сменить и у существующего: PUT с другим calendar сервер выполняет как перенос (moveEvent).
+                Field("Календарь", writable.firstOrNull { it.uri == calendar }?.name ?: "—") { pick = "calendar" }
                 if (!onlyThis) {
                     Field("Повтор", if (repeat.isBlank()) "Не повторять" else repeatText(rule()!!)) { pick = "repeat" }
                     if (repeat.isNotBlank()) RepeatDetails(repeat, interval, { interval = it }, byday, until, count, onUntil = { pick = "until" }, onCount = { count = it; until = null }, onNever = { until = null; count = null })
@@ -642,6 +684,16 @@ class EventEditScreen(
 
 /** Дни недели в правиле повтора (RFC 5545), с понедельника. */
 private val WD = listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")
+
+/**
+ * Правило повтора из полей формы. «До даты» и «сколько раз» взаимоисключающие — уходит что-то одно;
+ * неделя без выбранных дней — день начала, как в веб-почте (useEventForm.js, payload).
+ */
+fun buildRule(freq: String, interval: Int, until: LocalDate?, count: Int?, byday: List<String>, startDate: LocalDate): RRule? =
+    if (freq.isBlank()) null else RRule(
+        freq = freq, interval = interval.coerceIn(1, 99), until = until?.toString(), count = if (until != null) null else count,
+        byday = if (freq == "WEEKLY") byday.ifEmpty { listOf(WD[startDate.dayOfWeek.ordinal]) } else emptyList(),
+    )
 
 /** Подробности повтора: раз в сколько, по каким дням недели, когда закончить. */
 @OptIn(ExperimentalLayoutApi::class)

@@ -111,7 +111,7 @@ expect object Notifier {
     fun fast(enabled: Boolean)
 }
 
-/** Установка обновления (Android: APK из GitHub Releases). */
+/** Установка обновления (Android: APK со страницы /app своего сервера почты). */
 expect object Updater {
     val canInstall: Boolean
     /** Разрешено ли приложению ставить обновления (Android: «Установка из внешних источников»). */

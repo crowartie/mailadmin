@@ -36,8 +36,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import su.innotec.mail.Nav
 import su.innotec.mail.Screen
+import su.innotec.mail.api.ApiException
 import su.innotec.mail.api.AutoReply
 import su.innotec.mail.api.Rule
 import su.innotec.mail.api.RuleAction
@@ -61,13 +63,14 @@ import su.innotec.mail.ui.mail.SubBar
 
 // Подписи — как useMailRules.js веб-почты.
 val RULE_FIELDS = linkedMapOf("from" to "Отправитель", "to" to "Получатель", "recipient" to "Кому или копия", "subject" to "Тема", "body" to "Текст письма", "header" to "Заголовок", "size" to "Размер, КБ")
-val RULE_OPS = linkedMapOf("contains" to "содержит", "not_contains" to "не содержит", "is" to "равно", "starts" to "начинается с", "ends" to "заканчивается на", "over" to "больше", "under" to "меньше")
+// «matches» сервер принимает (sieve :matches, шаблон с * и ?), в веб-почте подписи нет — без своей он показывался бы кодом.
+val RULE_OPS = linkedMapOf("contains" to "содержит", "not_contains" to "не содержит", "is" to "равно", "starts" to "начинается с", "ends" to "заканчивается на", "matches" to "соответствует шаблону", "over" to "больше", "under" to "меньше")
 val RULE_ACTIONS = linkedMapOf(
     "move" to "Переместить в папку", "copy" to "Копию в папку", "move_by_sender" to "В папку по адресу отправителя", "move_by_domain" to "В папку по домену отправителя",
     "label" to "Поставить метку", "flag" to "Флажок", "seen" to "Пометить прочитанным", "forward" to "Переслать на адрес", "forward_copy" to "Переслать копию на адрес",
     "discard" to "Удалить", "reply" to "Ответить текстом", "stop" to "Не проверять другие правила",
 )
-private fun opsFor(field: String) = if (field == "size") listOf("over", "under") else listOf("contains", "not_contains", "is", "starts", "ends")
+private fun opsFor(field: String) = if (field == "size") listOf("over", "under") else listOf("contains", "not_contains", "is", "starts", "ends", "matches")
 private fun needsValue(type: String) = type in setOf("move", "copy", "label", "forward", "forward_copy", "reply")
 
 fun ruleSummary(r: Rule): String {
@@ -91,14 +94,16 @@ class RulesScreen : Screen() {
         var data by remember { mutableStateOf<Rules?>(null) }
         var key by remember { mutableStateOf(0) }
         val scope = rememberCoroutineScope()
-        fun save(r0: Rules) {
+        // Ошибку отдаём наружу: форма правила закрывается только после удачного сохранения.
+        suspend fun saveNow(r0: Rules) {
             // Удалённое правило приходит из RuleEditScreen с id "__delete__".
             val r = r0.copy(rules = r0.rules.filter { it.id != "__delete__" })
-            scope.launchSafe { Session.api!!.saveRules(r.rules, r.autoreply); data = r; Toasts.show("Правила сохранены") }
+            Session.api!!.saveRules(r.rules, r.autoreply); data = r; Toasts.show("Правила сохранены")
         }
+        fun save(r0: Rules) { scope.launchSafe { saveNow(r0) } }
         Column(Modifier.fillMaxSize().background(P.bg)) {
             SubBar("Правила и автоответ") {
-                IconBtn("plus", "Новое правило") { Nav.push(RuleEditScreen(null) { nr -> val d = data ?: Rules(); save(d.copy(rules = d.rules + nr)) }) }
+                IconBtn("plus", "Новое правило") { Nav.push(RuleEditScreen(null) { nr -> val d = data ?: Rules(); saveNow(d.copy(rules = d.rules + nr)) }) }
             }
             Loader(key, { Session.api!!.rules() }) { first, _ ->
                 val d = data ?: first
@@ -109,7 +114,7 @@ class RulesScreen : Screen() {
                     if (d.rules.isEmpty()) Empty("filter", "Правил нет", "Правило раскладывает письма само: по отправителю, теме, размеру", Modifier.fillMaxWidth().height(220.dp))
                     d.rules.forEachIndexed { i, r ->
                         Row(Modifier.fillMaxWidth().background(P.surface).clickable {
-                            Nav.push(RuleEditScreen(r) { nr -> save(d.copy(rules = d.rules.mapIndexed { j, x -> if (j == i) nr else x })) })
+                            Nav.push(RuleEditScreen(r) { nr -> saveNow(d.copy(rules = d.rules.mapIndexed { j, x -> if (j == i) nr else x })) })
                         }.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(r.name.ifBlank { "Правило ${i + 1}" }, style = MaterialTheme.typography.bodyLarge, color = if (r.enabled) P.text else P.faint)
@@ -178,7 +183,8 @@ private fun AutoReplyCard(a: AutoReply, onSave: (AutoReply) -> Unit) {
     }
 }
 
-class RuleEditScreen(private val existing: Rule?, private val onSave: (Rule) -> Unit) : Screen() {
+/** [onSave] сохраняет на сервере и бросает ApiException при ошибке — тогда форма остаётся открытой. */
+class RuleEditScreen(private val existing: Rule?, private val onSave: suspend (Rule) -> Unit) : Screen() {
     override val fullScreen: Boolean get() = true
 
     @Composable
@@ -186,19 +192,33 @@ class RuleEditScreen(private val existing: Rule?, private val onSave: (Rule) -> 
         var r by remember { mutableStateOf(existing ?: Rule(id = "r" + kotlin.random.Random.nextLong(1, 1_000_000_000), enabled = true, match = "all", conditions = listOf(RuleCondition()), actions = listOf(RuleAction()))) }
         var pick by remember { mutableStateOf<Pair<String, Int>?>(null) }
         var remove by remember { mutableStateOf(false) }
+        var saving by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
         BackHandler(true) { Nav.pop() }
         fun problem(): String? {
+            // Условие по заголовку без имени сервер отвергнет (regex на header), а до того оно ничего не значит.
+            r.conditions.firstOrNull { it.field == "header" && it.header.isNullOrBlank() }?.let { return "Укажите имя заголовка, например List-Id" }
             r.conditions.firstOrNull { it.value.isBlank() }?.let { return "Заполните условие «${RULE_FIELDS[it.field]}» — пустое совпадает со всеми письмами" }
             r.actions.firstOrNull { needsValue(it.type) && it.value.isBlank() }?.let { return "Выберите, что подставить в действие «${RULE_ACTIONS[it.type]}»" }
             if (r.actions.isEmpty()) return "Нужно хотя бы одно действие"
             return null
+        }
+        // Закрываем форму только после удачного ответа сервера: при ошибке правка не пропадает, её можно поправить и повторить.
+        fun submit(rule: Rule) {
+            if (saving) return
+            saving = true
+            scope.launch {
+                try { onSave(rule); Nav.pop() }
+                catch (e: ApiException) { Toasts.error(e) }
+                finally { saving = false }
+            }
         }
         Column(Modifier.fillMaxSize().background(P.surface)) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconBtn("x", "Закрыть") { Nav.pop() }
                 Text(if (existing == null) "Новое правило" else "Правило", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                 if (existing != null) IconBtn("trash", "Удалить") { remove = true }
-                TextButton(onClick = { val p = problem(); if (p != null) Toasts.show(p) else { Nav.pop(); onSave(r) } }) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
+                TextButton(enabled = !saving, onClick = { val p = problem(); if (p != null) Toasts.show(p) else submit(r) }) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
             }
             Divider()
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -259,7 +279,7 @@ class RuleEditScreen(private val existing: Rule?, private val onSave: (Rule) -> 
                 "label" -> ChoiceDialog("Метка", MailStore.labels, { it.name }, null, onDismiss = close) { l -> r = r.copy(actions = r.actions.mapIndexed { j, x -> if (j == i) x.copy(value = l.id.toString()) else x }) }
             }
         }
-        if (remove) ConfirmDialog("Удалить правило?", confirm = "Удалить", danger = true, onDismiss = { remove = false }) { Nav.pop(); onSave(r.copy(id = "__delete__")) }
+        if (remove) ConfirmDialog("Удалить правило?", confirm = "Удалить", danger = true, onDismiss = { remove = false }) { submit(r.copy(id = "__delete__")) }
     }
 }
 

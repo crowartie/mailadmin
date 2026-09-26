@@ -11,14 +11,16 @@ plugins {
 }
 
 // Версия приложения — одна на все платформы. Сервер сравнивает её с minApp (/.well-known/mailadmin).
-val appVersion = "1.2.6"
-val appVersionCode = 11
+val appVersion = "1.2.7"
+val appVersionCode = 12
 
-// AppInfo.kt с версией для общего кода (User-Agent, «О программе», проверка обновлений).
+// AppInfo.kt с версией и номером сборки для общего кода (User-Agent, «О программе», проверка обновлений:
+// при равной версии сервер может выложить сборку с большим code).
 val genDir = layout.buildDirectory.dir("generated/appinfo/commonMain/kotlin")
 val genAppInfo by tasks.registering {
     val out = genDir
     inputs.property("v", appVersion)
+    inputs.property("code", appVersionCode)
     outputs.dir(out)
     doLast {
         val f = out.get().file("su/innotec/mail/AppInfo.kt").asFile
@@ -29,7 +31,7 @@ val genAppInfo by tasks.registering {
 
             object AppInfo {
                 const val VERSION = "$appVersion"
-                const val REPO = "crowartie/mailadmin"
+                const val CODE = $appVersionCode
             }
             """.trimIndent() + "\n"
         )
@@ -72,6 +74,8 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.datetime)
+                // Жизненный цикл в Compose: уход в фон — выполнить отложенные действия (App.kt).
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6")
             }
         }
         commonTest.dependencies {
@@ -147,7 +151,9 @@ android {
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/INDEX.LIST", "/META-INF/io.netty.versions.properties")
     }
-    buildFeatures { buildConfig = false }
+    // BuildConfig.DEBUG нужен MainActivity: вход токеном для автотестов компилируется только в отладочные сборки
+    // (в release R8 выбрасывает эту ветку целиком, а флаг debuggable в манифесте подменить проще, чем код).
+    buildFeatures { buildConfig = true }
 }
 
 compose.desktop {

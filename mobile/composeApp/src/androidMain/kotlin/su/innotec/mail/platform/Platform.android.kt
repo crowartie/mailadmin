@@ -128,12 +128,24 @@ actual class KeyValueStore actual constructor(name: String) {
         }.getOrNull()
     }
 
-    actual fun put(key: String, value: String?) {
-        if (value == null) { prefs.edit().remove(key).apply(); return }
+    private fun encrypt(value: String): String {
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.ENCRYPT_MODE, key())
         val ct = c.doFinal(value.toByteArray(Charsets.UTF_8))
-        prefs.edit().putString(key, Base64.encodeToString(c.iv + ct, Base64.NO_WRAP)).apply()
+        return Base64.encodeToString(c.iv + ct, Base64.NO_WRAP)
+    }
+
+    actual fun put(key: String, value: String?) {
+        if (value == null) { prefs.edit().remove(key).apply(); return }
+        val enc = try { encrypt(value) } catch (e: Exception) {
+            // Keystore иногда теряет ключ или отдаёт неисправный (после восстановления из резервной копии, смены
+            // блокировки экрана, на некоторых прошивках): приложение падало на входе. Ключ пересоздаём; старые
+            // записи им не прочитать — стираем, пользователь войдёт заново.
+            runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(ALIAS) }
+            prefs.edit().clear().apply()
+            try { encrypt(value) } catch (e2: Exception) { android.util.Log.w("mailadmin", "Keystore недоступен, значение «$key» не сохранено", e2); return }
+        }
+        prefs.edit().putString(key, enc).apply()
     }
 
     private companion object { const val ALIAS = "mailadmin" }
@@ -161,7 +173,14 @@ actual object FileStore {
                 }
                 val uri = ctx.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     ?: error("Не удалось создать файл в «Загрузках»")
-                val n = ctx.contentResolver.openOutputStream(uri)!!.use { copy(channel, it, progress) }
+                val n = try {
+                    ctx.contentResolver.openOutputStream(uri)!!.use { copy(channel, it, progress) }
+                } catch (e: Throwable) {
+                    // Оборвалось на середине — недокачанный файл с IS_PENDING иначе висит в «Загрузках» невидимым
+                    // и занимает имя: следующая попытка ляжет как «файл (1)».
+                    runCatching { ctx.contentResolver.delete(uri, null, null) }
+                    throw e
+                }
                 ctx.contentResolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
                 SavedFile(clean, uri.toString(), type, n)
             }

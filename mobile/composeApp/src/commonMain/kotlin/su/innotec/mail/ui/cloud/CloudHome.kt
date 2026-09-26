@@ -96,6 +96,9 @@ object CloudUploads {
         var done by mutableStateOf(0L)
         var error by mutableStateOf<String?>(null)
         var finished by mutableStateOf(false)
+        /** Загрузка на сервере (id) и корутина, которая её ведёт — чтобы «Отменить» остановило и то и другое. */
+        internal var uploadId: String? = null
+        internal var task: kotlinx.coroutines.Job? = null
     }
 
     val jobs = mutableStateListOf<Job>()
@@ -104,9 +107,9 @@ object CloudUploads {
         files.forEach { f ->
             val job = Job(f.name, f.size)
             jobs.add(job)
-            scope.launch {
+            job.task = scope.launch {
                 try {
-                    run(path, f, job)
+                    uploadFile(path, f, onStarted = {}, onId = { job.uploadId = it }) { job.done = it }
                     job.finished = true
                     onDone()
                     delay(2500)
@@ -119,20 +122,44 @@ object CloudUploads {
         }
     }
 
-    private suspend fun run(path: String, f: LocalFile, job: Job) {
-        uploadFile(path, f, onStarted = {}) { job.done = it }
+    /** Отменить идущую загрузку: остановить корутину и сказать серверу, чтобы выбросил принятые части. */
+    fun cancel(job: Job) {
+        job.task?.cancel()
+        jobs.remove(job)
+        abort(job.uploadId)
     }
+
+    /** При выходе из аккаунта: всё остановить и убрать, чужому входу эти загрузки не принадлежат. */
+    fun clear() {
+        jobs.toList().forEach { j -> j.task?.cancel(); abort(j.uploadId) }
+        jobs.clear()
+    }
+
+    private fun abort(id: String?) {
+        id ?: return
+        val api = Session.api ?: return
+        scope.launch { runCatching { api.cloudUploadAbort(id) } }
+    }
+
+    /** Сколько ждать сеть после обрыва: до ~10 минут, пауза между попытками растёт до 15 секунд. */
+    private const val RETRY_WINDOW_MS = 10 * 60_000L
+    private const val RETRY_PAUSE_MAX_MS = 15_000L
 
     /**
      * Загрузить файл в папку облака частями, с докачкой после обрыва; вернуть путь, под которым он лёг
-     * (сервер сам добавит «(2)», если имя занято). [onStarted] — связь установлена, сервер принял загрузку.
+     * (сервер сам добавит «(2)», если имя занято). [onStarted] — связь установлена, сервер принял загрузку;
+     * [onId] — её номер на сервере (нужен, чтобы отменить).
      */
-    suspend fun uploadFile(path: String, f: LocalFile, onStarted: () -> Unit, onProgress: (Long) -> Unit): String {
+    suspend fun uploadFile(path: String, f: LocalFile, onStarted: () -> Unit, onId: (String) -> Unit = {}, onProgress: (Long) -> Unit): String {
         val api = Session.api!!
         var st = api.cloudUploadStart(path, f.name, f.size)
+        onId(st.id)
         onStarted()
         var done = 0L
         var attempts = 0
+        // Пять попыток по 2·n секунд кончались за полминуты — в лифте или метро сеть пропадает дольше.
+        var failing = false
+        var since = kotlin.time.TimeSource.Monotonic.markNow()
         while (true) {
             try {
                 var src: Source? = null
@@ -147,14 +174,16 @@ object CloudUploads {
                         pos += len
                         api.cloudUploadChunk(st.id, n, bytes) { sent -> onProgress(from + sent) }
                         done = from + len; onProgress(done)
+                        failing = false
                     }
                 } finally { src?.close() }
                 api.cloudUploadFinish(st.id)
                 return st.path
             } catch (e: ApiException) {
                 if (e.status in 400..499 && e.status != 408 && e.status != 429) throw e
-                if (++attempts > 5) throw e
-                delay(2000L * attempts)
+                if (!failing) { failing = true; since = kotlin.time.TimeSource.Monotonic.markNow(); attempts = 0 }
+                if (since.elapsedNow().inWholeMilliseconds > RETRY_WINDOW_MS) throw e
+                delay(minOf(RETRY_PAUSE_MAX_MS, 2000L * ++attempts))
                 // Что сервер уже принял — от этого места и продолжаем.
                 st = runCatching { api.cloudUploadStatus(st.id) }.getOrElse { st }
             }
@@ -270,6 +299,7 @@ fun CloudHome() {
                             else LinearProgressIndicator(progress = { if (j.size > 0) j.done.toFloat() / j.size else 1f }, modifier = Modifier.fillMaxWidth())
                         }
                         if (j.error != null) IconBtn("x", "Убрать", tint = P.muted) { CloudUploads.jobs.remove(j) }
+                        else if (!j.finished) IconBtn("x", "Отменить", tint = P.muted) { CloudUploads.cancel(j) }
                     }
                 }
                 Transfers.active?.let { LinearProgressIndicator(progress = { Transfers.progress }, modifier = Modifier.fillMaxWidth()) }

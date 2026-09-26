@@ -64,17 +64,80 @@ object Toasts {
     val host = SnackbarHostState()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    fun show(text: String) { scope.launch { host.currentSnackbarData?.dismiss(); host.showSnackbar(text, withDismissAction = true, duration = SnackbarDuration.Short) } }
+    /**
+     * Сообщение с действием («Отменить», «Открыть»), которое ждёт своего времени. Пока оно на экране,
+     * обычные сообщения его не сбивают; [expire] — закончить ожидание сразу (как будто время вышло),
+     * [dismiss] — снять молча, не выполняя ни действия, ни onTimeout.
+     */
+    class ActionToast internal constructor(val text: String, val action: String, seconds: Int, val onTimeout: () -> Unit, val onAction: () -> Unit) {
+        private val started = kotlin.time.TimeSource.Monotonic.markNow()
+        private var limit = seconds * 1000L
+        internal var dropped = false
+        internal var shown = false
+        internal val leftMs: Long get() = (limit - started.elapsedNow().inWholeMilliseconds).coerceAtLeast(0)
+        /** Время вышло досрочно: действие уходит на сервер сейчас (приложение уходит в фон). */
+        fun expire() { limit = 0; if (shown) host.currentSnackbarData?.dismiss() }
+        /** Снять без последствий (выход из аккаунта). */
+        fun dismiss() { dropped = true; expire() }
+    }
 
-    /** Сообщение с действием; onAction — если нажали, onTimeout — если время вышло. */
-    fun action(text: String, action: String, seconds: Int = 5, onTimeout: () -> Unit = {}, onAction: () -> Unit) {
+    /** Очередь сообщений с действием: показываются по одному, чтобы окно «Отменить» никто не схлопнул. */
+    private val queue = ArrayDeque<ActionToast>()
+    private var showing = false
+    private var current: ActionToast? = null
+    /** Обычные сообщения, пришедшие во время окна «Отменить»: показываются после него, по одному. */
+    private val deferred = ArrayList<String>()
+
+    fun show(text: String) {
         scope.launch {
+            // Окно «Отменить» на экране: не сбиваем его, сообщение покажем следом.
+            if (showing) { if (text !in deferred) deferred.add(text); return@launch }
             host.currentSnackbarData?.dismiss()
-            val r = kotlinx.coroutines.withTimeoutOrNull(seconds * 1000L) { host.showSnackbar(text, actionLabel = action, duration = SnackbarDuration.Indefinite) }
-            if (r == SnackbarResult.ActionPerformed) onAction()
-            else { host.currentSnackbarData?.dismiss(); onTimeout() }
+            host.showSnackbar(text, withDismissAction = true, duration = SnackbarDuration.Short)
         }
     }
+
+    /** Сообщение с действием; onAction — если нажали, onTimeout — если время вышло. */
+    fun action(text: String, action: String, seconds: Int = 5, onTimeout: () -> Unit = {}, onAction: () -> Unit): ActionToast {
+        val t = ActionToast(text, action, seconds, onTimeout, onAction)
+        scope.launch {
+            queue.addLast(t)
+            if (showing) return@launch
+            showing = true
+            try {
+                while (true) showOne(queue.removeFirstOrNull() ?: break)
+            } finally {
+                showing = false
+                // Что накопилось за время ожидания — теперь по очереди (каждое само дождётся своего места).
+                val rest = deferred.toList(); deferred.clear()
+                rest.forEach { show(it) }
+            }
+        }
+        return t
+    }
+
+    private suspend fun showOne(t: ActionToast) {
+        try {
+            host.currentSnackbarData?.dismiss()   // здесь может быть только обычное сообщение
+            current = t
+            t.shown = true
+            while (!t.dropped) {
+                val left = t.leftMs
+                if (left <= 0L) break
+                val r = kotlinx.coroutines.withTimeoutOrNull(left) { host.showSnackbar(t.text, actionLabel = t.action, duration = SnackbarDuration.Indefinite) }
+                if (r == SnackbarResult.ActionPerformed) { t.onAction(); return }
+                // r == null — время вышло; Dismissed — кто-то снял снэкбар раньше срока: показываем снова на остаток времени.
+                if (r == null) break
+            }
+            if (!t.dropped) t.onTimeout()
+        } finally {
+            t.shown = false
+            current = null
+        }
+    }
+
+    /** Все ожидающие действия — выполнить сейчас (приложение уходит в фон, процесс могут убить). */
+    fun expireAll() { scope.launch { current?.expire(); queue.toList().forEach { it.expire() } } }
 
     fun error(e: Throwable) {
         if (e is ApiException && e.isAuth) { Session.signOut("Вход устарел или отозван — войдите заново."); return }

@@ -56,6 +56,7 @@ import su.innotec.mail.api.Settings
 import su.innotec.mail.api.SharedFile
 import su.innotec.mail.data.Session
 import su.innotec.mail.platform.Notifier
+import su.innotec.mail.platform.PlatformInfo
 import su.innotec.mail.platform.Sys
 import su.innotec.mail.ui.ChoiceDialog
 import su.innotec.mail.ui.ConfirmDialog
@@ -238,13 +239,18 @@ class AppSettingsScreen : Screen() {
                 }
                 SectionTitle("Уведомления")
                 Column(Modifier.background(P.surface)) {
-                    SwitchRow("О новых письмах", if (p.fastNotify) "Мгновенно — включено ниже" else "Проверка примерно раз в 15 минут и сразу при открытии приложения", p.notify) { v ->
-                        Session.updatePrefs { it.copy(notify = v) }; Notifier.schedule(v); Notifier.fast(v); if (v) Notifier.ensurePermission()
+                    // На iPhone фоновой проверки пока нет (нужен push, см. docs/mobile-api.md): переключатели ничего бы не делали.
+                    if (PlatformInfo.kind == "ios") Text("На iPhone уведомления о новых письмах пока недоступны — появятся вместе с push.",
+                        Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall, color = P.muted)
+                    else {
+                        SwitchRow("О новых письмах", if (p.fastNotify) "Мгновенно — включено ниже" else "Проверка примерно раз в 15 минут и сразу при открытии приложения", p.notify) { v ->
+                            Session.updatePrefs { it.copy(notify = v) }; Notifier.schedule(v); Notifier.fast(v); if (v) Notifier.ensurePermission()
+                        }
+                        if (Notifier.fastAvailable && p.notify) SwitchRow("Мгновенно", "Проверка раз в минуту, пока есть сеть; в шторке — тихий постоянный значок. На Huawei и Honor разрешите работу в фоне: Настройки → Батарея → Запуск приложений → Почта → вручную", p.fastNotify) { v ->
+                            Session.updatePrefs { it.copy(fastNotify = v) }; Notifier.fast(v); if (v) Notifier.ensurePermission()
+                        }
+                        SwitchRow("Из общих ящиков", "Например, info@ — если у вас к нему доступ", p.notifyShared) { v -> Session.updatePrefs { it.copy(notifyShared = v) } }
                     }
-                    if (Notifier.fastAvailable && p.notify) SwitchRow("Мгновенно", "Проверка раз в минуту, пока есть сеть; в шторке — тихий постоянный значок. На Huawei и Honor разрешите работу в фоне: Настройки → Батарея → Запуск приложений → Почта → вручную", p.fastNotify) { v ->
-                        Session.updatePrefs { it.copy(fastNotify = v) }; Notifier.fast(v); if (v) Notifier.ensurePermission()
-                    }
-                    SwitchRow("Из общих ящиков", "Например, info@ — если у вас к нему доступ", p.notifyShared) { v -> Session.updatePrefs { it.copy(notifyShared = v) } }
                 }
                 SectionTitle("Жесты в списке писем")
                 Column(Modifier.background(P.surface)) {

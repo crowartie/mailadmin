@@ -32,6 +32,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -41,6 +42,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import su.innotec.mail.data.Session
 import su.innotec.mail.platform.BackHandler
 import su.innotec.mail.platform.Notifier
@@ -49,9 +52,13 @@ import su.innotec.mail.ui.Ico
 import su.innotec.mail.ui.MailTheme
 import su.innotec.mail.ui.P
 import su.innotec.mail.ui.Toasts
+import su.innotec.mail.ui.calendar.CalStore
 import su.innotec.mail.ui.calendar.CalendarHome
 import su.innotec.mail.ui.cloud.CloudHome
+import su.innotec.mail.ui.cloud.CloudStore
+import su.innotec.mail.ui.cloud.CloudUploads
 import su.innotec.mail.ui.contacts.ContactsHome
+import su.innotec.mail.ui.contacts.ContactsStore
 import su.innotec.mail.ui.login.LoginScreen
 import su.innotec.mail.ui.mail.MailHome
 import su.innotec.mail.ui.mail.MailStore
@@ -101,13 +108,41 @@ object DeepLink {
     var mailto by mutableStateOf<String?>(null)
 }
 
+/**
+ * Полный сброс при выходе — одно место на все разделы. Session зовёт его при любом выходе: кнопка «Выйти»,
+ * отозванный токен (401 в любом запросе), фоновая проверка почты. Здесь, а не в Session: разделы — часть UI.
+ */
+private fun resetOnSignOut() {
+    Nav.reset()
+    MailStore.reset()
+    ContactsStore.reset()
+    CalStore.reset()
+    CloudStore.reset()
+    // Список загрузок облака чистим; сами корутины CloudUploads снаружи не отменить — с отозванным токеном они
+    // упрутся в 401 и остановятся сами.
+    CloudUploads.jobs.clear()
+    Notifier.fast(false)
+}
+
 @Composable
 fun App() {
+    // Регистрация один раз: выход из любого места проходит через resetOnSignOut.
+    DisposableEffect(Unit) {
+        Session.onSignOut = ::resetOnSignOut
+        onDispose { Session.onSignOut = {} }
+    }
+    // Приложение ушло в фон (Android: экран закрыт или свернули; ПК: окно свернули): окна «Отменить» закрываем,
+    // отложенные удаления и отправку шлём на сервер сейчас — процесс могут убить, а действие уже показано сделанным.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        MailStore.flushPending()
+        Toasts.expireAll()
+    }
     MailTheme(Session.prefs.theme) {
         Box(Modifier.fillMaxSize().background(P.bg)) {
             val acc = Session.account
             if (acc == null) {
-                LaunchedEffect(Unit) { Nav.reset(); MailStore.reset(); Notifier.fast(false) }
+                // Вход мог отозваться, пока приложение не было на экране (фоновая служба) — сброс повторяем здесь.
+                LaunchedEffect(Unit) { resetOnSignOut() }
                 LoginScreen()
             } else {
                 LaunchedEffect(acc.origin, acc.user) {

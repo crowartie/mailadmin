@@ -55,8 +55,9 @@ actual object PlatformInfo {
 actual fun platformHttpClient(hosts: Map<String, String>, block: HttpClientConfig<*>.() -> Unit): HttpClient = HttpClient(Darwin) { block() }
 
 /**
- * Хранилище: NSUserDefaults. Токен стоит перенести в Keychain при первой сборке на Mac
- * (в README — задача номер один для iPhone).
+ * Хранилище: NSUserDefaults. TODO(iPhone): токен входа («account») перенести в Keychain (SecItemAdd/SecItemCopyMatching,
+ * kSecAttrAccessibleAfterFirstUnlock) — cinterop с Security без компилятора на Mac не проверить, поэтому пока так;
+ * в README это задача номер один для iPhone.
  */
 actual class KeyValueStore actual constructor(private val name: String) {
     private val d = NSUserDefaults.standardUserDefaults
@@ -110,9 +111,10 @@ actual object Sys {
     }
 }
 
-/** Выбор файлов (UIDocumentPicker) — на первой сборке на Mac; пока кнопка ничего не делает. */
+/** Выбор файлов (UIDocumentPicker) — на первой сборке на Mac; пока кнопка честно говорит, что не работает, а не молчит. */
 @Composable
-actual fun rememberFilePicker(multiple: Boolean, mimes: List<String>, onPicked: (List<LocalFile>) -> Unit): () -> Unit = {}
+actual fun rememberFilePicker(multiple: Boolean, mimes: List<String>, onPicked: (List<LocalFile>) -> Unit): () -> Unit =
+    { su.innotec.mail.ui.Toasts.show("На iPhone пока недоступно") }
 
 /**
  * WKWebView. Встроенные картинки письма (/mail/api/…) подставляются заранее как data:,
@@ -160,7 +162,10 @@ actual object Notifier {
         ) { _, _ -> }
     }
 
-    /** Фоновая проверка на iPhone — через push (APNs), см. docs/mobile-api.md, раздел 5. */
+    /**
+     * Фоновая проверка на iPhone — через push (APNs), см. docs/mobile-api.md, раздел 5; пока её нет,
+     * и переключатель уведомлений в настройках на iPhone скрыт (Settings.kt), чтобы не обещать лишнего.
+     */
     actual fun schedule(enabled: Boolean) {}
 
     actual fun show(id: Int, title: String, text: String, folder: String, uid: Long) {

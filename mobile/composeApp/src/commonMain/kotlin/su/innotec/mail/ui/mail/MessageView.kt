@@ -243,10 +243,14 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
     var card by remember { mutableStateOf<Person?>(null) }
     var unsub by remember { mutableStateOf<String?>(null) }
     card?.let { p -> SenderCard(p, onDismiss = { card = null }) }
-    unsub?.let { link ->
+    // Переход на экран письма — побочное действие, ему место в эффекте, а не в композиции (иначе повтор при перерисовке).
+    LaunchedEffect(unsub) {
+        val link = unsub ?: return@LaunchedEffect
         if (link.startsWith("mailto:", true)) { unsub = null; Nav.push(ComposeScreen(ComposeStart.Mailto(link))) }
+    }
+    unsub?.let { link ->
         // Ссылка ведёт на чужой сайт из письма, которое сочли лишним: показываем адрес и спрашиваем (как в веб-почте).
-        else su.innotec.mail.ui.ConfirmDialog("Открыть страницу отписки?", "Сайт: " + link.substringAfter("://").substringBefore('/'), "Открыть", onDismiss = { unsub = null }) { Sys.openUrl(link) }
+        if (!link.startsWith("mailto:", true)) su.innotec.mail.ui.ConfirmDialog("Открыть страницу отписки?", "Сайт: " + link.substringAfter("://").substringBefore('/'), "Открыть", onDismiss = { unsub = null }) { Sys.openUrl(link) }
     }
     var thread by remember(m.uid) { mutableStateOf<Thread?>(null) }
     var showRecipients by remember { mutableStateOf(false) }
@@ -377,7 +381,15 @@ private fun ThreadItem(tm: su.innotec.mail.api.ThreadMessage, current: Boolean, 
     var error by remember(tm.folder, tm.uid) { mutableStateOf<String?>(null) }
     LaunchedEffect(open) {
         if (open && full == null) {
-            try { full = Session.api!!.message(tm.folder, tm.uid); MailStore.markOpened(tm.uid) } catch (e: ApiException) { error = e.message }
+            val api = Session.api ?: return@LaunchedEffect
+            // Папка только для чтения или чужая (без «отмечать прочитанным в общих»): смотрим, не трогая флаг.
+            val src = MailStore.folders.firstOrNull { it.path == tm.folder }
+            val peek = src?.readonly == true || (src?.isShared == true && !MailStore.settings.sharedMarkSeen)
+            try {
+                full = api.message(tm.folder, tm.uid, peek = peek)
+                // Строка списка — только в открытой папке: в другой папке тот же uid — другое письмо.
+                if (!peek && tm.folder == MailStore.query.folder) MailStore.markOpened(tm.uid)
+            } catch (e: ApiException) { error = e.message }
         }
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(10.dp)).background(if (current) P.accentSoft else P.surface2)) {

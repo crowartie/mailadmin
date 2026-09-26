@@ -1,5 +1,6 @@
 package su.innotec.mail
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -10,11 +11,28 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.delay
+import su.innotec.mail.data.MailCheck
 import su.innotec.mail.data.Session
 import su.innotec.mail.platform.DesktopBack
 
 fun main() = application {
     Session.load()
+    // Уведомления на ПК: пока программа запущена, раз в минуту проверяем «Входящие» (на Android это делают
+    // служба и WorkManager). Показ — через значок в области уведомлений (Notifier на ПК).
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            if (Session.account == null || !Session.prefs.notify) continue
+            try {
+                MailCheck.run()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                // Нет связи или сервер не ответил — попробуем через минуту; отозванный вход обработает сам список писем.
+            }
+        }
+    }
     Window(
         onCloseRequest = ::exitApplication,
         title = "Почта",

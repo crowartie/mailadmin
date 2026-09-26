@@ -1,6 +1,11 @@
 package su.innotec.mail
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
@@ -35,7 +40,9 @@ class DesktopShotTest {
                 Account(origin = System.getenv("MAILADMIN_TEST_SERVER") ?: "https://mail.innotec.su", token = token, user = "", name = "")))
         }
         Session.load()
-        setContent { App() }
+        // Тестовая сцена не даёт владельца жизненного цикла, а App следит за уходом в фон (LifecycleEventEffect).
+        val owner = object : LifecycleOwner { override val lifecycle = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED } }
+        setContent { CompositionLocalProvider(LocalLifecycleOwner provides owner) { App() } }
         fun shot(name: String) {
             waitForIdle()
             ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", File(out, "$name.png"))

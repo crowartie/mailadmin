@@ -619,6 +619,13 @@ data class CalEvent(
     val rrule: RRule? = null,
     val recurrenceId: String? = null,
     val sequence: Int? = null,
+    /**
+     * У повторяющихся — начало и конец самой серии (сервер отдаёт их в списке событий).
+     * Правка «всей серии» отталкивается от них, а не от открытого вхождения, иначе серия
+     * переезжала бы на день этого вхождения.
+     */
+    val masterStart: String? = null,
+    val masterEnd: String? = null,
 )
 
 /** Тело POST events / PUT events/{calendar}/{id}. */

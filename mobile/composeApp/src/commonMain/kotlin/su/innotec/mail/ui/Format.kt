@@ -27,6 +27,12 @@ object Fmt {
 
     fun local(iso: String?): LocalDateTime? = parse(iso)?.toLocalDateTime(tz)
 
+    /**
+     * Дата из строки как есть («2027-01-04» или «2027-01-04T00:00:00+03:00» → 4 января), без перевода
+     * в пояс устройства: у целодневных событий полночь сервера в другом поясе давала бы соседний день.
+     */
+    fun dateOnly(iso: String?): LocalDate? = iso?.takeIf { it.length >= 10 }?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }
+
     fun today(): LocalDate = Clock.System.todayIn(tz)
 
     private fun two(n: Int) = n.toString().padStart(2, '0')

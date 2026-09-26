@@ -41,8 +41,10 @@ class MailWatchService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         AndroidCtx.app = applicationContext
         if (Session.account == null) Session.load()
-        if (Session.account == null || !Session.prefs.fastNotify || !Session.prefs.notify) { stopSelf(); return START_NOT_STICKY }
+        // Службу запустили через startForegroundService — startForeground обязателен всегда, даже если тут же
+        // останавливаемся: иначе система роняет приложение (ForegroundServiceDidNotStartInTime).
         ServiceCompat.startForeground(this, ID, ongoing(), if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0)
+        if (Session.account == null || !Session.prefs.fastNotify || !Session.prefs.notify) { stopSelf(); return START_NOT_STICKY }
         if (loop?.isActive != true) loop = scope.launch {
             var wait = 60_000L
             while (isActive) {

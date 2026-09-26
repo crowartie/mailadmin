@@ -25,4 +25,19 @@ class ShortcutsTest {
         assertEquals(before + 1, MailStore.searchSignal, "Ctrl+F — поиск")
         assertEquals(Section.MAIL, Nav.section)
     }
+
+    @Test
+    fun composeWindowStaysSingle() {
+        Nav.reset()
+        assertTrue(Shortcuts.handle("N", ctrl = true, shift = false))
+        // Второе Ctrl+N поверх открытого письма — клавиша съедается, второго окна нет.
+        assertTrue(Shortcuts.handle("N", ctrl = true, shift = false))
+        assertEquals(1, Nav.stack.size, "одно окно «Написать»")
+        // Ctrl+F в окне письма — не поиск по папке: стопка экранов (и недописанное письмо) остаётся.
+        val before = MailStore.searchSignal
+        assertFalse(Shortcuts.handle("F", ctrl = true, shift = false))
+        assertEquals(before, MailStore.searchSignal)
+        assertEquals(1, Nav.stack.size)
+        Nav.reset()
+    }
 }

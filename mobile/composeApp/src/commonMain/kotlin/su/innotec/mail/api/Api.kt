@@ -130,11 +130,27 @@ class Api(
             }
         } catch (e: ApiException) {
             throw e
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Отмена корутины (ушли с экрана, новый запрос списка) — не «нет связи»: иначе отменённая
+            // загрузка показывала бы ошибку сети и включала полосу «Нет связи».
+            throw e
         } catch (e: Exception) {
-            throw ApiException(0, "network", "Нет связи с сервером. Проверьте интернет.")
+            throw ApiException(0, "network", NETWORK_ERROR)
         }
         if (!resp.status.isSuccess()) throw errorOf(resp)
         return resp
+    }
+
+    /**
+     * Разбор JSON ответа. Wi-Fi с входом через страницу, прокси или сбой сервера отдают HTML вместо JSON —
+     * ошибка сериализатора человеку ни о чём не говорит, поэтому здесь она становится понятной.
+     */
+    private suspend inline fun <reified T> parsed(resp: HttpResponse): T = try {
+        resp.body<T>()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        throw ApiException(0, "bad-response", BAD_RESPONSE)
     }
 
     private suspend fun errorOf(resp: HttpResponse): ApiException {
@@ -155,9 +171,9 @@ class Api(
         return ApiException(resp.status.value, body?.code, msg)
     }
 
-    private suspend inline fun <reified T> get(path: String): T = raw(HttpMethod.Get, path).body()
+    private suspend inline fun <reified T> get(path: String): T = parsed(raw(HttpMethod.Get, path))
     private suspend inline fun <reified T> send(method: HttpMethod, path: String, body: JsonElement? = null, timeoutMs: Long? = null): T =
-        raw(method, path, body ?: JsonObject(emptyMap()), timeoutMs).body()
+        parsed(raw(method, path, body ?: JsonObject(emptyMap()), timeoutMs))
     private suspend inline fun <reified T> post(path: String, body: JsonElement? = null, timeoutMs: Long? = null): T = send(HttpMethod.Post, path, body, timeoutMs)
     private suspend fun postOk(path: String, body: JsonElement? = null) { raw(HttpMethod.Post, path, body ?: JsonObject(emptyMap())) }
     private suspend fun deleteOk(path: String, body: JsonElement? = null) { raw(HttpMethod.Delete, path, body) }
@@ -183,14 +199,16 @@ class Api(
             }
         } catch (e: ApiException) {
             throw e
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            throw ApiException(0, "network", "Нет связи с сервером. Проверьте интернет.")
+            throw ApiException(0, "network", NETWORK_ERROR)
         }
     }
 
     // ---------- вход ----------
 
-    suspend fun discover(): Discovery = raw(HttpMethod.Get, "$origin/.well-known/mailadmin").body()
+    suspend fun discover(): Discovery = parsed(raw(HttpMethod.Get, "$origin/.well-known/mailadmin"))
     suspend fun login(req: LoginRequest): LoginResponse = post("/login", json(req))
     suspend fun loginCode(req: LoginCodeRequest): LoginResponse = post("/login/code", json(req))
     suspend fun me(): Me = get("/me")
@@ -287,9 +305,9 @@ class Api(
 
     /** [progress] — сколько байт письма ушло на сервер и сколько всего (для плашки «Отправляется…»). */
     suspend fun send(f: ComposeForm, progress: ((Long, Long?) -> Unit)? = null): SendResult =
-        raw(HttpMethod.Post, "/send", composeBody(f), timeoutMs = 1_800_000) { progress?.let { p -> onUpload { sent, total -> p(sent, total) } } }.body()
+        parsed(raw(HttpMethod.Post, "/send", composeBody(f), timeoutMs = 1_800_000) { progress?.let { p -> onUpload { sent, total -> p(sent, total) } } })
     suspend fun saveDraft(f: ComposeForm, progress: ((Long, Long?) -> Unit)? = null): SendResult =
-        raw(HttpMethod.Post, "/draft", composeBody(f), timeoutMs = 1_800_000) { progress?.let { p -> onUpload { sent, total -> p(sent, total) } } }.body()
+        parsed(raw(HttpMethod.Post, "/draft", composeBody(f), timeoutMs = 1_800_000) { progress?.let { p -> onUpload { sent, total -> p(sent, total) } } })
     suspend fun openDraft(uid: Long): Draft = get("/draft/$uid")
     suspend fun outbox(): List<OutboxItem> = get("/outbox")
     suspend fun cancelOutbox(id: Long) = deleteOk("/outbox/$id")
@@ -332,18 +350,18 @@ class Api(
     fun ticketFilePath(id: Long, message: Long) = "/feedback/$id/file/$message"
 
     suspend fun createTicket(kind: String, text: String, subject: String?, context: String?, file: LocalFile?): Created =
-        raw(HttpMethod.Post, "/feedback", MultiPartFormDataContent(formData {
+        parsed(raw(HttpMethod.Post, "/feedback", MultiPartFormDataContent(formData {
             append("kind", kind); append("text", text)
             subject?.takeIf { it.isNotBlank() }?.let { append("subject", it) }
             context?.let { append("context", it) }
             file?.let { f -> append("file", InputProvider(f.size) { f.open() }, Headers.build { append(HttpHeaders.ContentType, f.mime); append(HttpHeaders.ContentDisposition, "filename=\"${f.name}\"") }) }
-        }), timeoutMs = 300_000).body()
+        }), timeoutMs = 300_000))
 
     suspend fun replyTicket(id: Long, text: String, file: LocalFile?): TicketReply =
-        raw(HttpMethod.Post, "/feedback/$id/reply", MultiPartFormDataContent(formData {
+        parsed(raw(HttpMethod.Post, "/feedback/$id/reply", MultiPartFormDataContent(formData {
             append("text", text)
             file?.let { f -> append("file", InputProvider(f.size) { f.open() }, Headers.build { append(HttpHeaders.ContentType, f.mime); append(HttpHeaders.ContentDisposition, "filename=\"${f.name}\"") }) }
-        }), timeoutMs = 300_000).body()
+        }), timeoutMs = 300_000))
 
     // ---------- контакты ----------
 
@@ -362,10 +380,10 @@ class Api(
     suspend fun contactHistory(): List<HistoryEntry> = get("/contacts/history")
     suspend fun forgetHistory(email: String) = deleteOk("/contacts/history/${enc(email)}")
     suspend fun importContacts(file: LocalFile, book: String = "personal"): JsonElement =
-        raw(HttpMethod.Post, "/contacts/import", MultiPartFormDataContent(formData {
+        parsed(raw(HttpMethod.Post, "/contacts/import", MultiPartFormDataContent(formData {
             append("book", book)
             append("file", InputProvider(file.size) { file.open() }, Headers.build { append(HttpHeaders.ContentType, file.mime); append(HttpHeaders.ContentDisposition, "filename=\"${file.name}\"") })
-        })).body()
+        })))
     fun contactsExportPath(book: String? = null) = "/contacts/export" + (book?.let { "?book=${enc(it)}" } ?: "")
 
     // ---------- календарь, задачи ----------
@@ -439,6 +457,9 @@ class Api(
     suspend fun activity(kind: String, detail: String) { runCatching { postOk("/activity", buildJsonObject { put("kind", kind); put("detail", detail) }) } }
 
     companion object {
+        const val NETWORK_ERROR = "Нет связи с сервером. Проверьте интернет."
+        const val BAD_RESPONSE = "Сервер ответил не тем, что ожидалось — проверьте сеть (возможно, Wi-Fi требует входа)"
+
         /** filename*=UTF-8''… или filename="…" из Content-Disposition. */
         fun fileNameOf(cd: String?): String? {
             if (cd == null) return null

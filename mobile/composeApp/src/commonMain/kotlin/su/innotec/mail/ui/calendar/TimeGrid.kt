@@ -1,6 +1,6 @@
 package su.innotec.mail.ui.calendar
 
-import su.innotec.mail.ui.launchSafe
+import kotlinx.coroutines.launch
 import su.innotec.mail.ui.Toasts
 import su.innotec.mail.data.Session
 import su.innotec.mail.api.EventInput
@@ -225,15 +225,23 @@ private fun moveEvent(e: CalEvent, minutes: Int, daysShift: Int) {
     val en = Fmt.parse(e.end) ?: s
     val ns = (s + shift).toString(); val ne = (en + shift).toString()
     // Новое время — сразу, иначе событие прыгнет на старое место и обратно, пока сервер отвечает.
-    CalStore.events = CalStore.events.map { if (it.id == e.id && it.calendar == e.calendar) it.copy(start = ns, end = ne) else it }
-    moveScope.launchSafe {
-        Session.api!!.updateEvent(e.calendar, e.id, EventInput(
-            calendar = e.calendar, title = e.title, start = ns, end = ne, allDay = false, location = e.location, description = e.description,
-            url = e.url, status = e.status, transparent = e.transparent, attendees = e.attendees, alarm = e.alarm,
-        ))
-        val at = (s + shift).toLocalDateTime(tz)
-        Toasts.show((if (e.attendees.isNotEmpty()) "Время изменено, участники извещены" else "Перенесено") + ": " + Fmt.dateShort(at.date) + ", " + Fmt.time(at))
-        CalStore.load()
+    fun place(start: String, end: String) { CalStore.events = CalStore.events.map { if (it.id == e.id && it.calendar == e.calendar) it.copy(start = start, end = end) else it } }
+    place(ns, ne)
+    moveScope.launch {
+        try {
+            Session.api!!.updateEvent(e.calendar, e.id, EventInput(
+                // Пустое название сервер сам показывает как «(без названия)» — обратно эту подпись не шлём, иначе она станет настоящим названием.
+                calendar = e.calendar, title = e.title.takeUnless { it == "(без названия)" } ?: "", start = ns, end = ne, allDay = false,
+                location = e.location, description = e.description, url = e.url, status = e.status, transparent = e.transparent, attendees = e.attendees, alarm = e.alarm,
+            ))
+            val at = (s + shift).toLocalDateTime(tz)
+            Toasts.show((if (e.attendees.isNotEmpty()) "Время изменено, участники извещены" else "Перенесено") + ": " + Fmt.dateShort(at.date) + ", " + Fmt.time(at))
+            CalStore.load()
+        } catch (ex: kotlinx.coroutines.CancellationException) { throw ex } catch (ex: Throwable) {
+            // Не сохранилось — возвращаем на прежнее место, иначе на экране останется время, которого нет на сервере.
+            place(e.start, e.end)
+            Toasts.error(ex)
+        }
     }
 }
 

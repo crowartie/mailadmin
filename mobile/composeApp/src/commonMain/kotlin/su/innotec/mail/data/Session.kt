@@ -51,6 +51,13 @@ object Session {
     /** Причина последнего выхода («вход устарел») — показывается на экране входа. */
     var signedOutReason by mutableStateOf<String?>(null)
 
+    /**
+     * Что сделать при выходе, кроме стирания входа: сброс всех разделов и их задач. Регистрирует App —
+     * выход случается и из кнопки «Выйти», и из любого ответа 401 (Toasts.error, фоновая проверка почты),
+     * и всё это должно проходить через одно место.
+     */
+    var onSignOut: () -> Unit = {}
+
     private var http: HttpClient? = null
     private var httpHosts: Map<String, String>? = null
     private var cachedApi: Api? = null
@@ -68,14 +75,17 @@ object Session {
     }
 
     fun signOut(reason: String? = null) {
+        val had = account != null
         // Письма на устройстве — только пока вход действует.
         su.innotec.mail.platform.DiskCache.clear()
         store.put("account", null)
         account = null
         cachedApi = null
-        signedOutReason = reason
+        // Повторный выход (запоздалый 401 от уже отменённого запроса) причину не перезаписывает и разделы не трогает.
+        if (had) signedOutReason = reason
         prefs = prefs.copy(lastNotifiedUid = 0, lastNotifiedUidNext = 0)
         savePrefs()
+        if (had) onSignOut()
     }
 
     fun updatePrefs(f: (LocalPrefs) -> LocalPrefs) {

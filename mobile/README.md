@@ -44,9 +44,10 @@ cd mobile
 ```
 
 Выпуск для людей — только подписанный (`assembleRelease` + `mobile/keystore.properties`, ключ хранит
-администратор). Выпуск через GitHub: поднять `appVersion`/`appVersionCode` в `composeApp/build.gradle.kts`,
-дописать `CHANGELOG.md`, поставить метку `mobile-vX.Y.Z` — `.github/workflows/mobile-release.yml` соберёт APK
-и выложит его в Releases. Установленное приложение увидит выпуск само («Ещё → О приложении»).
+администратор). Порядок: поднять `appVersion`/`appVersionCode` в `composeApp/build.gradle.kts`, дописать
+`CHANGELOG.md`, собрать APK (вручную или меткой `mobile-vX.Y.Z` через `.github/workflows/mobile-release.yml`)
+и выложить его на сервер почты — `pochta.apk` и `latest.json` в `storage/app/private/mobile` (см. `MobileRelease`).
+Установленное приложение увидит выпуск само («Ещё → О приложении»): сравнивает версию, а при равной — номер сборки.
 
 ## Тесты
 

@@ -113,21 +113,33 @@ object ContactsStore {
     var error by mutableStateOf<String?>(null)
     var selected by mutableStateOf<Contact?>(null)
     var loaded = false
+    private var searchJob: kotlinx.coroutines.Job? = null
 
     fun load() {
         val api = Session.api ?: return
         loading = true; error = null
+        // Запрос уходил на каждую букву, и ответы приходили вразнобой: список мог показать
+        // результат для «ив», когда в поле уже «иванов». Устаревший ответ отбрасываем.
+        val asked = q; val askedBook = book
         scope.launch {
             try {
                 books = api.books()
                 groups = runCatching { api.contactGroups() }.getOrDefault(emptyList())
-                val list = api.contacts(book, q)
+                val list = api.contacts(askedBook, asked)
+                if (asked != q || askedBook != book) return@launch
                 all.clear(); all.addAll(list)
                 loaded = true
             } catch (e: ApiException) {
-                if (e.isAuth) Toasts.error(e) else error = e.message
-            } finally { loading = false }
+                if (e.isAuth) Toasts.error(e) else if (asked == q) error = e.message
+            } finally { if (asked == q && askedBook == book) loading = false }
         }
+    }
+
+    /** Поиск с задержкой 300 мс после последней буквы — один запрос на набранное слово, а не на каждую букву. */
+    fun search(text: String) {
+        q = text
+        searchJob?.cancel()
+        searchJob = scope.launch { kotlinx.coroutines.delay(300); load() }
     }
 
     fun visible(): List<Contact> = all.filter { c -> group == null || group in c.groups }
@@ -192,7 +204,7 @@ private fun ContactList(wide: Boolean) {
                     }
                 }
                 TextField(
-                    s.q, { s.q = it; s.load() },
+                    s.q, { s.search(it) },
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(10.dp)).testTag("contacts-search"),
                     placeholder = { Text("Имя, адрес, телефон, отдел") }, singleLine = true, leadingIcon = { Ico("search", tint = P.muted) },
                     colors = TextFieldDefaults.colors(focusedContainerColor = P.surface2, unfocusedContainerColor = P.surface2, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),

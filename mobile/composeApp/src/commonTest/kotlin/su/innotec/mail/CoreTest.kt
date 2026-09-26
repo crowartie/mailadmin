@@ -150,6 +150,16 @@ class CoreTest {
     }
 
     @Test
+    fun htmlInsteadOfJsonIsReadable() = runTest {
+        // Wi-Fi с входом через страницу: 200 и HTML вместо JSON — понятная ошибка, а не текст сериализатора.
+        val (a, _) = api { respond("<html><body>Login</body></html>", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/html")) }
+        val e = assertFailsWith<ApiException> { a.folders() }
+        assertEquals("bad-response", e.code)
+        assertEquals(Api.BAD_RESPONSE, e.message)
+        assertTrue(e.isNetwork)
+    }
+
+    @Test
     fun listUrlAndParsing() = runTest {
         val (a, seen) = api {
             respond(

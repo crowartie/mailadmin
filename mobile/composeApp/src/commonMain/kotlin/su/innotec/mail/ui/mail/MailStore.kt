@@ -82,10 +82,18 @@ object MailStore {
     fun reset() {
         loadJob?.cancel(); pollJob?.cancel()
         started = false
+        // Окна «Отменить» снимаем молча: вход уже отозван, запрос всё равно не пройдёт.
+        pendingToasts.toList().forEach { it.dismiss() }; pendingToasts.clear(); pending.clear()
         folders = emptyList(); labels = emptyList(); settings = Settings()
         messages.clear(); selected.clear(); total = 0; openUid = null; query = ListQuery(); error = null; shownQuery = null; offline = false
-        inboxUnread = 0; outboxCount = 0; quarantineCount = 0
+        inboxUnread = 0; outboxCount = 0; quarantineCount = 0; loading = false; loadingMore = false
     }
+
+    /**
+     * Все отложенные действия (ждут окна «Отменить») — на сервер сейчас. Зовётся, когда приложение уходит
+     * в фон: систему не спросишь, убьёт ли она процесс через секунду, а удаление уже показано сделанным.
+     */
+    fun flushPending() { pendingToasts.toList().forEach { it.expire() } }
 
     /** Первый показ раздела: настройки, метки, папки, список; затем опрос раз в минуту. */
     fun start() {
@@ -178,32 +186,42 @@ object MailStore {
             if (cached != null) { messages.addAll(cached.first.filterNot { pendingHidden(it.uid) }); total = cached.second }
             shownQuery = q0
         }
-        loadJob = scope.launch {
+        // Запуск отложенный (LAZY): задача узнаёт себя в loadJob ещё до первого шага, независимо от диспетчера.
+        val job = scope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+            // Своя задача или уже устаревшая: устаревшая (её отменил новый load) не должна гасить «loading»
+            // и писать ошибку поверх нового списка.
+            val me = coroutineContext[Job]
             try {
                 val q = query
                 val r = api.list(q.folder, 0, pageSize, q.filter, q.q, if (q.everywhere) "all" else "folder", q.sort, withFolders = folders.isEmpty())
-                if (q != query) return@launch
+                if (q != query || loadJob !== me) return@launch
                 messages.clear()
                 messages.addAll(r.messages.filterNot { pendingHidden(it.uid) })
                 total = r.total
                 shownQuery = q
                 offline = false
+                error = null
                 if (q.q.isEmpty()) MailCache.saveList(q.folder, q.filter, q.sort, r.messages, r.total)
                 r.folders?.let { applyFolders(it) }
                 if (q.folder == folders.firstOrNull { it.role == "inbox" }?.path && q.filter == "all" && q.q.isEmpty()) {
                     r.messages.firstOrNull()?.let { top -> Session.updatePrefs { p -> if (top.uid > p.lastNotifiedUid) p.copy(lastNotifiedUid = top.uid) else p } }
                 }
             } catch (e: ApiException) {
+                if (loadJob !== me) return@launch
                 if (e.isAuth) Toasts.error(e) else error = e.message
                 offline = e.isNetwork && messages.isNotEmpty()
             } finally {
-                loading = false
+                if (loadJob === me) loading = false
             }
         }
+        loadJob = job
+        job.start()
     }
 
     fun loadMore() {
-        if (loadingMore || loading || messages.size >= total) return
+        // Без связи показан сохранённый список: дальше него на сервере всё равно не спросить,
+        // а каждая прокрутка к концу давала бы новое сообщение об ошибке.
+        if (offline || loadingMore || loading || messages.size >= total) return
         loadingMore = true
         scope.launch {
             try {
@@ -243,8 +261,24 @@ object MailStore {
     /** Письма, которые сейчас «ждут отмены» — их не показываем при перечитывании. */
     private val pending = mutableMapOf<Long, Int>()
     private fun pendingHidden(uid: Long) = pending.containsKey(uid)
+    /** Открытые окна «Отменить»: чтобы выполнить всё сразу при уходе в фон или снять при выходе. */
+    private val pendingToasts = mutableListOf<Toasts.ActionToast>()
 
     fun folderOf(uid: Long): String = messages.firstOrNull { it.uid == uid }?.folder ?: query.folder
+
+    /**
+     * В поиске «везде» выбранные письма лежат в разных папках, а /action работает с одной:
+     * uid группируются по папке письма и уходят отдельным запросом на каждую.
+     */
+    private fun groupByFolder(uids: List<Long>, folder: String?): Map<String, List<Long>> =
+        if (folder != null) mapOf(folder to uids) else uids.groupBy { folderOf(it) }
+
+    private suspend fun actGroups(groups: Map<String, List<Long>>, op: String, target: String?, label: Long?, until: String?) {
+        for ((f, ids) in groups) {
+            val r = api.action(ActionRequest(folder = f, uids = ids, op = op, target = target, label = label, until = until))
+            r.folders?.let { applyFolders(it) }
+        }
+    }
 
     fun updateLocal(uids: Collection<Long>, f: (MessageSummary) -> MessageSummary) {
         for (i in messages.indices) if (messages[i].uid in uids) messages[i] = f(messages[i])
@@ -273,14 +307,14 @@ object MailStore {
      */
     fun act(op: String, uids: List<Long>, target: String? = null, label: Long? = null, until: String? = null, folder: String? = null, senders: List<String>? = null, onDone: () -> Unit = {}) {
         if (uids.isEmpty()) return
-        val f = folder ?: folderOf(uids.first())
+        val groups = groupByFolder(uids, folder)
         // Спам, рассылка, «не спам» и перенос в свою папку — с вопросом о правиле для отправителя (как в веб-почте).
         // Тогда действие идёт сразу, без окна «Отменить»: правило может тут же разложить письма, и отложенный
         // запрос пришёл бы уже к переехавшим письмам. В чужом общем ящике правил не предлагаем.
-        val src = folders.firstOrNull { it.path == f }
+        val srcs = groups.keys.map { f -> folders.firstOrNull { it.path == f } }
         val targetFolder = target?.let { t -> folders.firstOrNull { it.path == t } }
         val askKind = when {
-            src?.role == "shared" || src?.owner != null -> null
+            srcs.any { it?.role == "shared" || it?.owner != null } -> null
             op == "spam" -> "spam"
             op == "lists" -> "lists"
             op == "notspam" -> "ham"
@@ -302,8 +336,7 @@ object MailStore {
             }
             scope.launch {
                 try {
-                    val r = api.action(ActionRequest(folder = f, uids = uids, op = op, target = target, label = label, until = until))
-                    r.folders?.let { applyFolders(it) }
+                    actGroups(groups, op, target, label, until)
                     version++
                     if (op == "remind") Toasts.show(opText(op, uids.size, target))
                     onDone()
@@ -318,44 +351,43 @@ object MailStore {
         uids.forEach { pending[it] = (pending[it] ?: 0) + 1 }
         total = (total - removed.size).coerceAtLeast(0)
         if (openUid in uids) openUid = null
+        /** Отправить на сервер; не вышло — вернуть строки (несколько папок: часть могла уйти — перечитать список). */
+        suspend fun perform(after: () -> Unit) {
+            try {
+                actGroups(groups, op, target, label, until)
+                version++
+                onDone()
+                after()
+            } catch (e: ApiException) {
+                Toasts.error(e); restore(removed)
+                if (groups.size > 1) load()
+            } finally {
+                uids.forEach { pending.remove(it) }
+            }
+        }
         if (askKind != null) {
             scope.launch {
-                try {
-                    val r = api.action(ActionRequest(folder = f, uids = uids, op = op, target = target, label = label, until = until))
-                    r.folders?.let { applyFolders(it) }
-                    version++
-                    onDone()
+                perform {
                     Toasts.show(opText(op, uids.size, target))
                     SenderRules.offer(SenderAsk(askKind, askMails, targetFolder))
-                } catch (e: ApiException) {
-                    Toasts.error(e); restore(removed)
-                } finally {
-                    uids.forEach { pending.remove(it) }
                 }
             }
             return
         }
         val seconds = settings.undoSeconds.coerceAtLeast(4)
         var undone = false
-        Toasts.action(opText(op, uids.size, target), "Отменить", seconds, onTimeout = {
+        lateinit var toast: Toasts.ActionToast
+        toast = Toasts.action(opText(op, uids.size, target), "Отменить", seconds, onTimeout = {
+            pendingToasts.remove(toast)
             if (undone) return@action
-            scope.launch {
-                try {
-                    val r = api.action(ActionRequest(folder = f, uids = uids, op = op, target = target, label = label, until = until))
-                    r.folders?.let { applyFolders(it) }
-                    version++
-                    onDone()
-                } catch (e: ApiException) {
-                    Toasts.error(e); restore(removed)
-                } finally {
-                    uids.forEach { pending.remove(it) }
-                }
-            }
+            scope.launch { perform {} }
         }) {
+            pendingToasts.remove(toast)
             undone = true
             uids.forEach { pending.remove(it) }
             restore(removed)
         }
+        pendingToasts.add(toast)
     }
 
     private fun restore(removed: List<Pair<Int, MessageSummary>>) {

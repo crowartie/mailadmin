@@ -59,6 +59,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -156,6 +157,10 @@ class ComposeModel(val start: ComposeStart) {
     var dirty by mutableStateOf(false)
     var saving by mutableStateOf(false)
     var meta by mutableStateOf(ComposeMeta())
+    /** «Отправить» нажали, пока файлы грузились: письмо уйдёт само, когда загрузка закончится — даже если окно закрыли. */
+    var waitUpload by mutableStateOf(false)
+    /** «Отправить позже» ждёт подтверждений (домены, пустая тема) и загрузки файлов. */
+    var pendingAt by mutableStateOf<String?>(null)
 
     val bodyHasContent get() = editor.html.contains("<img", true) || Html.toText(editor.html).isNotBlank()
     val hasContent get() = to.isNotEmpty() || cc.isNotEmpty() || subject.isNotBlank() || bodyHasContent || files.isNotEmpty() || cloudFiles.isNotEmpty()
@@ -293,6 +298,7 @@ class ComposeModel(val start: ComposeStart) {
                     existing.addAll(d.attachments); keep.addAll(d.attachments.map { it.index })
                     cloudFiles.addAll(d.cloudFiles)
                     sourceFolder = MailStore.folders.firstOrNull { it.role == "drafts" }?.path; sourceUid = draftUid
+                    sourceIsDraft = true
                 }
             }
             editor = RichEditorState(body)
@@ -300,6 +306,11 @@ class ComposeModel(val start: ComposeStart) {
             verifyDomains()
         } catch (e: ApiException) {
             loadError = e.message
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Неожиданное (битый адрес mailto:, сбой разбора) — экран «Повторить», а не падение приложения.
+            loadError = e.message ?: "Не удалось открыть письмо"
         }
     }
 
@@ -314,14 +325,27 @@ class ComposeModel(val start: ComposeStart) {
 
     fun html(): String = (if (bodyHasContent) editor.html else "<p><br></p>") + if (includeTail) tail else ""
 
+    /**
+     * Источник вложений — уже сам черновик (а не исходное письмо ответа или пересылки). Свой флаг, а не сравнение
+     * с путём папки «Черновики»: список папок мог ещё не загрузиться (открыли черновик по ссылке из уведомления).
+     */
+    var sourceIsDraft: Boolean = false; private set
+
+    /** Файлы, которые уйдут ссылкой: в черновик их не кладём (см. [saveOnce]), они ждут отправки на устройстве. */
+    private fun draftFiles(): List<LocalFile> = files.filterIndexed { i, _ -> i !in viaCloud }
+
     fun form(forDraft: Boolean): ComposeForm = ComposeForm(
         from = from, to = addr(to), cc = addr(cc), bcc = addr(bcc), subject = subject, html = html(),
         inReplyTo = inReplyTo, references = references, answeredFolder = answeredFolder, answeredUid = answeredUid,
         sourceFolder = sourceFolder, sourceUid = sourceUid, draftUid = draftUid,
         sendAt = if (forDraft) null else sendAt, remindDays = if (forDraft) null else remindDays,
         keepAttachments = existing.isNotEmpty() && keep.isNotEmpty(), keepIndexes = keep.toList(),
-        priority = priority, receipt = receipt, draftKeepFiles = forDraft,
-        files = files.toList(), cloud = viaCloud.toList(), cloudFiles = cloudFiles.toList(), attachMessages = attachMessages.toList(),
+        priority = priority, receipt = receipt,
+        // draftKeepFiles заставляет сервер брать вложения из прошлого черновика вместо sourceFolder. Пока источник —
+        // исходное письмо (ответ без файлов), этого нельзя: отмеченные вложения исходного не попали бы в черновик.
+        draftKeepFiles = forDraft && sourceIsDraft,
+        files = if (forDraft) draftFiles() else files.toList(), cloud = if (forDraft) emptyList() else viaCloud.toList(),
+        cloudFiles = cloudFiles.toList(), attachMessages = attachMessages.toList(),
     )
 
     /** Сохранить черновик. Свои файлы после первого сохранения живут уже в черновике. */
@@ -340,11 +364,11 @@ class ComposeModel(val start: ComposeStart) {
      * а черновик не разрастается. Не вышло (нет места в облаке) — прежний путь: файл в черновик, ссылкой при отправке.
      */
     fun uploadToCloud(f: LocalFile, scope: CoroutineScope) {
+        val api = Session.api ?: return
         val job = CloudJob(f)
         cloudJobs.add(job)
         scope.launch {
             try {
-                val api = Session.api!!
                 runCatching { api.cloudMkdir("", CLOUD_DIR) }   // уже есть — не страшно
                 val path = su.innotec.mail.ui.cloud.CloudUploads.uploadFile(CLOUD_DIR, f, onStarted = { job.started = true }) { job.done = it; if (it >= f.size) job.linking = true }
                 cloudFiles.add(CloudFileRef(path, path.substringAfterLast('/'), f.size))
@@ -353,6 +377,12 @@ class ComposeModel(val start: ComposeStart) {
                 if (e.isAuth) { Toasts.error(e); return@launch }
                 Toasts.show("«${f.name}»: ${e.message} — файл уйдёт через черновик")
                 files.add(f); viaCloud.add(files.lastIndex); dirty = true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Файл не открылся (удалили или отозвали доступ к нему, пока он ждал очереди) — говорим, а не падаем.
+                Toasts.show("«${f.name}»: не удалось прочитать файл — приложите его заново")
+                return@launch
             } finally {
                 cloudJobs.remove(job)
             }
@@ -368,6 +398,9 @@ class ComposeModel(val start: ComposeStart) {
     var uploadStarted by mutableStateOf(false); private set
     /** Во время загрузки успели ещё что-то изменить — после неё сохранить снова. */
     private var again = false
+    /** Идущее сохранение и его итог — чтобы закрытие окна дождалось его, а не сохраняло вторым заходом. */
+    private var saveJob: Job? = null
+    private var lastSaveOk = false
 
     /** Сколько уже загружено из файла [f] (null — файл сейчас не грузится). */
     fun uploadedOf(f: LocalFile): Long? {
@@ -377,56 +410,95 @@ class ComposeModel(val start: ComposeStart) {
         return (uploadSent - before).coerceIn(0, f.size)
     }
 
+    // ---------- автосохранение ----------
+
+    private var autosave: Job? = null
+
+    /**
+     * Автосохранение через 15 секунд после правки — в [sendScope], а не в области окна: закрытое окно
+     * не должно обрывать заливку файлов. Таймер отменяем, идущее сохранение — никогда.
+     */
+    fun scheduleAutosave() {
+        cancelAutosave()
+        autosave = sendScope.launch {
+            delay(15_000)
+            autosave = null   // дальше отменять нечего: сохранение должно дойти до конца
+            if (dirty) saveDraft()
+        }
+    }
+
+    /** Снять таймер (окно закрыли, письмо отправляют, черновик удалили); заливку, которая уже идёт, не трогает. */
+    fun cancelAutosave() { autosave?.cancel(); autosave = null }
+
     /**
      * Сохранить черновик. Свои файлы при этом загружаются на сервер и дальше живут в черновике —
      * поэтому загрузка идёт сразу после выбора файла (как в Gmail), а не при отправке.
+     * Если сохранение уже идёт, ждём его: оно само сделает ещё заход (again), раз что-то изменилось.
      */
     suspend fun saveDraft(quiet: Boolean = true): Boolean {
         val api = Session.api ?: return false
-        if (saving) { again = true; return false }
+        if (saving) { again = true; saveJob?.join(); return lastSaveOk }
         saving = true
+        saveJob = currentCoroutineContext()[Job]
         try {
             var ok: Boolean
             do {
                 again = false
                 ok = saveOnce(api, quiet)
             } while (ok && again)
+            lastSaveOk = ok
             return ok
         } finally {
             saving = false
+            saveJob = null
             uploadingFiles = emptyList(); uploadSent = 0
-            SendProgress.done()
+            // Плашка внизу — только своя: идущую отправку письма гасить нельзя.
+            if (SendProgress.isDraft) SendProgress.done()
         }
     }
 
     private suspend fun saveOnce(api: su.innotec.mail.api.Api, quiet: Boolean): Boolean {
-        val batch = files.toList()
-        val batchCloud = viaCloud.mapNotNull { files.getOrNull(it) }.toSet()
+        // Файлы «ссылкой» в черновик не кладём: в черновике отметка «ссылкой» теряется, и при отправке
+        // они пошли бы вложением поверх предела письма. Они ждут отправки на устройстве (cloud[] уходит с /send).
+        val batch = draftFiles()
+        // Черновик пока без вложений, источник — исходное письмо ответа или пересылки: его вложения можно
+        // отметить и позже. Как только в черновике что-то есть, источник — он сам.
+        val switchToDraft = sourceIsDraft || batch.isNotEmpty() || keep.isNotEmpty()
         uploadingFiles = batch; uploadSent = 0; uploadStarted = false
         // Плашка внизу — для случая, когда окно уже закрыли, а файлы ещё грузятся (в окне ход виден у каждого файла).
-        SendProgress.start(subject, isDraft = true, heavy = batch.isNotEmpty())
+        // Идёт отправка письма — её плашку не подменяем.
+        val ownBar = SendProgress.title == null || SendProgress.isDraft
+        if (ownBar) SendProgress.start(subject, isDraft = true, heavy = batch.isNotEmpty())
         try {
-            val r = api.saveDraft(form(forDraft = true)) { a, b -> uploadStarted = true; uploadSent = a; SendProgress.upload(a, b) }
+            val r = api.saveDraft(form(forDraft = true)) { a, b -> uploadStarted = true; uploadSent = a; if (ownBar && SendProgress.isDraft) SendProgress.upload(a, b) }
             val uid = r.draftUid ?: return false
             draftUid = uid
-            sourceFolder = r.folder ?: MailStore.folders.firstOrNull { it.role == "drafts" }?.path
-            sourceUid = uid
-            if (batch.isNotEmpty() || existing.isNotEmpty()) {
+            if (switchToDraft) {
+                sourceFolder = r.folder ?: MailStore.folders.firstOrNull { it.role == "drafts" }?.path
+                sourceUid = uid
+                sourceIsDraft = true
                 val d = api.openDraft(uid)
                 existing.clear(); existing.addAll(d.attachments)
                 keep.clear(); keep.addAll(d.attachments.map { it.index })
                 // Убираем только загруженные: файл, добавленный во время загрузки, остаётся и уйдёт следующим заходом.
                 val rest = files.filter { it !in batch }
-                val restCloud = rest.withIndex().filter { (_, f) -> f in batchCloud || viaCloud.any { files.getOrNull(it) == f } }.map { it.index }
+                val restCloud = rest.withIndex().filter { (_, f) -> viaCloud.any { files.getOrNull(it) == f } }.map { it.index }
                 files.clear(); files.addAll(rest)
                 viaCloud.clear(); viaCloud.addAll(restCloud)
-                if (rest.isNotEmpty()) again = true
+                // Остались файлы не «ссылкой» (добавили во время заливки) — ещё заход; одни «ссылкой» — нет, они ждут отправки.
+                if (rest.indices.any { it !in restCloud }) again = true
             }
             dirty = again
             if (!quiet) Toasts.show("Черновик сохранён")
             return true
         } catch (e: ApiException) {
             if (!quiet || batch.isNotEmpty()) Toasts.error(e)
+            return false
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // Файл с устройства не открылся (удалён, доступ отозван): черновик без него, человеку — почему.
+            Toasts.show("Черновик не сохранён: не удалось прочитать файл — приложите его заново")
             return false
         } finally {
             uploadingFiles = emptyList()
@@ -451,7 +523,8 @@ class ComposeModel(val start: ComposeStart) {
      * кириллица кодируется втрое, картинки data: уже в base64.
      */
     fun bodySize(): Long {
-        val bytes = editor.html.encodeToByteArray()
+        // Полный текст письма — с подписью и цитатой: они уходят вместе с ним и тоже считаются в пределе.
+        val bytes = html().encodeToByteArray()
         var n = 0L
         for (b in bytes) n += if (b >= 0) 1 else 3
         return n * 105 / 100
@@ -491,11 +564,12 @@ fun sendWithUndo(m: ComposeModel) {
     val seconds = MailStore.settings.undoSeconds
     fun doSend() {
         sendScope.launch {
+            val api = Session.api ?: return@launch
             // Письмо с файлами или с крупными вложениями исходного — показать ход отправки (иначе молчание на минуты).
             val bigKept = m.existing.any { it.index in m.keep && m.keptViaCloud(it) }
             SendProgress.start(m.subject, isDraft = false, heavy = m.files.isNotEmpty() || bigKept, viaCloud = bigKept || m.viaCloud.isNotEmpty())
             try {
-                val r = Session.api!!.send(m.form(forDraft = false)) { a, b -> SendProgress.upload(a, b) }
+                val r = api.send(m.form(forDraft = false)) { a, b -> if (!SendProgress.isDraft) SendProgress.upload(a, b) }
                 if (r.scheduled != null) Toasts.show("Письмо уйдёт ${Fmt.full(r.sendAt)}") else Toasts.show("Письмо отправлено")
                 m.answeredUid?.let { u -> MailStore.updateLocal(listOf(u)) { it.copy(answered = true) } }
                 MailStore.refreshFolders()
@@ -503,15 +577,41 @@ fun sendWithUndo(m: ComposeModel) {
                 if (MailStore.currentFolder?.role in setOf("sent", "drafts")) MailStore.load()
             } catch (e: ApiException) {
                 Toasts.error(e)
+                m.dirty = true   // письмо снова только в окне — закрытие должно сохранить его в черновики
+                Nav.push(ComposeScreen(m.start, m))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Файл с устройства не прочитался — письмо не ушло, окно возвращаем с текстом, а не роняем приложение.
+                Toasts.show("Письмо не отправлено: не удалось прочитать вложение — приложите файл заново")
+                m.dirty = true
                 Nav.push(ComposeScreen(m.start, m))
             } finally {
-                SendProgress.done()
+                // Только свою плашку: черновик другого окна мог начать показывать свою.
+                if (!SendProgress.isDraft) SendProgress.done()
             }
         }
     }
     if (seconds <= 0 || m.sendAt != null) { doSend(); return }
     Toasts.action("Отправка через $seconds с", "Отменить", seconds, onTimeout = { doSend() }) {
+        m.dirty = true
         Nav.push(ComposeScreen(m.start, m))
+    }
+}
+
+/**
+ * «Отправить» нажали, пока грузились файлы, а окно закрыли: обещание в силе — ждём конца загрузки
+ * (в [sendScope], он окно переживает) и отправляем.
+ */
+private fun sendWhenIdle(m: ComposeModel) {
+    sendScope.launch {
+        while (m.busy) delay(300)
+        if (!m.waitUpload) return@launch   // передумали (открыли окно заново и отправили или закрыли иначе)
+        m.waitUpload = false
+        m.cancelAutosave()
+        m.pendingAt?.let { m.sendAt = it }
+        m.dirty = false
+        sendWithUndo(m)
     }
 }
 
@@ -521,9 +621,6 @@ private fun ComposeView(m: ComposeModel) {
     val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<String?>(null) }
-    var autosave by remember { mutableStateOf<Job?>(null) }
-    var pendingAt by remember { mutableStateOf<String?>(null) }   // «отправить позже» ждёт подтверждений
-    var waitUpload by remember { mutableStateOf(false) }          // «Отправить» нажали во время загрузки файлов
     val scroll = rememberScrollState()
     val density = androidx.compose.ui.platform.LocalDensity.current
     var editorTop by remember { mutableStateOf(0f) }       // px от верха прокручиваемой области
@@ -566,8 +663,15 @@ private fun ComposeView(m: ComposeModel) {
             return@rememberFilePicker
         }
         scope.launch {
-            val bytes = kotlinx.coroutines.withContext(Dispatchers.Default) { f.open().use { it.readByteArray() } }
-            m.editor.image("data:${f.mime};base64," + b64(bytes))
+            try {
+                val bytes = kotlinx.coroutines.withContext(Dispatchers.Default) { f.open().use { it.readByteArray() } }
+                m.editor.image("data:${f.mime};base64," + b64(bytes))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Картинку не удалось прочитать (доступ к файлу отозван, файл удалён) — сказать, а не упасть.
+                Toasts.show("Не удалось открыть «${f.name}»")
+            }
         }
     }
     LaunchedEffect(Unit) { if (!m.loaded) m.load() }
@@ -589,19 +693,19 @@ private fun ComposeView(m: ComposeModel) {
     }
     // Клавиатура открылась (видимая часть уменьшилась) — вернуть курсор в поле зрения.
     LaunchedEffect(viewport) { if (m.editor.focused) m.editor.reportCaret() }
-    // Автосохранение: через 15 секунд после правки.
+    // Автосохранение: через 15 секунд после правки (таймер и заливка живут в модели, а не в окне).
     LaunchedEffect(m.dirty, m.editor.html, m.subject, m.to.size) {
-        if (m.dirty && m.loaded && m.hasContent) {
-            autosave?.cancel()
-            autosave = scope.launch { delay(15_000); m.saveDraft() }
-        }
+        if (m.dirty && m.loaded && m.hasContent) m.scheduleAutosave()
     }
     // Новые адресаты — проверить их домены.
     LaunchedEffect(m.to.size, m.cc.size, m.bcc.size) { if (m.loaded) m.verifyDomains() }
 
     fun close() {
-        autosave?.cancel()
+        m.cancelAutosave()
+        // «Отправить» уже нажали, файлы догружаются: обещание держим и без окна.
+        if (m.waitUpload) { Nav.pop(); sendWhenIdle(m); return }
         if (m.dirty && m.hasContent) {
+            // saveDraft дождётся идущей заливки (и её повторного захода), а не начнёт вторую.
             sendScope.launch { if (m.saveDraft()) Toasts.show("Сохранено в черновиках"); MailStore.refreshFolders() }
         }
         Nav.pop()
@@ -612,20 +716,21 @@ private fun ComposeView(m: ComposeModel) {
     fun send(at: String?, step: Int = 0) {
         if (step == 0) {
             m.problems()?.let { Toasts.show(it); return }
-            pendingAt = at
+            m.pendingAt = at
         }
         if (step <= 1 && m.warningsFor(m.to + m.cc + m.bcc).isNotEmpty()) { dialog = "confirm-domain"; return }
         if (step <= 2 && m.subject.isBlank()) { dialog = "confirm-subject"; return }
         // Файлы ещё грузятся — письмо уйдёт само, как только они загрузятся (иначе загрузились бы дважды).
-        if (m.busy) { waitUpload = true; if (pendingAt == null) pendingAt = at; Toasts.show("Файлы загружаются — письмо уйдёт, как только они загрузятся"); return }
-        autosave?.cancel()
-        if (pendingAt != null) m.sendAt = pendingAt
+        if (m.busy) { m.waitUpload = true; if (m.pendingAt == null) m.pendingAt = at; Toasts.show("Файлы загружаются — письмо уйдёт, как только они загрузятся"); return }
+        m.cancelAutosave()
+        m.pendingAt?.let { m.sendAt = it }
+        m.dirty = false   // иначе таймер автосохранения, взведённый позже, создал бы копию уже отправленного
         Nav.pop()
         sendWithUndo(m)
     }
 
     // Загрузка закончилась, а «Отправить» уже нажимали — отправляем.
-    LaunchedEffect(m.busy) { if (!m.busy && waitUpload) { waitUpload = false; send(pendingAt, 3) } }
+    LaunchedEffect(m.busy) { if (!m.busy && m.waitUpload) { m.waitUpload = false; send(m.pendingAt, 3) } }
 
     Column(Modifier.fillMaxSize().background(P.surface).imePadding()) {
         // Верхняя панель
@@ -646,11 +751,13 @@ private fun ComposeView(m: ComposeModel) {
                     DropdownMenuItem({ Text(m.remindDays?.let { "Напомнить без ответа: $it дн." } ?: "Напомнить, если не ответят…") }, { menu = false; dialog = "remind" }, leadingIcon = { Ico("bell") })
                     if (m.editor.rich) DropdownMenuItem({ Text("Картинка в текст…") }, { menu = false; pickImage() }, leadingIcon = { Ico("img") })
                     if (m.meta.cloud.personal) DropdownMenuItem({ Text("Файл из облака…") }, { menu = false; Nav.push(su.innotec.mail.ui.cloud.CloudPickerScreen { picked -> m.cloudFiles.addAll(picked); m.dirty = true }) }, leadingIcon = { Ico("cloud") })
-                    DropdownMenuItem({ Text("Сохранить черновик") }, { menu = false; scope.launch { m.saveDraft(quiet = false) } }, leadingIcon = { Ico("edit") })
+                    // В sendScope: закрытое окно не должно обрывать заливку.
+                    DropdownMenuItem({ Text("Сохранить черновик") }, { menu = false; sendScope.launch { m.saveDraft(quiet = false) } }, leadingIcon = { Ico("edit") })
                     if (m.draftUid != null) DropdownMenuItem({ Text("Удалить черновик", color = P.no) }, {
                         menu = false
                         val uid = m.draftUid!!
                         val folder = MailStore.folders.firstOrNull { it.role == "drafts" }?.path ?: "Drafts"
+                        m.cancelAutosave()
                         m.dirty = false
                         Nav.pop()
                         MailStore.act("delete", listOf(uid), folder = folder)
@@ -705,8 +812,8 @@ private fun ComposeView(m: ComposeModel) {
             "Письмо, скорее всего, не дойдёт",
             m.warningsFor(m.to + m.cc + m.bcc).joinToString("\n") { it.text } + "\n\nОтправить всё равно?",
             confirm = "Отправить всё равно", danger = true, onDismiss = { dialog = null },
-        ) { send(pendingAt, 2) }
-        "confirm-subject" -> su.innotec.mail.ui.ConfirmDialog("Отправить письмо без темы?", confirm = "Отправить", onDismiss = { dialog = null }) { send(pendingAt, 3) }
+        ) { send(m.pendingAt, 2) }
+        "confirm-subject" -> su.innotec.mail.ui.ConfirmDialog("Отправить письмо без темы?", confirm = "Отправить", onDismiss = { dialog = null }) { send(m.pendingAt, 3) }
     }
 }
 
