@@ -1,0 +1,606 @@
+package su.innotec.mail.ui.mail
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.DayOfWeek
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atTime
+import kotlinx.datetime.plus
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Clock
+import kotlin.time.Instant
+import su.innotec.mail.LocalWindow
+import su.innotec.mail.Nav
+import su.innotec.mail.Screen
+import su.innotec.mail.WindowKind
+import su.innotec.mail.api.ApiException
+import su.innotec.mail.api.Attachment
+import su.innotec.mail.api.Message
+import su.innotec.mail.api.Person
+import su.innotec.mail.api.Thread
+import su.innotec.mail.data.Session
+import su.innotec.mail.platform.HtmlView
+import su.innotec.mail.platform.Sys
+import su.innotec.mail.platform.hasBlockedImages
+import su.innotec.mail.platform.textToHtml
+import su.innotec.mail.platform.unblockImages
+import su.innotec.mail.ui.Avatar
+import su.innotec.mail.ui.Divider
+import su.innotec.mail.ui.ErrorBox
+import su.innotec.mail.ui.Fmt
+import su.innotec.mail.ui.Ico
+import su.innotec.mail.ui.Loading
+import su.innotec.mail.ui.P
+import su.innotec.mail.ui.Toasts
+import su.innotec.mail.ui.Transfers
+import su.innotec.mail.ui.hexColor
+import su.innotec.mail.ui.launchSafe
+
+class MessageScreen(private val folder: String, private val uid: Long) : Screen() {
+    @Composable
+    override fun Content() = MessageContent(folder, uid, inPane = false, onClose = { Nav.pop() })
+}
+
+/** Письмо из приложенного .eml (открывается как отдельное письмо, только чтение). */
+class AttachedMessageScreen(private val folder: String, private val uid: Long, private val index: Int) : Screen() {
+    @Composable
+    override fun Content() {
+        var msg by remember { mutableStateOf<Message?>(null) }
+        var err by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(Unit) { try { msg = Session.api!!.attachedMessage(folder, uid, index) } catch (e: ApiException) { err = e.message } }
+        Column(Modifier.fillMaxSize().background(P.surface)) {
+            TopBar(onBack = { Nav.pop() }, title = "Вложенное письмо")
+            when {
+                err != null -> ErrorBox(err!!, { err = null })
+                msg == null -> Loading()
+                else -> MessageBody(msg!!, folder, uid, attachedIndex = index)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TopBar(onBack: () -> Unit, title: String = "", actions: @Composable () -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconBtn(if (LocalWindow.current == WindowKind.PHONE) "back" else "x", "Назад", Modifier.testTag("msg-back")) { onBack() }
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        actions()
+    }
+}
+
+@Composable
+fun MessageContent(folder: String, uid: Long, inPane: Boolean, onClose: () -> Unit) {
+    var msg by remember { mutableStateOf<Message?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var reload by remember { mutableStateOf(0) }
+    var more by remember { mutableStateOf(false) }
+    var dialog by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val role = MailStore.folders.firstOrNull { it.path == folder }?.role
+    val readonly = MailStore.folders.firstOrNull { it.path == folder }?.readonly == true
+
+    LaunchedEffect(folder, uid, reload) {
+        error = null
+        try {
+            val m = Session.api!!.message(folder, uid)
+            msg = m
+            MailStore.markOpened(uid)
+            if (m.markedSeen) MailStore.refreshFolders()
+        } catch (e: ApiException) {
+            if (e.isAuth) Toasts.error(e) else error = e.message
+        }
+    }
+
+    fun leave(op: String, target: String? = null, until: String? = null) {
+        MailStore.act(op, listOf(uid), target = target, until = until, folder = folder)
+        onClose()
+    }
+
+    Column(Modifier.fillMaxSize().background(P.surface)) {
+        TopBar(onBack = onClose) {
+            val m = msg
+            if (m != null && !readonly) {
+                IconBtn("archive", "В архив", Modifier.testTag("msg-archive")) { leave("archive") }
+                IconBtn("trash", "Удалить", Modifier.testTag("msg-delete")) { leave("delete") }
+                IconBtn("unread", "Непрочитано") { MailStore.act("unseen", listOf(uid), folder = folder); onClose() }
+            }
+            Box {
+                IconBtn("dots", "Ещё", Modifier.testTag("msg-more")) { more = true }
+                DropdownMenu(more, { more = false }) {
+                    val m = msg
+                    if (m != null && !readonly) {
+                        DropdownMenuItem({ Text(if (m.flagged) "Снять флажок" else "Флажок") }, {
+                            more = false
+                            MailStore.act(if (m.flagged) "unflag" else "flag", listOf(uid), folder = folder)
+                            msg = m.copy(flagged = !m.flagged)
+                        }, leadingIcon = { Ico("flag") })
+                        DropdownMenuItem({ Text("Перенести в папку…") }, { more = false; dialog = "move" }, leadingIcon = { Ico("folder") })
+                        DropdownMenuItem({ Text("Метка…") }, { more = false; dialog = "label" }, leadingIcon = { Ico("tag") })
+                        DropdownMenuItem({ Text("Отложить…") }, { more = false; dialog = "snooze" }, leadingIcon = { Ico("clock") })
+                        if (role == "spam") DropdownMenuItem({ Text("Не спам") }, { more = false; leave("notspam") }, leadingIcon = { Ico("inbox") })
+                        else DropdownMenuItem({ Text("Это спам") }, { more = false; dialog = "spam" }, leadingIcon = { Ico("spam") })
+                        if (role != "lists") DropdownMenuItem({ Text("Это рассылка") }, { more = false; leave("lists") }, leadingIcon = { Ico("ul") })
+                        if (role == "snoozed") DropdownMenuItem({ Text("Вернуть во «Входящие»") }, { more = false; leave("unsnooze") }, leadingIcon = { Ico("inbox") })
+                        Divider()
+                    }
+                    if (m != null) {
+                        DropdownMenuItem({ Text("Переслать вложением") }, { more = false; Nav.push(ComposeScreen(ComposeStart.ForwardAsAttachment(listOf(folder to uid)))) }, leadingIcon = { Ico("fwd") })
+                        DropdownMenuItem({ Text("Изменить как новое") }, { more = false; Nav.push(ComposeScreen(ComposeStart.Again(folder, uid))) }, leadingIcon = { Ico("edit") })
+                        DropdownMenuItem({ Text("Вся переписка с отправителем") }, {
+                            more = false
+                            MailStore.search("переписка:" + m.from.mail, everywhere = true)
+                            if (!inPane) Nav.pop()
+                        }, leadingIcon = { Ico("users") })
+                        DropdownMenuItem({ Text("Письма от отправителя — в папку…") }, { more = false; dialog = "rule" }, leadingIcon = { Ico("filter") })
+                        DropdownMenuItem({ Text("Скачать письмо (.eml)") }, { more = false; Transfers.fetch(Session.api!!.rawPath(folder, uid), safeName(m.subject) + ".eml", Transfers.Then.SAVE) }, leadingIcon = { Ico("download") })
+                        DropdownMenuItem({ Text("Показать оригинал") }, { more = false; Transfers.fetch(Session.api!!.rawPath(folder, uid), safeName(m.subject) + ".txt", Transfers.Then.OPEN) }, leadingIcon = { Ico("code") })
+                        DropdownMenuItem({ Text("Назначить встречу") }, { more = false; Nav.push(su.innotec.mail.ui.calendar.EventEditScreen.fromMessage(m)) }, leadingIcon = { Ico("cal") })
+                    }
+                }
+            }
+        }
+        Divider()
+        Transfers.active?.let {
+            LinearProgressIndicator(progress = { Transfers.progress }, modifier = Modifier.fillMaxWidth(), color = P.accent)
+        }
+        when {
+            error != null -> ErrorBox(error!!, { reload++ })
+            msg == null -> Loading()
+            else -> Box(Modifier.weight(1f)) { MessageBody(msg!!, folder, uid) }
+        }
+        val m = msg
+        if (m != null && role != "drafts") ReplyBar(m, folder)
+    }
+
+    when (dialog) {
+        "move" -> FolderPicker("Перенести в папку", folder, onDismiss = { dialog = null }) { f -> leave("move", target = f.path) }
+        "label" -> LabelDialog(listOf(uid), onDismiss = { dialog = null }, folder = folder, current = msg?.labels ?: emptyList()) { msg = msg?.copy(labels = it) }
+        "snooze" -> SnoozeDialog(onDismiss = { dialog = null }) { until -> leave("snooze", until = until) }
+        "spam" -> SpamDialog(msg?.from?.mail ?: "", onDismiss = { dialog = null }) { alsoSender ->
+            if (alsoSender) scope.launchSafe { Session.api!!.markSender("spam", "address", msg?.from?.mail ?: "") }
+            leave("spam")
+        }
+        "rule" -> RuleFromSenderDialog(msg?.from?.mail ?: "", onDismiss = { dialog = null })
+    }
+}
+
+private fun safeName(s: String) = s.ifBlank { "письмо" }.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = null) {
+    var showImages by remember(m.uid) { mutableStateOf(MailStore.settings.showImages == "always") }
+    var thread by remember(m.uid) { mutableStateOf<Thread?>(null) }
+    var showRecipients by remember { mutableStateOf(false) }
+    val dark = P.dark
+    LaunchedEffect(m.uid) {
+        if (attachedIndex == null) thread = runCatching { Session.api!!.thread(folder, uid) }.getOrNull()
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("msg-body")) {
+        // Тема и метки
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(m.subject.ifBlank { "(без темы)" }, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("msg-subject"))
+            val labels = m.labels.mapNotNull { id -> MailStore.labels.firstOrNull { it.id == id } }
+            if (labels.isNotEmpty() || m.flagged) {
+                Spacer(Modifier.height(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (m.flagged) TagPill("Флажок", P.warn)
+                    labels.forEach { TagPill(it.name, hexColor(it.color)) }
+                }
+            }
+        }
+        // Отправитель
+        Row(Modifier.fillMaxWidth().clickable { showRecipients = !showRecipients }.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Avatar(m.from.display.ifBlank { "?" }, m.from.mail, 44.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(m.from.display, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (showRecipients) m.from.mail else "кому: " + recipientsShort(m.to + m.cc),
+                    style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(Fmt.full(m.date), style = MaterialTheme.typography.bodySmall, color = P.faint)
+        }
+        if (showRecipients) {
+            Column(Modifier.padding(start = 72.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)) {
+                RecipientLine("От", listOf(m.from))
+                RecipientLine("Кому", m.to)
+                if (m.cc.isNotEmpty()) RecipientLine("Копия", m.cc)
+                if (m.bcc.isNotEmpty()) RecipientLine("Скрытая", m.bcc)
+                if (m.replyTo.isNotEmpty()) RecipientLine("Ответ на", m.replyTo)
+            }
+        }
+        // Отписаться от рассылки
+        if (m.listUnsubscribe.isNotBlank()) {
+            val link = Regex("<(https?://[^>]+)>").find(m.listUnsubscribe)?.groupValues?.get(1)
+                ?: Regex("<(mailto:[^>]+)>").find(m.listUnsubscribe)?.groupValues?.get(1)
+            if (link != null) Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                OutlinedButton(onClick = { Sys.openUrl(link) }) { Ico("unsub", size = 16.dp); Spacer(Modifier.width(6.dp)); Text("Отписаться от рассылки") }
+            }
+        }
+        // Внешние картинки
+        if (!showImages && hasBlockedImages(m.html)) {
+            Row(
+                Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).border(1.dp, P.border, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Ico("img", size = 18.dp, tint = P.muted); Spacer(Modifier.width(8.dp))
+                Text("Картинки из интернета скрыты", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = P.muted)
+                TextButton(onClick = { showImages = true }, modifier = Modifier.testTag("show-images")) { Text("Показать") }
+            }
+        }
+        // Текст письма
+        val html = remember(m.html, m.text, showImages) {
+            val h = m.html?.takeIf { it.isNotBlank() } ?: textToHtml(m.text ?: "")
+            if (showImages) unblockImages(h) else h
+        }
+        Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp).clip(RoundedCornerShape(10.dp)).heightIn(min = 60.dp)) {
+            HtmlView(html, dark, Modifier.fillMaxWidth(), onLink = { url -> openLink(url) }, loadResource = { p -> Transfers.inlineResource(p) })
+        }
+        // Вложения
+        val files = m.attachments.filter { !it.inline || m.html == null || !m.html.contains("attachment/${it.index}?inline") }
+        if (files.isNotEmpty()) {
+            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${files.size} ${Fmt.plural(files.size, "вложение", "вложения", "вложений")} · ${Fmt.size(files.sumOf { it.size })}", Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge, color = P.muted)
+                if (files.size > 1 && attachedIndex == null) TextButton(onClick = {
+                    Transfers.fetch(Session.api!!.attachmentsZipPath(folder, uid), safeName(m.subject) + ".zip", Transfers.Then.SAVE)
+                }) { Text("Скачать все") }
+            }
+            Column(Modifier.padding(horizontal = 12.dp)) {
+                files.forEach { a -> AttachmentRow(a, folder, uid, attachedIndex) }
+            }
+        }
+        if (m.cloudFiles.isNotEmpty()) {
+            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Файлы по ссылке", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = P.muted)
+                if (m.cloudFiles.size > 1) TextButton(onClick = { Transfers.fetch(Session.api!!.cloudZipPath(folder, uid), safeName(m.subject) + " (облако).zip", Transfers.Then.SAVE) }) { Text("Скачать все") }
+            }
+            Column(Modifier.padding(horizontal = 12.dp)) {
+                m.cloudFiles.forEach { c ->
+                    FileRow(c.name.ifBlank { c.path.substringAfterLast('/') }, c.size, "cloud",
+                        onOpen = { if (c.url.isNotBlank()) Sys.openUrl(c.url) },
+                        onSave = { if (c.url.isNotBlank()) Sys.openUrl(c.url) },
+                        onShare = { if (c.url.isNotBlank()) Sys.shareText(c.url) })
+                }
+            }
+        }
+        // Цепочка: /thread отдаёт остальные письма переписки, открытое добавляем сами по дате.
+        val t = thread
+        if (t != null && t.messages.isNotEmpty()) {
+            val self = su.innotec.mail.api.ThreadMessage(uid = uid, subject = m.subject, from = m.from, date = m.date, seen = true, folder = folder)
+            val all = (t.messages + self).sortedBy { Fmt.parse(it.date)?.toEpochMilliseconds() ?: 0L }
+            Text("В цепочке ${all.size} ${Fmt.plural(all.size, "письмо", "письма", "писем")}", Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp),
+                style = MaterialTheme.typography.labelLarge, color = P.muted)
+            Column(Modifier.padding(horizontal = 12.dp).testTag("thread")) {
+                all.forEach { tm ->
+                    val current = tm.uid == uid && tm.folder == folder
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(10.dp)).background(if (current) P.accentSoft else P.surface2)
+                            .clickable(enabled = !current) { Nav.push(MessageScreen(tm.folder, tm.uid)) }.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Avatar(tm.from.display.ifBlank { "?" }, tm.from.mail, 32.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(tm.from.display + if (current) " · это письмо" else "", style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (tm.seen) FontWeight.Normal else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (!current) Text((tm.preview ?: tm.text ?: "").trim().take(160), style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(Fmt.listDate(tm.date), style = MaterialTheme.typography.bodySmall, color = P.faint)
+                            if (tm.folderName.isNotBlank() && tm.folder != folder) Text(tm.folderName, style = MaterialTheme.typography.labelSmall, color = P.faint)
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+private fun recipientsShort(list: List<Person>): String {
+    val me = Session.account?.user?.lowercase()
+    val names = list.map { if (it.mail.lowercase() == me) "мне" else it.display }
+    return if (names.size <= 2) names.joinToString(", ") else names.take(2).joinToString(", ") + " и ещё ${names.size - 2}"
+}
+
+@Composable
+private fun RecipientLine(title: String, list: List<Person>) {
+    Row(Modifier.padding(vertical = 2.dp)) {
+        Text("$title:", Modifier.width(70.dp), style = MaterialTheme.typography.bodySmall, color = P.faint)
+        Column {
+            list.forEach { p ->
+                Text(if (p.name.isNotBlank() && p.name != p.mail) "${p.name} <${p.mail}>" else p.mail, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.clickable { Nav.push(ComposeScreen(ComposeStart.New(to = p.mail))) })
+            }
+        }
+    }
+}
+
+private fun openLink(url: String) {
+    when {
+        url.startsWith("mailto:", ignoreCase = true) -> Nav.push(ComposeScreen(ComposeStart.Mailto(url)))
+        url.startsWith("http", ignoreCase = true) || url.startsWith("tel:", ignoreCase = true) -> Sys.openUrl(url)
+    }
+}
+
+fun fileIcon(name: String, type: String = ""): String {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return when {
+        type.startsWith("image/") || ext in setOf("jpg", "jpeg", "png", "gif", "webp", "heic", "bmp") -> "img"
+        type.startsWith("video/") || ext in setOf("mp4", "mov", "avi", "mkv") -> "video"
+        ext == "eml" || type == "message/rfc822" -> "mail"
+        else -> "file"
+    }
+}
+
+@Composable
+private fun AttachmentRow(a: Attachment, folder: String, uid: Long, attachedIndex: Int?) {
+    val api = Session.api!!
+    val path = if (attachedIndex == null) api.attachmentPath(folder, uid, a.index) else api.attachedPartPath(folder, uid, attachedIndex, a.index)
+    val isEml = a.type == "message/rfc822" || a.name.endsWith(".eml", true)
+    FileRow(a.name, a.size, fileIcon(a.name, a.type),
+        onOpen = {
+            if (isEml && attachedIndex == null) Nav.push(AttachedMessageScreen(folder, uid, a.index))
+            else Transfers.fetch(path, a.name, Transfers.Then.OPEN)
+        },
+        onSave = { Transfers.fetch(path, a.name, Transfers.Then.SAVE) },
+        onShare = { Transfers.fetch(path, a.name, Transfers.Then.SHARE) },
+    )
+}
+
+@Composable
+fun FileRow(name: String, size: Long?, icon: String, onOpen: () -> Unit, onSave: () -> Unit, onShare: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, P.border, RoundedCornerShape(10.dp))
+            .clickable(onClick = onOpen).padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(P.accentSoft), contentAlignment = Alignment.Center) { Ico(icon, size = 18.dp, tint = P.accentInk) }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (size != null && size > 0) Text(Fmt.size(size), style = MaterialTheme.typography.bodySmall, color = P.faint)
+        }
+        IconBtn("download", "Сохранить", tint = P.muted) { onSave() }
+        Box {
+            IconBtn("dots", "Ещё", tint = P.muted) { menu = true }
+            DropdownMenu(menu, { menu = false }) {
+                DropdownMenuItem({ Text("Открыть") }, { menu = false; onOpen() }, leadingIcon = { Ico("eye") })
+                DropdownMenuItem({ Text("Сохранить в «Загрузки»") }, { menu = false; onSave() }, leadingIcon = { Ico("download") })
+                DropdownMenuItem({ Text("Поделиться") }, { menu = false; onShare() }, leadingIcon = { Ico("share") })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReplyBar(m: Message, folder: String) {
+    val many = (m.to + m.cc).count { it.mail.lowercase() != Session.account?.user?.lowercase() } > 1
+    Divider()
+    // Отступ под системную полоску жестов — у всего блока, иначе быстрые ответы уходят под неё.
+    Column(Modifier.fillMaxWidth().background(P.surface)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReplyButton("reply", "Ответить", Modifier.weight(1f).testTag("reply"), accent = true) { Nav.push(ComposeScreen(ComposeStart.Reply(folder, m.uid, all = MailStore.settings.replyAll && many))) }
+            if (many) ReplyButton("replyall", "Всем", Modifier.weight(1f).testTag("reply-all")) { Nav.push(ComposeScreen(ComposeStart.Reply(folder, m.uid, all = true))) }
+            ReplyButton("fwd", "Переслать", Modifier.weight(1f).testTag("forward")) { Nav.push(ComposeScreen(ComposeStart.Forward(folder, m.uid))) }
+        }
+        val quick = MailStore.settings.quickReplies.filter { it.isNotBlank() }
+        if (quick.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                quick.forEach { q ->
+                    Text(q, Modifier.clip(RoundedCornerShape(50)).border(1.dp, P.border2, RoundedCornerShape(50))
+                        .clickable { Nav.push(ComposeScreen(ComposeStart.Reply(folder, m.uid, all = false, text = q))) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReplyButton(icon: String, text: String, modifier: Modifier, accent: Boolean = false, onClick: () -> Unit) {
+    Row(
+        modifier.height(42.dp).clip(RoundedCornerShape(10.dp)).background(if (accent) P.accentSoft else P.surface2).clickable(onClick = onClick),
+        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Ico(icon, size = 18.dp, tint = if (accent) P.accentInk else P.text); Spacer(Modifier.width(6.dp))
+        Text(text, style = MaterialTheme.typography.labelLarge, color = if (accent) P.accentInk else P.text)
+    }
+}
+
+// ---------- диалоги ----------
+
+@Composable
+fun LabelDialog(uids: List<Long>, onDismiss: () -> Unit, folder: String? = null, current: List<Long> = emptyList(), onChanged: (List<Long>) -> Unit = {}) {
+    var have by remember { mutableStateOf(current.ifEmpty { MailStore.messages.filter { it.uid in uids }.flatMap { it.labels }.distinct() }) }
+    var creating by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Метки") },
+        text = {
+            Column {
+                if (MailStore.labels.isEmpty()) Text("Меток пока нет.", color = P.muted)
+                MailStore.labels.forEach { l ->
+                    val on = l.id in have
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable {
+                        MailStore.act(if (on) "unlabel" else "label", uids, label = l.id, folder = folder)
+                        have = if (on) have - l.id else have + l.id
+                        onChanged(have)
+                    }.padding(vertical = 10.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(12.dp).clip(CircleShape).background(hexColor(l.color)))
+                        Spacer(Modifier.width(14.dp))
+                        Text(l.name, Modifier.weight(1f))
+                        if (on) Ico("check", tint = P.accent)
+                    }
+                }
+                TextButton(onClick = { creating = true }) { Ico("plus", size = 16.dp); Spacer(Modifier.width(6.dp)); Text("Новая метка") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Готово") } },
+    )
+    if (creating) su.innotec.mail.ui.InputDialog("Новая метка", "Название", confirm = "Создать", onDismiss = { creating = false }) { name ->
+        scope.launchSafe {
+            Session.api!!.createLabel(name, listOf("#2F6FEB", "#16A05C", "#D9791F", "#8E44AD", "#C0392B", "#0E8A9E").random())
+            MailStore.reloadLabels()
+        }
+    }
+}
+
+/** Варианты «Отложить» — как в веб-почте: вечер, завтра, выходные, понедельник, своё время. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SnoozeDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val tz = TimeZone.currentSystemDefault()
+    val now = Clock.System.now().toLocalDateTime(tz)
+    fun at(d: kotlinx.datetime.LocalDate, h: Int) = d.atTime(LocalTime(h, 0))
+    val today = now.date
+    val options = buildList {
+        if (now.hour < 17) add("Сегодня вечером" to at(today, 18))
+        add("Завтра утром" to at(today.plus(DatePeriod(days = 1)), 9))
+        val sat = (1..7).map { today.plus(DatePeriod(days = it)) }.first { it.dayOfWeek == DayOfWeek.SATURDAY }
+        add("В выходные" to at(sat, 9))
+        val mon = (1..7).map { today.plus(DatePeriod(days = it)) }.first { it.dayOfWeek == DayOfWeek.MONDAY }
+        add("В понедельник" to at(mon, 9))
+        add("Через неделю" to at(today.plus(DatePeriod(days = 7)), 9))
+    }
+    var custom by remember { mutableStateOf(false) }
+    if (!custom) AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Отложить до…") },
+        text = {
+            Column {
+                options.forEach { (t, dt) ->
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onDismiss(); onPick(dt.toInstant(tz).toString()) }.padding(vertical = 12.dp, horizontal = 4.dp)) {
+                        Text(t, Modifier.weight(1f))
+                        Text("${Fmt.weekdaysShort[dt.date.dayOfWeek.ordinal]}, ${Fmt.dateShort(dt.date)}, ${Fmt.time(dt)}", color = P.muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { custom = true }.padding(vertical = 12.dp, horizontal = 4.dp)) {
+                    Ico("cal", size = 18.dp, tint = P.muted); Spacer(Modifier.width(10.dp)); Text("Выбрать дату и время…")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    ) else DateTimeDialog("Отложить до", onDismiss) { dt -> onPick(dt.toInstant(tz).toString()) }
+}
+
+/** Выбор даты, потом времени. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DateTimeDialog(title: String, onDismiss: () -> Unit, initial: LocalDateTime? = null, onPick: (LocalDateTime) -> Unit) {
+    var date by remember { mutableStateOf<kotlinx.datetime.LocalDate?>(null) }
+    val tz = TimeZone.currentSystemDefault()
+    if (date == null) {
+        val st = rememberDatePickerState(initialSelectedDateMillis = (initial?.date ?: Clock.System.now().toLocalDateTime(tz).date).atTime(LocalTime(12, 0)).toInstant(TimeZone.UTC).toEpochMilliseconds())
+        DatePickerDialog(
+            onDismissRequest = onDismiss,
+            confirmButton = { TextButton(onClick = { st.selectedDateMillis?.let { date = Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date } }) { Text("Далее") } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+        ) { DatePicker(st, title = { Text(title, Modifier.padding(start = 24.dp, top = 16.dp)) }) }
+    } else {
+        val tp = rememberTimePickerState(initialHour = initial?.hour ?: 9, initialMinute = initial?.minute ?: 0, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(Fmt.dateShort(date!!)) },
+            text = { TimePicker(tp) },
+            confirmButton = { TextButton(onClick = { onDismiss(); onPick(date!!.atTime(LocalTime(tp.hour, tp.minute))) }) { Text("Готово") } },
+            dismissButton = { TextButton(onClick = { date = null }) { Text("Назад") } },
+        )
+    }
+}
+
+@Composable
+private fun SpamDialog(sender: String, onDismiss: () -> Unit, onConfirm: (Boolean) -> Unit) {
+    var also by remember { mutableStateOf(true) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Это спам?") },
+        text = {
+            Column {
+                Text("Письмо уйдёт в «Спам».", color = P.muted)
+                if (sender.isNotBlank()) Row(Modifier.clickable { also = !also }.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(also, { also = it })
+                    Text("И дальше всё от $sender — в спам")
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onDismiss(); onConfirm(also) }) { Text("В спам") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
+}
+
+/** «Письма от отправителя — в папку»: правило через /sender/mark (как «Это рассылка» и спам). */
+@Composable
+private fun RuleFromSenderDialog(sender: String, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    FolderPicker("Письма от $sender — в папку", null, onDismiss = onDismiss) { f ->
+        scope.launchSafe {
+            Session.api!!.markSender("folder", "address", sender, true, f.path)
+            Toasts.show("Письма от $sender будут попадать в «${f.name}»")
+            MailStore.load()
+        }
+    }
+}
