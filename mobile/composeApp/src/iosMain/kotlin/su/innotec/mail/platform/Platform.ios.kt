@@ -65,7 +65,7 @@ actual class KeyValueStore actual constructor(private val name: String) {
     }
 }
 
-private fun ByteArray.toNSData(): NSData = if (isEmpty()) NSData() else usePinned { NSData.dataWithBytes(it.addressOf(0), size.toULong()) }
+internal fun ByteArray.toNSData(): NSData = if (isEmpty()) NSData() else usePinned { NSData.dataWithBytes(it.addressOf(0), size.toULong()) }
 
 actual object FileStore {
     actual suspend fun save(name: String, mime: String?, channel: ByteReadChannel, total: Long?, progress: (Long) -> Unit, forOpen: Boolean): SavedFile {

@@ -17,3 +17,5 @@
 -keep class io.ktor.** { *; }
 # WorkManager создаёт воркер по имени класса.
 -keep class su.innotec.mail.MailCheckWorker { *; }
+# Мостик редактора письма: методы с @JavascriptInterface вызываются из JS по имени.
+-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }

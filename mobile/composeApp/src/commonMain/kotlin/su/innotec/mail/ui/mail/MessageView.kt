@@ -549,7 +549,7 @@ fun LabelDialog(uids: List<Long>, onDismiss: () -> Unit, folder: String? = null,
 /** Варианты «Отложить» — как в веб-почте: вечер, завтра, выходные, понедельник, своё время. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SnoozeDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
+fun SnoozeDialog(onDismiss: () -> Unit, title: String = "Отложить до…", weekend: Boolean = true, onPick: (String) -> Unit) {
     val tz = TimeZone.currentSystemDefault()
     val now = Clock.System.now().toLocalDateTime(tz)
     fun at(d: kotlinx.datetime.LocalDate, h: Int) = d.atTime(LocalTime(h, 0))
@@ -558,7 +558,7 @@ fun SnoozeDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
         if (now.hour < 17) add("Сегодня вечером" to at(today, 18))
         add("Завтра утром" to at(today.plus(DatePeriod(days = 1)), 9))
         val sat = (1..7).map { today.plus(DatePeriod(days = it)) }.first { it.dayOfWeek == DayOfWeek.SATURDAY }
-        add("В выходные" to at(sat, 9))
+        if (weekend) add("В выходные" to at(sat, 9))
         val mon = (1..7).map { today.plus(DatePeriod(days = it)) }.first { it.dayOfWeek == DayOfWeek.MONDAY }
         add("В понедельник" to at(mon, 9))
         add("Через неделю" to at(today.plus(DatePeriod(days = 7)), 9))
@@ -566,7 +566,7 @@ fun SnoozeDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
     var custom by remember { mutableStateOf(false) }
     if (!custom) AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Отложить до…") },
+        title = { Text(title) },
         text = {
             Column {
                 options.forEach { (t, dt) ->
@@ -582,7 +582,7 @@ fun SnoozeDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
         },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
-    ) else DateTimeDialog("Отложить до", onDismiss) { dt -> onPick(dt.toInstant(tz).toString()) }
+    ) else DateTimeDialog(title.removeSuffix("…"), onDismiss) { dt -> onPick(dt.toInstant(tz).toString()) }
 }
 
 /** Выбор даты, потом времени. */

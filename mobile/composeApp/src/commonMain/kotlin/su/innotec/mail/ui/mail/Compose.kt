@@ -79,6 +79,19 @@ import su.innotec.mail.api.Suggestion
 import su.innotec.mail.data.Session
 import su.innotec.mail.platform.BackHandler
 import su.innotec.mail.platform.HtmlView
+import su.innotec.mail.platform.RichEditor
+import su.innotec.mail.platform.RichEditorState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import kotlinx.io.readByteArray
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import su.innotec.mail.platform.rememberFilePicker
 import su.innotec.mail.ui.Divider
 import su.innotec.mail.ui.Fmt
@@ -107,9 +120,18 @@ class ComposeModel(val start: ComposeStart) {
     val bcc = mutableStateListOf<Person>()
     var showCc by mutableStateOf(false)
     var subject by mutableStateOf("")
-    var body by mutableStateOf("")
+    /** Текст письма с оформлением; создаётся, когда письмо загружено. */
+    var editor by mutableStateOf(RichEditorState(""))
+    /** Подпись — отдельно: меняется вместе с «От кого» (письмо от общего ящика — с его подписью). */
+    var sig by mutableStateOf("")
+    /** Цитата или шапка пересылки (у черновика — всё после текста человека). */
+    var rest by mutableStateOf("")
     /** Подпись, цитата или шапка пересылки — HTML, который дописывается к тексту. */
-    var tail by mutableStateOf("")
+    val tail get() = sig + rest
+    private var replyKind = false
+    /** Предупреждения о доменах получателей: адрес → текст и подсказка исправления. */
+    val domainWarn = mutableStateMapOf<String, DomainWarn>()
+    private val checked = mutableSetOf<String>()
     var includeTail by mutableStateOf(true)
     var from by mutableStateOf<String?>(null)
     val files = mutableStateListOf<LocalFile>()
@@ -135,9 +157,26 @@ class ComposeModel(val start: ComposeStart) {
     var saving by mutableStateOf(false)
     var meta by mutableStateOf(ComposeMeta())
 
-    val hasContent get() = to.isNotEmpty() || cc.isNotEmpty() || subject.isNotBlank() || body.isNotBlank() || files.isNotEmpty()
+    val bodyHasContent get() = editor.html.contains("<img", true) || Html.toText(editor.html).isNotBlank()
+    val hasContent get() = to.isNotEmpty() || cc.isNotEmpty() || subject.isNotBlank() || bodyHasContent || files.isNotEmpty()
 
     fun identity(): Identity? = meta.identities.firstOrNull { it.mail.equals(from ?: Session.account?.user ?: "", true) }
+
+    /** Сменили «От кого» — подпись меняется, текст и цитата остаются. */
+    fun fromChanged() { if (sigManaged) sig = signatureHtml(replyKind) }
+    private var sigManaged = false
+
+    /** Проверить домены новых адресатов (есть ли такой, принимает ли почту) — как в веб-почте. */
+    suspend fun verifyDomains() {
+        val api = Session.api ?: return
+        (to + cc + bcc).map { it.mail.lowercase() }.filter { it.contains('@') && checked.add(it) }.forEach { mail ->
+            val r = runCatching { api.checkDomain(mail.substringAfter('@')).jsonObject }.getOrNull() ?: return@forEach
+            val status = r["status"]?.jsonPrimitive?.contentOrNull ?: "ok"
+            if (status != "ok") domainWarn[mail] = DomainWarn(r["text"]?.jsonPrimitive?.contentOrNull ?: "Домен не принимает почту", r["suggestion"]?.jsonPrimitive?.contentOrNull)
+        }
+    }
+
+    fun warningsFor(list: List<Person>) = list.mapNotNull { domainWarn[it.mail.lowercase()] }
 
     private fun signatureHtml(forReply: Boolean): String {
         val id = meta.identities.firstOrNull { it.shared && it.mail.equals(from ?: "", true) }
@@ -172,21 +211,22 @@ class ComposeModel(val start: ComposeStart) {
         val api = Session.api ?: return
         try {
             meta = runCatching { api.composeMeta() }.getOrDefault(ComposeMeta())
+            var body = ""
             when (val s = start) {
                 is ComposeStart.New -> {
                     parseList(s.to).forEach { to.add(it) }
-                    subject = s.subject; body = s.body
+                    subject = s.subject; body = if (s.body.isBlank()) "" else Html.fromText(s.body)
                     cloudFiles.addAll(s.cloudFiles)
-                    tail = signatureHtml(false)
+                    sigManaged = true; sig = signatureHtml(false)
                 }
                 is ComposeStart.Mailto -> {
                     val (addr, q) = s.url.removePrefix("mailto:").removePrefix("MAILTO:").let { it.substringBefore('?') to it.substringAfter('?', "") }
                     parseList(su.innotec.mail.api.Api.percentDecode(addr)).forEach { to.add(it) }
                     q.split('&').forEach { kv ->
                         val k = kv.substringBefore('=').lowercase(); val v = su.innotec.mail.api.Api.percentDecode(kv.substringAfter('=', "").replace('+', ' '))
-                        when (k) { "subject" -> subject = v; "body" -> body = v; "cc" -> { parseList(v).forEach { cc.add(it) }; showCc = true } }
+                        when (k) { "subject" -> subject = v; "body" -> body = Html.fromText(v); "cc" -> { parseList(v).forEach { cc.add(it) }; showCc = true } }
                     }
-                    tail = signatureHtml(false)
+                    sigManaged = true; sig = signatureHtml(false)
                 }
                 is ComposeStart.Reply -> {
                     val m = api.message(s.folder, s.uid, peek = true)
@@ -200,8 +240,8 @@ class ComposeModel(val start: ComposeStart) {
                         showCc = cc.isNotEmpty()
                     }
                     subject = answerSubject("Re", m.subject)
-                    body = s.text
-                    tail = signatureHtml(true) + quote(m)
+                    body = if (s.text.isBlank()) "" else Html.fromText(s.text)
+                    replyKind = true; sigManaged = true; sig = signatureHtml(true); rest = quote(m)
                     inReplyTo = m.messageId
                     references = listOf(m.references, m.messageId).filter { it.isNotBlank() }.joinToString(" ")
                     answeredFolder = s.folder; answeredUid = m.uid
@@ -213,7 +253,8 @@ class ComposeModel(val start: ComposeStart) {
                     from = sharedFrom(s.folder)
                     subject = answerSubject("Fwd", m.subject)
                     val hdr = "<div class=\"fwd\" style=\"color:#6B7787\">---------- Пересланное письмо ----------<br>От: ${Html.escape(m.from.name)} &lt;${Html.escape(m.from.mail)}&gt;<br>Дата: ${Html.escape(Fmt.full(m.date))}<br>Тема: ${Html.escape(m.subject)}<br>Кому: ${Html.escape(m.to.joinToString(", ") { it.mail })}</div><br>"
-                    tail = signatureHtml(true) + "<p><br></p>" + hdr + (m.html ?: "<pre style=\"white-space:pre-wrap;font:inherit\">${Html.escape(m.text ?: "")}</pre>")
+                    replyKind = true; sigManaged = true; sig = signatureHtml(true)
+                    rest = "<p><br></p>" + hdr + (m.html ?: "<pre style=\"white-space:pre-wrap;font:inherit\">${Html.escape(m.text ?: "")}</pre>")
                     references = listOf(m.references, m.messageId).filter { it.isNotBlank() }.joinToString(" ")
                     sourceFolder = s.folder; sourceUid = m.uid
                     existing.addAll(m.attachments)
@@ -223,7 +264,7 @@ class ComposeModel(val start: ComposeStart) {
                 is ComposeStart.ForwardAsAttachment -> {
                     val subjects = s.items.map { (f, u) -> MailStore.messages.firstOrNull { it.uid == u }?.subject ?: runCatching { api.message(f, u, peek = true).subject }.getOrDefault("письмо") }
                     subject = if (s.items.size == 1) answerSubject("Fwd", subjects[0]) else "Fwd: ${s.items.size} ${Fmt.plural(s.items.size, "письмо", "письма", "писем")}"
-                    tail = signatureHtml(true)
+                    replyKind = true; sigManaged = true; sig = signatureHtml(true)
                     s.items.forEachIndexed { i, (f, u) -> attachMessages.add(AttachedMessageRef(f, u, subjects[i].ifBlank { "письмо" })) }
                 }
                 is ComposeStart.Again -> {
@@ -231,7 +272,7 @@ class ComposeModel(val start: ComposeStart) {
                     to.addAll(m.to); cc.addAll(m.cc); showCc = cc.isNotEmpty()
                     subject = if (m.subject == "(без темы)") "" else m.subject
                     val (mine, t) = Html.splitTail(m.html ?: Html.fromText(m.text ?: ""))
-                    body = Html.toText(mine); tail = t
+                    body = mine; rest = t
                     sourceFolder = s.folder; sourceUid = m.uid
                     existing.addAll(m.attachments); keep.addAll(m.attachments.map { it.index })
                     cloudFiles.addAll(m.cloudFiles)
@@ -246,7 +287,7 @@ class ComposeModel(val start: ComposeStart) {
                     showCc = cc.isNotEmpty() || bcc.isNotEmpty()
                     subject = d.subject
                     val (mine, t) = Html.splitTail(d.html)
-                    body = Html.toText(mine); tail = t
+                    body = mine; rest = t
                     priority = d.priority; receipt = d.receipt
                     inReplyTo = d.inReplyTo.ifBlank { null }; references = d.references.ifBlank { null }
                     existing.addAll(d.attachments); keep.addAll(d.attachments.map { it.index })
@@ -254,7 +295,9 @@ class ComposeModel(val start: ComposeStart) {
                     sourceFolder = MailStore.folders.firstOrNull { it.role == "drafts" }?.path; sourceUid = draftUid
                 }
             }
+            editor = RichEditorState(body)
             loaded = true
+            verifyDomains()
         } catch (e: ApiException) {
             loadError = e.message
         }
@@ -269,7 +312,7 @@ class ComposeModel(val start: ComposeStart) {
         if (p.name.isBlank() || p.name == p.mail) p.mail else "\"${p.name.replace("\"", "")}\" <${p.mail}>"
     }
 
-    fun html(): String = Html.fromText(body) + if (includeTail) tail else ""
+    fun html(): String = (if (bodyHasContent) editor.html else "<p><br></p>") + if (includeTail) tail else ""
 
     fun form(forDraft: Boolean): ComposeForm = ComposeForm(
         from = from, to = addr(to), cc = addr(cc), bcc = addr(bcc), subject = subject, html = html(),
@@ -309,17 +352,21 @@ class ComposeModel(val start: ComposeStart) {
         }
     }
 
+    /** Сколько места займут вложения внутри письма (без ушедших ссылкой). */
+    fun inMailSize(): Long = files.withIndex().filter { it.index !in viaCloud }.sumOf { it.value.size } + existing.filter { it.index in keep }.sumOf { it.size }
+
     fun problems(): String? {
         if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) return "Укажите, кому отправить письмо"
         (to + cc + bcc).firstOrNull { !Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(it.mail) }?.let { return "Адрес «${it.mail}» написан с ошибкой" }
         val maxFiles = meta.limits.maxFiles
         if (files.size + keep.size > maxFiles) return "Не больше $maxFiles файлов в одном письме"
         val limit = meta.limits.messageMb.toLong() * 1024 * 1024
-        val inMail = files.withIndex().filter { it.index !in viaCloud }.sumOf { it.value.size } + existing.filter { it.index in keep }.sumOf { it.size }
-        if (inMail > limit) return "Файлы тяжелее предела почты (${meta.limits.messageMb} МБ)" + if (meta.cloud.enabled) " — отметьте крупные «ссылкой»" else ""
+        if (inMailSize() > limit) return "Файлы тяжелее предела почты (${meta.limits.messageMb} МБ)" + if (meta.cloud.enabled) " — отметьте крупные «ссылкой»" else ""
         return null
     }
 }
+
+data class DomainWarn(val text: String, val suggestion: String?)
 
 class ComposeScreen(start: ComposeStart, private val existingModel: ComposeModel? = null) : Screen() {
     private val model = existingModel ?: ComposeModel(start)
@@ -362,6 +409,11 @@ private fun ComposeView(m: ComposeModel) {
     var menu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<String?>(null) }
     var autosave by remember { mutableStateOf<Job?>(null) }
+    var pendingAt by remember { mutableStateOf<String?>(null) }   // «отправить позже» ждёт подтверждений
+    val scroll = rememberScrollState()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var editorTop by remember { mutableStateOf(0f) }       // px от верха прокручиваемой области
+    var viewport by remember { mutableStateOf(0) }         // px видимой части
     val pickFiles = rememberFilePicker(multiple = true) { list ->
         val threshold = m.meta.cloud.thresholdMb.toLong() * 1024 * 1024
         list.forEach { f ->
@@ -370,14 +422,47 @@ private fun ComposeView(m: ComposeModel) {
         }
         m.dirty = true
     }
+    // Картинка в текст — как в веб-почте, до 400 КБ (встраивается в письмо); больше — уходит обычным вложением.
+    val pickImage = rememberFilePicker(multiple = false, mimes = listOf("image/*")) { list ->
+        val f = list.firstOrNull() ?: return@rememberFilePicker
+        if (f.size > 400 * 1024) {
+            m.files.add(f); m.dirty = true
+            Toasts.show("Картинка больше 400 КБ — приложена файлом")
+            return@rememberFilePicker
+        }
+        scope.launch {
+            val bytes = kotlinx.coroutines.withContext(Dispatchers.Default) { f.open().use { it.readByteArray() } }
+            m.editor.image("data:${f.mime};base64," + b64(bytes))
+        }
+    }
     LaunchedEffect(Unit) { if (!m.loaded) m.load() }
+    LaunchedEffect(m.editor) {
+        m.editor.onEdit = { m.dirty = true }
+        m.editor.onNote = { Toasts.show(it) }
+        // Курсор всегда в видимой части: поле растёт вместе с текстом, прокручивается весь экран письма.
+        m.editor.onCaret = { top, bottom ->
+            val t = editorTop + top * density.density
+            val b = editorTop + bottom * density.density
+            val margin = 24 * density.density
+            val target = when {
+                b + margin > scroll.value + viewport -> (b + margin - viewport).toInt()
+                t - margin < scroll.value -> (t - margin).toInt().coerceAtLeast(0)
+                else -> null
+            }
+            if (target != null) scope.launch { scroll.animateScrollTo(target) }
+        }
+    }
+    // Клавиатура открылась (видимая часть уменьшилась) — вернуть курсор в поле зрения.
+    LaunchedEffect(viewport) { if (m.editor.focused) m.editor.reportCaret() }
     // Автосохранение: через 15 секунд после правки.
-    LaunchedEffect(m.dirty, m.body, m.subject, m.to.size) {
+    LaunchedEffect(m.dirty, m.editor.html, m.subject, m.to.size) {
         if (m.dirty && m.loaded && m.hasContent) {
             autosave?.cancel()
             autosave = scope.launch { delay(15_000); m.saveDraft() }
         }
     }
+    // Новые адресаты — проверить их домены.
+    LaunchedEffect(m.to.size, m.cc.size, m.bcc.size) { if (m.loaded) m.verifyDomains() }
 
     fun close() {
         autosave?.cancel()
@@ -387,6 +472,20 @@ private fun ComposeView(m: ComposeModel) {
         Nav.pop()
     }
     BackHandler(true) { close() }
+
+    /** Отправка с проверками веб-почты: ошибки → предупреждения о доменах → пустая тема. */
+    fun send(at: String?, step: Int = 0) {
+        if (step == 0) {
+            m.problems()?.let { Toasts.show(it); return }
+            pendingAt = at
+        }
+        if (step <= 1 && m.warningsFor(m.to + m.cc + m.bcc).isNotEmpty()) { dialog = "confirm-domain"; return }
+        if (step <= 2 && m.subject.isBlank()) { dialog = "confirm-subject"; return }
+        autosave?.cancel()
+        if (pendingAt != null) m.sendAt = pendingAt
+        Nav.pop()
+        sendWithUndo(m)
+    }
 
     Column(Modifier.fillMaxSize().background(P.surface).imePadding()) {
         // Верхняя панель
@@ -401,10 +500,11 @@ private fun ComposeView(m: ComposeModel) {
             Box {
                 IconBtn("dots", "Ещё") { menu = true }
                 DropdownMenu(menu, { menu = false }) {
+                    DropdownMenuItem({ Text("Отправить позже…") }, { menu = false; dialog = "later" }, leadingIcon = { Ico("clock") })
                     DropdownMenuItem({ Text(if (m.priority) "✓ Важное" else "Важное") }, { menu = false; m.priority = !m.priority; m.dirty = true }, leadingIcon = { Ico("flag") })
                     DropdownMenuItem({ Text(if (m.receipt) "✓ Уведомить о прочтении" else "Уведомить о прочтении") }, { menu = false; m.receipt = !m.receipt; m.dirty = true }, leadingIcon = { Ico("check") })
-                    DropdownMenuItem({ Text(if (m.sendAt != null) "Отправить позже: ${Fmt.full(m.sendAt)}" else "Отправить позже…") }, { menu = false; dialog = "later" }, leadingIcon = { Ico("clock") })
                     DropdownMenuItem({ Text(m.remindDays?.let { "Напомнить без ответа: $it дн." } ?: "Напомнить, если не ответят…") }, { menu = false; dialog = "remind" }, leadingIcon = { Ico("bell") })
+                    if (m.editor.rich) DropdownMenuItem({ Text("Картинка в текст…") }, { menu = false; pickImage() }, leadingIcon = { Ico("img") })
                     if (m.meta.cloud.personal) DropdownMenuItem({ Text("Файл из облака…") }, { menu = false; Nav.push(su.innotec.mail.ui.cloud.CloudPickerScreen { picked -> m.cloudFiles.addAll(picked); m.dirty = true }) }, leadingIcon = { Ico("cloud") })
                     DropdownMenuItem({ Text("Сохранить черновик") }, { menu = false; scope.launch { m.saveDraft(quiet = false) } }, leadingIcon = { Ico("edit") })
                     if (m.draftUid != null) DropdownMenuItem({ Text("Удалить черновик", color = P.no) }, {
@@ -419,13 +519,7 @@ private fun ComposeView(m: ComposeModel) {
             }
             Box(
                 Modifier.padding(start = 4.dp, end = 8.dp).clip(RoundedCornerShape(10.dp)).background(if (m.loaded) P.accent else P.border2)
-                    .clickable(enabled = m.loaded) {
-                        val err = m.problems()
-                        if (err != null) { Toasts.show(err); return@clickable }
-                        autosave?.cancel()
-                        Nav.pop()
-                        sendWithUndo(m)
-                    }.padding(horizontal = 14.dp, vertical = 9.dp).testTag("send"),
+                    .clickable(enabled = m.loaded) { send(null) }.padding(horizontal = 14.dp, vertical = 9.dp).testTag("send"),
             ) { Row(verticalAlignment = Alignment.CenterVertically) { Ico("send", size = 18.dp, tint = P.accentOn); Spacer(Modifier.width(6.dp)); Text("Отправить", color = P.accentOn, fontWeight = FontWeight.SemiBold) } }
         }
         Divider()
@@ -433,33 +527,108 @@ private fun ComposeView(m: ComposeModel) {
             m.loadError != null -> su.innotec.mail.ui.ErrorBox(m.loadError!!, { m.loadError = null; scope.launch { m.load() } })
             !m.loaded -> Loading()
             // На планшете и ПК строка письма не шире ~900 dp — длинные строки читать тяжело.
-            else -> Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) { Column(Modifier.widthIn(max = 920.dp).fillMaxWidth()) {
+            else -> Column(
+                Modifier.weight(1f).fillMaxWidth().onSizeChanged { viewport = it.height }.verticalScroll(scroll),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) { Column(Modifier.widthIn(max = 920.dp).fillMaxWidth()) {
                 if (m.meta.identities.size > 1) FromRow(m)
-                RecipientsField("Кому", m.to, Modifier.testTag("to"), onChange = { m.dirty = true }, trailing = {
+                RecipientsField("Кому", m.to, Modifier.testTag("to"), onChange = { m.dirty = true }, others = { m.cc + m.bcc }, warns = m.domainWarn, trailing = {
                     if (!m.showCc) Text("Копия", Modifier.clip(RoundedCornerShape(6.dp)).clickable { m.showCc = true }.padding(8.dp), color = P.accentInk, style = MaterialTheme.typography.labelLarge)
                 })
                 if (m.showCc) {
-                    RecipientsField("Копия", m.cc, onChange = { m.dirty = true })
-                    RecipientsField("Скрытая", m.bcc, onChange = { m.dirty = true })
+                    RecipientsField("Копия", m.cc, onChange = { m.dirty = true }, others = { m.to + m.bcc }, warns = m.domainWarn)
+                    RecipientsField("Скрытая", m.bcc, onChange = { m.dirty = true }, others = { m.to + m.cc }, warns = m.domainWarn)
                 }
+                if (m.warningsFor(m.to + m.cc + m.bcc).isNotEmpty()) DomainNotice(m)
                 PlainField(m.subject, { m.subject = it; m.dirty = true }, "Тема", Modifier.testTag("subject"), single = true, bold = true)
                 Divider()
                 Attachments(m)
-                PlainField(m.body, { m.body = it; m.dirty = true }, "Текст письма", Modifier.heightIn(min = 220.dp).testTag("body"))
+                RichEditor(
+                    m.editor, P.dark, "Текст письма",
+                    Modifier.fillMaxWidth().height(maxOf(220f, m.editor.contentHeight + 8f).dp)
+                        .onGloballyPositioned { editorTop = it.positionInParent().y }.testTag("body"),
+                    loadResource = { p -> Transfers.inlineResource(p) },
+                )
                 if (m.tail.isNotBlank()) Tail(m)
                 Spacer(Modifier.height(80.dp))
             } }
         }
+        // Панель оформления — над клавиатурой, пока пишут текст (как в Gmail и Outlook).
+        if (m.loaded && m.editor.rich && m.editor.focused) FormatBar(m.editor, onImage = { pickImage() })
     }
 
     when (dialog) {
-        "later" -> DateTimeDialog("Отправить", onDismiss = { dialog = null }) { dt ->
-            m.sendAt = dt.toInstant(TimeZone.currentSystemDefault()).toString(); m.dirty = true
-            Toasts.show("Письмо уйдёт ${Fmt.full(m.sendAt)} — после нажатия «Отправить»")
-        }
+        "later" -> SnoozeDialog(onDismiss = { dialog = null }, title = "Отправить…", weekend = false) { at -> send(at) }
         "remind" -> su.innotec.mail.ui.ChoiceDialog("Напомнить, если не ответят через…", listOf(0, 1, 2, 3, 5, 7, 14), { if (it == 0) "Не напоминать" else "$it ${Fmt.plural(it, "день", "дня", "дней")}" },
             m.remindDays ?: 0, onDismiss = { dialog = null }) { m.remindDays = it.takeIf { d -> d > 0 }; m.dirty = true }
+        "confirm-domain" -> su.innotec.mail.ui.ConfirmDialog(
+            "Письмо, скорее всего, не дойдёт",
+            m.warningsFor(m.to + m.cc + m.bcc).joinToString("\n") { it.text } + "\n\nОтправить всё равно?",
+            confirm = "Отправить всё равно", danger = true, onDismiss = { dialog = null },
+        ) { send(pendingAt, 2) }
+        "confirm-subject" -> su.innotec.mail.ui.ConfirmDialog("Отправить письмо без темы?", confirm = "Отправить", onDismiss = { dialog = null }) { send(pendingAt, 3) }
     }
+}
+
+@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+private fun b64(bytes: ByteArray): String = kotlin.io.encoding.Base64.encode(bytes)
+
+/** Предупреждение о домене адресата и «Исправить на …», как в веб-почте. */
+@Composable
+private fun DomainNotice(m: ComposeModel) {
+    val bad = (m.to + m.cc + m.bcc).mapNotNull { p -> m.domainWarn[p.mail.lowercase()]?.let { p to it } }
+    Column(Modifier.fillMaxWidth().background(P.no.copy(alpha = .08f)).padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        bad.forEach { (p, w) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Ico("warn", size = 16.dp, tint = P.no); Spacer(Modifier.width(8.dp))
+                Text("${p.mail}: ${w.text}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = P.text)
+                if (w.suggestion != null) TextButton(onClick = {
+                    val fixed = p.copy(mail = p.mail.substringBefore('@') + "@" + w.suggestion)
+                    listOf(m.to, m.cc, m.bcc).forEach { l -> val i = l.indexOf(p); if (i >= 0) l[i] = fixed }
+                    m.domainWarn.remove(p.mail.lowercase()); m.dirty = true
+                }) { Text("На @${w.suggestion}") }
+            }
+        }
+    }
+    Divider()
+}
+
+/** Кнопки оформления над клавиатурой. Нажатие не уводит курсор из поля. */
+@Composable
+private fun FormatBar(e: RichEditorState, onImage: () -> Unit) {
+    var linkAsk by remember { mutableStateOf(false) }
+    Divider()
+    Row(
+        Modifier.fillMaxWidth().background(P.surface2).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FmtBtn("bold", "Жирный", e.bold) { e.cmd("bold") }
+        FmtBtn("italic", "Курсив", e.italic) { e.cmd("italic") }
+        FmtBtn("underline", "Подчёркнутый", e.underline) { e.cmd("underline") }
+        FmtBtn("link", "Ссылка", false) { linkAsk = true }
+        FmtBtn("ul", "Список", e.bullets) { e.cmd("insertUnorderedList") }
+        FmtBtn("ol", "Нумерованный список", e.numbers) { e.cmd("insertOrderedList") }
+        FmtBtn("quote", "Цитата", e.quote) { e.cmd("formatBlock", "blockquote") }
+        FmtBtn("img", "Картинка", false) { onImage() }
+        FmtBtn("eraser", "Убрать оформление", false) { e.cmd("removeFormat") }
+    }
+    if (linkAsk) su.innotec.mail.ui.InputDialog("Ссылка", "Адрес", initial = "https://", confirm = "Вставить", keyboard = KeyboardType.Uri, onDismiss = { linkAsk = false }) { raw ->
+        var url = raw.trim()
+        if (url.isNotEmpty() && url != "https://") {
+            // «www.site.ru» без схемы стал бы ссылкой внутрь письма — дописываем https://.
+            if (!Regex("^[a-z][a-z0-9+.-]*:", RegexOption.IGNORE_CASE).containsMatchIn(url)) url = "https://" + url.trimStart('/')
+            e.link(url)
+        }
+    }
+}
+
+@Composable
+private fun FmtBtn(icon: String, label: String, on: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.padding(2.dp).size(44.dp).clip(RoundedCornerShape(8.dp)).background(if (on) P.accent.copy(alpha = .14f) else androidx.compose.ui.graphics.Color.Transparent)
+            .clickable(onClickLabel = label) { onClick() }.semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) { Ico(icon, size = 20.dp, tint = if (on) P.accentInk else P.text) }
 }
 
 @Composable
@@ -473,7 +642,7 @@ private fun FromRow(m: ComposeModel) {
     Divider()
     if (open) su.innotec.mail.ui.ChoiceDialog("От кого", m.meta.identities, { i -> if (i.shared) "${i.mail} (общий)" else i.mail },
         m.meta.identities.firstOrNull { it.mail.equals(m.from ?: Session.account?.user ?: "", true) }, onDismiss = { open = false }) { i ->
-        m.from = if (i.primary) null else i.mail; m.dirty = true
+        m.from = if (i.primary) null else i.mail; m.fromChanged(); m.dirty = true
     }
 }
 
@@ -493,15 +662,24 @@ private fun PlainField(value: String, onChange: (String) -> Unit, placeholder: S
 /** Поле адресатов: «пузыри» и подсказки из адресной книги и истории переписки. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun RecipientsField(label: String, list: MutableList<Person>, modifier: Modifier = Modifier, onChange: () -> Unit, trailing: @Composable () -> Unit = {}) {
+fun RecipientsField(
+    label: String, list: MutableList<Person>, modifier: Modifier = Modifier, onChange: () -> Unit,
+    others: () -> List<Person> = { emptyList() }, warns: Map<String, DomainWarn> = emptyMap(), trailing: @Composable () -> Unit = {},
+) {
     var text by remember { mutableStateOf("") }
     var hints by remember { mutableStateOf<List<Suggestion>>(emptyList()) }
     val scope = rememberCoroutineScope()
     var job by remember { mutableStateOf<Job?>(null) }
-    fun commit(raw: String) {
-        raw.split(',', ';', ' ').map { it.trim() }.filter { it.contains('@') }.forEach { a ->
-            if (list.none { it.mail.equals(a, true) }) list.add(Person("", a))
+    /** Повтор не добавляем, но и не молчим: иначе кажется, что вставка не сработала (как в веб-почте). */
+    fun add(p: Person) {
+        when {
+            list.any { it.mail.equals(p.mail, true) } -> Toasts.show("${p.mail} уже в этом поле")
+            others().any { it.mail.equals(p.mail, true) } -> Toasts.show("${p.mail} уже указан в другом поле — второй раз письмо не нужно")
+            else -> list.add(p)
         }
+    }
+    fun commit(raw: String) {
+        raw.split(',', ';', ' ').map { it.trim().trim('<', '>') }.filter { it.contains('@') }.forEach { a -> add(Person("", a)) }
         text = ""; hints = emptyList(); onChange()
     }
     Column(modifier) {
@@ -509,7 +687,9 @@ fun RecipientsField(label: String, list: MutableList<Person>, modifier: Modifier
             Text(label, Modifier.width(64.dp), color = P.muted)
             FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 list.toList().forEach { p ->
-                    Row(Modifier.clip(RoundedCornerShape(50)).background(P.chipOff).padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val bad = warns[p.mail.lowercase()] != null
+                    Row(Modifier.clip(RoundedCornerShape(50)).background(if (bad) P.no.copy(alpha = .14f) else P.chipOff).padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (bad) { Ico("warn", size = 14.dp, tint = P.no); Spacer(Modifier.width(4.dp)) }
                         Text(p.name.ifBlank { p.mail }, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 220.dp))
                         Box(Modifier.padding(start = 2.dp).size(20.dp).clip(CircleShape).clickable { list.remove(p); onChange() }, contentAlignment = Alignment.Center) { Ico("x", size = 12.dp, tint = P.muted) }
                     }
@@ -536,7 +716,7 @@ fun RecipientsField(label: String, list: MutableList<Person>, modifier: Modifier
             trailing()
         }
         hints.forEach { h ->
-            Row(Modifier.fillMaxWidth().clickable { list.add(Person(h.name, h.mail)); text = ""; hints = emptyList(); onChange() }.padding(start = 80.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            Row(Modifier.fillMaxWidth().clickable { add(Person(h.name, h.mail)); text = ""; hints = emptyList(); onChange() }.padding(start = 80.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 su.innotec.mail.ui.Avatar(h.name.ifBlank { h.mail }, h.mail, 28.dp)
                 Spacer(Modifier.width(10.dp))
@@ -583,6 +763,14 @@ private fun Attachments(m: ComposeModel) {
             }
         }
         m.cloudFiles.toList().forEach { c -> AttChip("cloud", c.name.ifBlank { c.path.substringAfterLast('/') }, c.size, "из облака, ссылкой") { m.cloudFiles.remove(c); m.dirty = true } }
+        // Заранее, а не только при отправке: 60 % предела — письмо может не пройти у получателя.
+        val limit = m.meta.limits.messageMb.toLong() * 1024 * 1024
+        val used = m.inMailSize()
+        if (limit > 0 && used > limit * 6 / 10) Text(
+            if (used > limit) "Вложения ${Fmt.size(used)} — больше предела ${m.meta.limits.messageMb} МБ" + (if (m.meta.cloud.enabled) ": отметьте крупные «Ссылкой»" else "")
+            else "Вложения ${Fmt.size(used)} из ${m.meta.limits.messageMb} МБ — у некоторых получателей предел меньше" + (if (m.meta.cloud.enabled) ", крупные лучше «Ссылкой»" else ""),
+            Modifier.padding(horizontal = 4.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = if (used > limit) P.no else P.muted,
+        )
     }
     Divider()
 }
