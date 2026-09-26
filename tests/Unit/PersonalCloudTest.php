@@ -334,6 +334,37 @@ class PersonalCloudTest extends TestCase
         $this->assertSame('https://nc.example.ru/s/Tk3n', $l2['url'], 'при изменении адрес ссылки не должен меняться');
     }
 
+    public function test_правка_ссылки_меняет_срок_а_без_ссылки_отвечает_404(): void
+    {
+        $form = null;
+        $this->fake([
+            ['PROPFIND', '/Цех.mp4', Http::response(self::multistatus([['Цех.mp4', false, 100]]), 207)],
+            ['PUT', '/api/v1/shares/15', function (Request $r) use (&$form) {
+                $form = $r->data();
+
+                return Http::response(['ocs' => ['meta' => ['statuscode' => 200], 'data' => []]], 200);
+            }],
+        ]);
+        $this->ledger->saveLink('ivanov@example.ru', ['path' => 'Цех.mp4', 'share_id' => '15', 'url' => 'https://nc.example.ru/s/Tk3n', 'expires_at' => date('Y-m-d', strtotime('+5 days')), 'has_password' => false]);
+
+        $l = $this->cloud()->relink('Цех.mp4', 365);
+
+        $this->assertSame(date('Y-m-d', strtotime('+365 days')), $form['expireDate']);
+        $this->assertArrayNotHasKey('password', $form, 'пароль не передан — не трогаем');
+        $this->assertSame('https://nc.example.ru/s/Tk3n', $l['url'], 'при правке адрес ссылки не должен меняться');
+        $this->assertSame(date('Y-m-d', strtotime('+365 days')), $l['expires_at']);
+
+        // Ссылку отозвали с другого устройства — правка не должна тихо выдать новую.
+        $this->sent = [];
+        try {
+            $this->cloud()->relink('Другое.pdf', 30);
+            $this->fail('правка несуществующей ссылки прошла');
+        } catch (MailException $e) {
+            $this->assertSame(404, $e->status());
+        }
+        $this->assertSame([], $this->sent, 'без ссылки в облако ходить незачем');
+    }
+
     public function test_на_папку_ссылку_не_дать(): void
     {
         $this->fake([['PROPFIND', '/Видео', Http::response(self::multistatus([['Видео', true, 100]]), 207)]]);

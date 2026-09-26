@@ -136,7 +136,8 @@ final class ActivityMap
             $is('cloud/trash(/\d+)?') => ['cloud.purge', null, null],
             $is('cloud/uploads/[^/]+/finish') => ['cloud.upload', null, null],
             $is('cloud/uploads/[^/]+') => ['cloud.upload-abort', null, null],
-            $is('cloud/link') => ['cloud.link', null, ! empty($input['password']) ? 'с паролем' : null],
+            // PUT — правка срока или пароля уже выданной ссылки (приложение); POST — выдача.
+            $is('cloud/link') => ['cloud.link', null, trim(($method === 'PUT' ? 'изменил' : '') . (! empty($input['password']) ? ' с паролем' : '')) ?: null],
             $is('cloud/unlink') => ['cloud.unlink', null, null],
             $is('cloud/attach') => ['cloud.attach', null, 'файлов ' . count((array) ($input['paths'] ?? []))],
             $is('cloud/file') => ['cloud.download', null, ! empty($query['inline']) ? 'просмотр' : 'скачивание'],

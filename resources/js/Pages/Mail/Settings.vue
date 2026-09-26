@@ -324,9 +324,11 @@ const shortcuts = [
                             <label class="toggle"><input v-model="s.unread_highlight" type="checkbox"><span class="toggle__track" />Подсвечивать непрочитанные цветом: полоска слева и тема</label>
                             <div v-if="s.unread_highlight" class="field__row" style="align-items: center; gap: 10px; padding-left: 44px">
                                 <span class="hint" style="margin: 0">Цвет подсветки</span>
-                                <input type="color" :value="s.unread_color || '#2F6FEB'" aria-label="Цвет непрочитанных писем" title="Цвет непрочитанных писем" style="width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer" @input="s.unread_color = $event.target.value">
-                                <span class="hint" style="margin: 0"><span :style="{ display: 'inline-block', width: '3px', height: '14px', verticalAlign: 'middle', marginRight: '8px', background: s.unread_color || 'var(--accent)' }" /><b :style="{ color: s.unread_color || 'var(--accent-ink)' }">Так будет выглядеть тема непрочитанного</b></span>
-                                <button v-if="s.unread_color" class="btn btn--sm" type="button" @click="s.unread_color = ''">Синий темы</button>
+<!-- Без своего цвета тема непрочитанного — цветом текста, только жирным (гамма «А»);
+                                     цветной остаётся лишь полоска слева. -->
+                                <input type="color" :value="s.unread_color || '#C94E00'" aria-label="Цвет непрочитанных писем" title="Цвет непрочитанных писем" style="width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer" @input="s.unread_color = $event.target.value">
+                                <span class="hint" style="margin: 0"><span :style="{ display: 'inline-block', width: '3px', height: '14px', verticalAlign: 'middle', marginRight: '8px', background: s.unread_color || 'var(--accent)' }" /><b :style="{ color: s.unread_color || 'var(--text)' }">Так будет выглядеть тема непрочитанного</b></span>
+                                <button v-if="s.unread_color" class="btn btn--sm" type="button" @click="s.unread_color = ''">Как в теме</button>
                             </div>
                             <!-- 198: тот же переключатель в разделе «Горячие клавиши» сохранялся сразу,
                                  а здесь ждал кнопки «Сохранить». Теперь одинаково. -->

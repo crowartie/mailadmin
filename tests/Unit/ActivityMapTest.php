@@ -81,6 +81,10 @@ class ActivityMapTest extends TestCase
         $this->assertSame(['page.settings', null, 'rules'], ActivityMap::describe('GET', 'mail/settings/rules'));
         $this->assertSame(['page.mail', null, null], ActivityMap::describe('GET', 'mail'));
         $this->assertSame(['file.renew', null, null], ActivityMap::describe('POST', 'mail/api/files/abc/renew'));
+        // Выдача и правка ссылки облака — одно действие с разной подробностью; приложение ходит под /api/v1.
+        $this->assertSame(['cloud.link', null, null], ActivityMap::describe('POST', 'mail/api/cloud/link', [], ['path' => 'Цех.mp4', 'days' => 30]));
+        $this->assertSame(['cloud.link', null, 'изменил с паролем'], ActivityMap::describe('PUT', 'mail/api/cloud/link', [], ['path' => 'Цех.mp4', 'days' => 365, 'password' => true]));
+        $this->assertSame(['cloud.link', null, 'изменил'], ActivityMap::describe('PUT', 'mail/api/cloud/link', [], ['path' => 'Цех.mp4', 'days' => 0]));
     }
 
     public function test_роли_папок(): void

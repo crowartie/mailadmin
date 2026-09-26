@@ -71,6 +71,8 @@ Route::prefix('cloud')->group(function () {
     Route::post('uploads/{id}/finish', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'uploadFinish'])->where('id', 'mc[0-9a-f]{30}');
     Route::delete('uploads/{id}', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'uploadAbort'])->where('id', 'mc[0-9a-f]{30}');
     Route::post('link', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'link']);
+    // Изменить уже выданную ссылку (срок, пароль): 404, если ссылки нет — приложение не создаст её по ошибке.
+    Route::put('link', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'relink']);
     Route::post('unlink', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'unlink']);
     Route::post('attach', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'attach']);
     Route::post('pin', [\App\Http\Controllers\Mail\Api\PersonalCloudController::class, 'pin']);
@@ -144,6 +146,8 @@ Route::delete('calendars/{calendar}', [CalendarController::class, 'destroyCalend
 Route::get('calendars/{calendar}/shares', [CalendarController::class, 'shares']);
 Route::post('calendars/{calendar}/shares', [CalendarController::class, 'share']);
 Route::delete('calendars/{calendar}/shares', [CalendarController::class, 'unshare']);
+// Отписаться от чужого общего календаря (приложение): свой календарь этим не удалить.
+Route::delete('calendars/{calendar}/subscription', [CalendarController::class, 'unsubscribe']);
 Route::get('calendars/{calendar}/export', [CalendarController::class, 'export']);
 Route::get('events', [CalendarController::class, 'events']);
 Route::post('events', [CalendarController::class, 'store']);

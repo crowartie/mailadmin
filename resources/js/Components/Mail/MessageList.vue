@@ -4,7 +4,7 @@
 import AppPromo from './AppPromo.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
-import { dayGroup, hue, initials, plural, when } from '../../mail/format';
+import { avatarColor, dayGroup, initials, plural, when } from '../../mail/format';
 
 const props = defineProps({
     list: { type: Object, required: true },
@@ -379,7 +379,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
                 <!-- В «Отправленных» и «Черновиках» рядом стоит имя получателя — буквы берём оттуда же,
                      иначе кружок и подпись противоречат друг другу. -->
                 <!-- Щелчок по кружку — вся переписка с этим человеком (как в Яндексе). -->
-                <button class="mrow__av" type="button" :style="{ '--av-h': hue(personMail(m)) }"
+                <button class="mrow__av" type="button" :style="{ '--av': avatarColor(personMail(m)) }"
                         :title="'Вся переписка с ' + personName(m)" :aria-label="'Вся переписка с ' + personName(m)"
                         @click.stop="$emit('person', personMail(m))">{{ (folderRole === 'sent' || folderRole === 'drafts') && m.toName ? initials(m.toName, '') : initials(m.from.name, m.from.mail) }}</button>
                 <span class="mrow__body">

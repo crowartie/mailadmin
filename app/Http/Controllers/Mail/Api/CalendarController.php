@@ -44,6 +44,16 @@ class CalendarController extends Controller
         });
     }
 
+    /** DELETE calendars/{calendar}/subscription — отписаться от календаря, которым поделился коллега. */
+    public function unsubscribe(ImapSession $imap, string $calendar): JsonResponse
+    {
+        return $this->guard(function () use ($imap, $calendar) {
+            $this->store->unsubscribe($imap->user(), $calendar);
+
+            return ['ok' => true];
+        });
+    }
+
     public function events(Request $request, ImapSession $imap): JsonResponse
     {
         $data = $request->validate(['from' => ['required', 'date'], 'to' => ['required', 'date'], 'calendars' => ['nullable', 'string']]);

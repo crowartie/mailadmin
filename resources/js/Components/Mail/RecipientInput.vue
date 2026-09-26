@@ -2,7 +2,7 @@
 // Поле адресатов: фишки «Имя <адрес>», ввод с подсказками из общей книги и недавних.
 import { ref, watch } from 'vue';
 import { api } from '../../mail/api';
-import { initials, parseAddr, splitAddrs } from '../../mail/format';
+import { avatarColor, initials, parseAddr, splitAddrs } from '../../mail/format';
 
 const props = defineProps({
     modelValue: { type: Array, default: () => [] }, // [{name, mail}]
@@ -217,7 +217,7 @@ defineExpose({ focus: () => input.value?.focus(), flush });
                 :class="{ 'sug--on': i === active }"
                 @mousedown.prevent="pick(s)"
             >
-                <span class="sug__av">{{ initials(s.name, s.mail) }}</span>
+                <span class="sug__av" :style="{ '--av': avatarColor(s.mail) }">{{ initials(s.name, s.mail) }}</span>
                 <span style="min-width: 0">
                     <div>{{ s.name }}</div>
                     <div class="sug__sub">{{ s.mail }} · {{ { employee: 'рабочая почта', personal: 'личная почта сотрудника', recent: 'из переписки' }[s.kind] || 'адресная книга' }}</div>

@@ -10,7 +10,7 @@ import Toast from '../../Components/Mail/Toast.vue';
 import { api } from '../../mail/api';
 import { useContactForm } from '../../mail/useContactForm';
 import { useContactActions } from '../../mail/useContactActions';
-import { hotkey, initials, plural, quoteName, when } from '../../mail/format';
+import { avatarColor, hotkey, initials, plural, quoteName, when } from '../../mail/format';
 
 const props = defineProps({
     user: String,
@@ -267,7 +267,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                     <template v-for="r in rows" :key="r.letter ? 'L' + r.letter : r.hist ? 'H' + r.hist.email : r.contact.book + r.contact.uri">
                         <div v-if="r.letter" class="crow__letter">{{ r.letter }}</div>
                         <div v-else-if="r.hist" class="mrow crow" style="cursor: default">
-                            <span class="mrow__av">{{ initials(r.hist.name, r.hist.email) }}</span>
+                            <span class="mrow__av" :style="{ '--av': avatarColor(r.hist.email) }">{{ initials(r.hist.name, r.hist.email) }}</span>
                             <span class="mrow__body">
                                 <span class="mrow__from"><b>{{ r.hist.name || r.hist.email }}</b></span>
                                 <span class="mrow__prev">{{ r.hist.name ? r.hist.email + ' · ' : '' }}{{ r.hist.uses }} {{ plural(r.hist.uses, 'письмо', 'письма', 'писем') }}{{ r.hist.last_at ? ', последнее ' + when(r.hist.last_at) : '' }}</span>
@@ -291,7 +291,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             @keydown.space.prevent="select(r.contact)"
                             @contextmenu.prevent="menuFor($event, r.contact)"
                         >
-                            <span class="mrow__av" :class="{ 'mrow__av--emp': r.contact.employee }">{{ initials(r.contact.fn, r.contact.email) }}</span>
+                            <span class="mrow__av" :class="{ 'mrow__av--emp': r.contact.employee }" :style="{ '--av': avatarColor(r.contact.email || r.contact.fn) }">{{ initials(r.contact.fn, r.contact.email) }}</span>
                             <span class="mrow__body">
                                 <span class="mrow__from"><b>{{ r.contact.fn }}</b><Icon v-if="r.contact.favorite" name="star" :size="13" style="color: var(--warn)" /></span>
                                 <span class="mrow__prev">{{ r.contact.email || (r.contact.phones && r.contact.phones[0] && r.contact.phones[0].value) || [r.contact.title, r.contact.org].filter(Boolean).join(' · ') || '—' }}</span>
@@ -397,7 +397,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                     </div>
                     <div class="mread__scroll">
                         <div class="msg ccard__head">
-                            <div class="ccard__av">
+                            <div class="ccard__av" :style="{ '--av': avatarColor(open.email || open.fn) }">
                                 <img v-if="open.photo" :src="open.photo" alt="">
                                 <span v-else>{{ initials(open.fn, open.email) }}</span>
                             </div>

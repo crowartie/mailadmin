@@ -297,10 +297,11 @@
         width: 36px;
         height: 36px;
         border-radius: 10px;
-        // Цвет берётся из адреса и у человека всегда один и тот же: письма от одного
-        // отправителя видно, не читая имени. Раньше все кружки были одного цвета.
-        background: hsl(var(--av-h, 220) 62% 92%);
-        color: hsl(var(--av-h, 220) 55% 30%);
+        // Тон берётся из адреса и у человека всегда один и тот же: письма от одного
+        // отправителя видно, не читая имени. Шесть глубоких тонов (--av-1…6) под белые
+        // буквы вместо пастели по hue: пастель на тёплом фоне гаммы читалась плохо.
+        background: var(--av, var(--av-1));
+        color: #fff;
         font-weight: 600;
         font-size: 12px;
         display: flex;
@@ -311,11 +312,14 @@
     &__body { min-width: 0; display: block; }
     &__from { display: flex; gap: 8px; align-items: center; min-width: 0; }
     &__from b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    // Непрочитанное — жирным начертанием, цвет текста обычный: оранжевый в гамме
+    // оставлен действиям, а синяя тема письма спорила бы со ссылками.
     &--unread &__from b, &--unread &__subj { font-weight: 700; }
-    // «Подсвечивать непрочитанные цветом» (как в Outlook): полоска слева и тема цветом accent-ink
-    // Свой цвет из настроек (--unread-c) или синий темы
+    // «Подсвечивать непрочитанные цветом» (как в Outlook): полоска слева и тема своим цветом
+    // из настроек (--unread-c). Без своего цвета — полоска акцентом (это отметка, как счётчик),
+    // а тема остаётся цветом текста.
     .mlist--hl &--unread::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--unread-c, #{v.$c-accent}); }
-    .mlist--hl &--unread &__subj { color: var(--unread-c, #{v.$c-accent-ink}); }
+    .mlist--hl &--unread &__subj { color: var(--unread-c, #{v.$c-text}); }
     &__subj { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     &__prev { display: block; color: v.$c-muted; font-size: 12.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
@@ -460,8 +464,9 @@
         width: 40px;
         height: 40px;
         border-radius: 10px;
-        background: v.$c-accent-soft;
-        color: v.$c-accent-ink;
+        // Тот же тон по адресу, что у кружка в списке (--av-1…6), белые буквы.
+        background: var(--av, var(--av-1));
+        color: #fff;
         font-weight: 600;
         display: flex;
         align-items: center;
@@ -499,7 +504,7 @@
 
         img { max-width: 100%; height: auto; }
         table { max-width: 100%; }
-        a { color: v.$c-accent-ink; }
+        a { color: v.$c-link; }
         blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid v.$c-border; color: v.$c-muted; }
     }
     &__text { margin: 0; white-space: pre-wrap; word-wrap: break-word; font: inherit; line-height: 1.6; }
@@ -1035,7 +1040,7 @@
     color: v.$c-text;
 
     &--on, &:hover { background: v.$c-accent-soft; }
-    &__av { width: 28px; height: 28px; border-radius: 8px; background: v.$c-accent-soft; color: v.$c-accent-ink; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: 0 0 28px; }
+    &__av { width: 28px; height: 28px; border-radius: 8px; background: var(--av, var(--av-1)); color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: 0 0 28px; }
     &__sub { font-size: 12px; color: v.$c-muted; }
 }
 

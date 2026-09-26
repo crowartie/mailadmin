@@ -8,7 +8,7 @@ import AttachedMail from './AttachedMail.vue';
 import { isEmpty, isEml, isImg, isOffice, viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
 import { uiSimple } from '../../mail/uiMode';
-import { addrList, initials, size, when } from '../../mail/format';
+import { addrList, avatarColor, initials, size, when } from '../../mail/format';
 
 const props = defineProps({
     message: { type: Object, required: true },
@@ -329,7 +329,7 @@ const isDraft = computed(() => props.folderRole === 'drafts');
 
         <Popover v-if="card" :x="card.x" :y="card.y" @close="card = null">
             <div class="pop__card">
-                <div class="msg__av">{{ initials(card.name, card.mail) }}</div>
+                <div class="msg__av" :style="{ '--av': avatarColor(card.mail) }">{{ initials(card.name, card.mail) }}</div>
                 <div class="pop__card-who">
                     <b v-if="card.name">{{ card.name }}</b>
                     <span class="mono">{{ card.mail }}</span>
@@ -343,7 +343,7 @@ const isDraft = computed(() => props.folderRole === 'drafts');
 
         <article v-for="m in all" :key="m.folder + '#' + m.uid" class="msg" :class="{ 'msg--col': !isOpen(m) }">
             <div class="msg__hd" @click="toggle(m)">
-                <div class="msg__av">{{ initials(m.from.name, m.from.mail) }}</div>
+                <div class="msg__av" :style="{ '--av': avatarColor(m.from.mail) }">{{ initials(m.from.name, m.from.mail) }}</div>
                 <div class="msg__who">
                     <!-- Имя отправителя — кнопка: карточка с адресом и действиями (скопировать,
                          написать, найти все письма, в контактах), как в Mail.ru. -->

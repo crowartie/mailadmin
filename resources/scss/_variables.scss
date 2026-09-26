@@ -1,63 +1,71 @@
-// Токены направления «как Яндекс». Те же значения, что на дизайн-канвасе.
+// Токены фирменной гаммы «А» (2026-09-27): тёплый серый фон, оранжевый акцент.
 // Цвета живут в CSS-переменных, чтобы тёмная тема переключалась атрибутом data-theme.
+// Правило гаммы: оранжевый — только у действий (кнопки, активная вкладка и отбор, счётчики
+// непрочитанных, напоминания). Ссылки в тексте — --link, непрочитанное — жирным, а не цветом.
 $font-ui:   "Golos Text", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 $font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
 :root {
-    --bg: #F3F5F8;
+    --bg: #F5F3EF;
     --surface: #FFFFFF;
-    --surface-2: #F8FAFC;
-    --border: #E3E8EF;
-    --border-2: #CBD3DE;
-    --text: #1B2430;
-    // Служебные подписи: 4.5 по WCAG на всех фонах, где они встречаются — белом,
-    // сером, голубом выделении строки. Прежние #6B7787 и #98A3B3 давали 3.97 и 2.55.
-    --muted: #5A6472;
-    --faint: #5F6D81;
-    --accent: #2F6FEB;
-    --accent-soft: #E8F0FE;
-    --accent-ink: #1B4FC4;
+    --surface-2: #FAF9F6;
+    --border: #E6E4E0;
+    --border-2: #CFCBC4;
+    --text: #2B3036;
+    --muted: #646B76;
+    --faint: #646B76;
+    --accent: #C94E00;
+    --accent-soft: #FFF1E8;
+    --accent-ink: #9A3D00;
     // Цвет текста на самой кнопке и цвет кнопки под курсором: в тёмной теме акцент
-    // светлеет, и белый текст на нём давал 2.70 — теперь текст берётся отсюда.
+    // светлеет, и белый текст на нём не читается — текст берётся отсюда.
     --accent-on: #FFFFFF;
-    --accent-hover: #1B4FC4;
+    --accent-hover: #A84100;
+    // Ссылки — синие, а не акцентные: иначе каждая ссылка в письме выглядела бы кнопкой.
+    --link: #1D5FD1;
+    --link-hover: #1547A8;
     --mark: #FFD84D;
     --mark-ink: #5A4300;
-    --ok: #16A05C;   --ok-soft: #E3F6EB;   --ok-ink: #117C47;
-    --warn: #D9791F; --warn-soft: #FDF0E1; --warn-ink: #A35B17;
-    --no: #C0392B;   --no-soft: #FBE7E4;   --no-ink: #C0392B;   --no-line: #F2C9C4;   --no-on: #FFFFFF;
-    --chip-off: #EDF0F4;
+    --ok: #1F7A4D;   --ok-soft: #E6F4EC;   --ok-ink: #1F7A4D;
+    --warn: #9A6700; --warn-soft: #FFF6E0; --warn-ink: #9A6700;
+    --no: #C62828;   --no-soft: #FCE8E8;   --no-ink: #C62828;   --no-line: #F3C4C4;   --no-on: #FFFFFF;
+    --chip-off: #EFEDE8;
     // Плашка внизу экрана инвертирована: на ней свои цвета, иначе в тёмной теме
-    // «Отменить» оказывалось жёлтым по светлому — контраст 1.61.
-    --toast-bg: #1B2430; --toast-ink: #F3F5F8; --toast-action: #FFD84D; --toast-dim: #98A3B3;
-    --shadow-pop: 0 12px 36px -12px rgba(27, 36, 48, .35);
-    --overlay: rgba(27, 36, 48, .45);
+    // «Отменить» оказывалось светлым по светлому.
+    --toast-bg: #2B3036; --toast-ink: #F5F3EF; --toast-action: #FFB380; --toast-dim: #A3A9B2;
+    // Кружки с инициалами: шесть глубоких тонов под белые буквы (раньше — пастель по hue адреса).
+    --av-1: #B84A00; --av-2: #1F7A4D; --av-3: #1D5FD1; --av-4: #6B3FA0; --av-5: #0F766E; --av-6: #9A6700;
+    --shadow-pop: 0 12px 36px -12px rgba(43, 48, 54, .35);
+    --overlay: rgba(43, 48, 54, .45);
     color-scheme: light;
 }
 
 [data-theme="dark"] {
-    --bg: #0F1419;
-    --surface: #171D25;
-    --surface-2: #1D242E;
-    --border: #27303C;
-    --border-2: #34404F;
-    --text: #E6EBF2;
-    --muted: #98A3B3;
-    --faint: #8993A1;
-    --accent: #6D9BFF;
-    --accent-soft: #1B2A45;
-    --accent-ink: #A9C3FF;
-    // На светло-синей кнопке читается тёмный текст, а не белый (6.86 против 2.70);
+    --bg: #1E2226;
+    --surface: #2A2F35;
+    --surface-2: #31373E;
+    --border: #3A4048;
+    --border-2: #4A515A;
+    --text: #EDEBE7;
+    --muted: #A3A9B2;
+    --faint: #A3A9B2;
+    --accent: #FF8A3D;
+    --accent-soft: #3D2A1E;
+    --accent-ink: #FFB380;
+    // На светло-оранжевой кнопке читается тёмный текст, а не белый (6.8 против 2.6);
     // под курсором кнопка светлеет — контраст от этого только растёт.
-    --accent-on: #0F1419;
-    --accent-hover: #8FB4FF;
+    --accent-on: #1E2226;
+    --accent-hover: #FFA366;
+    --link: #7FA8FF;
+    --link-hover: #A9C3FF;
     --mark: #E0B62A;
     --mark-ink: #2A2000;
-    --ok: #3DC47A;   --ok-soft: #14301F;   --ok-ink: #3DC47A;
-    --warn: #F0A250; --warn-soft: #3A2A14; --warn-ink: #F0A250;
-    --no: #F0705F;   --no-soft: #3C1C18;   --no-ink: #F0705F;   --no-line: #6B2C25;   --no-on: #0F1419;
-    --chip-off: #232B36;
-    --toast-bg: #E6EBF2; --toast-ink: #0F1419; --toast-action: #1B4FC4; --toast-dim: #4A5464;
+    --ok: #3DC47A;   --ok-soft: #17362A;   --ok-ink: #3DC47A;
+    --warn: #E0A93A; --warn-soft: #3A2F14; --warn-ink: #E0A93A;
+    --no: #F07070;   --no-soft: #3C1F1F;   --no-ink: #F07070;   --no-line: #5A2A2A;   --no-on: #1E2226;
+    --chip-off: #31373E;
+    --toast-bg: #EDEBE7; --toast-ink: #1E2226; --toast-action: #9A3D00; --toast-dim: #6B7280;
+    --av-1: #B84A00; --av-2: #1F7A4D; --av-3: #2F63C9; --av-4: #6B3FA0; --av-5: #0F766E; --av-6: #8A5C00;
     --shadow-pop: 0 12px 36px -12px rgba(0, 0, 0, .7);
     // Затемнение под окном в тёмной теме было почти незаметно — окно не читалось как модальное.
     --overlay: rgba(0, 0, 0, .72);
@@ -76,6 +84,8 @@ $c-faint:       var(--faint);
 $c-accent:      var(--accent);
 $c-accent-soft: var(--accent-soft);
 $c-accent-ink:  var(--accent-ink);
+$c-link:        var(--link);
+$c-link-hover:  var(--link-hover);
 $c-mark:        var(--mark);
 $c-mark-ink:    var(--mark-ink);
 
@@ -90,5 +100,5 @@ $c-accent-hover: var(--accent-hover);
 
 $r-control: 8px;
 $r-card:    12px;
-$shadow-drawer: -24px 0 60px -30px rgba(27, 36, 48, .35);
+$shadow-drawer: -24px 0 60px -30px rgba(43, 48, 54, .35);
 $shadow-pop: var(--shadow-pop);

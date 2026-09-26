@@ -24,8 +24,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Почта для Android — {{ $domain }}</title>
     <style>
-        :root { --bg: #E9ECF1; --card: #fff; --text: #1B2430; --muted: #5A6472; --faint: #98A3B3; --accent: #2F6FEB; --line: #E3E7ED; }
-        @media (prefers-color-scheme: dark) { :root { --bg: #0F1318; --card: #1A2029; --text: #E6EAF0; --muted: #A4ADBA; --faint: #6E7888; --accent: #6B9BFF; --line: #2A323D; } }
+        /* Те же токены, что у веб-почты (resources/scss/_variables.scss, гамма «А»): страница
+           открывается до входа, поэтому цвета продублированы, а не подключены сборкой. */
+        :root { --bg: #F5F3EF; --card: #fff; --text: #2B3036; --muted: #646B76; --faint: #646B76; --accent: #C94E00; --accent-on: #fff; --link: #1D5FD1; --line: #E6E4E0; }
+        @media (prefers-color-scheme: dark) { :root { --bg: #1E2226; --card: #2A2F35; --text: #EDEBE7; --muted: #A3A9B2; --faint: #A3A9B2; --accent: #FF8A3D; --accent-on: #1E2226; --link: #7FA8FF; --line: #3A4048; } }
         * { box-sizing: border-box; }
         body { margin: 0; background: var(--bg); font-family: "Segoe UI", Roboto, Arial, sans-serif; color: var(--text); }
         main { max-width: 720px; margin: 0 auto; padding: 24px 16px 40px; }
@@ -36,14 +38,14 @@
         h2 { margin: 0 0 12px; font-size: 17px; }
         .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
         .dl { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-top: 20px; }
-        .btn { display: inline-flex; align-items: center; gap: 10px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; font-size: 17px; padding: 14px 24px; border-radius: 12px; }
+        .btn { display: inline-flex; align-items: center; gap: 10px; background: var(--accent); color: var(--accent-on); text-decoration: none; font-weight: 600; font-size: 17px; padding: 14px 24px; border-radius: 12px; }
         .meta { color: var(--faint); font-size: 13px; margin-top: 8px; }
         .qr { margin-left: auto; text-align: center; color: var(--faint); font-size: 12px; }
         .qr svg { background: #fff; padding: 8px; border-radius: 10px; display: block; margin-bottom: 6px; }
         ol, ul { margin: 0; padding-left: 20px; line-height: 1.55; font-size: 15px; }
         li { margin-bottom: 6px; }
         .note { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 12px 0 0; }
-        a.link { color: var(--accent); }
+        a.link { color: var(--link); }
         @media (max-width: 600px) { .qr { display: none; } .btn { width: 100%; justify-content: center; } }
     </style>
 </head>

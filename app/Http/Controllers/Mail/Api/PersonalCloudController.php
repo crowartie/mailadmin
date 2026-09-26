@@ -184,6 +184,17 @@ class PersonalCloudController extends Controller
         return response()->json(['link' => $this->cloud($imap)->link($d['path'], (int) $d['days'], array_key_exists('password', $d) ? $d['password'] : null)]);
     }
 
+    /**
+     * PUT cloud/link — изменить существующую ссылку: срок (0 — бессрочно) и пароль
+     * (true — новый, false — снять, не передан — оставить). Адрес ссылки не меняется.
+     */
+    public function relink(Request $request, ImapSession $imap): JsonResponse
+    {
+        $d = $request->validate(['path' => ['required', 'string', 'max:2000'], 'days' => ['required', 'integer', 'min:0', 'max:3650'], 'password' => ['nullable', 'boolean']]);
+
+        return response()->json(['link' => $this->cloud($imap)->relink($d['path'], (int) $d['days'], array_key_exists('password', $d) ? $d['password'] : null)]);
+    }
+
     public function unlink(Request $request, ImapSession $imap): JsonResponse
     {
         $d = $request->validate(['path' => ['required', 'string', 'max:2000']]);

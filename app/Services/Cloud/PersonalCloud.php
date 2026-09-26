@@ -52,7 +52,9 @@ class PersonalCloud
             throw MailException::unsupported('Облако не подключено. Обратитесь к администратору.');
         }
 
-        return new self($user, self::settings() + ['files_host' => LocalFiles::enabled()], new DbCloudLedger());
+        // Учёт — из контейнера (AppServiceProvider → DbCloudLedger): тесты подменяют его ArrayCloudLedger
+        // и проверяют маршруты облака без базы.
+        return new self($user, self::settings() + ['files_host' => LocalFiles::enabled()], app(CloudLedger::class));
     }
 
     public static function settings(): array
@@ -738,6 +740,21 @@ class PersonalCloud
     private static function fileId(string $shareId): ?int
     {
         return preg_match('/^f(\d+)$/', $shareId, $m) ? (int) $m[1] : null;
+    }
+
+    /**
+     * Изменить уже выданную ссылку. Отличие от link() одно: ссылки нет — 404, а не новая ссылка.
+     * Приложение правит срок и пароль в карточке файла, и если ссылку тем временем отозвали
+     * с другого устройства, молча выдать новую было бы неожиданностью.
+     */
+    public function relink(string $rel, int $days, ?bool $password = null): array
+    {
+        $rel = PersonalPath::clean($rel);
+        if (! $this->ledger->link($this->user, $rel)) {
+            throw MailException::notFound('Ссылки на этот файл нет — сначала создайте её');
+        }
+
+        return $this->link($rel, $days, $password);
     }
 
     public function unlink(string $rel): void

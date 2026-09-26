@@ -9,7 +9,7 @@ import Dialog from '../../Components/Mail/Dialog.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import RecipientInput from '../../Components/Mail/RecipientInput.vue';
 import { api } from '../../mail/api';
-import { hotkey, initials, toLocalInput } from '../../mail/format';
+import { avatarColor, hotkey, initials, toLocalInput } from '../../mail/format';
 import { DAYS, DAYS_FULL, MONTHS, MONTHS_N, addDays, addLabel, at9, day0, hex6, hm, monday, parseDay, sameDay, ymd } from '../../mail/dates';
 import { useCalendarTasks } from '../../mail/useCalendarTasks';
 import { useFreeBusy } from '../../mail/useFreeBusy';
@@ -539,7 +539,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                         <template v-if="open.attendees?.length">
                             <div class="grp" style="margin-top: 14px">Участники · {{ open.attendees.length }}</div>
                             <div v-for="a in open.attendees" :key="a.mail" class="cal__att">
-                                <span class="mrow__av" style="width: 28px; height: 28px; font-size: 11px">{{ initials(a.name, a.mail) }}</span>
+                                <span class="mrow__av" :style="{ width: '28px', height: '28px', fontSize: '11px', '--av': avatarColor(a.mail) }">{{ initials(a.name, a.mail) }}</span>
                                 <span class="grow" :title="a.mail">{{ a.name }}</span>
                                 <span class="chip" :class="'chip--' + STATUS[a.status]?.[1]">{{ STATUS[a.status]?.[0] || a.status }}</span>
                             </div>
@@ -607,7 +607,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
             <p class="hint" style="margin: 0 0 10px">Занятость по вашему календарю коллеги видят и так — при назначении встреч. Здесь можно открыть сами события.</p>
             <div class="mset__list">
                 <div v-for="s in shares" :key="s.mail" class="mset__li">
-                    <span class="mrow__av" style="width: 28px; height: 28px; font-size: 11px">{{ initials(s.name, s.mail) }}</span>
+                    <span class="mrow__av" :style="{ width: '28px', height: '28px', fontSize: '11px', '--av': avatarColor(s.mail) }">{{ initials(s.name, s.mail) }}</span>
                     <div class="grow"><div>{{ s.name }}</div><div class="sub">{{ s.mail }} · {{ s.level === 'write' ? 'чтение и правка' : 'только чтение' }}</div></div>
                     <button class="ib ib--sm" type="button" title="Закрыть доступ" @click="removeShare(s.mail)" aria-label="Закрыть доступ"><Icon name="x" :size="14" /></button>
                 </div>
