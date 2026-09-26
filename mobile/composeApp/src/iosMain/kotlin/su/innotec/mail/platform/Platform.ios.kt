@@ -170,3 +170,9 @@ actual object Updater {
     actual val canInstall: Boolean get() = false
     actual fun install(file: SavedFile): Boolean = false
 }
+
+/** Печать на iPhone — UIPrintInteractionController, появится вместе с первой сборкой на Mac. */
+actual object Printer {
+    actual val available: Boolean get() = false
+    actual fun print(title: String, html: String, loadResource: suspend (path: String) -> Pair<String, ByteArray>?): Boolean = false
+}

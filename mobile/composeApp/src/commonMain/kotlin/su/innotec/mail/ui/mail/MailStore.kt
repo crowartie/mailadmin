@@ -54,6 +54,10 @@ object MailStore {
     var loadingMore by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
     val selected = mutableStateListOf<Long>()
+    /** Выбраны все письма папки (с учётом фильтра и поиска), а не только загруженные — действия идут на сервере. */
+    var allFolder by mutableStateOf(false)
+    /** Занятое место в ящике — внизу панели папок, как в веб-почте. */
+    var quota by mutableStateOf<su.innotec.mail.api.Quota?>(null)
     /** Открытое письмо (планшет: правая панель). */
     var openUid by mutableStateOf<Long?>(null)
     var scrollTopSignal by mutableIntStateOf(0)
@@ -100,6 +104,7 @@ object MailStore {
                 applyFolders(api.folders())
                 runCatching { outboxCount = api.outbox().count { it.status == "scheduled" || it.status.isEmpty() } }
                 runCatching { quarantineCount = api.quarantine().size }
+                runCatching { quota = api.composeMeta().quota }
             } catch (e: ApiException) {
                 if (e.isAuth) Toasts.error(e)
             }
@@ -235,6 +240,7 @@ object MailStore {
             "snooze" -> if (one) "Отложено" else "$w отложено"
             "unsnooze" -> "Возвращено во «Входящие»"
             "lists" -> if (one) "В «Рассылках»" else "$w в «Рассылках»"
+            "remind" -> "Напомню, если не ответят"
             else -> "Готово"
         }
     }
@@ -243,9 +249,23 @@ object MailStore {
      * Действие над письмами. Уходящие из папки (удалить, архив, перенести, спам, отложить)
      * пропадают из списка сразу и отправляются после окна «Отменить».
      */
-    fun act(op: String, uids: List<Long>, target: String? = null, label: Long? = null, until: String? = null, folder: String? = null, onDone: () -> Unit = {}) {
+    fun act(op: String, uids: List<Long>, target: String? = null, label: Long? = null, until: String? = null, folder: String? = null, senders: List<String>? = null, onDone: () -> Unit = {}) {
         if (uids.isEmpty()) return
         val f = folder ?: folderOf(uids.first())
+        // Спам, рассылка, «не спам» и перенос в свою папку — с вопросом о правиле для отправителя (как в веб-почте).
+        // Тогда действие идёт сразу, без окна «Отменить»: правило может тут же разложить письма, и отложенный
+        // запрос пришёл бы уже к переехавшим письмам. В чужом общем ящике правил не предлагаем.
+        val src = folders.firstOrNull { it.path == f }
+        val targetFolder = target?.let { t -> folders.firstOrNull { it.path == t } }
+        val askKind = when {
+            src?.role == "shared" || src?.owner != null -> null
+            op == "spam" -> "spam"
+            op == "lists" -> "lists"
+            op == "notspam" -> "ham"
+            op == "move" && targetFolder?.role == "custom" && targetFolder.owner == null && settings.askRuleOnMove -> "folder"
+            else -> null
+        }
+        val askMails = if (askKind == null) emptyList() else senders ?: messages.filter { it.uid in uids }.map { it.from.mail }
         val leaves = op in setOf("delete", "archive", "move", "spam", "notspam", "snooze", "unsnooze", "lists")
         selected.removeAll(uids)
         if (!leaves) {
@@ -263,6 +283,7 @@ object MailStore {
                     val r = api.action(ActionRequest(folder = f, uids = uids, op = op, target = target, label = label, until = until))
                     r.folders?.let { applyFolders(it) }
                     version++
+                    if (op == "remind") Toasts.show(opText(op, uids.size, target))
                     onDone()
                 } catch (e: ApiException) {
                     Toasts.error(e); load()
@@ -275,6 +296,23 @@ object MailStore {
         uids.forEach { pending[it] = (pending[it] ?: 0) + 1 }
         total = (total - removed.size).coerceAtLeast(0)
         if (openUid in uids) openUid = null
+        if (askKind != null) {
+            scope.launch {
+                try {
+                    val r = api.action(ActionRequest(folder = f, uids = uids, op = op, target = target, label = label, until = until))
+                    r.folders?.let { applyFolders(it) }
+                    version++
+                    onDone()
+                    Toasts.show(opText(op, uids.size, target))
+                    SenderRules.offer(SenderAsk(askKind, askMails, targetFolder))
+                } catch (e: ApiException) {
+                    Toasts.error(e); restore(removed)
+                } finally {
+                    uids.forEach { pending.remove(it) }
+                }
+            }
+            return
+        }
         val seconds = settings.undoSeconds.coerceAtLeast(4)
         var undone = false
         Toasts.action(opText(op, uids.size, target), "Отменить", seconds, onTimeout = {

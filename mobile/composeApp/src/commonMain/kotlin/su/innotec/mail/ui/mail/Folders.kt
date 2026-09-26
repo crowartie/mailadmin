@@ -42,6 +42,7 @@ import su.innotec.mail.data.Session
 import su.innotec.mail.ui.ConfirmDialog
 import su.innotec.mail.ui.Ico
 import su.innotec.mail.ui.InputDialog
+import su.innotec.mail.ui.Fmt
 import su.innotec.mail.ui.P
 import su.innotec.mail.ui.SectionTitle
 import su.innotec.mail.ui.hexColor
@@ -144,6 +145,17 @@ fun FolderList(onPicked: () -> Unit, modifier: Modifier = Modifier) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(hexColor(l.color)))
                     Spacer(Modifier.width(16.dp))
                     Text(l.name, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+        }
+        store.quota?.takeIf { it.limitKb > 0 }?.let { qt ->
+            item(key = "quota") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                    Text("Занято ${Fmt.size(qt.usedKb * 1024)} из ${Fmt.size(qt.limitKb * 1024)}", style = MaterialTheme.typography.bodySmall, color = if (qt.percent >= 90) P.no else P.muted)
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { (qt.percent / 100f).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        color = if (qt.percent >= 90) P.no else P.accent, trackColor = P.border,
+                    )
                 }
             }
         }

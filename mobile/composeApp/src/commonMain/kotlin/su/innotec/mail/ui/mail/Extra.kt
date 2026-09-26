@@ -165,6 +165,8 @@ class OutboxScreen : Screen() {
 }
 
 private val LEVELS = listOf("reader" to "Только читать", "editor" to "Читать и разбирать", "owner" to "Полный доступ")
+/** «Полный доступ» (владелец) — только у «Входящих», как в веб-почте: у остальных папок сервер его не даёт. */
+private fun levelsFor(f: Folder) = if (f.role == "inbox") LEVELS else LEVELS.filter { it.first != "owner" }
 
 /** Общий доступ к своей папке — кому и с какими правами (FolderController::shares). */
 class FolderSharesScreen(private val folder: Folder) : Screen() {
@@ -197,12 +199,12 @@ class FolderSharesScreen(private val folder: Folder) : Screen() {
                             IconBtn("x", "Убрать доступ", tint = P.muted) { remove = s.mail }
                         }
                         Divider()
-                        if (levelOpen) ChoiceDialog("Права для ${names[s.mail] ?: s.mail}", LEVELS, { it.second }, LEVELS.firstOrNull { it.first == s.level }, onDismiss = { levelOpen = false }) { l ->
+                        if (levelOpen) ChoiceDialog("Права для ${names[s.mail] ?: s.mail}", levelsFor(folder), { it.second }, LEVELS.firstOrNull { it.first == s.level }, onDismiss = { levelOpen = false }) { l ->
                             scope.launchSafe { data = api.shareFolder(folder.path, s.mail, l.first).also { r -> r.folders?.let { MailStore.applyFolders(it) } }.let { it.copy(candidates = d.candidates) } }
                         }
                     }
                 }
-                if (adding) AddShareDialog(d, onDismiss = { adding = false }) { mail, level ->
+                if (adding) AddShareDialog(d, levelsFor(folder), onDismiss = { adding = false }) { mail, level ->
                     scope.launchSafe { data = api.shareFolder(folder.path, mail, level).let { it.copy(candidates = d.candidates) }; Toasts.show("Доступ выдан") }
                 }
                 remove?.let { mail ->
@@ -216,7 +218,7 @@ class FolderSharesScreen(private val folder: Folder) : Screen() {
 }
 
 @Composable
-private fun AddShareDialog(d: FolderShares, onDismiss: () -> Unit, onAdd: (String, String) -> Unit) {
+private fun AddShareDialog(d: FolderShares, levels: List<Pair<String, String>>, onDismiss: () -> Unit, onAdd: (String, String) -> Unit) {
     var q by remember { mutableStateOf("") }
     var who by remember { mutableStateOf<String?>(null) }
     var level by remember { mutableStateOf("reader") }
@@ -240,7 +242,7 @@ private fun AddShareDialog(d: FolderShares, onDismiss: () -> Unit, onAdd: (Strin
                 } else {
                     Text(d.candidates.firstOrNull { it.mail == who }?.name ?: who!!, style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(8.dp))
-                    LEVELS.forEach { (k, t) ->
+                    levels.forEach { (k, t) ->
                         Row(Modifier.fillMaxWidth().clickable { level = k }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.material3.RadioButton(level == k, { level = k }); Text(t)
                         }

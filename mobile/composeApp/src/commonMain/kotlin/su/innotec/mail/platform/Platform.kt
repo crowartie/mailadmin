@@ -113,3 +113,9 @@ expect object Updater {
     val canInstall: Boolean
     fun install(file: SavedFile): Boolean
 }
+
+/** Печать письма (Android: системная печать, в том числе «Сохранить как PDF»). */
+expect object Printer {
+    val available: Boolean
+    fun print(title: String, html: String, loadResource: suspend (path: String) -> Pair<String, ByteArray>?): Boolean
+}

@@ -133,6 +133,7 @@ private fun Main() {
             BackHandler(Nav.stack.isNotEmpty()) { Nav.pop() }
             BackHandler(Nav.stack.isEmpty() && Nav.section != Section.MAIL) { Nav.go(Section.MAIL) }
             val top = Nav.stack.lastOrNull()
+            su.innotec.mail.ui.mail.SenderRuleHost()
             Scaffold(
                 snackbarHost = { SnackbarHost(Toasts.host, Modifier.navigationBarsPadding()) },
                 containerColor = P.bg,

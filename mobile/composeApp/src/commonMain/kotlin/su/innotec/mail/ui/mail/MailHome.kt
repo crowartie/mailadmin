@@ -179,6 +179,8 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
     var snoozeFor by remember { mutableStateOf<List<Long>?>(null) }
     val wide = LocalWindow.current != WindowKind.PHONE
     val selecting = s.selected.isNotEmpty()
+    LaunchedEffect(selecting) { if (!selecting) s.allFolder = false }
+    var confirmAll by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(s.scrollTopSignal) { if (s.scrollTopSignal > 0) list.animateScrollToItem(0) }
     LaunchedEffect(s.query) { list.scrollToItem(0) }
@@ -206,6 +208,7 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
                         onMove = { moveFor = s.selected.toList() },
                         onLabel = { labelFor = s.selected.toList() },
                         onSnooze = { snoozeFor = s.selected.toList() },
+                        onConfirmAll = { confirmAll = it },
                     )
                     searching -> SearchBar(onClose = { searching = false; s.clearSearch() })
                     else -> Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -278,9 +281,19 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
         ) { DatePicker(st, title = { Text("К письмам за дату", Modifier.padding(start = 24.dp, top = 16.dp)) }) }
     }
     moveFor?.let { uids ->
-        FolderPicker("Перенести в папку", s.query.folder, onDismiss = { moveFor = null }) { f -> s.act("move", uids, target = f.path) }
+        FolderPicker("Перенести в папку", s.query.folder, onDismiss = { moveFor = null }) { f -> if (s.allFolder) s.actAll("move", target = f.path) else s.act("move", uids, target = f.path) }
     }
-    labelFor?.let { uids -> LabelDialog(uids, onDismiss = { labelFor = null }) }
+    labelFor?.let { uids ->
+        if (s.allFolder) su.innotec.mail.ui.ChoiceDialog("Метка для всех ${s.total} ${Fmt.plural(s.total, "письма", "писем", "писем")}", s.labels, { it.name }, null, onDismiss = { labelFor = null }) { l -> s.actAll("label", label = l.id) }
+        else LabelDialog(uids, onDismiss = { labelFor = null })
+    }
+    confirmAll?.let { op ->
+        su.innotec.mail.ui.ConfirmDialog(
+            (if (op == "delete") "Удалить" else "В архив") + " все ${s.total} ${Fmt.plural(s.total, "письмо", "письма", "писем")}?",
+            "Действие коснётся всех писем папки" + (if (s.query.q.isNotEmpty() || s.query.filter != "all") " по текущему отбору" else "") + ", а не только видимых на экране.",
+            if (op == "delete") "Удалить" else "В архив", danger = op == "delete", onDismiss = { confirmAll = null },
+        ) { s.actAll(op) }
+    }
     snoozeFor?.let { uids -> SnoozeDialog(onDismiss = { snoozeFor = null }) { until -> s.act("snooze", uids, until = until) } }
 }
 
@@ -324,30 +337,34 @@ private fun SearchBar(onClose: () -> Unit) {
 }
 
 @Composable
-private fun SelectionBar(count: Int, onClose: () -> Unit, onAll: () -> Unit, onMove: () -> Unit, onLabel: () -> Unit, onSnooze: () -> Unit) {
+private fun SelectionBar(count: Int, onClose: () -> Unit, onAll: () -> Unit, onMove: () -> Unit, onLabel: () -> Unit, onSnooze: () -> Unit, onConfirmAll: (String) -> Unit) {
     val s = MailStore
     var more by remember { mutableStateOf(false) }
+    var remind by remember { mutableStateOf(false) }
     val uids = s.selected.toList()
+    if (remind) RemindDialog(onDismiss = { remind = false }) { until -> s.act("remind", uids, until = until) }
     val allSeen = s.messages.filter { it.uid in uids }.all { it.seen }
     val allFlagged = s.messages.filter { it.uid in uids }.all { it.flagged }
     val role = s.currentFolder?.role
     Row(Modifier.fillMaxWidth().height(56.dp).background(P.accentSoft).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconBtn("x", "Снять выделение", tint = P.accentInk) { onClose() }
-        Text("$count", Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.titleMedium, color = P.accentInk)
-        IconBtn(if (allSeen) "unread" else "eye", if (allSeen) "Непрочитано" else "Прочитано", tint = P.accentInk) { s.act(if (allSeen) "unseen" else "seen", uids) }
-        IconBtn("archive", "В архив", tint = P.accentInk) { s.act("archive", uids) }
-        IconBtn("trash", "Удалить", tint = P.accentInk, modifier = Modifier.testTag("sel-delete")) { s.act("delete", uids) }
+        val all = s.allFolder
+        Text(if (all) "Все ${s.total}" else "$count", Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.titleMedium, color = P.accentInk, maxLines = 1)
+        IconBtn(if (allSeen) "unread" else "eye", if (allSeen) "Непрочитано" else "Прочитано", tint = P.accentInk) { val op = if (allSeen) "unseen" else "seen"; if (all) s.actAll(op) else s.act(op, uids) }
+        IconBtn("archive", "В архив", tint = P.accentInk) { if (all) onConfirmAll("archive") else s.act("archive", uids) }
+        IconBtn("trash", "Удалить", tint = P.accentInk, modifier = Modifier.testTag("sel-delete")) { if (all) onConfirmAll("delete") else s.act("delete", uids) }
         Box {
             IconBtn("dots", "Ещё", tint = P.accentInk) { more = true }
             DropdownMenu(more, { more = false }) {
-                DropdownMenuItem({ Text("Выделить все на экране") }, { more = false; onAll() }, leadingIcon = { Ico("check") })
-                if (s.total > s.messages.size || s.messages.size > 1) {
-                    DropdownMenuItem({ Text("Все письма папки: прочитаны (${s.total})") }, { more = false; s.actAll("seen") }, leadingIcon = { Ico("eye") })
-                }
-                DropdownMenuItem({ Text(if (allFlagged) "Снять флажок" else "Флажок") }, { more = false; s.act(if (allFlagged) "unflag" else "flag", uids) }, leadingIcon = { Ico("flag") })
+                if (!all) DropdownMenuItem({ Text("Выделить все на экране") }, { more = false; onAll() }, leadingIcon = { Ico("check") })
+                if (!all && s.total > s.messages.size) DropdownMenuItem({ Text("Выбрать все письма папки (${s.total})") }, { more = false; onAll(); s.allFolder = true }, leadingIcon = { Ico("check") })
+                if (all) DropdownMenuItem({ Text("Только видимые на экране") }, { more = false; s.allFolder = false }, leadingIcon = { Ico("check") })
+                DropdownMenuItem({ Text(if (allFlagged) "Снять флажок" else "Флажок") }, { more = false; val op = if (allFlagged) "unflag" else "flag"; if (all) s.actAll(op) else s.act(op, uids) }, leadingIcon = { Ico("flag") })
                 DropdownMenuItem({ Text("Перенести в папку…") }, { more = false; onMove() }, leadingIcon = { Ico("folder") })
                 DropdownMenuItem({ Text("Метка…") }, { more = false; onLabel() }, leadingIcon = { Ico("tag") })
+                if (all) return@DropdownMenu
                 DropdownMenuItem({ Text("Отложить…") }, { more = false; onSnooze() }, leadingIcon = { Ico("clock") })
+                DropdownMenuItem({ Text("Напомнить, если не ответят…") }, { more = false; remind = true }, leadingIcon = { Ico("bell") })
                 if (role == "spam") DropdownMenuItem({ Text("Не спам") }, { more = false; s.act("notspam", uids) }, leadingIcon = { Ico("inbox") })
                 else DropdownMenuItem({ Text("Это спам") }, { more = false; s.act("spam", uids) }, leadingIcon = { Ico("spam") })
                 if (role != "lists") DropdownMenuItem({ Text("Это рассылка") }, { more = false; s.act("lists", uids) }, leadingIcon = { Ico("ul") })

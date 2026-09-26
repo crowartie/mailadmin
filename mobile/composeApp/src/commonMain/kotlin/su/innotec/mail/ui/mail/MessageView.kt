@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -150,7 +151,7 @@ fun MessageContent(folder: String, uid: Long, inPane: Boolean, onClose: () -> Un
     }
 
     fun leave(op: String, target: String? = null, until: String? = null) {
-        MailStore.act(op, listOf(uid), target = target, until = until, folder = folder)
+        MailStore.act(op, listOf(uid), target = target, until = until, folder = folder, senders = listOfNotNull(msg?.from?.mail))
         onClose()
     }
 
@@ -176,7 +177,7 @@ fun MessageContent(folder: String, uid: Long, inPane: Boolean, onClose: () -> Un
                         DropdownMenuItem({ Text("Метка…") }, { more = false; dialog = "label" }, leadingIcon = { Ico("tag") })
                         DropdownMenuItem({ Text("Отложить…") }, { more = false; dialog = "snooze" }, leadingIcon = { Ico("clock") })
                         if (role == "spam") DropdownMenuItem({ Text("Не спам") }, { more = false; leave("notspam") }, leadingIcon = { Ico("inbox") })
-                        else DropdownMenuItem({ Text("Это спам") }, { more = false; dialog = "spam" }, leadingIcon = { Ico("spam") })
+                        else DropdownMenuItem({ Text("Это спам") }, { more = false; leave("spam") }, leadingIcon = { Ico("spam") })
                         if (role != "lists") DropdownMenuItem({ Text("Это рассылка") }, { more = false; leave("lists") }, leadingIcon = { Ico("ul") })
                         if (role == "snoozed") DropdownMenuItem({ Text("Вернуть во «Входящие»") }, { more = false; leave("unsnooze") }, leadingIcon = { Ico("inbox") })
                         Divider()
@@ -193,6 +194,11 @@ fun MessageContent(folder: String, uid: Long, inPane: Boolean, onClose: () -> Un
                         DropdownMenuItem({ Text("Скачать письмо (.eml)") }, { more = false; Transfers.fetch(Session.api!!.rawPath(folder, uid), safeName(m.subject) + ".eml", Transfers.Then.SAVE) }, leadingIcon = { Ico("download") })
                         DropdownMenuItem({ Text("Показать оригинал") }, { more = false; Transfers.fetch(Session.api!!.rawPath(folder, uid), safeName(m.subject) + ".txt", Transfers.Then.OPEN) }, leadingIcon = { Ico("code") })
                         DropdownMenuItem({ Text("Назначить встречу") }, { more = false; Nav.push(su.innotec.mail.ui.calendar.EventEditScreen.fromMessage(m)) }, leadingIcon = { Ico("cal") })
+                        if (!readonly) DropdownMenuItem({ Text("Напомнить, если не ответят…") }, { more = false; dialog = "remind" }, leadingIcon = { Ico("bell") })
+                        if (su.innotec.mail.platform.Printer.available) DropdownMenuItem({ Text("Печать") }, {
+                            more = false
+                            su.innotec.mail.platform.Printer.print(m.subject, printDocument(m)) { p -> Transfers.inlineResource(p) }
+                        }, leadingIcon = { Ico("print") })
                     }
                 }
             }
@@ -214,11 +220,8 @@ fun MessageContent(folder: String, uid: Long, inPane: Boolean, onClose: () -> Un
         "move" -> FolderPicker("Перенести в папку", folder, onDismiss = { dialog = null }) { f -> leave("move", target = f.path) }
         "label" -> LabelDialog(listOf(uid), onDismiss = { dialog = null }, folder = folder, current = msg?.labels ?: emptyList()) { msg = msg?.copy(labels = it) }
         "snooze" -> SnoozeDialog(onDismiss = { dialog = null }) { until -> leave("snooze", until = until) }
-        "spam" -> SpamDialog(msg?.from?.mail ?: "", onDismiss = { dialog = null }) { alsoSender ->
-            if (alsoSender) scope.launchSafe { Session.api!!.markSender("spam", "address", msg?.from?.mail ?: "") }
-            leave("spam")
-        }
         "rule" -> RuleFromSenderDialog(msg?.from?.mail ?: "", onDismiss = { dialog = null })
+        "remind" -> RemindDialog(onDismiss = { dialog = null }) { until -> MailStore.act("remind", listOf(uid), until = until, folder = folder) }
     }
 }
 
@@ -228,6 +231,14 @@ private fun safeName(s: String) = s.ifBlank { "письмо" }.replace(Regex("[\
 @Composable
 fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = null) {
     var showImages by remember(m.uid) { mutableStateOf(MailStore.settings.showImages == "always") }
+    var card by remember { mutableStateOf<Person?>(null) }
+    var unsub by remember { mutableStateOf<String?>(null) }
+    card?.let { p -> SenderCard(p, onDismiss = { card = null }) }
+    unsub?.let { link ->
+        if (link.startsWith("mailto:", true)) { unsub = null; Nav.push(ComposeScreen(ComposeStart.Mailto(link))) }
+        // Ссылка ведёт на чужой сайт из письма, которое сочли лишним: показываем адрес и спрашиваем (как в веб-почте).
+        else su.innotec.mail.ui.ConfirmDialog("Открыть страницу отписки?", "Сайт: " + link.substringAfter("://").substringBefore('/'), "Открыть", onDismiss = { unsub = null }) { Sys.openUrl(link) }
+    }
     var thread by remember(m.uid) { mutableStateOf<Thread?>(null) }
     var showRecipients by remember { mutableStateOf(false) }
     val dark = P.dark
@@ -249,7 +260,7 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
         }
         // Отправитель
         Row(Modifier.fillMaxWidth().clickable { showRecipients = !showRecipients }.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(m.from.display.ifBlank { "?" }, m.from.mail, 44.dp)
+            Box(Modifier.clip(CircleShape).clickable { card = m.from }) { Avatar(m.from.display.ifBlank { "?" }, m.from.mail, 44.dp) }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(m.from.display, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -262,11 +273,11 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
         }
         if (showRecipients) {
             Column(Modifier.padding(start = 72.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)) {
-                RecipientLine("От", listOf(m.from))
-                RecipientLine("Кому", m.to)
-                if (m.cc.isNotEmpty()) RecipientLine("Копия", m.cc)
-                if (m.bcc.isNotEmpty()) RecipientLine("Скрытая", m.bcc)
-                if (m.replyTo.isNotEmpty()) RecipientLine("Ответ на", m.replyTo)
+                RecipientLine("От", listOf(m.from)) { card = it }
+                RecipientLine("Кому", m.to) { card = it }
+                if (m.cc.isNotEmpty()) RecipientLine("Копия", m.cc) { card = it }
+                if (m.bcc.isNotEmpty()) RecipientLine("Скрытая", m.bcc) { card = it }
+                if (m.replyTo.isNotEmpty()) RecipientLine("Ответ на", m.replyTo) { card = it }
             }
         }
         // Отписаться от рассылки
@@ -274,7 +285,7 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
             val link = Regex("<(https?://[^>]+)>").find(m.listUnsubscribe)?.groupValues?.get(1)
                 ?: Regex("<(mailto:[^>]+)>").find(m.listUnsubscribe)?.groupValues?.get(1)
             if (link != null) Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                OutlinedButton(onClick = { Sys.openUrl(link) }) { Ico("unsub", size = 16.dp); Spacer(Modifier.width(6.dp)); Text("Отписаться от рассылки") }
+                OutlinedButton(onClick = { unsub = link }) { Ico("unsub", size = 16.dp); Spacer(Modifier.width(6.dp)); Text("Отписаться от рассылки") }
             }
         }
         // Внешние картинки
@@ -307,6 +318,11 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
                     Transfers.fetch(Session.api!!.attachmentsZipPath(folder, uid), safeName(m.subject) + ".zip", Transfers.Then.SAVE)
                 }) { Text("Скачать все") }
             }
+            // Файл нулевого размера приложен с ошибкой: лучше сказать сразу, чем ждать, пока он не откроется.
+            if (files.any { it.size == 0L }) Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Ico("warn", size = 16.dp, tint = P.warn); Spacer(Modifier.width(6.dp))
+                Text("Пустое вложение: файл, скорее всего, приложен с ошибкой — попросите прислать его заново.", style = MaterialTheme.typography.bodySmall, color = P.muted)
+            }
             Column(Modifier.padding(horizontal = 12.dp)) {
                 files.forEach { a -> AttachmentRow(a, folder, uid, attachedIndex) }
             }
@@ -331,8 +347,9 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
         if (t != null && t.messages.isNotEmpty()) {
             val self = su.innotec.mail.api.ThreadMessage(uid = uid, subject = m.subject, from = m.from, date = m.date, seen = true, folder = folder)
             val all = (t.messages + self).sortedBy { Fmt.parse(it.date)?.toEpochMilliseconds() ?: 0L }
-            Text("В цепочке ${all.size} ${Fmt.plural(all.size, "письмо", "письма", "писем")}", Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp),
-                style = MaterialTheme.typography.labelLarge, color = P.muted)
+            Text("В цепочке ${all.size} ${Fmt.plural(all.size, "письмо", "письма", "писем")}" +
+                (if (t.hidden > 0) " · показаны не все, ещё ${t.hidden} — найдёт «Вся переписка»" else ""),
+                Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp, end = 16.dp), style = MaterialTheme.typography.labelLarge, color = P.muted)
             Column(Modifier.padding(horizontal = 12.dp).testTag("thread")) {
                 all.forEach { tm -> ThreadItem(tm, current = tm.uid == uid && tm.folder == folder, openFolder = folder, dark = dark) }
             }
@@ -402,15 +419,64 @@ private fun recipientsShort(list: List<Person>): String {
 }
 
 @Composable
-private fun RecipientLine(title: String, list: List<Person>) {
+private fun RecipientLine(title: String, list: List<Person>, onPerson: (Person) -> Unit) {
     Row(Modifier.padding(vertical = 2.dp)) {
         Text("$title:", Modifier.width(70.dp), style = MaterialTheme.typography.bodySmall, color = P.faint)
         Column {
             list.forEach { p ->
                 Text(if (p.name.isNotBlank() && p.name != p.mail) "${p.name} <${p.mail}>" else p.mail, style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.clickable { Nav.push(ComposeScreen(ComposeStart.New(to = p.mail))) })
+                    modifier = Modifier.clickable { onPerson(p) })
             }
         }
+    }
+}
+
+/** Карточка человека из письма: написать, скопировать адрес, вся переписка, в контакты, правило для его писем. */
+@Composable
+private fun SenderCard(p: Person, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var rule by remember { mutableStateOf(false) }
+    if (rule) { RuleFromSenderDialog(p.mail, onDismiss = { rule = false; onDismiss() }); return }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(p.name.ifBlank { p.mail }, p.mail, 44.dp); Spacer(Modifier.width(12.dp))
+                Column {
+                    if (p.name.isNotBlank() && p.name != p.mail) Text(p.name, style = MaterialTheme.typography.titleMedium)
+                    Text(p.mail, style = MaterialTheme.typography.bodyMedium, color = P.muted)
+                }
+            }
+        },
+        text = {
+            Column {
+                CardItem("edit", "Написать") { onDismiss(); Nav.push(ComposeScreen(ComposeStart.New(to = p.mail))) }
+                CardItem("copy", "Скопировать адрес") { onDismiss(); Sys.copy(p.mail); Toasts.show("Адрес скопирован") }
+                CardItem("users", "Вся переписка") { onDismiss(); MailStore.search("переписка:" + p.mail, everywhere = true); while (Nav.stack.isNotEmpty()) Nav.pop() }
+                CardItem("user", "В контакты") {
+                    onDismiss()
+                    scope.launchSafe {
+                        val api = Session.api!!
+                        if (api.contacts(q = p.mail).any { c -> c.emails.any { it.value.equals(p.mail, true) } }) Toasts.show("${p.mail} уже есть в контактах")
+                        else {
+                            val parts = p.name.trim().split(' ', limit = 2)
+                            api.createContact(su.innotec.mail.api.ContactInput(book = "personal", first = parts.getOrElse(0) { "" }.ifBlank { p.mail.substringBefore('@') },
+                                last = parts.getOrElse(1) { "" }.trim(), emails = listOf(su.innotec.mail.api.TypedValue(p.mail, "work"))))
+                            Toasts.show("Добавлено в личные контакты")
+                        }
+                    }
+                }
+                CardItem("filter", "Его письма — в папку…") { rule = true }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Закрыть") } },
+    )
+}
+
+@Composable
+private fun CardItem(icon: String, text: String, action: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { action() }.padding(vertical = 12.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Ico(icon, tint = P.muted); Spacer(Modifier.width(14.dp)); Text(text)
     }
 }
 
@@ -475,26 +541,98 @@ fun FileRow(name: String, size: Long?, icon: String, onOpen: () -> Unit, onSave:
 @Composable
 private fun ReplyBar(m: Message, folder: String) {
     val many = (m.to + m.cc).count { it.mail.lowercase() != Session.account?.user?.lowercase() } > 1
+    var quick by remember(m.uid) { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val role = MailStore.folders.firstOrNull { it.path == folder }?.role
+    val target = m.replyTo.firstOrNull() ?: m.from
+    // Автоматический адрес: ответ никто не прочитает, а быстрый ответ выглядит как разговор (как в веб-почте).
+    val noReply = NOREPLY.matches(target.mail.substringBefore('@'))
+
+    /** Быстрый ответ — тот же ответ, что и полный (тема, подпись, цитата, «от имени» общего ящика), с отменой отправки. */
+    fun sendQuick() {
+        val text = quick.trim()
+        if (text.isEmpty() || sending) return
+        sending = true
+        scope.launch {
+            val cm = ComposeModel(ComposeStart.Reply(folder, m.uid, all = false, text = text))
+            cm.load()
+            sending = false
+            if (cm.loadError != null) { Toasts.show(cm.loadError!!); return@launch }
+            quick = ""
+            sendWithUndo(cm)
+        }
+    }
+
     Divider()
-    // Отступ под системную полоску жестов — у всего блока, иначе быстрые ответы уходят под неё.
-    Column(Modifier.fillMaxWidth().background(P.surface)) {
+    Column(Modifier.fillMaxWidth().background(P.surface).imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ReplyButton("reply", "Ответить", Modifier.weight(1f).testTag("reply"), accent = true) { Nav.push(ComposeScreen(ComposeStart.Reply(folder, m.uid, all = MailStore.settings.replyAll && many))) }
-            if (many) ReplyButton("replyall", "Всем", Modifier.weight(1f).testTag("reply-all")) { Nav.push(ComposeScreen(ComposeStart.Reply(folder, m.uid, all = true))) }
+            ReplyButton("reply", "Ответить", Modifier.weight(1f).testTag("reply"), accent = true) { Nav.push(ComposeScreen(ComposeStart.Reply(folder, m.uid, all = MailStore.settings.replyAll && many, text = quick))) }
+            if (many) ReplyButton("replyall", "Всем", Modifier.weight(1f).testTag("reply-all")) { Nav.push(ComposeScreen(ComposeStart.Reply(folder, m.uid, all = true, text = quick))) }
             ReplyButton("fwd", "Переслать", Modifier.weight(1f).testTag("forward")) { Nav.push(ComposeScreen(ComposeStart.Forward(folder, m.uid))) }
         }
-        val quick = MailStore.settings.quickReplies.filter { it.isNotBlank() }
-        if (quick.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                quick.forEach { q ->
+        if (role == "spam") return@Column
+        if (noReply) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Ico("warn", size = 16.dp, tint = P.warn); Spacer(Modifier.width(8.dp))
+                Text("Письмо с автоматического адреса ${target.mail} — ответ, скорее всего, никто не прочитает.", style = MaterialTheme.typography.bodySmall, color = P.muted)
+            }
+            return@Column
+        }
+        val phrases = MailStore.settings.quickReplies.filter { it.isNotBlank() }
+        if (phrases.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                phrases.forEach { q ->
                     Text(q, Modifier.clip(RoundedCornerShape(50)).border(1.dp, P.border2, RoundedCornerShape(50))
-                        .clickable { Nav.push(ComposeScreen(ComposeStart.Reply(folder, m.uid, all = false, text = q))) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                        .clickable { quick = q }.padding(horizontal = 12.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
             }
         }
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 6.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(P.surface2).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                if (quick.isEmpty()) Text("Быстрый ответ…", color = P.faint, maxLines = 1)
+                androidx.compose.foundation.text.BasicTextField(
+                    quick, { quick = it }, Modifier.fillMaxWidth().heightIn(max = 120.dp).testTag("quick-reply"),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = P.text),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(P.accent),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
+                )
+            }
+            if (sending) Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+            else IconBtn("send", "Отправить ответ", Modifier.testTag("quick-send"), tint = if (quick.isBlank()) P.faint else P.accentInk) { sendQuick() }
+        }
     }
 }
+
+/** «Напомнить, если не ответят»: письмо вернётся во «Входящие», если за это время ответа не будет (как в веб-почте). */
+@Composable
+fun RemindDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    su.innotec.mail.ui.ChoiceDialog("Напомнить, если не ответят", listOf(1, 2, 3, 5, 7), { "через $it ${Fmt.plural(it, "день", "дня", "дней")}" }, null, onDismiss = onDismiss) { d ->
+        onPick((kotlin.time.Clock.System.now() + kotlin.time.Duration.parse("${d}d")).toString())
+    }
+}
+
+/** Письмо для печати: шапка (тема, от кого, кому, когда, вложения) и текст — как PrintPreview веб-почты. */
+fun printDocument(m: Message): String {
+    fun esc(s: String) = su.innotec.mail.ui.Html.escape(s)
+    fun who(p: su.innotec.mail.api.Person) = esc(if (p.name.isBlank() || p.name == p.mail) p.mail else "${p.name} <${p.mail}>")
+    val rows = buildList {
+        add("От" to who(m.from))
+        if (m.to.isNotEmpty()) add("Кому" to m.to.joinToString(", ") { who(it) })
+        if (m.cc.isNotEmpty()) add("Копия" to m.cc.joinToString(", ") { who(it) })
+        add("Дата" to esc(Fmt.full(m.date)))
+        val files = m.attachments.filter { !it.inline }
+        if (files.isNotEmpty()) add("Вложения" to files.joinToString(", ") { esc(it.name) + " (" + Fmt.size(it.size) + ")" })
+    }.joinToString("") { (k, v) -> "<tr><td style=\"color:#6B7787;padding:2px 12px 2px 0;vertical-align:top;white-space:nowrap\">$k</td><td style=\"padding:2px 0\">$v</td></tr>" }
+    val body = m.html?.let { su.innotec.mail.platform.unblockImages(it) } ?: su.innotec.mail.platform.textToHtml(m.text ?: "")
+    return su.innotec.mail.platform.wrapHtml(
+        "<h2 style=\"font-size:20px;margin:0 0 10px\">${esc(m.subject)}</h2><table style=\"font-size:13px;border-collapse:collapse;margin-bottom:14px\">$rows</table><hr style=\"border:0;border-top:1px solid #CBD3DE;margin:0 0 14px\">$body",
+        dark = false,
+    )
+}
+
+private val NOREPLY = Regex("^(no[-_.]?reply|do[-_.]?not[-_.]?reply|mailer[-_.]?daemon|bounce[sd]?|postmaster|nobody)$", RegexOption.IGNORE_CASE)
 
 @Composable
 private fun ReplyButton(icon: String, text: String, modifier: Modifier, accent: Boolean = false, onClick: () -> Unit) {
@@ -608,26 +746,6 @@ fun DateTimeDialog(title: String, onDismiss: () -> Unit, initial: LocalDateTime?
             dismissButton = { TextButton(onClick = { date = null }) { Text("Назад") } },
         )
     }
-}
-
-@Composable
-private fun SpamDialog(sender: String, onDismiss: () -> Unit, onConfirm: (Boolean) -> Unit) {
-    var also by remember { mutableStateOf(true) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Это спам?") },
-        text = {
-            Column {
-                Text("Письмо уйдёт в «Спам».", color = P.muted)
-                if (sender.isNotBlank()) Row(Modifier.clickable { also = !also }.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Checkbox(also, { also = it })
-                    Text("И дальше всё от $sender — в спам")
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = { onDismiss(); onConfirm(also) }) { Text("В спам") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
-    )
 }
 
 /** «Письма от отправителя — в папку»: правило через /sender/mark (как «Это рассылка» и спам). */

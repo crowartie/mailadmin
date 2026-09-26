@@ -219,3 +219,9 @@ actual object Updater {
     actual val canInstall: Boolean get() = false
     actual fun install(file: SavedFile): Boolean = FileStore.open(file)
 }
+
+/** На ПК печать — из «Показать оригинал» в браузере; своей печати пока нет. */
+actual object Printer {
+    actual val available: Boolean get() = false
+    actual fun print(title: String, html: String, loadResource: suspend (path: String) -> Pair<String, ByteArray>?): Boolean = false
+}

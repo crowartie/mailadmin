@@ -300,7 +300,8 @@ data class Settings(
     val density: String = "",
     @SerialName("reply_all") val replyAll: Boolean = false,
     @SerialName("notify_browser") val notifyBrowser: Boolean = false,
-    @SerialName("ask_rule_on_move") val askRuleOnMove: Boolean = false,
+    // В веб-почте «не задано» значит «спрашивать» (ask_rule_on_move !== false).
+    @SerialName("ask_rule_on_move") val askRuleOnMove: Boolean = true,
     @SerialName("shared_mark_seen") val sharedMarkSeen: Boolean = true,
     @SerialName("undo_seconds") val undoSeconds: Int = 0,
     @SerialName("quick_replies") val quickReplies: List<String> = emptyList(),
