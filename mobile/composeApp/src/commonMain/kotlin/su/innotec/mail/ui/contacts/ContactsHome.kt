@@ -1,5 +1,6 @@
 package su.innotec.mail.ui.contacts
 
+import kotlinx.io.readByteArray
 import su.innotec.mail.ui.Fmt
 import kotlinx.datetime.plus
 import kotlinx.datetime.atTime
@@ -410,6 +411,17 @@ class ContactEditScreen(private val existing: Contact?) : Screen() {
         var saving by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
         val books = ContactsStore.books.filter { !it.readonly }
+        // Фото: сжимаем до 256 точек — снимок с телефона весит мегабайты, а сервер берёт до ~1,5 МБ.
+        val pickPhoto = su.innotec.mail.platform.rememberFilePicker(multiple = false, mimes = listOf("image/*")) { list ->
+            val file = list.firstOrNull() ?: return@rememberFilePicker
+            scope.launch {
+                val jpeg = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    su.innotec.mail.platform.shrinkToJpeg(file.open().use { it.readByteArray() }, 256)
+                }
+                if (jpeg == null) Toasts.show("Картинку не удалось прочитать")
+                else f = f.copy(photo = "data:image/jpeg;base64," + kotlin.io.encoding.Base64.Default.encode(jpeg))
+            }
+        }
         BackHandler(true) { Nav.pop() }
         Column(Modifier.fillMaxSize().background(P.surface)) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -446,6 +458,18 @@ class ContactEditScreen(private val existing: Contact?) : Screen() {
                         Text("Книга: ", color = P.muted); Text(books.firstOrNull { it.uri == f.book }?.name ?: "Мои контакты", Modifier.weight(1f)); Ico("down", size = 16.dp)
                     }
                     if (open) su.innotec.mail.ui.ChoiceDialog("Адресная книга", books, { it.name }, books.firstOrNull { it.uri == f.book }, onDismiss = { open = false }) { f = f.copy(book = it.uri) }
+                }
+                val shown = if (f.photo != null) f.photo!!.ifBlank { null } else existing?.photo
+                val img = remember(shown) { shown?.let { decodePhoto(it) } }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.size(72.dp).clip(CircleShape).background(P.surface2).clickable { pickPhoto() }, contentAlignment = Alignment.Center) {
+                        if (img != null) androidx.compose.foundation.Image(img, "Фото", Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                        else Ico("img", tint = P.muted)
+                    }
+                    Column {
+                        TextButton(onClick = { pickPhoto() }) { Text(if (img == null) "Добавить фото" else "Сменить фото") }
+                        if (img != null) TextButton(onClick = { f = f.copy(photo = "") }) { Text("Убрать фото", color = P.no) }
+                    }
                 }
                 Tf("Фамилия", f.last) { f = f.copy(last = it) }
                 Tf("Имя", f.first) { f = f.copy(first = it) }

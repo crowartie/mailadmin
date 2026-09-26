@@ -530,6 +530,8 @@ data class ContactInput(
     val note: String = "",
     val groups: List<String> = emptyList(),
     val favorite: Boolean = false,
+    /** Фото: data:image/jpeg;base64,… — поставить, "" — убрать, null — не трогать (поле не уходит на сервер). */
+    val photo: String? = null,
 )
 
 fun Contact.toInput() = ContactInput(

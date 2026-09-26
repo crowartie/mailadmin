@@ -192,3 +192,6 @@ actual object DiskCache {
     actual fun write(name: String, text: String) {}
     actual fun clear() {}
 }
+
+/** На iPhone — с первой сборкой на Mac (UIImage); пока фото контакта меняется в веб-почте. */
+actual fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray? = null

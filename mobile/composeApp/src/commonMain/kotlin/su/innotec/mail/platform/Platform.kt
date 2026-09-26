@@ -145,3 +145,6 @@ expect object DiskCache {
     fun write(name: String, text: String)
     fun clear()
 }
+
+/** Уменьшить картинку до [maxSide] точек и сжать в JPEG (фото контакта). null — платформа не умеет. */
+expect fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray?

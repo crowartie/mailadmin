@@ -46,3 +46,14 @@ actual object DiskCache {
     actual fun write(name: String, text: String) { runCatching { File(dir, "$name.tmp").apply { writeText(text) }.renameTo(File(dir, name)) } }
     actual fun clear() { runCatching { dir.deleteRecursively() } }
 }
+
+actual fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+    val src = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+    val k = maxSide.toFloat() / maxOf(src.width, src.height)
+    val bmp = if (k < 1f) Bitmap.createScaledBitmap(src, (src.width * k).toInt().coerceAtLeast(1), (src.height * k).toInt().coerceAtLeast(1), true) else src
+    java.io.ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
+}.getOrNull()

@@ -242,3 +242,12 @@ actual object DiskCache {
     actual fun write(name: String, text: String) { runCatching { File(dir, name).writeText(text) } }
     actual fun clear() { runCatching { dir.deleteRecursively() } }
 }
+
+actual fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray? = runCatching {
+    val img = org.jetbrains.skia.Image.makeFromEncoded(bytes)
+    val k = minOf(1f, maxSide.toFloat() / maxOf(img.width, img.height))
+    val w = (img.width * k).toInt().coerceAtLeast(1); val h = (img.height * k).toInt().coerceAtLeast(1)
+    val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(w, h)
+    surface.canvas.drawImageRect(img, org.jetbrains.skia.Rect.makeWH(w.toFloat(), h.toFloat()))
+    surface.makeImageSnapshot().encodeToData(org.jetbrains.skia.EncodedImageFormat.JPEG, 85)!!.bytes
+}.getOrNull()
