@@ -95,6 +95,26 @@ fun FolderList(onPicked: () -> Unit, modifier: Modifier = Modifier) {
                 Text(acc?.user ?: "", style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        // «Под рукой» — закреплённые письма (как вкладки внизу веб-почты): касание открывает, долгое — убирает.
+        if (Pinned.items.isNotEmpty()) {
+            item { SectionTitle("Под рукой") }
+            items(Pinned.items.size, key = { "pin:" + Pinned.items[it].folder + ":" + Pinned.items[it].uid }) { i ->
+                val p = Pinned.items[i]
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp).clip(RoundedCornerShape(8.dp))
+                        .combinedClickable(onClick = { Nav.push(MessageScreen(p.folder, p.uid)); onPicked() }, onLongClick = { Pinned.remove(p.folder, p.uid); Toasts.show("Письмо убрано из-под руки") })
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Ico("pin", size = 18.dp, tint = P.accent)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(p.subject.ifBlank { "(без темы)" }, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (p.from.isNotBlank()) Text(p.from, style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
         items(g.system.size) { i ->
             val f = g.system[i]
             FolderRow(f.name, roleIcon(f.role), f.unread, f.total, selected = q.folder == f.path && q.filter == "all" && q.q.isEmpty(),
@@ -164,7 +184,8 @@ fun FolderList(onPicked: () -> Unit, modifier: Modifier = Modifier) {
 
     menuFor?.let { f ->
         FolderMenu(f, onDismiss = { menuFor = null }, onRename = { dialog = "rename:" + f.path }, onDelete = { dialog = "delete:" + f.path },
-            onEmpty = { dialog = "empty:" + f.path }, onNewSub = { dialog = "sub:" + f.path }, onShare = { Nav.push(FolderSharesScreen(f)); onPicked() })
+            onEmpty = { dialog = "empty:" + f.path }, onNewSub = { dialog = "sub:" + f.path }, onShare = { Nav.push(FolderSharesScreen(f)); onPicked() },
+            onRule = { dialog = "rule:" + f.path })
     }
     when (val d = dialog) {
         null -> {}
@@ -187,14 +208,70 @@ fun FolderList(onPicked: () -> Unit, modifier: Modifier = Modifier) {
                 "empty" -> ConfirmDialog("Очистить «${f?.name}»?", "Все письма в папке будут удалены навсегда.", "Очистить", danger = true, onDismiss = { dialog = null }) {
                     scope.launchSafe { Session.api!!.emptyFolder(path); store.refreshFolders(); if (store.query.folder == path) store.load(); Toasts.show("Папка очищена") }
                 }
+                "rule" -> if (f != null) FolderRuleDialog(f, onDismiss = { dialog = null })
             }
         }
     }
 }
 
+/** Что ввели в «Правило для этой папки»: адрес → (address, адрес), «@домен» или «домен.ру» → (domain, домен). */
+fun senderMatchOf(input: String): Pair<String, String>? {
+    val v = input.trim().lowercase().removePrefix("<").removeSuffix(">")
+    if (v.isEmpty() || ' ' in v) return null
+    return when {
+        v.startsWith("@") -> v.drop(1).takeIf { it.contains('.') }?.let { "domain" to it }
+        '@' in v -> v.takeIf { it.substringAfter('@').contains('.') }?.let { "address" to it }
+        '.' in v -> "domain" to v
+        else -> null
+    }
+}
+
+/**
+ * «Правило для этой папки…» из меню папки — как в веб-почте (там ведёт в «Правила» с выбранной папкой):
+ * письма от адреса или с домена класть сюда, через /sender/mark {kind: folder} — сразу и уже полученные.
+ */
 @Composable
-private fun FolderMenu(f: Folder, onDismiss: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit, onEmpty: () -> Unit, onNewSub: () -> Unit, onShare: () -> Unit) {
+private fun FolderRuleDialog(f: Folder, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    var resort by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    val match = senderMatchOf(text)
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Правило для «${f.name}»") },
+        text = {
+            Column {
+                Text("Письма от кого класть в эту папку — адрес (ivanov@polyus.ru) или весь домен (@polyus.ru):", style = MaterialTheme.typography.bodyMedium, color = P.muted)
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Адрес или домен") }, singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email))
+                Row(Modifier.padding(top = 8.dp).clickable { resort = !resort }, verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Switch(resort, { resort = it }); Spacer(Modifier.width(10.dp))
+                    Text("Сразу разложить уже полученные письма", style = MaterialTheme.typography.bodyMedium)
+                }
+                Text("Правило появится в «Ещё → Правила», там его можно изменить или удалить.", style = MaterialTheme.typography.bodySmall, color = P.faint)
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(enabled = match != null, onClick = {
+                val (kind, value) = match ?: return@TextButton
+                onDismiss()
+                scope.launchSafe {
+                    Session.api!!.markSender("folder", kind, value, resort, f.path)
+                    Toasts.show((if (kind == "domain") "Письма с @$value" else "Письма от $value") + " будут попадать в «${f.name}»")
+                    MailStore.refreshFolders(); MailStore.load(); MailStore.reloadRules()
+                }
+            }) { Text("Сохранить") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
+}
+
+@Composable
+private fun FolderMenu(f: Folder, onDismiss: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit, onEmpty: () -> Unit, onNewSub: () -> Unit, onShare: () -> Unit, onRule: () -> Unit) {
     val custom = f.role !in ROLE_ORDER && !f.isShared
+    // Как в веб-почте: правило не предлагается для черновиков, отправленных, корзины и чужих папок.
+    val ruleable = !f.isShared && f.role !in setOf("drafts", "sent", "trash", "shared")
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(f.name) },
@@ -206,6 +283,7 @@ private fun FolderMenu(f: Folder, onDismiss: () -> Unit, onRename: () -> Unit, o
                     }
                 }
                 item("plus", "Новая папка внутри", action = onNewSub)
+                if (ruleable) item("filter", "Правило для этой папки…", action = onRule)
                 item("share", "Общий доступ…", action = onShare)
                 if (custom) item("edit", "Переименовать", action = onRename)
                 if (f.role in setOf("trash", "spam")) item("trash", "Очистить папку", danger = true, action = onEmpty)
@@ -240,12 +318,29 @@ private fun FolderRow(
     }
 }
 
-/** Выбор папки (перенести, сохранить в…). */
+/** Выбор папки (перенести, сохранить в…); внизу — «Новая папка…»: создать и сразу выбрать её. */
 @Composable
 fun FolderPicker(title: String, exclude: String?, onDismiss: () -> Unit, onPick: (Folder) -> Unit) {
     val g = groupFolders(MailStore.folders)
     val list = (g.system.filter { it.role !in setOf("drafts") } + g.custom + g.shared.values.flatten().filter { !it.readonly })
         .filter { it.path != exclude }
+    var creating by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    if (creating) {
+        InputDialog("Новая папка", "Название", confirm = "Создать и выбрать", onDismiss = { creating = false; onDismiss() }) { name ->
+            scope.launchSafe {
+                val api = Session.api!!
+                val before = MailStore.folders.map { it.path }.toSet()
+                api.createFolder(name, null)
+                val fresh = api.folders()
+                MailStore.applyFolders(fresh)
+                // Созданную узнаём по имени среди новых путей (сервер сам решает, где она лежит — «INBOX/…» или корень).
+                val made = fresh.firstOrNull { it.path !in before && it.name == name } ?: fresh.firstOrNull { it.name == name && !it.isShared }
+                if (made != null) onPick(made) else Toasts.show("Папка создана")
+            }
+        }
+        return
+    }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -257,6 +352,12 @@ fun FolderPicker(title: String, exclude: String?, onDismiss: () -> Unit, onPick:
                         verticalAlignment = Alignment.CenterVertically) {
                         Ico(roleIcon(if (f.isShared) f.srole.ifBlank { "shared" } else f.role), tint = P.muted); Spacer(Modifier.width(14.dp))
                         Text(if (f.isShared) "${f.name} · ${f.ownerName.ifBlank { f.owner }}" else f.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                item {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { creating = true }.padding(vertical = 11.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Ico("plus", tint = P.accentInk); Spacer(Modifier.width(14.dp))
+                        Text("Новая папка…", color = P.accentInk, fontWeight = FontWeight.Medium)
                     }
                 }
             }

@@ -18,6 +18,7 @@ import su.innotec.mail.api.ApiException
 import su.innotec.mail.api.Folder
 import su.innotec.mail.api.Label
 import su.innotec.mail.api.MessageSummary
+import su.innotec.mail.api.Rule
 import su.innotec.mail.api.Settings
 import su.innotec.mail.data.Session
 import su.innotec.mail.ui.Fmt
@@ -43,6 +44,8 @@ object MailStore {
     var folders by mutableStateOf<List<Folder>>(emptyList()); private set
     var labels by mutableStateOf<List<Label>>(emptyList()); private set
     var settings by mutableStateOf(Settings()); private set
+    /** Правила ящика — чтобы не спрашивать «класть сюда всегда?», когда правило для отправителя уже есть. */
+    var rules by mutableStateOf<List<Rule>>(emptyList()); private set
     var inboxUnread by mutableIntStateOf(0); private set
     var outboxCount by mutableIntStateOf(0); private set
     var quarantineCount by mutableIntStateOf(0); private set
@@ -84,7 +87,7 @@ object MailStore {
         started = false
         // Окна «Отменить» снимаем молча: вход уже отозван, запрос всё равно не пройдёт.
         pendingToasts.toList().forEach { it.dismiss() }; pendingToasts.clear(); pending.clear()
-        folders = emptyList(); labels = emptyList(); settings = Settings()
+        folders = emptyList(); labels = emptyList(); settings = Settings(); rules = emptyList()
         messages.clear(); selected.clear(); total = 0; openUid = null; query = ListQuery(); error = null; shownQuery = null; offline = false
         inboxUnread = 0; outboxCount = 0; quarantineCount = 0; loading = false; loadingMore = false
     }
@@ -102,7 +105,9 @@ object MailStore {
         scope.launch {
             runCatching { settings = api.settings() }
             runCatching { labels = api.labels() }
+            runCatching { rules = api.rules().rules }
         }
+        Pinned.load()
         if (folders.isEmpty()) MailCache.folders()?.let { applyFolders(it) }
         refreshFolders()
         load()
@@ -313,7 +318,7 @@ object MailStore {
         // запрос пришёл бы уже к переехавшим письмам. В чужом общем ящике правил не предлагаем.
         val srcs = groups.keys.map { f -> folders.firstOrNull { it.path == f } }
         val targetFolder = target?.let { t -> folders.firstOrNull { it.path == t } }
-        val askKind = when {
+        var askKind = when {
             // owner — строка, не null: сравнение с null было всегда истинным, и вопрос о правиле не задавался никогда.
             srcs.any { it?.role == "shared" || it?.isShared == true } -> null
             op == "spam" -> "spam"
@@ -322,7 +327,10 @@ object MailStore {
             op == "move" && targetFolder?.role == "custom" && targetFolder.owner.isEmpty() && settings.askRuleOnMove -> "folder"   // owner — строка, не null
             else -> null
         }
-        val askMails = if (askKind == null) emptyList() else senders ?: messages.filter { it.uid in uids }.map { it.from.mail }
+        var askMails = if (askKind == null) emptyList() else senders ?: messages.filter { it.uid in uids }.map { it.from.mail }
+        // Правило «письма от … → сюда» уже есть (из веба или прошлого ответа «да») — второй раз не спрашиваем.
+        if (askKind == "folder") askMails = askMails.filter { !ruleCoversSender(rules, it, target) }
+        if (askKind == "folder" && askMails.isEmpty()) askKind = null
         val leaves = op in setOf("delete", "archive", "move", "spam", "notspam", "snooze", "unsnooze", "lists")
         selected.removeAll(uids)
         if (!leaves) {
@@ -425,5 +433,30 @@ object MailStore {
     fun reloadSettings() { scope.launch { runCatching { settings = api.settings() } } }
     fun setSettingsLocal(s: Settings) { settings = s }
     fun reloadLabels() { scope.launch { runCatching { labels = api.labels() } } }
+    fun reloadRules() { scope.launch { runCatching { rules = api.rules().rules } } }
     fun bump() { version++ }
+}
+
+/**
+ * Есть ли среди правил такое, что уже кладёт письма [mail] в папку [folder]: условие по «От» (равно, содержит,
+ * начинается, заканчивается — как в веб-почте) и действие «переместить» в эту папку либо «в папку по адресу /
+ * домену отправителя» (такое раскладывает само, в какую бы папку ни переносили). Выключенные правила не в счёт.
+ */
+fun ruleCoversSender(rules: List<Rule>, mail: String, folder: String?): Boolean {
+    val m = mail.trim().lowercase()
+    if (m.isEmpty()) return false
+    return rules.any { r ->
+        r.enabled && r.conditions.any { c ->
+            val v = c.value.trim().lowercase()
+            c.field == "from" && v.isNotEmpty() && when (c.op) {
+                "is" -> m == v
+                "contains" -> v in m
+                "starts" -> m.startsWith(v)
+                "ends" -> m.endsWith(v)
+                else -> false
+            }
+        } && r.actions.any { a ->
+            (a.type == "move" && folder != null && a.value == folder) || a.type == "move_by_sender" || a.type == "move_by_domain"
+        }
+    }
 }

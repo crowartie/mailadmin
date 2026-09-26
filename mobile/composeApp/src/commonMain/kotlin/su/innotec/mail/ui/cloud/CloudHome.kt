@@ -422,48 +422,79 @@ private fun CloudRow(i: CloudItem, trash: Boolean, selected: Boolean, selecting:
     Divider()
 }
 
+/** Сроки ссылки: дни → подпись; 0 — бессрочно. */
+private val LINK_DAYS = listOf(7 to "7 дней", 30 to "30 дней", 365 to "Год", 0 to "Без срока")
+
 @Composable
 private fun LinkDialog(i: CloudItem, onDismiss: () -> Unit, onChanged: () -> Unit) {
     var link by remember { mutableStateOf(i.link) }
     var days by remember { mutableStateOf(30) }
     var withPassword by remember { mutableStateOf(i.link?.hasPassword ?: false) }
     var password by remember { mutableStateOf<String?>(null) }
+    // Правка существующей ссылки: срок и что делать с паролем — null «оставить», true «сменить», false «убрать»
+    // (так это понимает PersonalCloud::link). Пока не нажали «Настроить», показываем саму ссылку.
+    var editing by remember { mutableStateOf(false) }
+    var pwdChange by remember { mutableStateOf<Boolean?>(null) }
     val scope = rememberCoroutineScope()
     val api = Session.api!!
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Ссылка на «${i.name}»") },
+        title = { Text(if (editing) "Настроить ссылку" else "Ссылка на «${i.name}»") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 val l = link
-                if (l != null) {
+                if (l != null && !editing) {
                     Text(l.url, style = MaterialTheme.typography.bodyMedium, color = P.accentInk, modifier = Modifier.clickable { Sys.copy(l.url); Toasts.show("Ссылка скопирована") })
-                    Text(l.expiresAt?.let { "Действует до ${Fmt.full(it)}" } ?: "Бессрочная", style = MaterialTheme.typography.bodySmall, color = P.muted)
+                    Text(listOfNotNull(l.expiresAt?.let { "Действует до ${Fmt.full(it)}" } ?: "Бессрочная", if (l.hasPassword) "с паролем" else null).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall, color = P.muted)
                     password?.let { Text("Пароль: $it — сообщите получателю, повторно не показывается", color = P.warnInk, style = MaterialTheme.typography.bodyMedium) }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         TextButton(onClick = { Sys.copy(l.url); Toasts.show("Ссылка скопирована") }) { Text("Копировать") }
                         TextButton(onClick = { Sys.shareText(l.url) }) { Text("Поделиться") }
+                        TextButton(onClick = { editing = true; pwdChange = null; days = 30 }, modifier = Modifier.testTag("link-edit")) { Text("Настроить") }
                         TextButton(onClick = { scope.launchSafe { api.cloudUnlink(i.path); link = null; onChanged(); Toasts.show("Ссылка удалена") } }) { Text("Удалить", color = P.no) }
                     }
                 } else {
-                    Text("Срок действия", style = MaterialTheme.typography.labelLarge, color = P.muted)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(7 to "Неделя", 30 to "Месяц", 90 to "3 месяца", 0 to "Бессрочно").forEach { (d, t) -> Chip(t, days == d, { days = d }) }
+                    Text("Срок действия" + if (editing) " (считается от сегодня)" else "", style = MaterialTheme.typography.labelLarge, color = P.muted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        LINK_DAYS.forEach { (d, t) -> Chip(t, days == d, { days = d }) }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text("С паролем", Modifier.weight(1f)); Switch(withPassword, { withPassword = it }) }
+                    if (editing) {
+                        Text("Пароль", style = MaterialTheme.typography.labelLarge, color = P.muted)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            if (l?.hasPassword == true) Chip("Оставить", pwdChange == null, { pwdChange = null })
+                            else Chip("Без пароля", pwdChange == null, { pwdChange = null })
+                            Chip(if (l?.hasPassword == true) "Сменить" else "Задать", pwdChange == true, { pwdChange = true })
+                            if (l?.hasPassword == true) Chip("Убрать", pwdChange == false, { pwdChange = false })
+                        }
+                        if (pwdChange == true) Text("Новый пароль покажем один раз после сохранения.", style = MaterialTheme.typography.bodySmall, color = P.faint)
+                    } else Row(verticalAlignment = Alignment.CenterVertically) { Text("С паролем", Modifier.weight(1f)); Switch(withPassword, { withPassword = it }) }
                 }
             }
         },
         confirmButton = {
-            if (link == null) TextButton(onClick = {
-                scope.launchSafe {
-                    val r = api.cloudLink(i.path, days, withPassword)
-                    link = r.link; password = r.link.password
-                    Sys.copy(r.link.url); Toasts.show("Ссылка создана и скопирована"); onChanged()
-                }
-            }) { Text("Создать") } else TextButton(onClick = onDismiss) { Text("Готово") }
+            when {
+                editing -> TextButton(onClick = {
+                    scope.launchSafe {
+                        val r = api.updateLink(i.path, days, pwdChange)
+                        link = r.link; password = r.link.password; editing = false
+                        Toasts.show("Ссылка изменена"); onChanged()
+                    }
+                }, modifier = Modifier.testTag("link-save")) { Text("Сохранить") }
+                link == null -> TextButton(onClick = {
+                    scope.launchSafe {
+                        val r = api.cloudLink(i.path, days, withPassword)
+                        link = r.link; password = r.link.password
+                        Sys.copy(r.link.url); Toasts.show("Ссылка создана и скопирована"); onChanged()
+                    }
+                }) { Text("Создать") }
+                else -> TextButton(onClick = onDismiss) { Text("Готово") }
+            }
         },
-        dismissButton = { if (link == null) TextButton(onClick = onDismiss) { Text("Отмена") } },
+        dismissButton = {
+            if (editing) TextButton(onClick = { editing = false }) { Text("Назад") }
+            else if (link == null) TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
     )
 }
 

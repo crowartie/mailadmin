@@ -28,6 +28,8 @@ data class Account(
 @Serializable
 data class LocalPrefs(
     val theme: String = "system",
+    /** Цветовая схема: brand — фирменная оранжевая, classic — синяя; общая с веб-почтой (settings.scheme). */
+    val scheme: String = "brand",
     val notify: Boolean = true,
     val notifyShared: Boolean = false,
     /** Последний uid во «Входящих», о котором уже сообщили. */

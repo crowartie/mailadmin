@@ -97,6 +97,8 @@ data class ComposeForm(
     val cloud: List<Int> = emptyList(),
     val cloudFiles: List<CloudFileRef> = emptyList(),
     val attachMessages: List<AttachedMessageRef> = emptyList(),
+    /** Файлы, уже лежащие в хранилище (compose/stage): в письме — ссылкой, в черновике — запоминаются. */
+    val staged: List<Staged> = emptyList(),
 )
 
 data class AttachedMessageRef(val folder: String, val uid: Long, val name: String? = null)
@@ -301,7 +303,28 @@ class Api(
             append("attachMessages[$i][uid]", m.uid.toString())
             m.name?.let { append("attachMessages[$i][name]", it) }
         }
+        f.staged.forEachIndexed { i, s ->
+            append("staged[$i][token]", s.token)
+            if (s.name.isNotEmpty()) append("staged[$i][name]", s.name)
+            append("staged[$i][size]", s.size.toString())
+        }
     })
+
+    /**
+     * Крупный файл — в хранилище сразу при прикреплении (как в веб-почте, когда личного облака нет):
+     * при отправке сервер не перекладывает его из черновика, а вставляет ссылку. [progress] — байт ушло
+     * и всего; когда ушло всё, а ответа ещё нет — сервер проверяет файл антивирусом.
+     */
+    suspend fun stageFile(file: LocalFile, progress: ((Long, Long?) -> Unit)? = null): Staged =
+        parsed(raw(HttpMethod.Post, "/compose/stage", MultiPartFormDataContent(formData {
+            append("file", InputProvider(file.size) { file.open() }, Headers.build {
+                append(HttpHeaders.ContentType, file.mime)
+                append(HttpHeaders.ContentDisposition, "filename=\"${file.name.replace("\"", "")}\"")
+            })
+        }), timeoutMs = 3_600_000) { progress?.let { p -> onUpload { sent, total -> p(sent, total) } } })
+
+    /** Файл убрали из письма до отправки — в хранилище ему делать нечего. */
+    suspend fun unstage(token: String) = deleteOk("/compose/stage/${enc(token)}")
 
     /** [progress] — сколько байт письма ушло на сервер и сколько всего (для плашки «Отправляется…»). */
     suspend fun send(f: ComposeForm, progress: ((Long, Long?) -> Unit)? = null): SendResult =
@@ -384,6 +407,12 @@ class Api(
             append("book", book)
             append("file", InputProvider(file.size) { file.open() }, Headers.build { append(HttpHeaders.ContentType, file.mime); append(HttpHeaders.ContentDisposition, "filename=\"${file.name}\"") })
         })))
+    /** То же, что [importContacts], но с разбором ответа — чтобы сказать человеку, сколько загрузилось. */
+    suspend fun importCards(file: LocalFile, book: String = "personal"): ImportResult =
+        parsed(raw(HttpMethod.Post, "/contacts/import", MultiPartFormDataContent(formData {
+            append("book", book)
+            append("file", InputProvider(file.size) { file.open() }, Headers.build { append(HttpHeaders.ContentType, file.mime); append(HttpHeaders.ContentDisposition, "filename=\"${file.name}\"") })
+        })))
     fun contactsExportPath(book: String? = null) = "/contacts/export" + (book?.let { "?book=${enc(it)}" } ?: "")
 
     // ---------- календарь, задачи ----------
@@ -392,6 +421,9 @@ class Api(
     suspend fun createCalendar(name: String, color: String): JsonElement = post("/calendars", buildJsonObject { put("name", name); put("color", color) })
     suspend fun updateCalendar(uri: String, name: String?, color: String?) { raw(HttpMethod.Patch, "/calendars/${enc(uri)}", buildJsonObject { name?.let { put("name", it) }; color?.let { put("color", it) } }) }
     suspend fun deleteCalendar(uri: String) = deleteOk("/calendars/${enc(uri)}")
+    /** Отписаться от чужого общего календаря: на сервере это тот же DELETE — sabre убирает только свою строку доступа (Calendars::deleteCalendar). */
+    /** Отписаться от чужого общего календаря: свой маршрут, чтобы случайно не удалить свой календарь. */
+    suspend fun unsubscribeCalendar(uri: String) = deleteOk("/calendars/${enc(uri)}/subscription")
     suspend fun calendarShares(uri: String): List<CalendarShare> = get("/calendars/${enc(uri)}/shares")
     /** Календарь файлом .ics (для «Скачать .ics»). */
     fun calendarExportPath(uri: String) = "/calendars/${enc(uri)}/export"
@@ -439,6 +471,12 @@ class Api(
     suspend fun cloudUploadAbort(id: String) = deleteOk("/cloud/uploads/${enc(id)}")
     suspend fun cloudLink(path: String, days: Int, password: Boolean? = null): LinkResult =
         post("/cloud/link", buildJsonObject { put("path", path); put("days", days); password?.let { put("password", it) } })
+    /**
+     * Изменить существующую ссылку: срок в днях (0 — бессрочно) и пароль — true: новый, false: убрать,
+     * null: оставить. PUT cloud/link правит только уже выданную ссылку (без неё — 404), новую не создаёт.
+     */
+    suspend fun updateLink(path: String, days: Int, password: Boolean? = null): LinkResult =
+        send(HttpMethod.Put, "/cloud/link", buildJsonObject { put("path", path); put("days", days); password?.let { put("password", it) } })
     suspend fun cloudUnlink(path: String) = postOk("/cloud/unlink", buildJsonObject { put("path", path) })
     suspend fun cloudAttach(paths: List<String>): JsonElement = post("/cloud/attach", buildJsonObject { putJsonArray("paths") { paths.forEach { add(JsonPrimitive(it)) } } })
     suspend fun cloudPin(path: String, on: Boolean): PinResult = post("/cloud/pin", buildJsonObject { put("path", path); put("on", on) })

@@ -160,8 +160,34 @@ data class Attachment(
     val inline: Boolean = false,
 )
 
+/**
+ * Файл по ссылке в письме. В окне «Написать» — только path/name/size (файл облака, уйдёт ссылкой);
+ * в открытом письме сервер отдаёт карточку хранилища (CloudFile::toCard): token — для просмотра
+ * (`files/{token}/content`, `preview.pdf`) и продления, mine — свой файл (его можно продлить).
+ */
 @Serializable
-data class CloudFileRef(val path: String = "", val name: String = "", val size: Long = 0, val url: String = "")
+data class CloudFileRef(
+    val path: String = "",
+    val name: String = "",
+    val size: Long = 0,
+    val url: String = "",
+    val token: String = "",
+    val type: String = "",
+    val expires: String? = null,
+    val expired: Boolean = false,
+    val mine: Boolean = false,
+    /** Сервер умеет собрать предпросмотр (PDF из документа Office). */
+    val preview: Boolean = false,
+    /** Файл из личного облака: продлевают и удаляют в разделе «Облако». */
+    val cloud: Boolean = false,
+)
+
+/**
+ * Крупный файл, заранее положенный в хранилище (POST compose/stage): в письме уйдёт ссылкой.
+ * В форму отправки и черновика идёт как staged[i][token|name|size]; черновик возвращает такие же.
+ */
+@Serializable
+data class Staged(val token: String = "", val name: String = "", val size: Long = 0, val url: String = "", val expires: String? = null)
 
 @Serializable
 data class Message(
@@ -218,8 +244,19 @@ data class Thread(val messages: List<ThreadMessage> = emptyList(), val hidden: I
 @Serializable
 data class FolderStatus(val messages: Int = 0, val unseen: Int = 0, val uidnext: Long = 0)
 
+/**
+ * Напоминание о встрече, которому пора сработать (FolderController::dueReminders): key — «uid@начало»,
+ * по нему приложение помнит, что уже показывало (сервер отдаёт одно и то же напоминание пару минут подряд).
+ */
 @Serializable
-data class Status(val folder: FolderStatus = FolderStatus(), val inboxUnseen: Int = 0, val at: String = "")
+data class Reminder(val key: String = "", val title: String = "", val start: String = "", val allDay: Boolean = false, val location: String = "")
+
+@Serializable
+data class Status(val folder: FolderStatus = FolderStatus(), val inboxUnseen: Int = 0, val at: String = "", val reminders: List<Reminder> = emptyList())
+
+/** Ответ POST contacts/import: сколько карточек легло в книгу и сколько пропущено как уже имеющиеся. */
+@Serializable
+data class ImportResult(val imported: Int = 0, val skipped: Int = 0)
 
 @Serializable
 data class ActionRequest(
@@ -253,6 +290,8 @@ data class Draft(
     val references: String = "",
     val attachments: List<Attachment> = emptyList(),
     val cloudFiles: List<CloudFileRef> = emptyList(),
+    /** Файлы, заранее положенные в хранилище (см. [Staged]). */
+    val staged: List<Staged> = emptyList(),
 )
 
 @Serializable
@@ -294,7 +333,20 @@ data class Identity(
 data class ComposeLimits(val messageMb: Int = 25, val maxFiles: Int = 20)
 
 @Serializable
-data class CloudConfig(val enabled: Boolean = false, val thresholdMb: Int = 25, val maxMb: Int = 50, val personal: Boolean = false)
+data class CloudConfig(
+    val enabled: Boolean = false,
+    val thresholdMb: Int = 25,
+    val maxMb: Int = 50,
+    val personal: Boolean = false,
+    /**
+     * Можно класть крупный файл в хранилище сразу при прикреплении (compose/stage) — только у своего
+     * хранилища (Cloud::provider() === 'local'). Сервер поле пока не отдаёт: тогда считаем «да», если
+     * ссылки включены и личного облака нет, а отказ 409 при первой загрузке переключает на черновик.
+     */
+    val stage: Boolean? = null,
+) {
+    val canStage: Boolean get() = stage ?: (enabled && !personal)
+}
 
 @Serializable
 data class Quota(val usedKb: Long = 0, val limitKb: Long = 0, val percent: Int = 0)
@@ -315,6 +367,7 @@ data class Settings(
     val signature: String = "",
     @SerialName("signature_reply") val signatureReply: Boolean = true,
     val theme: String = "light",
+    val scheme: String = "brand",
     val density: String = "",
     @SerialName("reply_all") val replyAll: Boolean = false,
     @SerialName("notify_browser") val notifyBrowser: Boolean = false,

@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -137,7 +139,7 @@ fun App() {
         MailStore.flushPending()
         Toasts.expireAll()
     }
-    MailTheme(Session.prefs.theme) {
+    MailTheme(Session.prefs.theme, Session.prefs.scheme) {
         Box(Modifier.fillMaxSize().background(P.bg)) {
             val acc = Session.account
             if (acc == null) {
@@ -154,8 +156,29 @@ fun App() {
                     runCatching { Session.api!!.me() }.onSuccess { me ->
                         if (me.user != acc.user || me.name != acc.name) Session.signIn(acc.copy(user = me.user, name = me.name))
                     }.onFailure { if (it is su.innotec.mail.api.ApiException && it.isAuth) Session.signOut("Вход устарел или отозван — войдите заново.") }
+                    // Тема — настройка ящика (как в веб-почте): при входе берём её с сервера, при смене пишем туда (Settings.kt).
+                    runCatching { Session.api!!.settings() }.onSuccess { s ->
+                        if (s.theme in setOf("light", "dark", "system") && s.theme != Session.prefs.theme) Session.updatePrefs { it.copy(theme = s.theme) }
+                        if (s.scheme in setOf("brand", "classic") && s.scheme != Session.prefs.scheme) Session.updatePrefs { it.copy(scheme = s.scheme) }
+                    }
+                }
+                // Напоминания о встречах, пока приложение открыто: раз в минуту статус «Входящих» (в нём же reminders),
+                // системное уведомление и подсказка внизу. В фоне то же делает MailCheck (Android) и опрос main.kt (ПК).
+                LaunchedEffect(acc.origin, acc.user) {
+                    while (true) {
+                        kotlinx.coroutines.delay(60_000)
+                        try {
+                            val fresh = su.innotec.mail.data.Reminders.poll()
+                            if (fresh > 0) Toasts.show(if (fresh == 1) "Напоминание о встрече — смотрите уведомление" else "Напоминания о встречах: $fresh")
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (_: Throwable) {
+                            // Нет связи — попробуем через минуту; отозванный вход обработает список писем.
+                        }
+                    }
                 }
                 Main()
+                if (Shortcuts.help) HotkeysHelp { Shortcuts.help = false }
             }
         }
     }
@@ -209,6 +232,26 @@ private fun Main() {
             }
         }
     }
+}
+
+/** Подсказка по горячим клавишам ПК («?» — как в веб-почте). */
+@Composable
+private fun HotkeysHelp(onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Горячие клавиши") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Shortcuts.HELP.forEach { (keys, what) ->
+                    Row(Modifier.padding(vertical = 3.dp)) {
+                        Text(keys, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium, color = P.accentInk)
+                        Text(what, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Закрыть") } },
+    )
 }
 
 @Composable

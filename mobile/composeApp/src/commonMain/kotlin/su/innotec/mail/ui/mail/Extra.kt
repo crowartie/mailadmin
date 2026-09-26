@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -91,6 +92,7 @@ class QuarantineScreen : Screen() {
     override fun Content() {
         var items by remember { mutableStateOf<List<QuarantineItem>?>(null) }
         var confirm by remember { mutableStateOf<QuarantineItem?>(null) }
+        var notSpam by remember { mutableStateOf<QuarantineItem?>(null) }   // после «Доставить»: предложить исключение
         val scope = rememberCoroutineScope()
         Column(Modifier.fillMaxSize().background(P.bg)) {
             SubBar("Карантин", "Письма, задержанные антиспамом")
@@ -112,6 +114,8 @@ class QuarantineScreen : Screen() {
                                     scope.launchSafe {
                                         items = Session.api!!.quarantineRelease(q.id).items
                                         Toasts.show("Письмо доставлено во «Входящие»"); MailStore.refreshFolders()
+                                        // Как в веб-почте: доставили — предложить больше не задерживать письма с этого адреса.
+                                        if (q.from.contains('@')) notSpam = q
                                     }
                                 }) { Text("Доставить") }
                                 TextButton(onClick = { confirm = q }) { Text("Удалить", color = P.no) }
@@ -121,6 +125,30 @@ class QuarantineScreen : Screen() {
                     }
                 }
             }
+        }
+        notSpam?.let { q ->
+            val mail = Regex("[^\\s<>]+@[^\\s<>]+").find(q.from)?.value?.lowercase() ?: q.from
+            val domain = mail.substringAfterLast('@')
+            AlertDialog(
+                onDismissRequest = { notSpam = null },
+                title = { Text("Это не спам?") },
+                text = { Text("Больше не задерживать письма с этого адреса или со всего домена. Исключение действует для всей компании.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        notSpam = null
+                        scope.launchSafe { Session.api!!.markSender("ham", "address", mail, resort = true); Toasts.show("Письма с $mail больше не задерживаются") }
+                    }) { Text("Адрес $mail") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = {
+                            notSpam = null
+                            scope.launchSafe { Session.api!!.markSender("ham", "domain", domain, resort = true); Toasts.show("Письма с @$domain больше не задерживаются") }
+                        }) { Text("Домен @$domain") }
+                        TextButton(onClick = { notSpam = null }) { Text("Не нужно") }
+                    }
+                },
+            )
         }
         confirm?.let { q ->
             ConfirmDialog("Удалить письмо из карантина?", q.subject, "Удалить", danger = true, onDismiss = { confirm = null }) {

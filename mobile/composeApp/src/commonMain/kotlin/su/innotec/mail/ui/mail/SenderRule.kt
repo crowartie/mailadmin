@@ -105,6 +105,7 @@ fun SenderRuleHost() {
                 }
                 Toasts.show("$who: правило добавлено" + (if (moved > 0) ", перемещено писем: $moved" else "") + "." + tail)
                 MailStore.refreshFolders(); MailStore.load()
+                MailStore.reloadRules()   // про этого отправителя больше не спрашиваем
             } catch (e: ApiException) {
                 busy = false; Toasts.error(e)
             }

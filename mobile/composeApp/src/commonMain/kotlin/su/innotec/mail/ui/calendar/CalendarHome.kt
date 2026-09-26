@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,7 +38,10 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -60,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -136,6 +139,8 @@ object CalStore {
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var tab by mutableStateOf("month")
+    /** Строка поиска по событиям (null — поиск закрыт). */
+    var search by mutableStateOf<String?>(null)
     private var loaded = false
 
     fun start() { if (!loaded) { loaded = true; loadCalendars(); load(); loadTasks() } }
@@ -182,8 +187,15 @@ object CalStore {
         when (tab) {
             "day" -> goTo(day.plus(DatePeriod(days = dir)))
             "week" -> goTo(day.plus(DatePeriod(days = 7 * dir)))
-            else -> { month = month.plus(DatePeriod(months = dir)); day = if (Fmt.today().let { it.year == month.year && it.month == month.month }) Fmt.today() else month; load() }
+            else -> showMonth(month.plus(DatePeriod(months = dir)))
         }
+    }
+
+    /** Открыть месяц: выбранный день — сегодня, если он в этом месяце, иначе первое число. */
+    fun showMonth(m: LocalDate) {
+        month = LocalDate(m.year, m.month, 1)
+        day = if (Fmt.today().let { it.year == month.year && it.month == month.month }) Fmt.today() else month
+        load()
     }
 
     fun title(): String = when (tab) {
@@ -192,7 +204,7 @@ object CalStore {
         else -> "${Fmt.monthsNom[month.month.ordinal]} ${month.year}"
     }
 
-    fun reset() { calendars = emptyList(); events = emptyList(); tasks = emptyList(); hidden.clear(); loaded = false }
+    fun reset() { calendars = emptyList(); events = emptyList(); tasks = emptyList(); hidden.clear(); search = null; loaded = false }
 }
 
 /**
@@ -223,7 +235,38 @@ fun timeRange(e: CalEvent): String {
     return if (s.date == en.date) "${Fmt.time(s)}–${Fmt.time(en)}" else "${Fmt.dateShort(s.date)}, ${Fmt.time(s)} – ${Fmt.dateShort(en.date)}, ${Fmt.time(en)}"
 }
 
+/**
+ * Полоски в клетке месяца: целодневные и ранние выше, первые [max] — с названием, остальные — числом «+N»
+ * (как в календарях Google и Outlook: точки не говорят, что за событие).
+ */
+fun dayBars(events: List<CalEvent>, max: Int): Pair<List<CalEvent>, Int> {
+    val sorted = events.sortedWith(compareBy({ !it.allDay }, { it.start }))
+    return sorted.take(max) to (sorted.size - max).coerceAtLeast(0)
+}
+
+/** Ключ события в списке дня: у повторяющихся один id на все вхождения, различаем по началу. */
+fun eventKey(e: CalEvent): String = e.calendar + "/" + e.id + "@" + e.start
+
+/**
+ * Какие события дня пересекаются по времени с другим — повестка помечает их предупреждением.
+ * Целодневные и «время не занято» не считаются: они никому не мешают.
+ */
+fun overlapping(events: List<CalEvent>): Set<String> {
+    val timed = events.filter { !it.allDay && !it.transparent && it.status != "CANCELLED" }.mapNotNull { e ->
+        val s = Fmt.parse(e.start) ?: return@mapNotNull null
+        Triple(e, s, Fmt.parse(e.end) ?: s)
+    }
+    val out = mutableSetOf<String>()
+    for (i in timed.indices) for (j in i + 1 until timed.size) {
+        val (a, aS, aE) = timed[i]; val (b, bS, bE) = timed[j]
+        if (aS < bE && bS < aE) { out += eventKey(a); out += eventKey(b) }
+    }
+    return out
+}
+
 // ---------- главный экран ----------
+
+private val TABS = listOf("day" to "День", "week" to "Неделя", "month" to "Месяц", "agenda" to "Повестка", "tasks" to "Задачи")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -231,17 +274,36 @@ fun CalendarHome() {
     val s = CalStore
     LaunchedEffect(Unit) { s.start() }
     var menu by remember { mutableStateOf(false) }
+    var pickMonth by remember { mutableStateOf(false) }
     val wide = LocalWindow.current != WindowKind.PHONE
+    BackHandler(s.search != null) { s.search = null }
     Box(Modifier.fillMaxSize().background(P.bg)) {
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.background(P.surface).statusBarsPadding()) {
-                Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val q = s.search
+                if (q != null) Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconBtn("back", "Закрыть поиск") { s.search = null }
+                    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+                    androidx.compose.material3.TextField(q, { s.search = it }, Modifier.weight(1f).focusRequester(focus).testTag("cal-search"),
+                        placeholder = { Text("Название, место, участник") }, singleLine = true,
+                        colors = androidx.compose.material3.TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
+                    if (q.isNotEmpty()) IconBtn("x", "Очистить") { s.search = "" }
+                    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+                }
+                else Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (s.tab != "tasks") {
                         IconBtn("left", "Назад") { s.page(-1) }
-                        Text(s.title(), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // Заголовок — кнопка выбора месяца и года (как «Сентябрь 2026 ▾» на макете).
+                        Row(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { pickMonth = true }.padding(horizontal = 6.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                            Text(s.title(), style = if (wide) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Ico("down", size = 16.dp, tint = P.muted)
+                        }
                         IconBtn("right", "Вперёд") { s.page(1) }
-                        IconBtn("today", "Сегодня") { s.goTo(Fmt.today()) }
+                        TextButton(onClick = { s.goTo(Fmt.today()) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp), modifier = Modifier.testTag("cal-today")) { Text("Сегодня") }
                     } else Text("Задачи", Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.titleMedium)
+                    IconBtn("search", "Поиск") { s.search = "" }
                     Box {
                         IconBtn("dots", "Ещё") { menu = true }
                         DropdownMenu(menu, { menu = false }) {
@@ -250,17 +312,12 @@ fun CalendarHome() {
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("День", s.tab == "day", { s.tab = "day" })
-                    Chip("Неделя", s.tab == "week", { s.tab = "week" })
-                    Chip("Месяц", s.tab == "month", { s.tab = "month" })
-                    Chip("Повестка", s.tab == "agenda", { s.tab = "agenda" })
-                    Chip("Задачи" + if (s.tasks.count { !it.done } > 0) " · ${s.tasks.count { !it.done }}" else "", s.tab == "tasks", { s.tab = "tasks"; s.loadTasks() })
-                }
+                if (s.search == null) ViewSwitch(s.tab) { t -> s.tab = t; if (t == "tasks") s.loadTasks() }
                 Divider()
             }
             PullToRefreshBox(isRefreshing = s.loading && s.events.isNotEmpty(), onRefresh = { s.load(); s.loadTasks() }, modifier = Modifier.weight(1f)) {
                 when {
+                    s.search != null -> SearchResults(s.search!!)
                     s.tab == "tasks" -> TasksView()
                     s.error != null && s.events.isEmpty() -> ErrorBox(s.error!!, { s.load() })
                     s.tab == "agenda" -> Agenda(s.day)
@@ -273,23 +330,68 @@ fun CalendarHome() {
                     wide -> Row(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1.3f)) { MonthGrid(big = true) }
                         Box(Modifier.width(1.dp).fillMaxHeight().background(P.border))
-                        Box(Modifier.weight(1f)) { DayList(s.day) }
+                        Box(Modifier.weight(1f)) { Upcoming(s.day) }
                     }
                     else -> Column(Modifier.fillMaxSize()) {
                         MonthGrid(big = false)
                         Divider()
-                        Box(Modifier.weight(1f)) { DayList(s.day) }
+                        Box(Modifier.weight(1f)) { Upcoming(s.day) }
                     }
                 }
             }
         }
-        ExtendedFloatingActionButton(
+        FloatingActionButton(
             onClick = { if (s.tab == "tasks") Nav.push(TaskEditScreen(null)) else Nav.push(EventEditScreen(null, day = s.day)) },
             containerColor = P.accent, contentColor = P.accentOn,
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).testTag("new-event"),
-            icon = { Ico("plus") }, text = { Text(if (s.tab == "tasks") "Задача" else "Событие") },
-        )
+        ) { Ico("plus", contentDescription = if (s.tab == "tasks") "Новая задача" else "Новое событие") }
     }
+    if (pickMonth) MonthPicker(s.month, onDismiss = { pickMonth = false }) { m -> s.showMonth(m); if (s.tab == "day" || s.tab == "week") s.goTo(s.day) }
+}
+
+/** Переключатель видов — сегмент, а не чипы: видно, что вариант один из пяти. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ViewSwitch(tab: String, onPick: (String) -> Unit) {
+    val open = CalStore.tasks.count { !it.done }
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        TABS.forEachIndexed { i, (k, t) ->
+            SegmentedButton(
+                selected = tab == k, onClick = { onPick(k) }, shape = SegmentedButtonDefaults.itemShape(i, TABS.size),
+                colors = SegmentedButtonDefaults.colors(activeContainerColor = P.accentSoft, activeContentColor = P.accentInk, activeBorderColor = P.border2,
+                    inactiveContainerColor = P.surface, inactiveContentColor = P.text, inactiveBorderColor = P.border2),
+                icon = {}, label = { Text(if (k == "tasks" && open > 0) "$t · $open" else t, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
+                modifier = Modifier.testTag("cal-tab-$k"),
+            )
+        }
+    }
+}
+
+/** Выбор месяца и года: год стрелками, месяц — кнопкой. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MonthPicker(current: LocalDate, onDismiss: () -> Unit, onPick: (LocalDate) -> Unit) {
+    var year by remember { mutableStateOf(current.year) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBtn("left", "Год назад") { year-- }
+                Text(year.toString(), Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleLarge)
+                IconBtn("right", "Год вперёд") { year++ }
+            }
+        },
+        text = {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), maxItemsInEachRow = 3) {
+                Fmt.monthsNom.forEachIndexed { i, name ->
+                    val sel = year == current.year && i == current.month.ordinal
+                    Chip(name, sel, { onDismiss(); onPick(LocalDate(year, i + 1, 1)) }, modifier = Modifier.weight(1f))
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
 }
 
 @Composable
@@ -299,38 +401,38 @@ private fun MonthGrid(big: Boolean) {
     val offset = first.dayOfWeek.ordinal
     val start = first.minus(DatePeriod(days = offset))
     val today = Fmt.today()
+    val bars = if (big) 3 else 2
     Column(Modifier.fillMaxWidth().background(P.surface).padding(horizontal = 6.dp, vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth()) {
-            Fmt.weekdaysShort.forEach { Text(it, Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, color = P.faint) }
+            Fmt.weekdaysShort.forEachIndexed { i, it -> Text(it, Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, color = if (i >= 5) P.faint else P.muted) }
         }
         for (w in 0 until 6) {
             Row(Modifier.fillMaxWidth()) {
                 for (d in 0 until 7) {
                     val date = start.plus(DatePeriod(days = w * 7 + d))
                     val inMonth = date.month == first.month
-                    val evs = s.onDay(date)
+                    val (shown, more) = dayBars(s.onDay(date), bars)
                     val sel = date == s.day
                     Column(
-                        Modifier.weight(1f).let { if (big) it.height(92.dp) else it.aspectRatio(1.1f) }.padding(1.dp).clip(RoundedCornerShape(8.dp))
-                            .background(if (sel) P.accentSoft else Color.Transparent).clickable { s.day = date; if (big.not() && s.tab == "agenda") s.tab = "month" }
-                            .padding(top = 3.dp),
+                        Modifier.weight(1f).height(if (big) 96.dp else 62.dp).padding(1.dp).clip(RoundedCornerShape(8.dp))
+                            .background(if (sel) P.accentSoft else Color.Transparent).clickable { s.day = date; if (!big && s.tab == "agenda") s.tab = "month" }
+                            .padding(top = 2.dp).testTag("cal-day-$date"),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Box(Modifier.size(24.dp).clip(CircleShape).background(if (date == today) P.accent else Color.Transparent), contentAlignment = Alignment.Center) {
-                            Text(date.day.toString(), fontSize = 13.sp, color = when { date == today -> P.accentOn; !inMonth -> P.border2; d >= 5 -> P.no.copy(alpha = .8f); else -> P.text },
+                        Box(Modifier.size(22.dp).clip(CircleShape).background(if (date == today) P.accent else Color.Transparent), contentAlignment = Alignment.Center) {
+                            // Выходные — приглушённые, а не красные: красный в почте — это ошибка и удаление.
+                            Text(date.day.toString(), fontSize = 12.sp, color = when { date == today -> P.accentOn; !inMonth -> P.border2; d >= 5 -> P.muted; else -> P.text },
                                 fontWeight = if (date == today) FontWeight.Bold else FontWeight.Normal)
                         }
-                        if (big) {
-                            evs.take(3).forEach { e ->
-                                Text(e.title, Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 1.dp).clip(RoundedCornerShape(3.dp)).background(hexColor(e.color).copy(alpha = .18f)).padding(horizontal = 3.dp),
-                                    fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = P.text)
-                            }
-                            if (evs.size > 3) Text("ещё ${evs.size - 3}", fontSize = 10.sp, color = P.muted)
-                        } else if (evs.isNotEmpty()) {
-                            Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                evs.take(3).forEach { e -> Box(Modifier.size(5.dp).clip(CircleShape).background(hexColor(e.color))) }
+                        shown.forEach { e ->
+                            val c = hexColor(e.color)
+                            Box(Modifier.fillMaxWidth().padding(start = 2.dp, end = 2.dp, top = 1.dp).height(if (big) 15.dp else 13.dp).clip(RoundedCornerShape(3.dp))
+                                .background(if (inMonth) c else c.copy(alpha = .45f)).padding(horizontal = 3.dp), contentAlignment = Alignment.CenterStart) {
+                                Text(e.title.ifBlank { "(без названия)" }, fontSize = if (big) 10.sp else 9.sp, lineHeight = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    color = Color.White, fontWeight = FontWeight.Medium, softWrap = false)
                             }
                         }
+                        if (more > 0) Text("+$more", fontSize = 9.sp, lineHeight = 11.sp, color = P.muted, modifier = Modifier.padding(top = 1.dp))
                     }
                 }
             }
@@ -338,16 +440,78 @@ private fun MonthGrid(big: Boolean) {
     }
 }
 
+/**
+ * Повестка под сеткой: выбранный день и следующий («Сегодня …», «Завтра …») — карточки событий с временем,
+ * пересечения отмечены, задачи дня — с галочкой.
+ */
 @Composable
-private fun DayList(day: LocalDate) {
-    val evs = CalStore.onDay(day)
-    val tasks = CalStore.tasks.filter { !it.done && Fmt.local(it.due)?.date == day }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Text(Fmt.dayTitle(day), Modifier.padding(start = 16.dp, top = 12.dp, bottom = 6.dp), style = MaterialTheme.typography.titleSmall)
-        if (evs.isEmpty() && tasks.isEmpty()) Text("Ничего не запланировано", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = P.muted)
-        evs.forEach { EventRow(it) }
-        tasks.forEach { TaskRow(it) }
+private fun Upcoming(day: LocalDate) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("cal-upcoming")) {
+        listOf(day, day.plus(DatePeriod(days = 1))).forEach { d ->
+            val evs = CalStore.onDay(d)
+            val tasks = CalStore.tasks.filter { !it.done && Fmt.local(it.due)?.date == d }
+            val clash = overlapping(evs)
+            Text(Fmt.dayTitle(d), Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp), style = MaterialTheme.typography.titleSmall, color = if (d == Fmt.today()) P.accentInk else P.text)
+            if (evs.isEmpty() && tasks.isEmpty()) Text("Ничего не запланировано", Modifier.padding(horizontal = 16.dp, vertical = 6.dp), style = MaterialTheme.typography.bodyMedium, color = P.muted)
+            evs.forEach { EventCard(it, clash = eventKey(it) in clash) }
+            tasks.forEach { TaskRow(it) }
+        }
         Spacer(Modifier.height(96.dp))
+    }
+}
+
+/** Карточка события в повестке: начало и конец столбиком, полоска цвета календаря, название, место · участники. */
+@Composable
+private fun EventCard(e: CalEvent, clash: Boolean) {
+    val s = Fmt.local(e.start); val en = Fmt.local(e.end)
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp).clip(RoundedCornerShape(10.dp)).background(P.surface)
+            .clickable { Nav.push(EventScreen(e)) }.padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.width(48.dp)) {
+            if (e.allDay || s == null) Text("весь\nдень", style = MaterialTheme.typography.labelSmall, color = P.muted, lineHeight = 13.sp)
+            else {
+                Text(Fmt.time(s), style = MaterialTheme.typography.titleSmall)
+                if (en != null) Text(Fmt.time(en), style = MaterialTheme.typography.bodySmall, color = P.muted)
+            }
+        }
+        Box(Modifier.width(4.dp).height(38.dp).clip(RoundedCornerShape(2.dp)).background(hexColor(e.color)))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(e.title.ifBlank { "(без названия)" }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                textDecoration = if (e.status == "CANCELLED") TextDecoration.LineThrough else null)
+            val people = e.attendees.size
+            val sub = listOf(e.location, if (people > 0) "$people ${Fmt.plural(people, "участник", "участника", "участников")}" else "").filter { it.isNotBlank() }.joinToString(" · ")
+            if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (clash) Row(verticalAlignment = Alignment.CenterVertically) {
+                Ico("warn", size = 13.dp, tint = P.warn); Spacer(Modifier.width(4.dp))
+                Text("Пересекается с другой встречей", style = MaterialTheme.typography.labelSmall, color = P.warnInk)
+            }
+        }
+        if (e.rrule != null) Ico("repeat", size = 15.dp, tint = P.faint)
+        if (myStatus(e) == "NEEDS-ACTION") Box(Modifier.padding(start = 6.dp).size(8.dp).clip(CircleShape).background(P.warn))
+    }
+}
+
+/** Поиск по загруженным событиям (месяц с запасом): название, место, описание, участники. */
+@Composable
+private fun SearchResults(q: String) {
+    val s = CalStore
+    val t = q.trim()
+    if (t.length < 2) { Empty("search", "Поиск по событиям", "Введите хотя бы две буквы"); return }
+    val hits = s.visible().filter { e ->
+        listOf(e.title, e.location, e.description, e.calendarName).any { it.contains(t, ignoreCase = true) } ||
+            e.attendees.any { it.name.contains(t, true) || it.mail.contains(t, true) }
+    }.sortedBy { it.start }
+    if (hits.isEmpty()) { Empty("search", "Ничего не нашлось", "Ищем среди событий ${Fmt.monthsGen[s.month.month.ordinal]} и полутора месяцев вперёд"); return }
+    val byDay = hits.groupBy { eventStartDate(it) }.toSortedMap()
+    LazyColumn(Modifier.fillMaxSize().testTag("cal-search-results")) {
+        byDay.forEach { (d, evs) ->
+            item(key = "d$d") { Text(Fmt.dayTitle(d), Modifier.fillMaxWidth().background(P.bg).padding(start = 16.dp, top = 14.dp, bottom = 4.dp), style = MaterialTheme.typography.titleSmall) }
+            items(evs.size, key = { i -> "s" + eventKey(evs[i]) }) { i -> EventRow(evs[i]) }
+        }
+        item { Spacer(Modifier.height(96.dp)) }
     }
 }
 
@@ -358,8 +522,9 @@ private fun Agenda(from: LocalDate) {
     if (days.isEmpty()) { Empty("cal", "Событий нет", "В ближайшие полтора месяца ничего не запланировано"); return }
     LazyColumn(Modifier.fillMaxSize()) {
         days.forEach { (d, evs) ->
+            val clash = overlapping(evs)
             item(key = d.toString()) { Text(Fmt.dayTitle(d), Modifier.fillMaxWidth().background(P.bg).padding(start = 16.dp, top = 14.dp, bottom = 4.dp), style = MaterialTheme.typography.titleSmall, color = if (d == Fmt.today()) P.accentInk else P.text) }
-            items(evs.size, key = { i -> d.toString() + evs[i].calendar + evs[i].id + evs[i].start }) { i -> EventRow(evs[i]) }
+            items(evs.size, key = { i -> d.toString() + eventKey(evs[i]) }) { i -> EventCard(evs[i], clash = eventKey(evs[i]) in clash) }
         }
         item { Spacer(Modifier.height(96.dp)) }
     }
@@ -946,6 +1111,7 @@ class CalendarsScreen : Screen() {
     override fun Content() {
         var creating by remember { mutableStateOf(false) }
         var edit by remember { mutableStateOf<Calendar?>(null) }
+        var unsubscribe by remember { mutableStateOf<Calendar?>(null) }
         val scope = rememberCoroutineScope()
         Column(Modifier.fillMaxSize().background(P.bg)) {
             SubBar("Календари") { IconBtn("plus", "Новый календарь") { creating = true } }
@@ -966,6 +1132,8 @@ class CalendarsScreen : Screen() {
                         }
                         IconBtn("download", "Скачать .ics", tint = P.muted) { su.innotec.mail.ui.Transfers.fetch(Session.api!!.calendarExportPath(c.uri), c.name + ".ics", su.innotec.mail.ui.Transfers.Then.SAVE) }
                         if (c.kind == "own" || c.kind == "personal") IconBtn("gear", "Настроить", tint = P.muted) { edit = c }
+                        // Чужой общий календарь: отписаться — календарь пропадёт у нас, у владельца ничего не изменится (как в веб-почте).
+                        if (c.kind == "shared") IconBtn("unsub", "Отписаться", tint = P.muted) { unsubscribe = c }
                     }
                     Divider()
                 }
@@ -975,6 +1143,11 @@ class CalendarsScreen : Screen() {
             scope.launchSafe { Session.api!!.createCalendar(name, COLORS.random()); CalStore.loadCalendars() }
         }
         edit?.let { c -> CalendarSettings(c, onDismiss = { edit = null }) }
+        unsubscribe?.let { c ->
+            ConfirmDialog("Отписаться от «${c.name}»?", "Календарь ${c.owner.name.ifBlank { c.owner.mail ?: "" }} пропадёт из вашего списка; владелец сможет открыть его снова.", "Отписаться", danger = true, onDismiss = { unsubscribe = null }) {
+                scope.launchSafe { Session.api!!.unsubscribeCalendar(c.uri); CalStore.hidden.remove(c.uri); CalStore.loadCalendars(); CalStore.load(); Toasts.show("Вы отписались от календаря") }
+            }
+        }
     }
 }
 

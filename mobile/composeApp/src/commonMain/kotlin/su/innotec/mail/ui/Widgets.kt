@@ -152,19 +152,12 @@ fun CoroutineScope.launchSafe(block: suspend () -> Unit) = launch {
 
 // ---------- Мелкие детали ----------
 
-private val avatarColors = listOf(
-    Color(0xFF2F6FEB), Color(0xFF16A05C), Color(0xFFD9791F), Color(0xFF8E44AD), Color(0xFFC0392B),
-    Color(0xFF0E8A9E), Color(0xFF6D4C41), Color(0xFF5C6BC0), Color(0xFF00897B), Color(0xFFAD1457),
-)
-
+/** Аватар-инициалы: глубокий тон из палитры (по адресу — один и тот же везде) и белые буквы. */
 @Composable
 fun Avatar(name: String, key: String = name, size: Dp = 40.dp) {
-    val c = avatarColors[(key.lowercase().hashCode() and 0x7fffffff) % avatarColors.size]
-    Box(
-        Modifier.size(size).clip(CircleShape).background(c.copy(alpha = if (P.dark) 0.35f else 0.14f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(Fmt.initials(name), color = if (P.dark) Color.White.copy(alpha = .9f) else c, fontSize = (size.value * 0.36f).sp, fontWeight = FontWeight.SemiBold)
+    val c = P.avatarColor(key)
+    Box(Modifier.size(size).clip(CircleShape).background(c), contentAlignment = Alignment.Center) {
+        Text(Fmt.initials(name), color = Color.White, fontSize = (size.value * 0.36f).sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -192,15 +185,21 @@ fun ErrorBox(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier
     Empty("warn", "Не удалось загрузить", message, modifier) { Button(onClick = onRetry) { Text("Повторить") } }
 }
 
+/** Фильтр-чип: выбранный — акцентный (оранжевый), остальные — на приглушённой подложке; [count] — счётчик справа. */
 @Composable
-fun Chip(text: String, selected: Boolean, onClick: () -> Unit, icon: String? = null, modifier: Modifier = Modifier) {
+fun Chip(text: String, selected: Boolean, onClick: () -> Unit, icon: String? = null, modifier: Modifier = Modifier, count: Int = 0) {
     Row(
-        modifier.clip(RoundedCornerShape(50)).background(if (selected) P.accentSoft else P.chipOff).clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier.clip(RoundedCornerShape(50)).background(if (selected) P.accent else P.chipOff).clickable(onClick = onClick)
+            .padding(horizontal = if (text.isEmpty()) 8.dp else 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) { Ico(icon, size = 16.dp, tint = if (selected) P.accentInk else P.muted); Spacer(Modifier.width(6.dp)) }
-        Text(text, style = MaterialTheme.typography.labelLarge, color = if (selected) P.accentInk else P.text, maxLines = 1)
+        if (icon != null) { Ico(icon, size = 16.dp, tint = if (selected) P.accentOn else P.muted); if (text.isNotEmpty()) Spacer(Modifier.width(6.dp)) }
+        if (text.isNotEmpty()) Text(text, style = MaterialTheme.typography.labelLarge, color = if (selected) P.accentOn else P.text, maxLines = 1)
+        if (count > 0) {
+            Spacer(Modifier.width(6.dp))
+            Text(if (count > 999) "999+" else count.toString(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                color = if (selected) P.accentOn else P.accentInk)
+        }
     }
 }
 

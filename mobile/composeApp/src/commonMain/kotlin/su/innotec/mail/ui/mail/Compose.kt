@@ -76,6 +76,7 @@ import su.innotec.mail.api.Identity
 import su.innotec.mail.api.LocalFile
 import su.innotec.mail.api.Message
 import su.innotec.mail.api.Person
+import su.innotec.mail.api.Staged
 import su.innotec.mail.api.Suggestion
 import su.innotec.mail.data.Session
 import su.innotec.mail.platform.BackHandler
@@ -127,6 +128,8 @@ class ComposeModel(val start: ComposeStart) {
     var sig by mutableStateOf("")
     /** Цитата или шапка пересылки (у черновика — всё после текста человека). */
     var rest by mutableStateOf("")
+    /** Подпись свёрнутой цитаты: «Иванова Мария, 12:17» (у черновика исходное письмо неизвестно — null). */
+    var quoteTitle by mutableStateOf<String?>(null)
     /** Подпись, цитата или шапка пересылки — HTML, который дописывается к тексту. */
     val tail get() = sig + rest
     private var replyKind = false
@@ -163,7 +166,7 @@ class ComposeModel(val start: ComposeStart) {
     var pendingAt by mutableStateOf<String?>(null)
 
     val bodyHasContent get() = editor.html.contains("<img", true) || Html.toText(editor.html).isNotBlank()
-    val hasContent get() = to.isNotEmpty() || cc.isNotEmpty() || subject.isNotBlank() || bodyHasContent || files.isNotEmpty() || cloudFiles.isNotEmpty()
+    val hasContent get() = to.isNotEmpty() || cc.isNotEmpty() || subject.isNotBlank() || bodyHasContent || files.isNotEmpty() || cloudFiles.isNotEmpty() || staged.isNotEmpty()
 
     fun identity(): Identity? = meta.identities.firstOrNull { it.mail.equals(from ?: Session.account?.user ?: "", true) }
 
@@ -247,6 +250,7 @@ class ComposeModel(val start: ComposeStart) {
                     subject = answerSubject("Re", m.subject)
                     body = if (s.text.isBlank()) "" else Html.fromText(s.text)
                     replyKind = true; sigManaged = true; sig = signatureHtml(true); rest = quote(m)
+                    quoteTitle = quoteTitleOf(m.from.display, m.date)
                     inReplyTo = m.messageId
                     references = listOf(m.references, m.messageId).filter { it.isNotBlank() }.joinToString(" ")
                     answeredFolder = s.folder; answeredUid = m.uid
@@ -260,6 +264,7 @@ class ComposeModel(val start: ComposeStart) {
                     val hdr = "<div class=\"fwd\" style=\"color:#6B7787\">---------- Пересланное письмо ----------<br>От: ${Html.escape(m.from.name)} &lt;${Html.escape(m.from.mail)}&gt;<br>Дата: ${Html.escape(Fmt.full(m.date))}<br>Тема: ${Html.escape(m.subject)}<br>Кому: ${Html.escape(m.to.joinToString(", ") { it.mail })}</div><br>"
                     replyKind = true; sigManaged = true; sig = signatureHtml(true)
                     rest = "<p><br></p>" + hdr + (m.html ?: "<pre style=\"white-space:pre-wrap;font:inherit\">${Html.escape(m.text ?: "")}</pre>")
+                    quoteTitle = quoteTitleOf(m.from.display, m.date)
                     references = listOf(m.references, m.messageId).filter { it.isNotBlank() }.joinToString(" ")
                     sourceFolder = s.folder; sourceUid = m.uid
                     existing.addAll(m.attachments)
@@ -297,6 +302,7 @@ class ComposeModel(val start: ComposeStart) {
                     inReplyTo = d.inReplyTo.ifBlank { null }; references = d.references.ifBlank { null }
                     existing.addAll(d.attachments); keep.addAll(d.attachments.map { it.index })
                     cloudFiles.addAll(d.cloudFiles)
+                    d.staged.forEach { st -> staged.add(StagedFile(st.name, st.size, st.token).apply { fromDraft = true }) }
                     sourceFolder = MailStore.folders.firstOrNull { it.role == "drafts" }?.path; sourceUid = draftUid
                     sourceIsDraft = true
                 }
@@ -346,7 +352,69 @@ class ComposeModel(val start: ComposeStart) {
         draftKeepFiles = forDraft && sourceIsDraft,
         files = if (forDraft) draftFiles() else files.toList(), cloud = if (forDraft) emptyList() else viaCloud.toList(),
         cloudFiles = cloudFiles.toList(), attachMessages = attachMessages.toList(),
+        staged = staged.filter { it.state == "ready" && it.token != null }.map { Staged(it.token!!, it.name, it.size) },
     )
+
+    /**
+     * Крупный файл, заранее положенный в хранилище (compose/stage) — как в веб-почте, когда личного облака нет:
+     * при отправке сервер вставит ссылку, а не будет перекладывать файл из черновика. Этапы — словами у файла.
+     */
+    class StagedFile(val name: String, val size: Long, token: String? = null) {
+        var token by mutableStateOf(token)
+        /** upload — идёт загрузка; check — файл дошёл, сервер проверяет антивирусом; ready; error. */
+        var state by mutableStateOf(if (token != null) "ready" else "upload")
+        var sent by mutableStateOf(0L)
+        var error by mutableStateOf("")
+        var job: Job? = null
+        /** Пришёл с черновиком: при удалении из письма в хранилище не трогаем — уборка сервера сама удалит, если письмо не уйдёт. */
+        var fromDraft = false
+        val pct: Int get() = if (size > 0) (sent * 100 / size).toInt().coerceIn(0, 99) else 0
+    }
+    val staged = mutableStateListOf<StagedFile>()
+    val stageBusy get() = staged.any { it.state == "upload" || it.state == "check" }
+
+    fun stageFile(f: LocalFile, scope: CoroutineScope) {
+        val api = Session.api ?: return
+        val s = StagedFile(f.name, f.size)
+        staged.add(s); dirty = true
+        s.job = scope.launch {
+            try {
+                val r = api.stageFile(f) { sent, _ -> s.sent = sent; if (sent >= f.size) s.state = "check" }
+                // Убрали, пока грузился, — файл в хранилище не нужен.
+                if (s !in staged) { runCatching { api.unstage(r.token) }; return@launch }
+                s.token = r.token; s.state = "ready"; s.error = ""
+                dirty = true
+                saveDraft()   // черновик должен запомнить файл
+            } catch (e: ApiException) {
+                if (e.isAuth) { Toasts.error(e); staged.remove(s); return@launch }
+                // Хранилище не принимает заранее (409: не своё) — прежний путь: файл в черновик, ссылкой при отправке.
+                if (e.status == 409 && s in staged) {
+                    staged.remove(s); files.add(f); if (meta.cloud.enabled) viaCloud.add(files.lastIndex); dirty = true
+                    saveDraft(); return@launch
+                }
+                s.state = "error"; s.error = e.message
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Файл не открылся (удалили или отозвали доступ, пока он ждал очереди).
+                s.state = "error"; s.error = "не удалось прочитать файл"
+            }
+        }
+    }
+
+    /** Убрать файл из письма; из хранилища — только свой, ещё не отправленный. */
+    fun dropStaged(s: StagedFile) {
+        staged.remove(s); s.job?.cancel()
+        val t = s.token
+        if (t != null && !s.fromDraft) sendScope.launch { runCatching { Session.api?.unstage(t) } }
+        dirty = true
+    }
+
+    /** Черновик удалили — файлам в хранилище делать нечего. */
+    fun unstageAll() {
+        staged.toList().forEach { s -> s.job?.cancel(); s.token?.let { t -> sendScope.launch { runCatching { Session.api?.unstage(t) } } } }
+        staged.clear()
+    }
 
     /** Сохранить черновик. Свои файлы после первого сохранения живут уже в черновике. */
     /** Крупный файл, который сейчас грузится в облако, чтобы уйти ссылкой (этап — словами в списке вложений). */
@@ -356,7 +424,7 @@ class ComposeModel(val start: ComposeStart) {
         var linking by mutableStateOf(false)
     }
     val cloudJobs = mutableStateListOf<CloudJob>()
-    val busy get() = saving || cloudJobs.isNotEmpty()
+    val busy get() = saving || cloudJobs.isNotEmpty() || stageBusy
 
     /**
      * Крупный файл — сразу в облако («Вложения из почты»), в письмо — ссылка на него. Тогда при отправке серверу
@@ -534,7 +602,8 @@ class ComposeModel(val start: ComposeStart) {
         if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) return "Укажите, кому отправить письмо"
         (to + cc + bcc).firstOrNull { !Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(it.mail) }?.let { return "Адрес «${it.mail}» написан с ошибкой" }
         val maxFiles = meta.limits.maxFiles
-        if (files.size + keep.size > maxFiles) return "Не больше $maxFiles файлов в одном письме"
+        if (files.size + keep.size + staged.size > maxFiles) return "Не больше $maxFiles файлов в одном письме"
+        staged.firstOrNull { it.state == "error" }?.let { return "«${it.name}» не загрузился — уберите его или приложите заново" }
         val limit = meta.limits.messageMb.toLong() * 1024 * 1024
         if (encoded(inMailSize()) + bodySize() > limit) return "Файлы тяжелее предела почты (${meta.limits.messageMb} МБ)" + if (meta.cloud.enabled) " — отметьте крупные «ссылкой»" else ""
         return null
@@ -542,6 +611,20 @@ class ComposeModel(val start: ComposeStart) {
 }
 
 data class DomainWarn(val text: String, val suggestion: String?)
+
+/** «Иванова Мария, 12:17» — подпись свёрнутой цитаты (сегодня — время, раньше — дата, как в списке). */
+fun quoteTitleOf(who: String, date: String): String = listOf(who.trim(), Fmt.listDate(date)).filter { it.isNotBlank() }.joinToString(", ")
+
+/** Подпись у файла в хранилище: «48 МБ · ссылкой · 72%», «… · проверка антивирусом…», «… · не загрузился: …». */
+fun stageLabel(state: String, size: Long, pct: Int, error: String = ""): String {
+    val sz = Fmt.size(size)
+    return when (state) {
+        "upload" -> "$sz · ссылкой · $pct%"
+        "check" -> "$sz · ссылкой · проверка антивирусом…"
+        "error" -> "$sz · не загрузился" + if (error.isNotBlank()) ": $error" else ""
+        else -> "$sz · ссылкой"
+    }
+}
 
 /** Размер вложения внутри письма после кодирования (base64: 3 байта → 4 знака) — так считает сервер. */
 fun encoded(bytes: Long): Long = (bytes * 4 + 2) / 3
@@ -641,6 +724,8 @@ private fun ComposeView(m: ComposeModel) {
             val link = f.size >= threshold || tooMuch
             when {
                 m.meta.cloud.personal && link -> m.uploadToCloud(f, sendScope)
+                // Личного облака нет: крупный файл — сразу в хранилище (compose/stage), как в веб-почте.
+                m.meta.cloud.canStage && link -> m.stageFile(f, sendScope)
                 else -> {
                     m.files.add(f)
                     if (m.meta.cloud.enabled && link) m.viaCloud.add(m.files.lastIndex) else room -= encoded(f.size)
@@ -759,15 +844,18 @@ private fun ComposeView(m: ComposeModel) {
                         val folder = MailStore.folders.firstOrNull { it.role == "drafts" }?.path ?: "Drafts"
                         m.cancelAutosave()
                         m.dirty = false
+                        m.unstageAll()
                         Nav.pop()
                         MailStore.act("delete", listOf(uid), folder = folder)
                     }, leadingIcon = { Ico("trash", tint = P.no) })
                 }
             }
+            // Только самолётик в акцентном квадрате (макет); что это «Отправить» — подсказка для читалки экрана.
             Box(
-                Modifier.padding(start = 4.dp, end = 8.dp).clip(RoundedCornerShape(10.dp)).background(if (m.loaded) P.accent else P.border2)
-                    .clickable(enabled = m.loaded) { send(null) }.padding(horizontal = 14.dp, vertical = 9.dp).testTag("send"),
-            ) { Row(verticalAlignment = Alignment.CenterVertically) { Ico("send", size = 18.dp, tint = P.accentOn); Spacer(Modifier.width(6.dp)); Text("Отправить", color = P.accentOn, fontWeight = FontWeight.SemiBold) } }
+                Modifier.padding(start = 4.dp, end = 8.dp).size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (m.loaded) P.accent else P.border2)
+                    .clickable(enabled = m.loaded) { send(null) }.semantics { contentDescription = "Отправить" }.testTag("send"),
+                contentAlignment = Alignment.Center,
+            ) { Ico("send", size = 20.dp, tint = P.accentOn) }
         }
         Divider()
         when {
@@ -787,7 +875,7 @@ private fun ComposeView(m: ComposeModel) {
                     RecipientsField("Скрытая", m.bcc, onChange = { m.dirty = true }, others = { m.to + m.cc }, warns = m.domainWarn)
                 }
                 if (m.warningsFor(m.to + m.cc + m.bcc).isNotEmpty()) DomainNotice(m)
-                PlainField(m.subject, { m.subject = it; m.dirty = true }, "Тема", Modifier.testTag("subject"), single = true, bold = true)
+                SubjectRow(m)
                 Divider()
                 Attachments(m)
                 RichEditor(
@@ -904,16 +992,20 @@ private fun FromRow(m: ComposeModel) {
     }
 }
 
+/** Строка «Тема» — с подписью слева, как «От» и «Кому». */
 @Composable
-private fun PlainField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, single: Boolean = false, bold: Boolean = false) {
-    Box(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-        if (value.isEmpty()) Text(placeholder, color = P.faint, style = MaterialTheme.typography.bodyLarge)
-        BasicTextField(
-            value, onChange, Modifier.fillMaxWidth(), singleLine = single,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = P.text, fontWeight = if (bold) FontWeight.Medium else FontWeight.Normal),
-            cursorBrush = SolidColor(P.accent),
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = if (single) ImeAction.Next else ImeAction.Default),
-        )
+private fun SubjectRow(m: ComposeModel) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Тема", Modifier.width(64.dp), color = P.muted)
+        Box(Modifier.weight(1f)) {
+            if (m.subject.isEmpty()) Text("Без темы", color = P.faint, style = MaterialTheme.typography.bodyLarge)
+            BasicTextField(
+                m.subject, { m.subject = it; m.dirty = true }, Modifier.fillMaxWidth().testTag("subject"), singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = P.text, fontWeight = FontWeight.Medium),
+                cursorBrush = SolidColor(P.accent),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+            )
+        }
     }
 }
 
@@ -999,120 +1091,138 @@ fun RecipientsField(
     }
 }
 
+
+/**
+ * Вложения — чипами (макет): имя, размер, крестик; у крупных «ссылкой» — ход загрузки. Касание чипа своего
+ * файла — меню «Ссылкой / Вложением»; вложение исходного письма — включить/выключить.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Attachments(m: ComposeModel) {
-    if (m.files.isEmpty() && m.existing.isEmpty() && m.cloudFiles.isEmpty() && m.attachMessages.isEmpty() && m.cloudJobs.isEmpty()) return
-    Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        m.attachMessages.toList().forEach { a -> AttChip("mail", a.name ?: "письмо", null, "письмо целиком") { m.attachMessages.remove(a); m.dirty = true } }
-        m.existing.toList().forEach { a ->
-            val on = a.index in m.keep
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).clickable { if (on) m.keep.remove(a.index) else m.keep.add(a.index); m.dirty = true }
-                .padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(on, { v -> if (v) m.keep.add(a.index) else m.keep.remove(a.index); m.dirty = true })
+    if (m.files.isEmpty() && m.existing.isEmpty() && m.cloudFiles.isEmpty() && m.attachMessages.isEmpty() && m.cloudJobs.isEmpty() && m.staged.isEmpty()) return
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            m.attachMessages.toList().forEach { a -> AttChip("mail", a.name ?: "письмо", "письмо целиком", onRemove = { m.attachMessages.remove(a); m.dirty = true }) }
+            m.existing.toList().forEach { a ->
+                val on = a.index in m.keep
                 val cloud = m.keptViaCloud(a)
-                Ico(if (cloud) "cloud" else fileIcon(a.name, a.type), size = 16.dp, tint = if (cloud) P.accentInk else P.muted); Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                    val fromDraft = m.sourceFolder != null && m.sourceFolder == MailStore.folders.firstOrNull { it.role == "drafts" }?.path
-                    Text(
-                        (if (fromDraft) "в черновике" else "из исходного письма") + if (cloud && on) " · крупнее ${m.meta.cloud.thresholdMb} МБ: при отправке сервер выложит в облако и пошлёт ссылку" else "",
-                        style = MaterialTheme.typography.bodySmall, color = if (cloud && on) P.accentInk else P.faint,
-                    )
-                }
-                Text(Fmt.size(a.size), style = MaterialTheme.typography.bodySmall, color = P.faint, modifier = Modifier.padding(end = 8.dp))
+                val fromDraft = m.sourceFolder != null && m.sourceFolder == MailStore.folders.firstOrNull { it.role == "drafts" }?.path
+                AttChip(
+                    if (!on) "plus" else if (cloud) "cloud" else fileIcon(a.name, a.type), a.name,
+                    Fmt.size(a.size) + when {
+                        !on -> " · не приложено"
+                        cloud -> " · ссылкой (крупнее ${m.meta.cloud.thresholdMb} МБ)"
+                        fromDraft -> ""
+                        else -> " · из исходного письма"
+                    },
+                    dim = !on,
+                    onClick = { if (on) m.keep.remove(a.index) else m.keep.add(a.index); m.dirty = true },
+                    onRemove = if (on) ({ m.keep.remove(a.index); m.dirty = true }) else null,
+                )
             }
-        }
-        m.files.toList().forEachIndexed { i, f ->
-            val cloud = i in m.viaCloud
-            val done = m.uploadedOf(f)
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (done != null) androidx.compose.material3.CircularProgressIndicator(
-                    progress = { if (f.size > 0) done.toFloat() / f.size else 1f }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = P.accent, trackColor = P.border,
-                ) else Ico("upload", size = 16.dp, tint = P.muted)
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                    // Пока файл не загружен, об этом написано прямо: иначе «уйдёт ссылкой» читалось как «уже загружен».
-                    Text(
+            m.files.toList().forEachIndexed { i, f ->
+                val cloud = i in m.viaCloud
+                val done = m.uploadedOf(f)
+                var menu by remember(f) { mutableStateOf(false) }
+                Box {
+                    AttChip(
+                        if (cloud) "cloud" else fileIcon(f.name, f.mime), f.name,
                         // Каждый этап — словами: пользователь видит, что происходит, а не гадает.
                         when {
-                            done == null -> "${Fmt.size(f.size)} · ждёт загрузки"
-                            !m.uploadStarted -> "Связь с сервером…"
-                            done >= f.size -> "Загружено, сервер сохраняет…"
-                            done == 0L -> "Связь установлена, в очереди на загрузку"
-                            else -> "Связь установлена, загрузка: ${Fmt.size(done)} из ${Fmt.size(f.size)}"
-                        } + if (cloud && done == null) " · уйдёт ссылкой" else "",
-                        style = MaterialTheme.typography.bodySmall, color = if (done != null) P.accentInk else P.faint,
+                            done == null -> Fmt.size(f.size) + (if (cloud) " · ссылкой" else "") + " · ждёт"
+                            !m.uploadStarted -> Fmt.size(f.size) + " · связь с сервером…"
+                            done >= f.size -> Fmt.size(f.size) + " · сервер сохраняет…"
+                            else -> Fmt.size(f.size) + (if (cloud) " · ссылкой" else "") + " · ${(done * 100 / f.size.coerceAtLeast(1)).toInt()}%"
+                        },
+                        progress = if (done != null && f.size > 0) (done.toFloat() / f.size).coerceIn(0f, 1f) else null,
+                        onClick = if (m.meta.cloud.enabled) ({ menu = true }) else null,
+                        onRemove = {
+                            m.files.removeAt(i)
+                            val shifted = m.viaCloud.filter { it != i }.map { if (it > i) it - 1 else it }
+                            m.viaCloud.clear(); m.viaCloud.addAll(shifted); m.dirty = true
+                        },
                     )
-                    if (done != null) androidx.compose.material3.LinearProgressIndicator(
-                        progress = { if (f.size > 0) done.toFloat() / f.size else 1f },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp).clip(RoundedCornerShape(2.dp)), color = P.accent, trackColor = P.border,
-                    )
-                }
-                if (m.meta.cloud.enabled) TextButton(onClick = { if (cloud) m.viaCloud.remove(i) else m.viaCloud.add(i); m.dirty = true }) { Text(if (cloud) "Вложением" else "Ссылкой") }
-                IconBtn("x", "Убрать", tint = P.muted) {
-                    m.files.removeAt(i)
-                    val shifted = m.viaCloud.filter { it != i }.map { if (it > i) it - 1 else it }
-                    m.viaCloud.clear(); m.viaCloud.addAll(shifted); m.dirty = true
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem({ Text(if (cloud) "Вложением в письме" else "Ссылкой (через хранилище)") }, { menu = false; if (cloud) m.viaCloud.remove(i) else m.viaCloud.add(i); m.dirty = true },
+                            leadingIcon = { Ico(if (cloud) "clip" else "cloud") })
+                    }
                 }
             }
-        }
-        m.cloudJobs.toList().forEach { j ->
-            val f = j.file
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.CircularProgressIndicator(progress = { if (f.size > 0) j.done.toFloat() / f.size else 1f }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = P.accent, trackColor = P.border)
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                    Text(when {
-                        !j.started -> "Связь с сервером…"
-                        j.linking -> "Загружено в облако, готовлю ссылку…"
-                        j.done == 0L -> "Связь установлена, загрузка в облако…"
-                        else -> "Загрузка в облако: ${Fmt.size(j.done)} из ${Fmt.size(f.size)}"
-                    }, style = MaterialTheme.typography.bodySmall, color = P.accentInk)
-                    androidx.compose.material3.LinearProgressIndicator(progress = { if (f.size > 0) j.done.toFloat() / f.size else 1f },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(2.dp)), color = P.accent, trackColor = P.border)
-                }
+            m.cloudJobs.toList().forEach { j ->
+                val f = j.file
+                AttChip("cloud", f.name, when {
+                    !j.started -> "${Fmt.size(f.size)} · связь с сервером…"
+                    j.linking -> "${Fmt.size(f.size)} · в облаке, готовлю ссылку…"
+                    else -> "${Fmt.size(f.size)} · в облако · ${(j.done * 100 / f.size.coerceAtLeast(1)).toInt()}%"
+                }, progress = if (f.size > 0) (j.done.toFloat() / f.size).coerceIn(0f, 1f) else null)
             }
+            m.staged.toList().forEach { s ->
+                AttChip(
+                    if (s.state == "error") "warn" else "cloud", s.name, stageLabel(s.state, s.size, s.pct, s.error),
+                    bad = s.state == "error",
+                    progress = if (s.state == "upload" && s.size > 0) (s.sent.toFloat() / s.size).coerceIn(0f, 1f) else null,
+                    onRemove = { m.dropStaged(s) },
+                )
+            }
+            m.cloudFiles.toList().forEach { c -> AttChip("cloud", c.name.ifBlank { c.path.substringAfterLast('/') }, Fmt.size(c.size) + " · из облака, ссылкой", onRemove = { m.cloudFiles.remove(c); m.dirty = true }) }
         }
-        m.cloudFiles.toList().forEach { c -> AttChip("cloud", c.name.ifBlank { c.path.substringAfterLast('/') }, c.size, "в облаке, уйдёт ссылкой") { m.cloudFiles.remove(c); m.dirty = true } }
         // Заранее, а не только при отправке: 60 % предела — письмо может не пройти у получателя.
         val limit = m.meta.limits.messageMb.toLong() * 1024 * 1024
         val used = m.inMailSize()
         if (limit > 0 && used > limit * 6 / 10) Text(
             if (encoded(used) > limit) "Вложения ${Fmt.size(used)} — больше предела ${m.meta.limits.messageMb} МБ" + (if (m.meta.cloud.enabled) ": отметьте крупные «Ссылкой»" else "")
             else "Вложения ${Fmt.size(used)} из ${m.meta.limits.messageMb} МБ — у некоторых получателей предел меньше" + (if (m.meta.cloud.enabled) ", крупные лучше «Ссылкой»" else ""),
-            Modifier.padding(horizontal = 4.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = if (used > limit) P.no else P.muted,
+            Modifier.padding(horizontal = 4.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall, color = if (used > limit) P.no else P.muted,
         )
     }
     Divider()
 }
 
+/** Чип вложения: значок (или кольцо хода загрузки), имя, подпись, крестик. */
 @Composable
-private fun AttChip(icon: String, name: String, size: Long?, note: String, onRemove: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Ico(icon, size = 16.dp, tint = P.accentInk); Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-            Text(listOfNotNull(size?.let { Fmt.size(it) }, note).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = P.faint)
+private fun AttChip(
+    icon: String, name: String, note: String, onRemove: (() -> Unit)? = null, onClick: (() -> Unit)? = null,
+    progress: Float? = null, bad: Boolean = false, dim: Boolean = false,
+) {
+    Row(
+        Modifier.widthIn(max = 280.dp).clip(RoundedCornerShape(10.dp)).background(if (bad) P.noSoft else P.surface2).border(1.dp, if (bad) P.noSoft else P.border, RoundedCornerShape(10.dp))
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+            .padding(start = 10.dp, end = if (onRemove != null) 2.dp else 10.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (progress != null) CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = P.accent, trackColor = P.border)
+        else Ico(icon, size = 18.dp, tint = when { bad -> P.no; dim -> P.faint; else -> P.accentInk })
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f, fill = false)) {
+            Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = if (dim) P.muted else P.text)
+            Text(note, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = when { bad -> P.no; progress != null -> P.accentInk; else -> P.faint })
         }
-        IconBtn("x", "Убрать", tint = P.muted) { onRemove() }
+        if (onRemove != null) {
+            Box(Modifier.padding(start = 4.dp).size(28.dp).clip(CircleShape).clickable(onClick = onRemove), contentAlignment = Alignment.Center) { Ico("x", size = 14.dp, tint = P.muted, contentDescription = "Убрать") }
+        }
     }
 }
 
-/** Подпись и цитата: показываются как есть, можно убрать из письма. */
+/** Подпись и цитата — свёрнутой плашкой «Иванова Мария, 12:17 · Развернуть»; галочкой можно не отправлять. */
 @Composable
 private fun Tail(m: ComposeModel) {
     var open by remember { mutableStateOf(false) }
     val isQuote = m.tail.contains("class=\"quote\"") || m.tail.contains("class=\"fwd\"")
-    Column(Modifier.padding(horizontal = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(P.surface2).border(1.dp, P.border, RoundedCornerShape(10.dp))
+                .clickable { open = !open }.padding(start = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Checkbox(m.includeTail, { m.includeTail = it; m.dirty = true })
-            Text(if (isQuote) "Подпись и исходное письмо" else "Подпись", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = P.muted)
-            TextButton(onClick = { open = !open }) { Text(if (open) "Скрыть" else "Показать") }
+            Ico("quote", size = 16.dp, tint = P.muted); Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(if (isQuote) m.quoteTitle ?: "Исходное письмо" else "Подпись", style = MaterialTheme.typography.bodyMedium, color = if (m.includeTail) P.text else P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (isQuote && m.sig.isNotBlank()) Text("и подпись", style = MaterialTheme.typography.bodySmall, color = P.faint)
+            }
+            TextButton(onClick = { open = !open }) { Text(if (open) "Свернуть" else "Развернуть", color = P.link) }
         }
-        if (open) Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, P.border, RoundedCornerShape(8.dp))) {
+        if (open) Box(Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(8.dp)).border(1.dp, P.border, RoundedCornerShape(8.dp))) {
             HtmlView(m.tail, P.dark, Modifier.fillMaxWidth(), onLink = {}, loadResource = { p -> Transfers.inlineResource(p) })
         }
     }

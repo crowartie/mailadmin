@@ -382,6 +382,27 @@ actual object Notifier {
             .build()
         NotificationManagerCompat.from(AndroidCtx.app).notify(id, n)
     }
+
+    @SuppressLint("MissingPermission")
+    actual fun event(title: String, text: String, id: Int) {
+        channel()
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(AndroidCtx.app, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        // Открыть само событие MainActivity пока не умеет (разбирает только open-message) — открываем приложение.
+        val open = Intent(AndroidCtx.app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pi = PendingIntent.getActivity(AndroidCtx.app, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = NotificationCompat.Builder(AndroidCtx.app, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_mail)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .setGroup("calendar")
+            .build()
+        NotificationManagerCompat.from(AndroidCtx.app).notify(id, n)
+    }
 }
 
 actual object Updater {

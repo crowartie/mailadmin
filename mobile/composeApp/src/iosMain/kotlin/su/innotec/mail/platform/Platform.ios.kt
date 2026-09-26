@@ -172,6 +172,12 @@ actual object Notifier {
         val c = UNMutableNotificationContent().apply { setTitle(title); setBody(text) }
         UNUserNotificationCenter.currentNotificationCenter().addNotificationRequest(UNNotificationRequest.requestWithIdentifier("mail-$id", c, null), null)
     }
+
+    /** Напоминание о встрече — пока приложение открыто (фонового опроса на iPhone нет). */
+    actual fun event(title: String, text: String, id: Int) {
+        val c = UNMutableNotificationContent().apply { setTitle(title); setBody(text) }
+        UNUserNotificationCenter.currentNotificationCenter().addNotificationRequest(UNNotificationRequest.requestWithIdentifier("event-$id", c, null), null)
+    }
 }
 
 actual object Updater {

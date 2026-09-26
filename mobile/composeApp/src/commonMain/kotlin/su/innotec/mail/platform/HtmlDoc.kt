@@ -20,7 +20,7 @@ img{max-width:100%;height:auto;}
 table{max-width:100%;}
 pre{white-space:pre-wrap;}
 blockquote{margin:8px 0;padding-left:10px;border-left:3px solid #CBD3DE;color:#5A6472;}
-a{color:#1B4FC4;}
+a{color:${if (dark) "#7FA8FF" else "#1D5FD1"};}
 </style></head><body><div class="msg__body-inner">$html</div></body></html>"""
 }
 

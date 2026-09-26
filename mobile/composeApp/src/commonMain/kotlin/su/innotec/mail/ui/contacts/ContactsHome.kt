@@ -147,6 +147,13 @@ object ContactsStore {
     fun reset() { all.clear(); books = emptyList(); groups = emptyList(); book = null; group = null; q = ""; selected = null; loaded = false }
 }
 
+/** Итог загрузки .vcf: «Загружено 12 в «Мои контакты», пропущено 3 (уже есть)». */
+fun importSummary(imported: Int, skipped: Int, bookName: String?): String {
+    val where = bookName?.let { " в «$it»" } ?: ""
+    val base = if (imported == 0) "Новых контактов в файле нет" else "Загружено $imported$where"
+    return base + if (skipped > 0) ", пропущено $skipped (уже есть)" else ""
+}
+
 fun Contact.displayName(): String = fn.ifBlank { listOf(last, first, middle).filter { it.isNotBlank() }.joinToString(" ") }.ifBlank { email.ifBlank { emails.firstOrNull()?.value ?: "(без имени)" } }
 
 @Composable
@@ -184,8 +191,16 @@ private fun ContactList(wide: Boolean) {
     var menu by remember { mutableStateOf(false) }
     var history by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // Файл ложится в открытую книгу, если в неё можно писать; иначе (все, компания, сотрудники) — в личную.
+    val importBook = s.books.firstOrNull { it.uri == s.book && !it.readonly }?.uri ?: "personal"
     val import = rememberFilePicker(multiple = false, mimes = listOf("text/vcard", "text/x-vcard", "text/directory", "*/*")) { files ->
-        files.firstOrNull()?.let { f -> scope.launchSafe { Session.api!!.importContacts(f, "personal"); Toasts.show("Контакты загружены"); s.load() } }
+        files.firstOrNull()?.let { f ->
+            scope.launchSafe {
+                val r = Session.api!!.importCards(f, importBook)
+                Toasts.show(importSummary(r.imported, r.skipped, s.books.firstOrNull { it.uri == importBook }?.name))
+                s.load()
+            }
+        }
     }
     Box(Modifier.fillMaxSize().background(P.bg)) {
         Column(Modifier.fillMaxSize()) {
@@ -196,7 +211,8 @@ private fun ContactList(wide: Boolean) {
                         IconBtn("dots", "Ещё") { menu = true }
                         DropdownMenu(menu, { menu = false }) {
                             DropdownMenuItem({ Text("Недавние адресаты") }, { menu = false; history = true }, leadingIcon = { Ico("clock") })
-                            DropdownMenuItem({ Text("Загрузить из файла (.vcf)") }, { menu = false; import() }, leadingIcon = { Ico("upload") })
+                            DropdownMenuItem({ Text("Загрузить из файла (.vcf)") }, { menu = false; import() }, leadingIcon = { Ico("upload") },
+                                trailingIcon = { Text(s.books.firstOrNull { it.uri == importBook }?.name ?: "Мои контакты", style = MaterialTheme.typography.labelSmall, color = P.faint) })
                             DropdownMenuItem({ Text("Выгрузить в файл (.vcf)") }, {
                                 menu = false; Transfers.fetch(Session.api!!.contactsExportPath(s.book), "Контакты.vcf", Transfers.Then.SAVE)
                             }, leadingIcon = { Ico("download") })
@@ -319,10 +335,15 @@ fun ContactDetail(start: Contact, onClose: () -> Unit) {
     var c by remember { mutableStateOf(start) }
     var confirmDelete by remember { mutableStateOf(false) }
     var suggest by remember { mutableStateOf(false) }
+    var share by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(start.uri) {
         runCatching { Session.api!!.contact(start.book, start.uri) }.onSuccess { c = it }
     }
+    // Свой личный контакт можно предложить в общую книгу компании — заявку рассмотрит администратор
+    // (ContactsController::suggest; администратору кладёт сразу).
+    val mine = !c.readonly && (c.book == "personal" || ContactsStore.books.firstOrNull { it.uri == c.book }?.kind == "personal")
     Column(Modifier.fillMaxSize().background(P.surface)) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconBtn(if (LocalWindow.current == WindowKind.PHONE) "back" else "x", "Назад") { onClose() }
@@ -335,6 +356,12 @@ fun ContactDetail(start: Contact, onClose: () -> Unit) {
                 }
                 IconBtn("edit", "Изменить", Modifier.testTag("contact-edit")) { Nav.push(ContactEditScreen(c)) }
                 IconBtn("trash", "Удалить") { confirmDelete = true }
+                if (mine) Box {
+                    IconBtn("dots", "Ещё") { menu = true }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem({ Text("Предложить в общую книгу") }, { menu = false; share = true }, leadingIcon = { Ico("building") })
+                    }
+                }
             } else {
                 IconBtn("copy", "Копировать в мои контакты") { scope.launchSafe { Session.api!!.copyContact(c.book, c.uri); Toasts.show("Скопировано в «Мои контакты»"); ContactsStore.load() } }
                 if (c.employee) IconBtn("edit", "Предложить правку") { suggest = true }
@@ -384,6 +411,14 @@ fun ContactDetail(start: Contact, onClose: () -> Unit) {
     }
     if (suggest) InputDialog("Предложить правку", "Что исправить", confirm = "Отправить", hint = "Карточку сотрудника правит администратор — он получит ваше сообщение.", onDismiss = { suggest = false }) { note ->
         scope.launchSafe { Session.api!!.suggestContact(c.book, c.uri, note); Toasts.show("Отправлено администратору") }
+    }
+    if (share) InputDialog("Предложить в общую книгу", "Пояснение", confirm = "Отправить", hint = "Контакт «${c.displayName()}» попадёт в «Контакты компании», когда администратор одобрит заявку.", onDismiss = { share = false }) { note ->
+        scope.launchSafe {
+            val r = Session.api!!.suggestContact(c.book, c.uri, note)
+            val approved = (r as? kotlinx.serialization.json.JsonObject)?.get("status")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } == "approved"
+            Toasts.show(if (approved) "Контакт добавлен в «Контакты компании»" else "Заявка отправлена администратору")
+            if (approved) ContactsStore.load()
+        }
     }
 }
 

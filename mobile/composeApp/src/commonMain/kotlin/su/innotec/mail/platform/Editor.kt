@@ -112,10 +112,11 @@ fun editorNonce(): String = (1..16).map { "abcdefghijklmnopqrstuvwxyz0123456789"
  * а сам текст ещё и чистится при загрузке и вставке.
  */
 fun editorDocument(dark: Boolean, placeholder: String, bridge: String, nonce: String): String {
-    val text = if (dark) "#E6EAF0" else "#1B2430"
-    val faint = if (dark) "#7C8796" else "#98A2B0"
-    val link = if (dark) "#8AB4FF" else "#1B4FC4"
-    val line = if (dark) "#3A4452" else "#CBD3DE"
+    // Цвета гаммы «А» (ui/Theme.kt): текст, подсказка, синяя ссылка (оранжевый — только у действий), линии.
+    val text = if (dark) "#EDEBE7" else "#2B3036"
+    val faint = if (dark) "#A3A9B2" else "#6B7280"
+    val link = if (dark) "#7FA8FF" else "#1D5FD1"
+    val line = if (dark) "#4A515A" else "#CFCBC4"
     val ph = placeholder.replace("\\", "\\\\").replace("\"", "\\\"")
     return """<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">

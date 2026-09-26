@@ -3,6 +3,7 @@ package su.innotec.mail.ui.mail
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -36,7 +37,6 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -85,6 +85,7 @@ import kotlin.time.Instant
 import su.innotec.mail.DeepLink
 import su.innotec.mail.LocalWindow
 import su.innotec.mail.Nav
+import su.innotec.mail.Section
 import su.innotec.mail.WindowKind
 import su.innotec.mail.api.MessageSummary
 import su.innotec.mail.data.Session
@@ -189,12 +190,10 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
     val scope = rememberCoroutineScope()
     var searching by remember { mutableStateOf(s.query.q.isNotEmpty()) }
     LaunchedEffect(s.searchSignal) { if (s.searchSignal > 0) searching = true }
-    var menu by remember { mutableStateOf(false) }
     var pickDate by remember { mutableStateOf(false) }
     var moveFor by remember { mutableStateOf<List<Long>?>(null) }
     var labelFor by remember { mutableStateOf<List<Long>?>(null) }
     var snoozeFor by remember { mutableStateOf<List<Long>?>(null) }
-    val wide = LocalWindow.current != WindowKind.PHONE
     val selecting = s.selected.isNotEmpty()
     LaunchedEffect(selecting) { if (!selecting) s.allFolder = false }
     var confirmAll by remember { mutableStateOf<String?>(null) }
@@ -228,30 +227,19 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
                         onConfirmAll = { confirmAll = it },
                     )
                     searching -> SearchBar(onClose = { searching = false; s.clearSearch() })
+                    // Как на макете: «меню» — капсула поиска с именем папки и числом писем — аватар (ведёт в «Ещё»).
                     else -> Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (showMenu) IconBtn("menu", "Папки", Modifier.testTag("open-folders")) { onMenu() }
                         else Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                            Text(listTitle(s.query), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("list-title"))
-                            if (s.total > 0) Text("${s.total} ${Fmt.plural(s.total, "письмо", "письма", "писем")}", style = MaterialTheme.typography.bodySmall, color = P.muted)
+                        SearchCapsule(Modifier.weight(1f).padding(horizontal = 4.dp)) { searching = true }
+                        val acc = Session.account
+                        Box(Modifier.size(44.dp).clip(CircleShape).clickable { Nav.go(Section.MORE) }.testTag("profile"), contentAlignment = Alignment.Center) {
+                            Avatar(acc?.name?.ifBlank { null } ?: acc?.user ?: "?", acc?.user ?: "", 32.dp)
                         }
-                        IconBtn("search", "Поиск", Modifier.testTag("search")) { searching = true }
-                        Box {
-                            IconBtn("dots", "Ещё") { menu = true }
-                            DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem({ Text("Обновить") }, { menu = false; s.load(); s.refreshFolders() }, leadingIcon = { Ico("refresh") })
-                                DropdownMenuItem({ Text("Перейти к дате…") }, { menu = false; pickDate = true }, leadingIcon = { Ico("cal") })
-                                DropdownMenuItem({ Text("Выбрать письма") }, { menu = false; s.messages.firstOrNull()?.let { s.selected.add(it.uid) } }, leadingIcon = { Ico("check") })
-                                Divider()
-                                listOf("date" to "Сначала новые", "date-asc" to "Сначала старые", "from" to "По отправителю", "subject" to "По теме", "size" to "По размеру").forEach { (k, t) ->
-                                    DropdownMenuItem({ Text(t, fontWeight = if (s.query.sort == k) FontWeight.SemiBold else FontWeight.Normal) }, { menu = false; s.setSort(k) },
-                                        trailingIcon = { if (s.query.sort == k) Ico("check", tint = P.accent) })
-                                }
-                            }
-                        }
+                        Spacer(Modifier.width(4.dp))
                     }
                 }
-                if (!selecting) FilterChips()
+                if (!selecting) FilterChips(onPickDate = { pickDate = true })
                 if (s.offline) Row(Modifier.fillMaxWidth().background(P.warnSoft).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Ico("warn", size = 16.dp, tint = P.warnInk); Spacer(Modifier.width(8.dp))
                     Text("Нет связи — показаны сохранённые письма", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = P.warnInk)
@@ -276,13 +264,12 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
         }
 
         if (!selecting) {
-            ExtendedFloatingActionButton(
+            // Только карандаш, без подписи (макет): подпись «Написать» закрывала часть строки письма.
+            FloatingActionButton(
                 onClick = { Nav.push(ComposeScreen(ComposeStart.New())) },
-                containerColor = P.accent, contentColor = P.accentOn,
+                containerColor = P.accent, contentColor = P.accentOn, shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).testTag("compose"),
-                icon = { Ico("edit") }, text = { Text("Написать") },
-                expanded = wide || !list.isScrollInProgress,
-            )
+            ) { Ico("edit", size = 24.dp, contentDescription = "Написать") }
         }
     }
 
@@ -326,14 +313,52 @@ fun IconBtn(icon: String, label: String, modifier: Modifier = Modifier, tint: Co
     }
 }
 
+/** Капсула поиска в шапке: имя папки как подсказка и число писем справа; касание открывает поиск. */
 @Composable
-private fun FilterChips() {
+private fun SearchCapsule(modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val s = MailStore
+    Row(
+        modifier.height(40.dp).clip(RoundedCornerShape(50)).background(P.surface2).border(1.dp, P.border, RoundedCornerShape(50))
+            .clickable(onClick = onClick).padding(start = 12.dp, end = 14.dp).testTag("search"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Ico("search", size = 18.dp, tint = P.muted)
+        Spacer(Modifier.width(8.dp))
+        Text(searchHint(listTitle(s.query)), Modifier.weight(1f).testTag("list-title"), style = MaterialTheme.typography.bodyMedium, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (s.total > 0) Text(s.total.toString(), style = MaterialTheme.typography.labelMedium, color = P.faint)
+    }
+}
+
+/** «Поиск во «Входящих»» — подсказка капсулы по заголовку списка (в поиске — просто «Поиск»). */
+fun searchHint(title: String): String = when {
+    title.startsWith("Поиск") -> title
+    title == "Входящие" -> "Поиск во «Входящих»"
+    else -> "Поиск в «$title»"
+}
+
+/** Фильтры-чипы и, последним, чип «⋯» с обновлением, переходом к дате, выбором писем и сортировкой. */
+@Composable
+private fun FilterChips(onPickDate: () -> Unit) {
     val s = MailStore
     val f = s.query.filter
-    val base = listOf("all" to "Все", "unread" to "Непрочитанные", "flagged" to "С флажком", "attach" to "С вложениями")
+    var menu by remember { mutableStateOf(false) }
+    val base = listOf("all" to "Все", "unread" to "Непрочитанные", "flagged" to "Флажок", "attach" to "Файлы")
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        base.forEach { (k, t) -> Chip(t, f == k, { s.setFilter(k) }) }
+        base.forEach { (k, t) -> Chip(t, f == k, { s.setFilter(k) }, count = if (k == "unread") s.currentFolder?.unread ?: 0 else 0) }
         if (s.query.q.isNotEmpty()) Chip("Везде", s.query.everywhere, { s.search(s.query.q, !s.query.everywhere) }, icon = "globe")
+        Box {
+            Chip("", false, { menu = true }, icon = "sliders", modifier = Modifier.testTag("list-menu"))
+            DropdownMenu(menu, { menu = false }) {
+                DropdownMenuItem({ Text("Обновить") }, { menu = false; s.load(); s.refreshFolders() }, leadingIcon = { Ico("refresh") })
+                DropdownMenuItem({ Text("Перейти к дате…") }, { menu = false; onPickDate() }, leadingIcon = { Ico("cal") })
+                DropdownMenuItem({ Text("Выбрать письма") }, { menu = false; s.messages.firstOrNull()?.let { s.selected.add(it.uid) } }, leadingIcon = { Ico("check") })
+                Divider()
+                listOf("date" to "Сначала новые", "date-asc" to "Сначала старые", "from" to "По отправителю", "subject" to "По теме", "size" to "По размеру").forEach { (k, t) ->
+                    DropdownMenuItem({ Text(t, fontWeight = if (s.query.sort == k) FontWeight.SemiBold else FontWeight.Normal) }, { menu = false; s.setSort(k) },
+                        trailingIcon = { if (s.query.sort == k) Ico("check", tint = P.accent) })
+                }
+            }
+        }
     }
 }
 
@@ -411,6 +436,13 @@ private fun SelectionBar(count: Int, onClose: () -> Unit, onAll: () -> Unit, onM
                     Nav.push(ComposeScreen(ComposeStart.ForwardAsAttachment(uids.map { u -> s.folderOf(u) to u })))
                     s.selected.clear()
                 }, leadingIcon = { Ico("fwd") })
+                if (count == 1) s.messages.firstOrNull { it.uid == uids[0] }?.let { m ->
+                    val f = s.folderOf(m.uid)
+                    DropdownMenuItem({ Text(if (Pinned.has(f, m.uid)) "Убрать из-под руки" else "Держать под рукой") }, {
+                        more = false; s.selected.clear()
+                        pinMessage(PinnedMessage(f, m.uid, m.subject, m.from.display))
+                    }, leadingIcon = { Ico("pin") })
+                }
             }
         }
     }
@@ -613,51 +645,84 @@ private fun SwipeRow(m: MessageSummary, onMove: (List<Long>) -> Unit, onSnooze: 
 }
 
 private fun swipeLook(op: String): Triple<String, Color, String> = when (op) {
-    "delete" -> Triple("trash", Color(0xFFC0392B), "Удалить")
-    "archive" -> Triple("archive", Color(0xFF16A05C), "В архив")
-    "read" -> Triple("eye", Color(0xFF2F6FEB), "Прочитано")
-    "flag" -> Triple("flag", Color(0xFFD9791F), "Флажок")
-    "move" -> Triple("folder", Color(0xFF5C6BC0), "В папку")
-    "snooze" -> Triple("clock", Color(0xFF8E44AD), "Отложить")
+    "delete" -> Triple("trash", Color(0xFFC62828), "Удалить")
+    "archive" -> Triple("archive", Color(0xFF1F7A4D), "В архив")
+    "read" -> Triple("eye", Color(0xFF1D5FD1), "Прочитано")
+    "flag" -> Triple("flag", Color(0xFF9A6700), "Флажок")
+    "move" -> Triple("folder", Color(0xFF6B3FA0), "В папку")
+    "snooze" -> Triple("clock", Color(0xFF0F766E), "Отложить")
     "spam" -> Triple("spam", Color(0xFF6D4C41), "Спам")
     else -> Triple("dots", Color.Gray, "")
 }
 
+/** «Держать под рукой» из списка и письма: сообщение о результате — одно на оба места. */
+fun pinMessage(p: PinnedMessage) {
+    when (Pinned.toggle(p)) {
+        null -> su.innotec.mail.ui.Toasts.show("Под рукой не больше ${Pinned.MAX} писем — уберите одно из панели папок")
+        true -> su.innotec.mail.ui.Toasts.show("Письмо под рукой — в панели папок, сверху")
+        false -> su.innotec.mail.ui.Toasts.show("Письмо убрано из-под руки")
+    }
+}
+
+/**
+ * Строка письма (макет 27.09): аватар 36, отправитель и время, тема, превью в одну строку со скрепкой
+ * при вложениях. Непрочитанное — жирным обычного цвета, только время — акцентом (или цветом из настроек
+ * ящика unread_color). Плотность из настроек: compact — без превью, roomy — просторнее.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageRow(m: MessageSummary, selected: Boolean, open: Boolean, selecting: Boolean, onClick: () -> Unit, onLong: () -> Unit) {
     val s = MailStore
     val role = s.currentFolder?.role
     val who = if (role == "sent" || role == "drafts") (m.toName.ifBlank { m.toMail }).let { "Кому: $it" } else m.from.display
+    val compact = s.settings.density == "compact"
+    val roomy = s.settings.density == "roomy"
+    val unreadColor = hexColor(s.settings.unreadColor.ifBlank { null }, P.accentInk)
     val bg = when {
-        selected -> P.accentSoft
-        open -> P.accentSoft
+        selected || open -> P.accentSoft
+        !m.seen && s.settings.unreadHighlight -> unreadColor.copy(alpha = .07f)
         else -> P.surface
     }
+    val weight = if (m.seen) FontWeight.Normal else FontWeight.SemiBold
+    val vpad = when { compact -> 6.dp; roomy -> 14.dp; else -> 9.dp }
     Row(
-        Modifier.fillMaxWidth().background(bg).combinedClickable(onClick = onClick, onLongClick = onLong).padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 10.dp).testTag("row-${m.uid}"),
+        Modifier.fillMaxWidth().background(bg).combinedClickable(onClick = onClick, onLongClick = onLong).padding(start = 12.dp, end = 14.dp, top = vpad, bottom = vpad).testTag("row-${m.uid}"),
         verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.padding(top = 2.dp).clickable(onClick = onLong)) {
-            if (selected) Box(Modifier.size(40.dp).clip(CircleShape).background(P.accent), contentAlignment = Alignment.Center) { Ico("check", tint = P.accentOn) }
-            else Avatar(m.from.display.ifBlank { "?" }, m.from.mail)
+        Box(Modifier.padding(top = 1.dp).clickable(onClick = onLong)) {
+            if (selected) Box(Modifier.size(36.dp).clip(CircleShape).background(P.accent), contentAlignment = Alignment.Center) { Ico("check", tint = P.accentOn) }
+            else Avatar(m.from.display.ifBlank { "?" }, m.from.mail, 36.dp)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!m.seen) { Box(Modifier.size(8.dp).clip(CircleShape).background(P.accent)); Spacer(Modifier.width(6.dp)) }
-                Text(who, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = if (m.seen) FontWeight.Normal else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (m.hasAttachments) { Ico("clip", size = 15.dp, tint = P.faint); Spacer(Modifier.width(4.dp)) }
-                Text(Fmt.listDate(m.date), style = MaterialTheme.typography.bodySmall, color = if (m.seen) P.faint else P.accentInk, fontWeight = if (m.seen) FontWeight.Normal else FontWeight.SemiBold)
+                Text(who, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = weight, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Число писем в переписке — как «· 3» в веб-почте.
+                if ((m.thread ?: 0) > 1) Text("· ${m.thread}", Modifier.padding(start = 4.dp), style = MaterialTheme.typography.bodyMedium, color = P.muted, maxLines = 1)
+                Spacer(Modifier.width(8.dp))
+                Text(Fmt.listDate(m.date), style = MaterialTheme.typography.bodySmall, color = if (m.seen) P.faint else unreadColor, fontWeight = weight)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (m.answered) { Ico("reply", size = 14.dp, tint = P.faint); Spacer(Modifier.width(4.dp)) }
-                Text(m.subject.ifBlank { "(без темы)" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = if (m.seen) FontWeight.Normal else FontWeight.Medium,
+                Text(m.subject.ifBlank { "(без темы)" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = weight,
                     color = P.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (m.flagged) { Spacer(Modifier.width(4.dp)); Ico("flag", size = 15.dp, tint = P.warn) }
             }
             val preview = m.preview?.trim().orEmpty()
-            if (preview.isNotEmpty()) Text(preview, style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (!compact && (preview.isNotEmpty() || m.hasAttachments)) Row(verticalAlignment = Alignment.CenterVertically) {
+                if (m.hasAttachments) { Ico("clip", size = 14.dp, tint = P.faint); Spacer(Modifier.width(4.dp)) }
+                Text(preview.ifEmpty { "Есть вложения" }, style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            } else if (compact && m.hasAttachments) Row(verticalAlignment = Alignment.CenterVertically) {
+                Ico("clip", size = 14.dp, tint = P.faint); Spacer(Modifier.width(4.dp))
+                Text("Вложения", style = MaterialTheme.typography.labelSmall, color = P.faint)
+            }
+            // Отложенное письмо: когда вернётся — напоминание, акцентом.
+            m.snoozed?.takeIf { it.isNotBlank() }?.let { until ->
+                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Ico("clock", size = 13.dp, tint = P.accent); Spacer(Modifier.width(4.dp))
+                    Text("Вернётся ${Fmt.full(until)}", style = MaterialTheme.typography.labelSmall, color = P.accentInk, maxLines = 1)
+                }
+            }
             if (m.labels.isNotEmpty() || (m.folder != null && s.query.everywhere)) {
                 Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (s.query.everywhere && m.folderName != null) TagPill(m.folderName, P.muted)

@@ -210,7 +210,11 @@ actual object Notifier {
     private var tray: TrayIcon? = null
     actual fun ensurePermission() {}
     actual fun schedule(enabled: Boolean) {}
-    actual fun show(id: Int, title: String, text: String, folder: String, uid: Long) {
+    actual fun show(id: Int, title: String, text: String, folder: String, uid: Long) = balloon(title, text)
+    actual fun event(title: String, text: String, id: Int) = balloon(title, text)
+
+    /** Всплывающее сообщение у значка в области уведомлений — одно и для писем, и для напоминаний. */
+    private fun balloon(title: String, text: String) {
         runCatching {
             if (!SystemTray.isSupported()) return
             val t = tray ?: TrayIcon(Toolkit.getDefaultToolkit().createImage(ByteArray(0)), "Почта").also { it.isImageAutoSize = true; SystemTray.getSystemTray().add(it); tray = it }
@@ -226,10 +230,29 @@ actual object Updater {
     actual fun install(file: SavedFile): Boolean = FileStore.open(file)
 }
 
-/** На ПК печать — из «Показать оригинал» в браузере; своей печати пока нет. */
+/**
+ * Печать на ПК — через Swing: JEditorPane понимает HTML 3.2 (абзацы, жирный, списки, таблицы), а
+ * JTextComponent.print сам режет на страницы и показывает системный диалог принтера (в нём же «Сохранить как PDF»).
+ * Встроенные картинки письма (cid:) не подставляются — на бумаге будет текст; современный CSS игнорируется.
+ */
 actual object Printer {
-    actual val available: Boolean get() = false
-    actual fun print(title: String, html: String, loadResource: suspend (path: String) -> Pair<String, ByteArray>?): Boolean = false
+    actual val available: Boolean get() = !java.awt.GraphicsEnvironment.isHeadless()
+
+    /** JEditorPane падает на некоторых конструкциях писем: скрипты, стили и заблокированные картинки убираем заранее. */
+    internal fun printable(title: String, html: String): String {
+        var s = Regex("(?is)<(style|script|head)[^>]*>.*?</\\1>").replace(html, "")
+        s = Regex("(?is)<img\\b[^>]*>").replace(s, "")
+        s = Regex("(?is)</?(html|body|meta|link|iframe|object|embed|form|input|button)[^>]*>").replace(s, "")
+        return "<html><body style=\"font-family:sans-serif;font-size:11pt\"><h3>" + su.innotec.mail.ui.Html.escape(title) + "</h3>" + s + "</body></html>"
+    }
+
+    actual fun print(title: String, html: String, loadResource: suspend (path: String) -> Pair<String, ByteArray>?): Boolean = runCatching {
+        val pane = javax.swing.JEditorPane("text/html", printable(title, html))
+        pane.isEditable = false
+        pane.setSize(600, Int.MAX_VALUE)
+        // Диалог принтера и ход печати — интерактивно, в отдельном потоке Swing; заголовок страницы — тема письма.
+        pane.print(java.text.MessageFormat(title.replace("'", "''").replace("{", "'{'")), java.text.MessageFormat("{0}"), true, null, null, true)
+    }.getOrDefault(false)
 }
 
 actual fun decodeImage(bytes: ByteArray, maxSide: Int): androidx.compose.ui.graphics.ImageBitmap? =

@@ -157,7 +157,8 @@ fun TimeGrid(days: List<LocalDate>, onNew: (LocalDateTime) -> Unit, onPage: (Int
                             Modifier.clip(RoundedCornerShape(8.dp)).clickable { onDay(d) }.padding(horizontal = 4.dp, vertical = 2.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text(Fmt.weekdaysShort[d.dayOfWeek.ordinal], fontSize = 11.sp, color = if (d.dayOfWeek.ordinal >= 5) P.no.copy(alpha = .8f) else P.muted)
+                            // Выходные — приглушённые, как в сетке месяца: красный в приложении значит ошибку.
+                            Text(Fmt.weekdaysShort[d.dayOfWeek.ordinal], fontSize = 11.sp, color = if (d.dayOfWeek.ordinal >= 5) P.faint else P.muted)
                             Box(Modifier.size(26.dp).clip(CircleShape).background(if (d == today) P.accent else Color.Transparent), contentAlignment = Alignment.Center) {
                                 Text(d.day.toString(), fontSize = 14.sp, color = if (d == today) P.accentOn else P.text, fontWeight = if (d == today) FontWeight.Bold else FontWeight.Normal)
                             }

@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.JsonObject
@@ -116,6 +118,14 @@ class MailSettingsScreen : Screen() {
                     SwitchRow("Общие ящики: отмечать прочитанным", "Открытое письмо в общей папке станет прочитанным для всех", s.sharedMarkSeen) { v -> scope.launchSafe { patch(buildJsonObject { put("shared_mark_seen", v) }) } }
                     SwitchRow("Предлагать правило при переносе", "Перенесли письмо в свою папку — спросить, класть ли туда всё от этого отправителя", s.askRuleOnMove) { v -> scope.launchSafe { patch(buildJsonObject { put("ask_rule_on_move", v) }) } }
                 }
+                SectionTitle("Список писем")
+                Column(Modifier.background(P.surface)) {
+                    // Те же настройки ящика, что в веб-почте (density, unread_highlight + unread_color): список читает их из MailStore.settings.
+                    ListRow("Плотность списка", densityName(s.density), icon = "list") { dialog = "density" }
+                    ListRow("Цвет непрочитанных", unreadColorName(s), icon = "unread", trailing = {
+                        if (s.unreadHighlight) Box(Modifier.size(18.dp).clip(CircleShape).background(if (s.unreadColor.isBlank()) P.accent else hexColor(s.unreadColor)))
+                    }) { dialog = "unread" }
+                }
                 if (meta != null && meta!!.identities.isNotEmpty()) {
                     SectionTitle("Мои адреса")
                     Column(Modifier.background(P.surface)) {
@@ -150,8 +160,57 @@ class MailSettingsScreen : Screen() {
             "quick" -> QuickRepliesDialog(s.quickReplies, onDismiss = { dialog = null }) { list ->
                 scope.launchSafe { patch(buildJsonObject { putJsonArray("quick_replies") { list.forEach { add(JsonPrimitive(it)) } } }) }
             }
+            "density" -> ChoiceDialog("Плотность списка", listOf("normal", "compact"), ::densityName, s.density.ifBlank { "normal" }.let { if (it == "roomy") "normal" else it }, onDismiss = { dialog = null }) { v ->
+                scope.launchSafe { patch(buildJsonObject { put("density", v) }) }
+            }
+            "unread" -> UnreadColorDialog(s, onDismiss = { dialog = null }) { highlight, color ->
+                scope.launchSafe { patch(buildJsonObject { put("unread_highlight", highlight); put("unread_color", color) }) }
+            }
         }
     }
+}
+
+private fun densityName(d: String) = when (d) { "compact" -> "компактная — без первых строк письма"; "roomy" -> "просторная"; else -> "обычная" }
+
+/** Цвет непрочитанных: «как текст» — подсветка выключена; иначе акцент темы или свой цвет. */
+private val UNREAD_COLORS = listOf("#2F6FEB" to "Синий", "#16A05C" to "Зелёный", "#D9791F" to "Оранжевый", "#8E44AD" to "Фиолетовый", "#C0392B" to "Красный", "#0E8A9E" to "Бирюзовый")
+
+private fun unreadColorName(s: Settings): String = when {
+    !s.unreadHighlight -> "как текст, только жирным"
+    s.unreadColor.isBlank() -> "акцент темы"
+    else -> UNREAD_COLORS.firstOrNull { it.first.equals(s.unreadColor, true) }?.second ?: s.unreadColor
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UnreadColorDialog(s: Settings, onDismiss: () -> Unit, onSave: (highlight: Boolean, color: String) -> Unit) {
+    // null — «как текст» (подсветка выключена), "" — акцент темы, иначе свой цвет.
+    var pick by remember { mutableStateOf<String?>(if (s.unreadHighlight) s.unreadColor.lowercase() else null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Цвет непрочитанных") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Как выделять непрочитанные письма в списке: тема и полоска слева.", style = MaterialTheme.typography.bodySmall, color = P.muted)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    su.innotec.mail.ui.Chip("Как текст", pick == null, { pick = null })
+                    su.innotec.mail.ui.Chip("Акцент темы", pick == "", { pick = "" })
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    UNREAD_COLORS.forEach { (h, name) ->
+                        Box(Modifier.size(34.dp).clip(CircleShape).background(hexColor(h)).clickable { pick = h.lowercase() }
+                            .semantics { contentDescription = name }, contentAlignment = Alignment.Center) {
+                            if (pick.equals(h, true)) Ico("check", size = 16.dp, tint = Color.White)
+                        }
+                    }
+                }
+                Text("Так будет выглядеть тема непрочитанного", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
+                    color = when (val p = pick) { null -> P.text; "" -> P.accentInk; else -> hexColor(p) })
+            }
+        },
+        confirmButton = { TextButton(onClick = { onDismiss(); onSave(pick != null, pick ?: "") }) { Text("Сохранить") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
 }
 
 /**
@@ -230,12 +289,14 @@ class AppSettingsScreen : Screen() {
     override fun Content() {
         val p = Session.prefs
         var dialog by remember { mutableStateOf<String?>(null) }
+        val scope = rememberCoroutineScope()
         Column(Modifier.fillMaxSize().background(P.bg)) {
             SubBar("Оформление и уведомления")
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 SectionTitle("Оформление")
                 Column(Modifier.background(P.surface)) {
                     ListRow("Тема", when (p.theme) { "dark" -> "тёмная"; "light" -> "светлая"; else -> "как в системе" }, icon = "moon") { dialog = "theme" }
+                    ListRow("Цветовая схема", if (p.scheme == "classic") "классическая — синяя" else "фирменная — оранжевая", icon = "sun") { dialog = "scheme" }
                 }
                 SectionTitle("Уведомления")
                 Column(Modifier.background(P.surface)) {
@@ -262,7 +323,16 @@ class AppSettingsScreen : Screen() {
         }
         val swipes = listOf("archive", "delete", "read", "flag", "move", "snooze", "spam", "none")
         when (dialog) {
-            "theme" -> ChoiceDialog("Тема", listOf("system", "light", "dark"), { when (it) { "dark" -> "Тёмная"; "light" -> "Светлая"; else -> "Как в системе" } }, p.theme, onDismiss = { dialog = null }) { v -> Session.updatePrefs { it.copy(theme = v) } }
+            "theme" -> ChoiceDialog("Тема", listOf("system", "light", "dark"), { when (it) { "dark" -> "Тёмная"; "light" -> "Светлая"; else -> "Как в системе" } }, p.theme, onDismiss = { dialog = null }) { v ->
+                // Сразу на устройстве, и в настройки ящика — та же тема откроется в веб-почте и на других устройствах (App.kt читает её при входе).
+                Session.updatePrefs { it.copy(theme = v) }
+                scope.launchSafe { patch(buildJsonObject { put("theme", v) }) }
+            }
+            "scheme" -> ChoiceDialog("Цветовая схема", listOf("brand", "classic"), { if (it == "classic") "Классическая — синяя" else "Фирменная — оранжевая" }, p.scheme, onDismiss = { dialog = null }) { v ->
+                // У каждой схемы свои светлая и тёмная темы; настройка общая с веб-почтой — пишем в ящик.
+                Session.updatePrefs { it.copy(scheme = v) }
+                scope.launchSafe { patch(buildJsonObject { put("scheme", v) }) }
+            }
             "right" -> ChoiceDialog("Смахнуть вправо", swipes, ::swipeName, p.swipeRight, onDismiss = { dialog = null }) { v -> Session.updatePrefs { it.copy(swipeRight = v) } }
             "left" -> ChoiceDialog("Смахнуть влево", swipes, ::swipeName, p.swipeLeft, onDismiss = { dialog = null }) { v -> Session.updatePrefs { it.copy(swipeLeft = v) } }
         }

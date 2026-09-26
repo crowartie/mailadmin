@@ -106,6 +106,8 @@ expect object Notifier {
     fun ensurePermission()
     fun schedule(enabled: Boolean)
     fun show(id: Int, title: String, text: String, folder: String, uid: Long)
+    /** Напоминание о встрече (без письма за ним): нажатие просто открывает приложение. */
+    fun event(title: String, text: String, id: Int)
     /** Мгновенные уведомления (служба раз в минуту) есть только на Android. */
     val fastAvailable: Boolean
     fun fast(enabled: Boolean)
