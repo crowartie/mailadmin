@@ -64,6 +64,14 @@ class InboxController extends Controller
      * Спрашиваем отдельно, а не через current(): тот ради семи значений запускает семь
      * внешних программ и стоил странице 172 мс — больше, чем список папок и писем вместе.
      */
+    /**
+     * Сколько может весить письмо, чтобы дойти почти до любого получателя: Gmail и многие другие
+     * не принимают писем больше 25 МБ, даже если наш сервер отправит и 40. Окно письма (и приложение)
+     * держат вложения в этом пределе, лишнее уходит ссылкой.
+     */
+    public const DELIVERABLE_MB = 25;
+
+    /** Предел письма для окна «Написать»: меньшее из предела нашего сервера и DELIVERABLE_MB. */
     public static function messageLimitMb(): int
     {
         try {
@@ -72,7 +80,7 @@ class InboxController extends Controller
             $mb = 0;
         }
 
-        return $mb > 0 ? $mb : 25;
+        return $mb > 0 ? min($mb, self::DELIVERABLE_MB) : self::DELIVERABLE_MB;
     }
 
     public function settings(Request $request, ImapSession $imap, string $section = 'general'): Response

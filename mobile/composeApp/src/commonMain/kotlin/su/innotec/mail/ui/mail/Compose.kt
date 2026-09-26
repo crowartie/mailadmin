@@ -446,13 +446,24 @@ class ComposeModel(val start: ComposeStart) {
     fun inMailSize(): Long = files.withIndex().filter { it.index !in viaCloud }.sumOf { it.value.size } +
         existing.filter { it.index in keep && !keptViaCloud(it) }.sumOf { it.size }
 
+    /**
+     * Вес текста с цепочкой RE и картинками в нём — в пределе письма, как в веб-почте (Compose.vue, measureBody):
+     * кириллица кодируется втрое, картинки data: уже в base64.
+     */
+    fun bodySize(): Long {
+        val bytes = editor.html.encodeToByteArray()
+        var n = 0L
+        for (b in bytes) n += if (b >= 0) 1 else 3
+        return n * 105 / 100
+    }
+
     fun problems(): String? {
         if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) return "Укажите, кому отправить письмо"
         (to + cc + bcc).firstOrNull { !Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(it.mail) }?.let { return "Адрес «${it.mail}» написан с ошибкой" }
         val maxFiles = meta.limits.maxFiles
         if (files.size + keep.size > maxFiles) return "Не больше $maxFiles файлов в одном письме"
         val limit = meta.limits.messageMb.toLong() * 1024 * 1024
-        if (encoded(inMailSize()) > limit) return "Файлы тяжелее предела почты (${meta.limits.messageMb} МБ)" + if (meta.cloud.enabled) " — отметьте крупные «ссылкой»" else ""
+        if (encoded(inMailSize()) + bodySize() > limit) return "Файлы тяжелее предела почты (${meta.limits.messageMb} МБ)" + if (meta.cloud.enabled) " — отметьте крупные «ссылкой»" else ""
         return null
     }
 }
@@ -525,7 +536,7 @@ private fun ComposeView(m: ComposeModel) {
         var toDraft = false
         // Порог облака — на файл, предел письма — на все вместе (как в веб-почте): новые файлы идут в письмо
         // от мелких к крупным, пока влезают; что не влезло — уходит ссылкой само, а не тупиком при отправке.
-        var room = m.meta.limits.messageMb.toLong() * 1024 * 1024 - encoded(m.inMailSize())
+        var room = m.meta.limits.messageMb.toLong() * 1024 * 1024 - encoded(m.inMailSize()) - m.bodySize()
         var rerouted = 0
         list.filter { it.size <= cap }.sortedBy { it.size }.forEach { f ->
             val tooMuch = m.meta.cloud.enabled && f.size < threshold && encoded(f.size) > room

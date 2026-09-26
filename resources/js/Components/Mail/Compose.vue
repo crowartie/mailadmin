@@ -167,6 +167,22 @@ const keptCloud = (a) => !!props.cloud?.enabled && (a.size || 0) >= CLOUD_FROM;
 // размер (ComposeController::checkSize), и окно должно считать так же: раньше письмо на 35 МБ окно
 // пропускало, а сервер при пределе 40 МБ отказывал уже после загрузки.
 const encoded = (b) => Math.ceil(b * 4 / 3);
+// Вес самого текста с цепочкой RE и картинками в нём — тоже в пределе письма. По отправленным за неделю
+// он небольшой (99 % писем — до 1 МБ, максимум 2,5 МБ), но в бюджете честно учитывается. Кириллица в письме
+// кодируется втрое (quoted-printable), картинки data: уже в base64 и идут как есть. Считаем не на каждое
+// нажатие клавиши, а с паузой: разметка с картинками бывает в мегабайты.
+const bodySize = ref(0);
+function measureBody() {
+    const bytes = new TextEncoder().encode(html.value || '');
+    let n = 0;
+    for (let i = 0; i < bytes.length; i++) n += bytes[i] < 0x80 ? 1 : 3;
+    bodySize.value = Math.ceil(n * 1.05);   // и текстовая копия письма рядом с HTML
+    return bodySize.value;
+}
+let bodyTimer = 0;
+watch(html, () => { clearTimeout(bodyTimer); bodyTimer = setTimeout(measureBody, 800); }, { immediate: true });
+// Сколько займёт письмо целиком: вложения внутри письма (закодированные) + текст.
+const letterSize = () => encoded(inMailSize.value) + bodySize.value;
 const inMailSize = computed(() => files.value.reduce((s, f, i) => s + (viaCloud.value.has(i) ? 0 : f.size), 0)
     + (keepAttachments.value ? existing.value : []).reduce((s, a) => s + (keptCloud(a) ? 0 : (a.size || 0)), 0));
 // Файлы, которые уйдут ссылкой, в черновик не кладём: 500 МБ в IMAP при каждом автосохранении —
@@ -229,6 +245,9 @@ async function send(sendAt = null) {
     if (!subject.value.trim() && !(await confirmAsk('Отправить письмо без темы?', { ok: 'Отправить' }))) return;
     const warns = [...to.value, ...cc.value, ...bcc.value].filter((a) => a.warn).map((a) => a.warn);
     if (warns.length && !(await confirmAsk(warns.join('\n') + '\n\nПисьмо, скорее всего, не дойдёт. Отправить всё равно?', { ok: 'Отправить всё равно', danger: true }))) return;
+    // Письмо всё-таки перерастает предел (дописали цепочку, вставили картинки после файлов) —
+    // самые крупные файлы уходят ссылкой сами, а не отказом сервера после загрузки.
+    fitForSend();
     // Большие файлы ещё грузятся — ждём их здесь, с ходом загрузки у файлов, а не молча.
     if (stageBusy.value) {
         waitingStage.value = true;
@@ -386,7 +405,7 @@ function addFiles(list) {
     // Порог облака — на каждый файл, а предел письма — на все вместе: десять файлов по 7 МБ проходили
     // порог по одному и не проходили вместе, и человек сам отмечал каждый «ссылкой». Теперь новые файлы
     // идут в письмо от мелких к крупным, пока влезают; что не влезло — уходит ссылкой само.
-    let room = MAX_MESSAGE - encoded(inMailSize.value);
+    let room = MAX_MESSAGE - encoded(inMailSize.value) - measureBody();
     let rerouted = 0;
     const byLink = (f) => props.cloud?.enabled && f.size < CLOUD_FROM && encoded(f.size) > room;
     for (const f of [...list].sort((a, b) => a.size - b.size)) {
@@ -432,6 +451,22 @@ function addFiles(list) {
     dirty.value = true;
 }
 function onFiles(e) { addFiles(e.target.files); e.target.value = ''; }
+
+/** Перед отправкой: пока письмо больше предела — самый крупный файл внутри письма уходит ссылкой. */
+function fitForSend() {
+    if (!props.cloud?.enabled) return;
+    measureBody();
+    let moved = 0;
+    while (letterSize() > MAX_MESSAGE) {
+        let big = -1;
+        files.value.forEach((f, i) => { if (!viaCloud.value.has(i) && (big < 0 || f.size > files.value[big].size)) big = i; });
+        if (big < 0) break;
+        const f = files.value[big];
+        if (props.cloud?.stage) { removeFile(big); stageFile(f); } else { const s = new Set(viaCloud.value); s.add(big); viaCloud.value = s; }
+        moved++;
+    }
+    if (moved) emit('toast', { text: `Письмо больше ${Math.round(MAX_MESSAGE / 1048576)} МБ — ${moved} ${plural(moved, 'файл уйдёт', 'файла уйдут', 'файлов уйдут')} ссылкой` }, 6000);
+}
 // Рамка «отпустите, чтобы вложить» — только для файлов из проводника. Перетаскивание текста
 // внутри письма раньше отменялось обработчиком на всём окне, и фрагмент не переносился.
 let dragDepth = 0;
@@ -635,8 +670,8 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             <span v-if="(cloud.enabled || cloudPicked.length) && cloudCount" class="chip chip--ok" style="height: 28px"><Icon name="cloud" :size="13" /> {{ cloudCount }} {{ cloudCount === 1 ? 'файл уйдёт ссылкой' : 'файла уйдут ссылкой' }} — получатель скачает по ссылке из письма</span>
             <!-- Предупреждение показываем и при включённом облаке: часть файлов всё равно
                  уходит внутри письма, а вес считаем вместе с унаследованными. -->
-            <span v-if="encoded(inMailSize) > MAX_MESSAGE" class="chip chip--no" style="height: 28px">{{ size(inMailSize) }} — больше предела почты ({{ Math.round(MAX_MESSAGE / 1048576) }} МБ), письмо не уйдёт</span>
-            <span v-else-if="encoded(inMailSize) > MAX_MESSAGE * 0.6" class="chip chip--warn" style="height: 28px">{{ size(inMailSize) }} — большое письмо может не пройти у получателя</span>
+            <span v-if="encoded(inMailSize) + bodySize > MAX_MESSAGE" class="chip chip--no" style="height: 28px">{{ size(encoded(inMailSize) + bodySize) }} — больше {{ Math.round(MAX_MESSAGE / 1048576) }} МБ: у многих получателей не пройдёт{{ cloud.enabled ? ', при отправке крупные файлы уйдут ссылкой' : '' }}</span>
+            <span v-else-if="encoded(inMailSize) + bodySize > MAX_MESSAGE * 0.8" class="chip chip--warn" style="height: 28px">{{ size(encoded(inMailSize) + bodySize) }} из {{ Math.round(MAX_MESSAGE / 1048576) }} МБ — у некоторых получателей предел меньше</span>
         </div>
 
         <div class="compose__foot">
