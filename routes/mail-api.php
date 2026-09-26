@@ -141,6 +141,7 @@ Route::delete('calendars/{calendar}', [CalendarController::class, 'destroyCalend
 Route::get('calendars/{calendar}/shares', [CalendarController::class, 'shares']);
 Route::post('calendars/{calendar}/shares', [CalendarController::class, 'share']);
 Route::delete('calendars/{calendar}/shares', [CalendarController::class, 'unshare']);
+Route::get('calendars/{calendar}/export', [CalendarController::class, 'export']);
 Route::get('events', [CalendarController::class, 'events']);
 Route::post('events', [CalendarController::class, 'store']);
 Route::get('freebusy', [CalendarController::class, 'freebusy']);

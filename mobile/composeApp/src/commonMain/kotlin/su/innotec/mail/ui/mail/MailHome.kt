@@ -235,6 +235,11 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
                     }
                 }
                 if (!selecting) FilterChips()
+                if (s.offline) Row(Modifier.fillMaxWidth().background(P.warnSoft).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Ico("warn", size = 16.dp, tint = P.warnInk); Spacer(Modifier.width(8.dp))
+                    Text("Нет связи — показаны сохранённые письма", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = P.warnInk)
+                    TextButton(onClick = { s.load() }) { Text("Повторить") }
+                }
                 Divider()
             }
 
@@ -315,23 +320,38 @@ private fun FilterChips() {
     }
 }
 
+/** Где искать — как переключатель поля поиска в веб-почте; превращается в оператор сервера (от:, тема: …). */
+private val SCOPES = listOf("" to "Везде", "от" to "От кого", "кому" to "Кому", "переписка" to "Переписка", "тема" to "Тема", "текст" to "Текст", "файл" to "Файл")
+
 @Composable
 private fun SearchBar(onClose: () -> Unit) {
     val s = MailStore
     var text by remember { mutableStateOf(s.query.q) }
+    var scope by remember { mutableStateOf("") }
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
-    Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconBtn("back", "Закрыть поиск") { onClose() }
-        TextField(
-            text, { text = it },
-            modifier = Modifier.weight(1f).focusRequester(focus).testTag("search-field"),
-            placeholder = { Text("Поиск: от:, тема:, файл:, есть:флажок…") },
-            singleLine = true,
-            colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { s.search(text, s.query.everywhere) }),
-        )
-        if (text.isNotEmpty()) IconBtn("x", "Очистить") { text = ""; s.clearSearch() }
+    fun go() {
+        val t = text.trim()
+        // Оператор уже набран руками (от:ivan) — оставляем как есть.
+        val q = if (scope.isEmpty() || t.isEmpty() || Regex("^\\p{L}+:").containsMatchIn(t)) t else "$scope:" + if (t.contains(' ')) "\"$t\"" else t
+        s.search(q, s.query.everywhere)
+    }
+    Column {
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconBtn("back", "Закрыть поиск") { onClose() }
+            TextField(
+                text, { text = it },
+                modifier = Modifier.weight(1f).focusRequester(focus).testTag("search-field"),
+                placeholder = { Text(if (scope.isEmpty()) "Поиск: от:, тема:, файл:, есть:флажок…" else "Искать: " + SCOPES.first { it.first == scope }.second.lowercase()) },
+                singleLine = true,
+                colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { go() }),
+            )
+            if (text.isNotEmpty()) IconBtn("x", "Очистить") { text = ""; s.clearSearch() }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SCOPES.forEach { (k, t) -> Chip(t, scope == k, { scope = k; if (text.isNotBlank()) go() }) }
+        }
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }

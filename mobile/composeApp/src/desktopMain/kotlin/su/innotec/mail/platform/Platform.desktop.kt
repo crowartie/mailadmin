@@ -232,3 +232,10 @@ actual fun decodeImage(bytes: ByteArray, maxSide: Int): androidx.compose.ui.grap
 
 /** На ПК PDF открывается программой системы. */
 actual fun openPdf(bytes: ByteArray): PdfDoc? = null
+
+actual object DiskCache {
+    private val dir: File get() = File(appHome, "cache").apply { mkdirs() }
+    actual fun read(name: String): String? = runCatching { File(dir, name).takeIf { it.exists() }?.readText() }.getOrNull()
+    actual fun write(name: String, text: String) { runCatching { File(dir, name).writeText(text) } }
+    actual fun clear() { runCatching { dir.deleteRecursively() } }
+}

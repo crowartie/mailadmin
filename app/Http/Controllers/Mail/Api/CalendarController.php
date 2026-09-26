@@ -122,6 +122,22 @@ class CalendarController extends Controller
         return $this->guard(fn () => $this->store->unshare($imap->user(), $calendar, $data['with']));
     }
 
+    /** GET calendars/{calendar}/export — календарь файлом .ics (приложение: «Скачать .ics»). */
+    public function export(ImapSession $imap, string $calendar): \Symfony\Component\HttpFoundation\Response
+    {
+        try {
+            $ics = $this->store->exportCalendar($imap->user(), $calendar);
+            $name = (collect($this->store->calendars($imap->user()))->firstWhere('uri', $calendar)['name'] ?? $calendar) . '.ics';
+        } catch (DavException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status);
+        }
+
+        return response($ics, 200, [
+            'Content-Type' => 'text/calendar; charset=utf-8',
+            'Content-Disposition' => \Symfony\Component\HttpFoundation\HeaderUtils::makeDisposition('attachment', $name, 'calendar.ics'),
+        ]);
+    }
+
     private function validated(Request $request): array
     {
         return $request->validate([

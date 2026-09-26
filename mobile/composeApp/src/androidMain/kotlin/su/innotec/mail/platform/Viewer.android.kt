@@ -39,3 +39,10 @@ actual fun openPdf(bytes: ByteArray): PdfDoc? = runCatching {
         override fun close() { runCatching { r.close(); fd.close() }; f.delete() }
     }
 }.getOrNull()
+
+actual object DiskCache {
+    private val dir: File get() = File(AndroidCtx.app.cacheDir, "mail").apply { mkdirs() }
+    actual fun read(name: String): String? = runCatching { File(dir, name).takeIf { it.exists() }?.readText() }.getOrNull()
+    actual fun write(name: String, text: String) { runCatching { File(dir, "$name.tmp").apply { writeText(text) }.renameTo(File(dir, name)) } }
+    actual fun clear() { runCatching { dir.deleteRecursively() } }
+}

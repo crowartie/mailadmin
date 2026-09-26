@@ -29,6 +29,19 @@ class MainActivity : ComponentActivity() {
         AndroidCtx.activity = WeakReference(this)
         handle(intent)
         setContent { App() }
+        addShortcuts()
+    }
+
+    /** Долгое нажатие на иконку приложения — «Написать письмо» (динамический ярлык: у qa-сборки другой applicationId). */
+    private fun addShortcuts() {
+        runCatching {
+            val compose = androidx.core.content.pm.ShortcutInfoCompat.Builder(this, "compose")
+                .setShortLabel("Написать").setLongLabel("Написать письмо")
+                .setIcon(androidx.core.graphics.drawable.IconCompat.createWithResource(this, R.drawable.ic_shortcut_compose))
+                .setIntent(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("mailto:"), this, MainActivity::class.java))
+                .build()
+            androidx.core.content.pm.ShortcutManagerCompat.setDynamicShortcuts(this, listOf(compose))
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

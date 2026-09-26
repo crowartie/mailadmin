@@ -136,6 +136,11 @@ class DavStore
         $this->cals->deleteCalendar($user, $uri);
     }
 
+    public function exportCalendar(string $user, string $uri): string
+    {
+        return $this->cals->exportCalendar($user, $uri);
+    }
+
     /**
     * События всех видимых календарей в интервале.
     *

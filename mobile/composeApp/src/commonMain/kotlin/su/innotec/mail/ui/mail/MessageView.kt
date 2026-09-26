@@ -140,13 +140,21 @@ fun MessageContent(folder: String, uid: Long, inPane: Boolean, onClose: () -> Un
 
     LaunchedEffect(folder, uid, reload) {
         error = null
+        // Сохранённое письмо — сразу, свежее с сервера — следом (и без сети письмо откроется).
+        if (msg == null) MailCache.message(folder, uid)?.let { msg = it }
         try {
             val m = Session.api!!.message(folder, uid)
             msg = m
+            MailCache.saveMessage(folder, uid, m)
             MailStore.markOpened(uid)
             if (m.markedSeen) MailStore.refreshFolders()
         } catch (e: ApiException) {
-            if (e.isAuth) Toasts.error(e) else error = e.message
+            when {
+                e.isAuth -> Toasts.error(e)
+                msg != null && e.isNetwork -> Toasts.show("Нет связи — письмо из сохранённых")
+                msg == null -> error = e.message
+                else -> Toasts.error(e)
+            }
         }
     }
 

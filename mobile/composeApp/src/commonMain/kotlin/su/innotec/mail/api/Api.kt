@@ -369,6 +369,8 @@ class Api(
     suspend fun updateCalendar(uri: String, name: String?, color: String?) { raw(HttpMethod.Patch, "/calendars/${enc(uri)}", buildJsonObject { name?.let { put("name", it) }; color?.let { put("color", it) } }) }
     suspend fun deleteCalendar(uri: String) = deleteOk("/calendars/${enc(uri)}")
     suspend fun calendarShares(uri: String): List<CalendarShare> = get("/calendars/${enc(uri)}/shares")
+    /** Календарь файлом .ics (для «Скачать .ics»). */
+    fun calendarExportPath(uri: String) = "/calendars/${enc(uri)}/export"
     suspend fun shareCalendar(uri: String, with: String, level: String) = postOk("/calendars/${enc(uri)}/shares", buildJsonObject { put("with", with); put("level", level) })
     suspend fun unshareCalendar(uri: String, with: String) = deleteOk("/calendars/${enc(uri)}/shares", buildJsonObject { put("with", with) })
     suspend fun events(from: String, to: String, calendars: List<String> = emptyList()): List<CalEvent> =

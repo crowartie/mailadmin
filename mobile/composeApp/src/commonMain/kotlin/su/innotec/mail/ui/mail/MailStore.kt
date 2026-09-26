@@ -64,6 +64,11 @@ object MailStore {
     /** Меняется после каждого действия — открытые экраны перечитывают своё. */
     var version by mutableIntStateOf(0); private set
 
+    /** Какой список сейчас на экране: из кэша показываем, только если открыли другой (иначе список мигнул бы старым). */
+    private var shownQuery: ListQuery? = null
+    /** Сеть недоступна — на экране сохранённые письма (полоса «Нет связи» над списком). */
+    var offline by mutableStateOf(false); private set
+
     private var loadJob: Job? = null
     private var pollJob: Job? = null
     private var started = false
@@ -76,7 +81,7 @@ object MailStore {
         loadJob?.cancel(); pollJob?.cancel()
         started = false
         folders = emptyList(); labels = emptyList(); settings = Settings()
-        messages.clear(); selected.clear(); total = 0; openUid = null; query = ListQuery(); error = null
+        messages.clear(); selected.clear(); total = 0; openUid = null; query = ListQuery(); error = null; shownQuery = null; offline = false
         inboxUnread = 0; outboxCount = 0; quarantineCount = 0
     }
 
@@ -88,6 +93,7 @@ object MailStore {
             runCatching { settings = api.settings() }
             runCatching { labels = api.labels() }
         }
+        if (folders.isEmpty()) MailCache.folders()?.let { applyFolders(it) }
         refreshFolders()
         load()
         pollJob = scope.launch {
@@ -101,7 +107,9 @@ object MailStore {
     fun refreshFolders() {
         scope.launch {
             try {
-                applyFolders(api.folders())
+                val list = api.folders()
+                applyFolders(list)
+                MailCache.saveFolders(list)
                 runCatching { outboxCount = api.outbox().count { it.status == "scheduled" || it.status.isEmpty() } }
                 runCatching { quarantineCount = api.quarantine().size }
                 runCatching { quota = api.composeMeta().quota }
@@ -160,6 +168,14 @@ object MailStore {
         loadJob?.cancel()
         loading = true
         error = null
+        val q0 = query
+        // Другой список — сразу показать сохранённый, пока сервер отвечает (мгновенный запуск и переход по папкам).
+        if (shownQuery != q0 && q0.q.isEmpty()) {
+            val cached = MailCache.list(q0.folder, q0.filter, q0.sort)
+            messages.clear()
+            if (cached != null) { messages.addAll(cached.first.filterNot { pendingHidden(it.uid) }); total = cached.second }
+            shownQuery = q0
+        }
         loadJob = scope.launch {
             try {
                 val q = query
@@ -168,12 +184,16 @@ object MailStore {
                 messages.clear()
                 messages.addAll(r.messages.filterNot { pendingHidden(it.uid) })
                 total = r.total
+                shownQuery = q
+                offline = false
+                if (q.q.isEmpty()) MailCache.saveList(q.folder, q.filter, q.sort, r.messages, r.total)
                 r.folders?.let { applyFolders(it) }
                 if (q.folder == folders.firstOrNull { it.role == "inbox" }?.path && q.filter == "all" && q.q.isEmpty()) {
                     r.messages.firstOrNull()?.let { top -> Session.updatePrefs { p -> if (top.uid > p.lastNotifiedUid) p.copy(lastNotifiedUid = top.uid) else p } }
                 }
             } catch (e: ApiException) {
                 if (e.isAuth) Toasts.error(e) else error = e.message
+                offline = e.isNetwork && messages.isNotEmpty()
             } finally {
                 loading = false
             }

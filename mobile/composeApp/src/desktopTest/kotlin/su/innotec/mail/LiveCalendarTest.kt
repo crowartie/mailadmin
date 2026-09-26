@@ -1,5 +1,7 @@
 package su.innotec.mail
 
+import kotlinx.io.readByteArray
+import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
 import su.innotec.mail.api.Api
@@ -65,5 +67,15 @@ class LiveCalendarTest {
         }
         assertTrue(api.events("2027-01-01", "2027-02-28").none { it.title.startsWith(title) }, "пробные события не удалились")
         log("пробные события удалены")
+
+        // «Скачать .ics»: календарь целиком одним файлом, который разбирается как iCalendar.
+        val ics = api.download(api.calendarExportPath(cal.uri)) { _, type, _, ch ->
+            assertTrue(type?.startsWith("text/calendar") == true, "тип $type")
+            val out = kotlinx.io.Buffer(); val buf = ByteArray(8192)
+            while (true) { val r = ch.readAvailable(buf, 0, buf.size); if (r == -1) break; if (r > 0) out.write(buf, 0, r); if (r == 0 && ch.isClosedForRead) break }
+            out.readByteArray().decodeToString()
+        }
+        assertTrue(ics.startsWith("BEGIN:VCALENDAR") && ics.trimEnd().endsWith("END:VCALENDAR"), "не iCalendar: ${ics.take(80)}")
+        log("выгрузка .ics: ${ics.length} байт, событий ${Regex("BEGIN:VEVENT").findAll(ics).count()}")
     }
 }

@@ -132,3 +132,13 @@ interface PdfDoc {
     fun render(page: Int, width: Int): androidx.compose.ui.graphics.ImageBitmap?
     fun close()
 }
+
+/**
+ * Кэш писем на устройстве — в закрытой папке приложения (как у почты Gmail и Outlook): список и открытые
+ * письма показываются сразу при запуске и без сети. Стирается при выходе из аккаунта.
+ */
+expect object DiskCache {
+    fun read(name: String): String?
+    fun write(name: String, text: String)
+    fun clear()
+}

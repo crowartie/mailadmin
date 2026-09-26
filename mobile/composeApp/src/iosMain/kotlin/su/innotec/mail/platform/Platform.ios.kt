@@ -183,3 +183,10 @@ actual fun decodeImage(bytes: ByteArray, maxSide: Int): androidx.compose.ui.grap
 
 /** PDF на iPhone — через PDFKit, появится с первой сборкой на Mac; пока открывается другой программой. */
 actual fun openPdf(bytes: ByteArray): PdfDoc? = null
+
+/** Кэш на iPhone — в NSUserDefaults не годится (объём); файловый появится с первой сборкой на Mac. */
+actual object DiskCache {
+    actual fun read(name: String): String? = null
+    actual fun write(name: String, text: String) {}
+    actual fun clear() {}
+}

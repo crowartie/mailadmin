@@ -912,6 +912,7 @@ class CalendarsScreen : Screen() {
                             Text(when (c.kind) { "personal" -> "личный"; "own" -> "мой"; "company" -> "компании"; else -> "общий · " + c.owner.name } + if (c.readonly) " · только чтение" else "",
                                 style = MaterialTheme.typography.bodySmall, color = P.muted)
                         }
+                        IconBtn("download", "Скачать .ics", tint = P.muted) { su.innotec.mail.ui.Transfers.fetch(Session.api!!.calendarExportPath(c.uri), c.name + ".ics", su.innotec.mail.ui.Transfers.Then.SAVE) }
                         if (c.kind == "own" || c.kind == "personal") IconBtn("gear", "Настроить", tint = P.muted) { edit = c }
                     }
                     Divider()

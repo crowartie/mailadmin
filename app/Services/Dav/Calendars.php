@@ -161,6 +161,45 @@ class Calendars
     }
 
 
+    /**
+     * Календарь одним файлом .ics — для приложения (в веб-почте то же делает DAV «?export», но он требует пароля,
+     * а у приложения только токен). Часовые пояса — по одному разу, события и задачи — как хранятся.
+     */
+    public function exportCalendar(string $user, string $uri): string
+    {
+        $c = $this->calendar($user, $uri);
+        $id = [$c['id'], $c['instance']];
+        $uris = array_column($this->a->cals->getCalendarObjects($id), 'uri');
+        $out = new \Sabre\VObject\Component\VCalendar();
+        $out->PRODID = '-//mailadmin//Pochta//RU';
+        $out->{'X-WR-CALNAME'} = $c['name'];
+        $zones = [];
+        foreach (array_chunk($uris, 200) as $chunk) {
+            foreach ($this->a->cals->getMultipleCalendarObjects($id, $chunk) as $o) {
+                try {
+                    $v = \Sabre\VObject\Reader::read((string) $o['calendardata']);
+                } catch (\Throwable) {
+                    continue;   // битый объект не должен ломать выгрузку остальных
+                }
+                foreach ($v->children() as $child) {
+                    if (! $child instanceof \Sabre\VObject\Component) {
+                        continue;
+                    }
+                    if ($child->name === 'VTIMEZONE') {
+                        $tz = (string) $child->TZID;
+                        if (isset($zones[$tz])) {
+                            continue;
+                        }
+                        $zones[$tz] = true;
+                    }
+                    $out->add(clone $child);
+                }
+            }
+        }
+
+        return $out->serialize();
+    }
+
     /** @return array<int,array<string,mixed>> строки calendarobjects, пересекающие интервал */
     public function objectsInRange(array $calendarId, DateTimeInterface $from, DateTimeInterface $to): array
     {

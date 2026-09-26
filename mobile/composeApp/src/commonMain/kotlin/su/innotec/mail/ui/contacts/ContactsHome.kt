@@ -1,5 +1,8 @@
 package su.innotec.mail.ui.contacts
 
+import su.innotec.mail.ui.Fmt
+import kotlinx.datetime.plus
+import kotlinx.datetime.atTime
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -277,6 +280,14 @@ private fun HistoryDialog(onDismiss: () -> Unit) {
                             Text(h.name.ifBlank { h.email }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${h.email} · писем ${h.uses}", style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1)
                         }
+                        IconBtn("plus", "В контакты", tint = P.muted) {
+                            scope.launchSafe {
+                                val parts = h.name.trim().split(' ', limit = 2)
+                                Session.api!!.createContact(su.innotec.mail.api.ContactInput(book = "personal", first = parts.getOrElse(0) { "" }.ifBlank { h.email.substringBefore('@') },
+                                    last = parts.getOrElse(1) { "" }.trim(), emails = listOf(su.innotec.mail.api.TypedValue(h.email, "work"))))
+                                Toasts.show("${h.email} — в личных контактах")
+                            }
+                        }
                         IconBtn("x", "Забыть", tint = P.muted) { scope.launchSafe { Session.api!!.forgetHistory(h.email); list = list?.filter { it.email != h.email } } }
                     }
                 }
@@ -333,6 +344,14 @@ fun ContactDetail(start: Contact, onClose: () -> Unit) {
                     if (mail.isNotBlank()) Action("search", "Переписка") {
                         su.innotec.mail.ui.mail.MailStore.search("переписка:$mail", everywhere = true)
                         Nav.go(su.innotec.mail.Section.MAIL)
+                    }
+                    // Встреча с человеком — как «Встреча» в карточке контакта веб-почты: завтра в 10, он — участник.
+                    if (mail.isNotBlank()) Action("cal", "Встреча") {
+                        val start = Fmt.today().plus(kotlinx.datetime.DatePeriod(days = 1)).atTime(kotlinx.datetime.LocalTime(10, 0))
+                        Nav.push(su.innotec.mail.ui.calendar.EventEditScreen(null, prefill = su.innotec.mail.api.EventInput(
+                            title = "Встреча: " + c.displayName(), start = start.toString(), end = start.date.atTime(kotlinx.datetime.LocalTime(11, 0)).toString(),
+                            attendees = listOf(su.innotec.mail.api.Attendee(mail = mail, name = c.displayName())),
+                        )))
                     }
                 }
             }

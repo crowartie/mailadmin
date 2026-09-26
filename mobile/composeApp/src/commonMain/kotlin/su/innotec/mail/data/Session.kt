@@ -66,6 +66,8 @@ object Session {
     }
 
     fun signOut(reason: String? = null) {
+        // Письма на устройстве — только пока вход действует.
+        su.innotec.mail.platform.DiskCache.clear()
         store.put("account", null)
         account = null
         cachedApi = null
