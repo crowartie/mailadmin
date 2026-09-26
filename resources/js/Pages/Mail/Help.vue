@@ -94,7 +94,7 @@ function printPage() {
 
 <template>
     <Head title="Справка" />
-    <MailLayout :user="user" :theme="settings?.theme">
+    <MailLayout :user="user" :theme="settings?.theme" :scheme="settings?.scheme">
         <div class="mset help" ref="root">
             <div class="mset__head help__head">
                 <Link v-if="user" href="/mail" class="ib" title="К письмам"><Icon name="back" :size="18" /></Link>

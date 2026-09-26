@@ -10,6 +10,8 @@ import { initUi, setUiSimple, uiSimple } from '../mail/uiMode';
 const props = defineProps({
     user: String,
     theme: { type: String, default: 'light' },
+    // Цветовая схема: brand — фирменная (оранжевая), classic — синяя; работает вместе с темой.
+    scheme: { type: String, default: 'brand' },
 });
 
 const page = usePage();
@@ -71,6 +73,14 @@ function applyTheme(t) {
 }
 onMounted(() => applyTheme(props.theme));
 watch(() => props.theme, applyTheme);
+
+function applyScheme(sch) {
+    const real = sch === 'classic' ? 'classic' : 'brand';
+    if (real === 'brand') delete document.documentElement.dataset.scheme; else document.documentElement.dataset.scheme = real;
+    try { localStorage.setItem('mail.scheme', real); } catch {}
+}
+onMounted(() => applyScheme(props.scheme));
+watch(() => props.scheme, applyScheme);
 
 function toggleTheme() {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';

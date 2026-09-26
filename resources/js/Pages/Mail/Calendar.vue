@@ -270,7 +270,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
 
 <template>
     <Head title="Календарь" />
-    <MailLayout :user="user" :theme="settings.theme">
+    <MailLayout :user="user" :theme="settings.theme" :scheme="settings.scheme">
         <!-- 361: заголовок страницы для экранного диктора; на экране его не видно. -->
         <h1 class="sr-only">Календарь</h1>
         <div class="mail cal" :class="{ 'mail--read': !!(open || editing) }">

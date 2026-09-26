@@ -58,7 +58,7 @@ async function authSubmit() {
 
 <template>
     <Head title="Подключить телефон" />
-    <MailLayout :user="user" :theme="settings?.theme">
+    <MailLayout :user="user" :theme="settings?.theme" :scheme="settings?.scheme">
         <div class="mset help setup">
             <div class="help__head">
                 <Link :href="user ? '/mail' : '/mail/login'" class="ib" :title="user ? 'К письмам' : 'Ко входу'"><Icon name="back" :size="18" /></Link>

@@ -47,7 +47,7 @@ async function reload() { try { items.value = await api.quarantineList(); } catc
 
 <template>
     <Head title="Карантин" />
-    <MailLayout :user="user" :theme="settings.theme">
+    <MailLayout :user="user" :theme="settings.theme" :scheme="settings.scheme">
         <!-- Шапка и карточка — как у «Настроек» и «Справки»: раньше страница прилипала к верху,
              а описание стояло левее заголовка. -->
         <div class="mset">

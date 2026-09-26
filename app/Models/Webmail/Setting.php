@@ -23,6 +23,7 @@ class Setting extends Model
         'signature' => '',
         'signature_reply' => true,
         'theme' => 'light',
+        'scheme' => 'brand',          // цветовая схема: brand — фирменная оранжевая, classic — синяя (до 27.09.2026)
         'density' => 'normal',
         'reply_all' => false,
         'notify_browser' => false,

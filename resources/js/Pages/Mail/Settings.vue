@@ -188,7 +188,7 @@ function saveGeneral() {
     if (quickOver.value) { say(`Быстрых ответов не больше ${MAX_QUICK} — уберите лишние ${quickOver.value}`, true); return; }
     saveSettings({
         display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, ask_rule_on_move: !!s.value.ask_rule_on_move, shared_mark_seen: !!s.value.shared_mark_seen, undo_seconds: Number(s.value.undo_seconds),
-        preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, show_images: s.value.show_images, unread_highlight: !!s.value.unread_highlight, unread_color: s.value.unread_color || '',
+        preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, scheme: s.value.scheme, show_images: s.value.show_images, unread_highlight: !!s.value.unread_highlight, unread_color: s.value.unread_color || '',
         quick_replies: quickReplies.value,
     });
 }
@@ -268,7 +268,7 @@ const shortcuts = [
 
 <template>
     <Head title="Настройки" />
-    <MailLayout :user="user" :theme="s.theme">
+    <MailLayout :user="user" :theme="s.theme" :scheme="s.scheme">
         <div class="mset">
             <div class="page-head" style="margin-bottom: 16px">
                 <Link href="/mail" class="ib" title="К письмам"><Icon name="back" :size="18" /></Link>
@@ -307,6 +307,11 @@ const shortcuts = [
                                     <span class="hint" style="margin: 0">Применяется и сохраняется сразу</span>
                                 </div>
                                 <div class="field">
+                                    <label for="set-scheme">Цветовая схема</label>
+                                    <select id="set-scheme" v-model="s.scheme" class="input" @change="saveOne({ scheme: s.scheme })"><option value="brand">Фирменная — оранжевая</option><option value="classic">Классическая — синяя</option></select>
+                                    <span class="hint" style="margin: 0">У каждой схемы свои светлая и тёмная темы; настройка общая для веб-почты и приложения</span>
+                                </div>
+                                <div class="field">
                                     <label for="set-density">Плотность списка писем</label>
                                     <!-- Применяется сразу, как и тема: человек выбирает глазами. -->
                                     <select id="set-density" v-model="s.density" class="input" @change="saveOne({ density: s.density })"><option value="roomy">Просторная</option><option value="normal">Обычная</option><option value="compact">Плотная — без первых строк письма</option></select>
@@ -326,7 +331,7 @@ const shortcuts = [
                                 <span class="hint" style="margin: 0">Цвет подсветки</span>
 <!-- Без своего цвета тема непрочитанного — цветом текста, только жирным (гамма «А»);
                                      цветной остаётся лишь полоска слева. -->
-                                <input type="color" :value="s.unread_color || '#C94E00'" aria-label="Цвет непрочитанных писем" title="Цвет непрочитанных писем" style="width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer" @input="s.unread_color = $event.target.value">
+                                <input type="color" :value="s.unread_color || (s.scheme === 'classic' ? '#2F6FEB' : '#C94E00')" aria-label="Цвет непрочитанных писем" title="Цвет непрочитанных писем" style="width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer" @input="s.unread_color = $event.target.value">
                                 <span class="hint" style="margin: 0"><span :style="{ display: 'inline-block', width: '3px', height: '14px', verticalAlign: 'middle', marginRight: '8px', background: s.unread_color || 'var(--accent)' }" /><b :style="{ color: s.unread_color || 'var(--text)' }">Так будет выглядеть тема непрочитанного</b></span>
                                 <button v-if="s.unread_color" class="btn btn--sm" type="button" @click="s.unread_color = ''">Как в теме</button>
                             </div>

@@ -804,7 +804,7 @@ onBeforeUnmount(() => {
     <!-- 398: заголовок вкладки собирался в двух местах, и побеждал тот, кто отработал
          последним. Теперь он один и вычисляется из счётчика непрочитанных. -->
     <Head :title="tabTitle" />
-    <MailLayout :user="user" :theme="settings.theme">
+    <MailLayout :user="user" :theme="settings.theme" :scheme="settings.scheme">
         <!-- 361: экранный диктор не сообщал, какая это страница — заголовка не было вовсе.
              Показывать его незачем: название папки и так видно над списком. -->
         <h1 class="sr-only">Почта — {{ folderName }}</h1>
