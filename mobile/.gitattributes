@@ -1,0 +1,3 @@
+# gradlew.bat с LF-концами строк cmd.exe разбирает с ошибками меток.
+*.bat text eol=crlf
+gradlew text eol=lf
