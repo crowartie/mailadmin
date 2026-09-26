@@ -1658,3 +1658,13 @@ html[data-ui="simple"] .pop__item .k:not(.k--keep) { display: none; }
 html[data-ui="simple"] .msg__acts { opacity: 0; transition: opacity .12s; }
 html[data-ui="simple"] .msg:hover .msg__acts, html[data-ui="simple"] .msg__acts:focus-within { opacity: 1; }
 @media (hover: none) { html[data-ui="simple"] .msg__acts { opacity: 1; } }
+
+// Плашка «Почта для Android» над списком в мобильном браузере (AppPromo.vue).
+.apppromo {
+    display: flex; align-items: center; gap: 10px; margin: 8px 12px 4px; padding: 10px 8px 10px 12px;
+    border-radius: v.$r-control; background: v.$c-accent-soft; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    font-size: 13.5px; line-height: 1.35;
+    > svg { flex: none; color: v.$c-accent; }
+    &__text { flex: 1 1 auto; min-width: 0; }
+    &__go { flex: none; height: 32px; padding: 0 12px; }
+}

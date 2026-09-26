@@ -1,6 +1,7 @@
 <script setup>
 // Средняя колонка: поиск, фильтры, панель массовых действий, строки писем.
 // Страниц нет: список дочитывается при прокрутке, а к нужному месту ведёт «К дате».
+import AppPromo from './AppPromo.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 import { dayGroup, hue, initials, plural, when } from '../../mail/format';
@@ -224,6 +225,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
 
 <template>
     <section class="mlist" :class="{ 'mlist--hl': highlightUnread, 'mlist--select': selectMode, 'mlist--roomy': density === 'roomy', 'mlist--compact': density === 'compact' }" :style="unreadColor ? { '--unread-c': unreadColor } : null">
+        <AppPromo />
         <div class="mobile-bar">
             <button class="ib" type="button" @click="$emit('menu')" aria-label="Папки"><Icon name="menu" :size="22" /></button>
             <b>{{ folderName }}</b>
