@@ -115,15 +115,24 @@ fun MailHome() {
             Nav.push(ComposeScreen(ComposeStart.Mailto(url)))
         }
     }
+    val pane = readerPane()
     when (LocalWindow.current) {
-        WindowKind.WIDE -> Row(Modifier.fillMaxSize()) {
+        // Планшет в горизонтальном положении: папки слева, список на всё остальное, письмо — отдельным экраном,
+        // как в вертикальном (пользователь 26.09: правая панель письма на планшете не нужна).
+        WindowKind.WIDE, WindowKind.TABLET -> if (!pane) Row(Modifier.fillMaxSize()) {
+            if (LocalWindow.current == WindowKind.WIDE) {
+                Box(Modifier.width(280.dp).fillMaxHeight().background(P.surface2)) { FolderList(onPicked = {}) }
+                Box(Modifier.width(1.dp).fillMaxHeight().background(P.border))
+                Box(Modifier.weight(1f).fillMaxHeight()) { MessageListPane(showMenu = false, onMenu = {}) }
+            } else WithDrawer { open -> MessageListPane(showMenu = true, onMenu = open) }
+        } else if (LocalWindow.current == WindowKind.WIDE) Row(Modifier.fillMaxSize()) {
             Box(Modifier.width(280.dp).fillMaxHeight().background(P.surface2)) { FolderList(onPicked = {}) }
             Box(Modifier.width(1.dp).fillMaxHeight().background(P.border))
             Box(Modifier.width(400.dp).fillMaxHeight()) { MessageListPane(showMenu = false, onMenu = {}) }
             Box(Modifier.width(1.dp).fillMaxHeight().background(P.border))
             Box(Modifier.weight(1f).fillMaxHeight().background(P.surface)) { ReaderPane() }
         }
-        WindowKind.TABLET -> WithDrawer { open ->
+        else WithDrawer { open ->
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.width(360.dp).fillMaxHeight()) { MessageListPane(showMenu = true, onMenu = open) }
                 Box(Modifier.width(1.dp).fillMaxHeight().background(P.border))
@@ -153,7 +162,14 @@ private fun WithDrawer(content: @Composable (open: () -> Unit) -> Unit) {
     ) { content { scope.launch { drawer.open() } } }
 }
 
-/** Правая панель планшета: открытое письмо или заглушка. */
+/**
+ * Панель чтения справа — только в версии для ПК: на мониторе три колонки удобны (и горячие клавиши работают
+ * с открытым письмом). На планшете письмо открывается отдельным экраном в любом положении.
+ */
+@Composable
+fun readerPane(): Boolean = su.innotec.mail.platform.PlatformInfo.kind == "desktop" && LocalWindow.current != WindowKind.PHONE
+
+/** Правая панель (ПК): открытое письмо или заглушка. */
 @Composable
 private fun ReaderPane() {
     val uid = MailStore.openUid
@@ -408,7 +424,7 @@ private fun MessageRows(list: LazyListState, onMove: (List<Long>) -> Unit, onSno
         if (s.query.sort != "date" && s.query.sort != "date-asc") listOf("" to s.messages.toList())
         else s.messages.toList().groupBy { Fmt.group(it.date) }.toList()
     }
-    val wide = LocalWindow.current != WindowKind.PHONE
+    val wide = readerPane()
     LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("message-list")) {
         groups.forEach { (title, rows) ->
             if (title.isNotEmpty()) item(key = "g:$title") {

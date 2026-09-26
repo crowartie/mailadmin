@@ -119,9 +119,10 @@ class AttachedMessageScreen(private val folder: String, private val uid: Long, p
 }
 
 @Composable
-private fun TopBar(onBack: () -> Unit, title: String = "", actions: @Composable () -> Unit = {}) {
+private fun TopBar(onBack: () -> Unit, title: String = "", pane: Boolean = false, actions: @Composable () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconBtn(if (LocalWindow.current == WindowKind.PHONE) "back" else "x", "Назад", Modifier.testTag("msg-back")) { onBack() }
+        // Отдельный экран — стрелка «назад»; панель чтения на ПК — крестик «закрыть».
+        IconBtn(if (pane) "x" else "back", if (pane) "Закрыть" else "Назад", Modifier.testTag("msg-back")) { onBack() }
         Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         actions()
     }
@@ -164,7 +165,7 @@ fun MessageContent(folder: String, uid: Long, inPane: Boolean, onClose: () -> Un
     }
 
     Column(Modifier.fillMaxSize().background(P.surface)) {
-        TopBar(onBack = onClose) {
+        TopBar(onBack = onClose, pane = inPane) {
             val m = msg
             if (m != null && !readonly) {
                 IconBtn("archive", "В архив", Modifier.testTag("msg-archive")) { leave("archive") }
