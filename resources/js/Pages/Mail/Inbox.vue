@@ -464,13 +464,13 @@ async function markSender(match) {
     if (!d || d.busy) return;
     d.busy = true;
     const values = match === 'domain' ? d.domains : d.mails;
-    let moved = 0; let global = false; let votes = null; let personalOnly = false;
+    let moved = 0; let global = false; let votes = null; let personalOnly = false; let resorting = false;
     try {
         // Раньше запросы шли строго по одному, и ошибка на середине оставляла часть правил
         // созданной: повтор плодил дубли. Шлём разом и ждём все ответы.
         const results = await Promise.all(values.map((v) => api.markSender(d.what, match, v, d.resort, d.folder?.path || null)));
         for (const r of results) {
-            moved += r.moved || 0; global = global || r.global; personalOnly = personalOnly || !!r.personalOnly; if (r.threshold > 1 && !r.personalOnly) votes = `${r.votes} из ${r.threshold}`;
+            moved += r.moved || 0; global = global || r.global; personalOnly = personalOnly || !!r.personalOnly; resorting = resorting || !!r.resorting; if (r.threshold > 1 && !r.personalOnly) votes = `${r.votes} из ${r.threshold}`;
             if (r.folders) folders.value = r.folders;
         }
         if (d.what === 'folder' && d.folder) {
@@ -480,8 +480,10 @@ async function markSender(match) {
         const who = values.length === 1 ? values[0]
             : `${values.length} ${match === 'domain' ? plural(values.length, 'домен', 'домена', 'доменов') : plural(values.length, 'адрес', 'адреса', 'адресов')}`;
         const tail = d.what === 'folder' ? '' : personalOnly ? ' Отправитель вашего домена: правило только у вас, общим не станет.' : d.what === 'ham' ? (global ? ' Фильтр больше не тронет эти письма — у всех сотрудников.' : ' Заявка на исключение ушла администратору.') : (global ? ' Правило стало общим для всех сотрудников.' : (votes ? ` Станет общим для всех, когда так отметят ${votes.split(' из ')[1]} ${plural(Number(votes.split(' из ')[1]) || 0, 'сотрудник', 'сотрудника', 'сотрудников')} (сейчас ${votes.split(' из ')[0]}).` : ''));
-        showToast({ text: `${who}: правило добавлено${moved ? `, перемещено писем: ${moved}` : ''}.${tail}` }, 8000);
+        showToast({ text: `${who}: правило добавлено${moved ? `, перемещено писем: ${moved}` : ''}${resorting ? ', уже полученные письма раскладываются' : ''}.${tail}` }, 8000);
         await refresh();
+        // Раскладка идёт на сервере после ответа — подтягиваем её итог в список и счётчики папок.
+        if (resorting) { setTimeout(() => refresh(), 4000); setTimeout(() => refresh(), 12000); }
     } catch (e) { d.busy = false; fail(e); }
 }
 

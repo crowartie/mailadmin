@@ -8,6 +8,7 @@ use App\Services\Mail\MailStore;
 use App\Services\Mail\SenderRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /** Решение сотрудника об отправителе: не спам / спам / рассылка — по адресу или по домену. */
 class SenderController extends Controller
@@ -50,11 +51,24 @@ class SenderController extends Controller
         } catch (\RuntimeException $e) {
             abort(422, $e->getMessage());
         }
-        $moved = 0;
-        if ($data['resort'] ?? true) {
-            $moved = $senders->resort($store, $data['kind'], $data['match'], $value, $folder);
+        // Уже полученные письма раскладываем после ответа. Раньше человек ждал, пока сервер обыщет
+        // все папки ящика: по журналу 3,5 с на каждое правило (у одного сотрудника — 74 правила подряд
+        // по 43 папкам). Правило записано — этого достаточно, чтобы закрыть окно; список обновится сам.
+        $resorting = (bool) ($data['resort'] ?? true);
+        if ($resorting) {
+            $user = $imap->user();
+            \Illuminate\Support\defer(function () use ($senders, $store, $data, $value, $folder, $user) {
+                try {
+                    $n = $senders->resort($store, $data['kind'], $data['match'], $value, $folder);
+                    if ($n) {
+                        Log::info('sender resort: ' . $user . ' ' . $data['kind'] . ' — перенесено ' . $n);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('sender resort: ' . $user . ': ' . $e->getMessage());
+                }
+            });
         }
 
-        return response()->json($r + ['moved' => $moved, 'personalOnly' => $personalOnly, 'folders' => $store->folders()]);
+        return response()->json($r + ['moved' => 0, 'resorting' => $resorting, 'personalOnly' => $personalOnly]);
     }
 }
