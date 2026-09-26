@@ -54,7 +54,7 @@ class RichEditorState(initialHtml: String) {
         pending.forEach(runner); pending.clear()
     }
 
-    fun detach() { run = null }
+    fun detach() { run = null; focused = false }
 
     fun cmd(name: String, value: String? = null) {
         finishInput?.invoke()
@@ -193,9 +193,11 @@ function clean(raw){
   [].slice.call(doc.body.children).forEach(walk);
   return doc.body.innerHTML.replace(/<!--[\s\S]*?-->/g,'').replace(/\u00a0/g,' ');
 }
-el.addEventListener('input',function(){sync();state();caret();});
-el.addEventListener('focus',function(){post({t:'focus',v:true});setTimeout(caret,300);});
-el.addEventListener('blur',function(){save();post({t:'focus',v:false});});
+var focusSent=false;
+function focusOn(v){ if(v!==focusSent){focusSent=v;post({t:'focus',v:v});} }
+el.addEventListener('input',function(){focusOn(true);sync();state();caret();});
+el.addEventListener('focus',function(){focusOn(true);setTimeout(caret,300);});
+el.addEventListener('blur',function(){save();focusOn(false);});
 el.addEventListener('keyup',function(){state();caret();});
 document.addEventListener('selectionchange',function(){ if(document.activeElement===el){save();state();} });
 el.addEventListener('paste',function(e){

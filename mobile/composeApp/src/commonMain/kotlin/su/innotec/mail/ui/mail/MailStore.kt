@@ -61,6 +61,8 @@ object MailStore {
     /** Открытое письмо (планшет: правая панель). */
     var openUid by mutableStateOf<Long?>(null)
     var scrollTopSignal by mutableIntStateOf(0)
+    /** Открыть поиск (Ctrl+F на ПК). */
+    var searchSignal by mutableIntStateOf(0)
     /** Меняется после каждого действия — открытые экраны перечитывают своё. */
     var version by mutableIntStateOf(0); private set
 

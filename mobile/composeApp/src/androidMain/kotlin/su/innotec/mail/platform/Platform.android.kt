@@ -28,6 +28,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -240,7 +242,9 @@ actual fun HtmlView(
 ) {
     val link = rememberUpdatedState(onLink)
     val loader = rememberUpdatedState(loadResource)
-    AndroidView(
+    // Упал процесс отрисовки — письмо показывается заново, приложение не падает вместе с WebView.
+    var generation by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    androidx.compose.runtime.key(generation) { AndroidView(
         modifier = modifier,
         factory = { ctx ->
             WebView(ctx).apply {
@@ -270,6 +274,11 @@ actual fun HtmlView(
                         }
                         return null
                     }
+
+                    override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                        generation++
+                        return true
+                    }
                 }
             }
         },
@@ -280,7 +289,7 @@ actual fun HtmlView(
                 w.loadDataWithBaseURL("https://$BASE_HOST/", doc, "text/html", "utf-8", null)
             }
         },
-    )
+    ) }
 }
 
 private const val BASE_HOST = "app.local"

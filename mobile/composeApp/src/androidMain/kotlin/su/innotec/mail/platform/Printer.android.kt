@@ -34,6 +34,11 @@ actual object Printer {
                 return WebResourceResponse(res.first.substringBefore(';'), null, res.second.inputStream())
             }
 
+            override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                holder = null
+                return true
+            }
+
             override fun onPageFinished(view: WebView, url: String?) {
                 val pm = a.getSystemService(PrintManager::class.java) ?: return
                 val name = title.ifBlank { "Письмо" }.take(60)

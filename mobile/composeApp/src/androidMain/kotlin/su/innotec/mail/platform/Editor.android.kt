@@ -11,7 +11,12 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.runBlocking
@@ -34,7 +39,10 @@ actual fun RichEditor(
     loadResource: suspend (path: String) -> Pair<String, ByteArray>?,
 ) {
     val loader = rememberUpdatedState(loadResource)
-    AndroidView(
+    // Процесс отрисовки WebView может упасть (нехватка памяти, обновление WebView): тогда поле создаётся заново,
+    // текст берётся из state.html — не пропадает, а приложение не падает вместе с WebView.
+    var generation by remember { mutableIntStateOf(0) }
+    key(generation) { AndroidView(
         modifier = modifier,
         factory = { ctx ->
             WebView(ctx).apply {
@@ -78,13 +86,20 @@ actual fun RichEditor(
                     override fun onPageFinished(view: WebView, url: String?) {
                         state.attach { js -> view.evaluateJavascript(js, null) }
                     }
+
+                    override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                        state.detach()
+                        android.util.Log.w("MailEditor", "renderer gone, recreate")
+                        generation++
+                        return true
+                    }
                 }
                 val doc = editorDocument(dark, placeholder, "window.__post=function(s){MailEditor.post(s)};", editorNonce())
                 loadDataWithBaseURL("https://$EDITOR_HOST/", doc, "text/html", "utf-8", null)
             }
         },
         onRelease = { w -> state.detach(); state.finishInput = null; w.removeJavascriptInterface("MailEditor"); w.destroy() },
-    )
+    ) }
 }
 
 private const val EDITOR_HOST = "app.local"

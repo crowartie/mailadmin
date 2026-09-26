@@ -172,6 +172,7 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var searching by remember { mutableStateOf(s.query.q.isNotEmpty()) }
+    LaunchedEffect(s.searchSignal) { if (s.searchSignal > 0) searching = true }
     var menu by remember { mutableStateOf(false) }
     var pickDate by remember { mutableStateOf(false) }
     var moveFor by remember { mutableStateOf<List<Long>?>(null) }
