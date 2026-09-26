@@ -20,6 +20,7 @@ internal object IconPaths {
         "cal" to "M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 10h18M8 3v4M16 3v4",
         "search" to "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5",
         "plus" to "M12 5v14M5 12h14",
+        "minus" to "M5 12h14",
         "dots" to "M5 12h.01M12 12h.01M19 12h.01",
         "x" to "M6 6l12 12M18 6L6 18",
         "chevron" to "M9 6l6 6-6 6",

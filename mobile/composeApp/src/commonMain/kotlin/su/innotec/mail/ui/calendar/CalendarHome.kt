@@ -6,6 +6,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -166,6 +171,31 @@ object CalStore {
         return if (e.allDay || (end.hour == 0 && end.minute == 0 && end.date > startDate(e))) end.date.minus(DatePeriod(days = 1)) else end.date
     }
 
+    /** Перейти к дню: если он в другом месяце, подгрузить события заново. */
+    fun goTo(d: LocalDate) {
+        day = d
+        val m = LocalDate(d.year, d.month, 1)
+        val week = weekOf(d)
+        // Неделя может захватить соседний месяц — загруженный диапазон должен её покрывать.
+        val covered = week.first() >= month.minus(DatePeriod(days = 7)) && week.last() <= month.plus(DatePeriod(months = 1)).plus(DatePeriod(days = 45))
+        if (m != month || !covered) { month = m; load() }
+    }
+
+    /** Шаг стрелками и жестом: день, неделя или месяц — по открытому виду. */
+    fun page(dir: Int) {
+        when (tab) {
+            "day" -> goTo(day.plus(DatePeriod(days = dir)))
+            "week" -> goTo(day.plus(DatePeriod(days = 7 * dir)))
+            else -> { month = month.plus(DatePeriod(months = dir)); day = if (Fmt.today().let { it.year == month.year && it.month == month.month }) Fmt.today() else month; load() }
+        }
+    }
+
+    fun title(): String = when (tab) {
+        "day" -> Fmt.dayTitle(day)
+        "week" -> weekTitle(weekOf(day))
+        else -> "${Fmt.monthsNom[month.month.ordinal]} ${month.year}"
+    }
+
     fun reset() { calendars = emptyList(); events = emptyList(); tasks = emptyList(); hidden.clear(); loaded = false }
 }
 
@@ -190,10 +220,10 @@ fun CalendarHome() {
             Column(Modifier.background(P.surface).statusBarsPadding()) {
                 Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (s.tab != "tasks") {
-                        IconBtn("left", "Предыдущий месяц") { s.month = s.month.minus(DatePeriod(months = 1)); s.load() }
-                        Text("${Fmt.monthsNom[s.month.month.ordinal]} ${s.month.year}", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-                        IconBtn("right", "Следующий месяц") { s.month = s.month.plus(DatePeriod(months = 1)); s.load() }
-                        IconBtn("today", "Сегодня") { val t = Fmt.today(); s.day = t; s.month = LocalDate(t.year, t.month, 1); s.load() }
+                        IconBtn("left", "Назад") { s.page(-1) }
+                        Text(s.title(), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        IconBtn("right", "Вперёд") { s.page(1) }
+                        IconBtn("today", "Сегодня") { s.goTo(Fmt.today()) }
                     } else Text("Задачи", Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.titleMedium)
                     Box {
                         IconBtn("dots", "Ещё") { menu = true }
@@ -203,7 +233,9 @@ fun CalendarHome() {
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("День", s.tab == "day", { s.tab = "day" })
+                    Chip("Неделя", s.tab == "week", { s.tab = "week" })
                     Chip("Месяц", s.tab == "month", { s.tab = "month" })
                     Chip("Повестка", s.tab == "agenda", { s.tab = "agenda" })
                     Chip("Задачи" + if (s.tasks.count { !it.done } > 0) " · ${s.tasks.count { !it.done }}" else "", s.tab == "tasks", { s.tab = "tasks"; s.loadTasks() })
@@ -215,6 +247,12 @@ fun CalendarHome() {
                     s.tab == "tasks" -> TasksView()
                     s.error != null && s.events.isEmpty() -> ErrorBox(s.error!!, { s.load() })
                     s.tab == "agenda" -> Agenda(s.day)
+                    s.tab == "day" || s.tab == "week" -> TimeGrid(
+                        if (s.tab == "day") listOf(s.day) else weekOf(s.day),
+                        onNew = { at -> Nav.push(EventEditScreen(null, at = at)) },
+                        onPage = { s.page(it) },
+                        onDay = { d -> s.goTo(d); s.tab = "day" },
+                    )
                     wide -> Row(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1.3f)) { MonthGrid(big = true) }
                         Box(Modifier.width(1.dp).fillMaxHeight().background(P.border))
@@ -343,12 +381,13 @@ class EventScreen(private val start: CalEvent) : Screen() {
     override fun Content() {
         var e by remember { mutableStateOf(start) }
         var confirm by remember { mutableStateOf(false) }
+        var askEdit by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
         LaunchedEffect(Unit) { runCatching { Session.api!!.event(start.calendar, start.id) }.onSuccess { full -> e = full.copy(start = if (start.recurrenceId != null) start.start else full.start, end = if (start.recurrenceId != null) start.end else full.end) } }
         Column(Modifier.fillMaxSize().background(P.surface)) {
             SubBar("Событие") {
                 if (!e.readonly) {
-                    IconBtn("edit", "Изменить") { Nav.push(EventEditScreen(e)) }
+                    IconBtn("edit", "Изменить") { if (e.rrule != null || e.recurrenceId != null) askEdit = true else Nav.push(EventEditScreen(e)) }
                     IconBtn("trash", "Удалить") { confirm = true }
                 }
             }
@@ -390,6 +429,12 @@ class EventScreen(private val start: CalEvent) : Screen() {
                 }
             }
         }
+        if (askEdit) AlertDialog(
+            onDismissRequest = { askEdit = false },
+            title = { Text("Изменить повторяющееся событие") },
+            confirmButton = { TextButton(onClick = { askEdit = false; Nav.push(EventEditScreen(e)) }) { Text("Всю серию") } },
+            dismissButton = { TextButton(onClick = { askEdit = false; Nav.push(EventEditScreen(e, onlyThis = true)) }) { Text("Только эту встречу") } },
+        )
         if (confirm) {
             if (e.rrule != null || e.recurrenceId != null) AlertDialog(
                 onDismissRequest = { confirm = false },
@@ -409,11 +454,20 @@ class EventScreen(private val start: CalEvent) : Screen() {
 
 private fun statusText(s: String) = when (s) { "ACCEPTED" -> "придёт"; "DECLINED" -> "не придёт"; "TENTATIVE" -> "возможно"; else -> "не ответил(а)" }
 fun alarmText(m: Int) = when { m == 0 -> "в момент начала"; m < 60 -> "$m мин"; m < 1440 -> "${m / 60} ч"; else -> "${m / 1440} ${Fmt.plural(m / 1440, "день", "дня", "дней")}" }
-private fun repeatText(r: RRule): String {
-    val base = when (r.freq) { "DAILY" -> "Каждый день"; "WEEKLY" -> "Каждую неделю"; "MONTHLY" -> "Каждый месяц"; "YEARLY" -> "Каждый год"; else -> "Повторяется" }
-    val every = if (r.interval > 1) " (раз в ${r.interval})" else ""
-    val until = r.until?.let { ", до $it" } ?: r.count?.let { ", $it раз" } ?: ""
-    return base + every + until
+fun repeatText(r: RRule): String {
+    val n = r.interval
+    val base = when (r.freq) {
+        "DAILY" -> if (n > 1) "Раз в $n ${Fmt.plural(n, "день", "дня", "дней")}" else "Каждый день"
+        "WEEKLY" -> if (n > 1) "Раз в $n ${Fmt.plural(n, "неделю", "недели", "недель")}" else "Каждую неделю"
+        "MONTHLY" -> if (n > 1) "Раз в $n ${Fmt.plural(n, "месяц", "месяца", "месяцев")}" else "Каждый месяц"
+        "YEARLY" -> if (n > 1) "Раз в $n ${Fmt.plural(n, "год", "года", "лет")}" else "Каждый год"
+        else -> "Повторяется"
+    }
+    val days = if (r.freq == "WEEKLY" && r.byday.isNotEmpty())
+        ": " + listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU").withIndex().filter { it.value in r.byday }.joinToString(", ") { Fmt.weekdaysShort[it.index] } else ""
+    val until = r.until?.let { d -> runCatching { ", до " + Fmt.dateShort(LocalDate.parse(d.take(10))) }.getOrDefault(", до $d") }
+        ?: r.count?.let { ", $it ${Fmt.plural(it, "раз", "раза", "раз")}" } ?: ""
+    return base + days + until
 }
 
 @Composable
@@ -434,7 +488,14 @@ private fun PersonLine(name: String, mail: String, note: String) {
 
 // ---------- правка события ----------
 
-class EventEditScreen(private val existing: CalEvent?, private val day: LocalDate? = null, private val prefill: EventInput? = null) : Screen() {
+class EventEditScreen(
+    private val existing: CalEvent?,
+    private val day: LocalDate? = null,
+    private val prefill: EventInput? = null,
+    private val at: LocalDateTime? = null,
+    /** Изменить одну встречу серии: её убирают из серии и создают отдельно (как веб-почта и почтовые программы). */
+    private val onlyThis: Boolean = false,
+) : Screen() {
     override val fullScreen: Boolean get() = true
 
     companion object {
@@ -456,10 +517,11 @@ class EventEditScreen(private val existing: CalEvent?, private val day: LocalDat
     @Composable
     override fun Content() {
         val tz = CalStore.tz
-        val initStart: LocalDateTime = existing?.let { Fmt.local(it.start) } ?: prefill?.let { LocalDateTime.parse(it.start.take(16)) }
+        val initStart: LocalDateTime = existing?.let { Fmt.local(it.start) } ?: prefill?.let { LocalDateTime.parse(it.start.take(16)) } ?: at
             ?: (day ?: Fmt.today()).atTime(LocalTime((Clock.System.now().toLocalDateTime(tz).hour + 1).coerceAtMost(22), 0))
         val initEnd: LocalDateTime = existing?.let { e -> Fmt.local(e.end)?.let { if (e.allDay) it.date.minus(DatePeriod(days = 1)).atTime(LocalTime(0, 0)) else it } }
-            ?: prefill?.end?.let { LocalDateTime.parse(it.take(16)) } ?: initStart.date.atTime(LocalTime((initStart.hour + 1).coerceAtMost(23), initStart.minute))
+            ?: prefill?.end?.let { LocalDateTime.parse(it.take(16)) }
+            ?: (initStart.toInstant(tz) + kotlin.time.Duration.parse("1h")).toLocalDateTime(tz)
         var title by remember { mutableStateOf(existing?.title ?: prefill?.title ?: "") }
         var allDay by remember { mutableStateOf(existing?.allDay ?: false) }
         var start by remember { mutableStateOf(initStart) }
@@ -467,7 +529,12 @@ class EventEditScreen(private val existing: CalEvent?, private val day: LocalDat
         var location by remember { mutableStateOf(existing?.location ?: "") }
         var description by remember { mutableStateOf(existing?.description ?: prefill?.description ?: "") }
         var calendar by remember { mutableStateOf(existing?.calendar ?: CalStore.calendars.firstOrNull { it.kind == "personal" }?.uri ?: CalStore.calendars.firstOrNull { !it.readonly }?.uri) }
-        var repeat by remember { mutableStateOf(existing?.rrule?.freq ?: "") }
+        val r0 = if (onlyThis) null else existing?.rrule
+        var repeat by remember { mutableStateOf(r0?.freq ?: "") }
+        var interval by remember { mutableStateOf(r0?.interval ?: 1) }
+        var until by remember { mutableStateOf(r0?.until?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }) }
+        var count by remember { mutableStateOf(r0?.count) }
+        val byday = remember { mutableStateListOf<String>().apply { addAll(r0?.byday ?: emptyList()) } }
         var alarm by remember { mutableStateOf(existing?.alarm ?: 15) }
         var busy by remember { mutableStateOf(!(existing?.transparent ?: false)) }
         val people = remember { mutableStateListOf<Person>().apply { addAll((existing?.attendees ?: prefill?.attendees ?: emptyList()).map { Person(it.name, it.mail) }) } }
@@ -476,22 +543,38 @@ class EventEditScreen(private val existing: CalEvent?, private val day: LocalDat
         val scope = rememberCoroutineScope()
         BackHandler(true) { Nav.pop() }
 
+        fun rule(): RRule? = if (repeat.isBlank()) null else RRule(
+            freq = repeat, interval = interval.coerceIn(1, 99), until = until?.toString(), count = if (until != null) null else count,
+            // Неделя без выбранных дней — день начала, как в веб-почте.
+            byday = if (repeat == "WEEKLY") byday.toList().ifEmpty { listOf(WD[start.date.dayOfWeek.ordinal]) } else emptyList(),
+        )
+
         fun save() {
             if (saving) return
+            if (!allDay && end <= start) { Toasts.show("Окончание раньше начала"); return }
+            if (allDay && end.date < start.date) { Toasts.show("Последний день раньше первого"); return }
             saving = true
             scope.launch {
                 try {
                     val fmt = { d: LocalDateTime -> if (allDay) d.date.toString() else d.toInstant(tz).toString() }
                     val oldAtt = existing?.attendees?.associateBy { it.mail.lowercase() } ?: emptyMap()
                     val input = EventInput(
-                        calendar = calendar, title = title, start = fmt(start), end = fmt(if (end < start) start else end), allDay = allDay,
+                        calendar = calendar, title = title, start = fmt(start), end = fmt(end), allDay = allDay,
                         location = location, description = description, url = existing?.url ?: "", status = existing?.status,
-                        transparent = !busy, rrule = if (repeat.isBlank()) null else (existing?.rrule?.takeIf { it.freq == repeat } ?: RRule(freq = repeat)),
+                        transparent = !busy, rrule = rule(),
                         attendees = people.map { p -> oldAtt[p.mail.lowercase()] ?: Attendee(mail = p.mail, name = p.name) },
                         alarm = alarm.takeIf { it >= 0 },
                     )
                     val api = Session.api!!
-                    if (existing == null) api.createEvent(input) else api.updateEvent(existing.calendar, existing.id, input)
+                    when {
+                        existing == null -> api.createEvent(input)
+                        onlyThis -> {
+                            // Отдельной встречи в серии сервер не хранит: убираем вхождение из серии и создаём вместо него своё.
+                            api.deleteEvent(existing.calendar, existing.id, existing.recurrenceId ?: existing.start)
+                            api.createEvent(input.copy(rrule = null))
+                        }
+                        else -> api.updateEvent(existing.calendar, existing.id, input)
+                    }
                     CalStore.load()
                     Nav.pop()
                     if (existing != null) Nav.pop()
@@ -500,23 +583,27 @@ class EventEditScreen(private val existing: CalEvent?, private val day: LocalDat
             }
         }
 
-        Column(Modifier.fillMaxSize().background(P.surface)) {
+        Column(Modifier.fillMaxSize().background(P.surface).imePadding()) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconBtn("x", "Закрыть") { Nav.pop() }
-                Text(if (existing == null) "Новое событие" else "Изменить событие", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                Text(if (existing == null) "Новое событие" else if (onlyThis) "Эта встреча" else "Изменить событие", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                 TextButton(onClick = { save() }, enabled = !saving && calendar != null, modifier = Modifier.testTag("event-save")) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
             }
             Divider()
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (onlyThis) Text("Меняется только эта встреча, остальные в серии останутся как были.", style = MaterialTheme.typography.bodySmall, color = P.muted)
                 OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth().testTag("event-title"), label = { Text("Название") }, singleLine = true)
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("Весь день", Modifier.weight(1f)); Switch(allDay, { allDay = it }) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Field("Начало", Fmt.dateShort(start.date) + if (allDay) "" else ", " + Fmt.time(start), Modifier.weight(1f)) { pick = "start" }
-                    Field("Конец", Fmt.dateShort(end.date) + if (allDay) "" else ", " + Fmt.time(end), Modifier.weight(1f)) { pick = "end" }
+                    Field(if (allDay) "Последний день" else "Конец", Fmt.dateShort(end.date) + if (allDay) "" else ", " + Fmt.time(end), Modifier.weight(1f)) { pick = "end" }
                 }
                 val writable = CalStore.calendars.filter { !it.readonly }
                 Field("Календарь", writable.firstOrNull { it.uri == calendar }?.name ?: "—") { if (existing == null) pick = "calendar" }
-                Field("Повтор", when (repeat) { "DAILY" -> "Каждый день"; "WEEKLY" -> "Каждую неделю"; "MONTHLY" -> "Каждый месяц"; "YEARLY" -> "Каждый год"; else -> "Не повторять" }) { pick = "repeat" }
+                if (!onlyThis) {
+                    Field("Повтор", if (repeat.isBlank()) "Не повторять" else repeatText(rule()!!)) { pick = "repeat" }
+                    if (repeat.isNotBlank()) RepeatDetails(repeat, interval, { interval = it }, byday, until, count, onUntil = { pick = "until" }, onCount = { count = it; until = null }, onNever = { until = null; count = null })
+                }
                 Field("Напоминание", if (alarm < 0) "Без напоминания" else "За " + alarmText(alarm)) { pick = "alarm" }
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("Время занято", Modifier.weight(1f)); Switch(busy, { busy = it }) }
                 OutlinedTextField(location, { location = it }, Modifier.fillMaxWidth(), label = { Text("Место") }, singleLine = true)
@@ -524,6 +611,7 @@ class EventEditScreen(private val existing: CalEvent?, private val day: LocalDat
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, P.border2, RoundedCornerShape(8.dp))) {
                     RecipientsField("Кто", people, onChange = {})
                 }
+                if (!allDay && people.isNotEmpty()) FreeBusy(people.map { it.mail }, start, end, own = existing != null)
                 OutlinedTextField(description, { description = it }, Modifier.fillMaxWidth(), label = { Text("Описание") }, minLines = 3)
                 Spacer(Modifier.height(40.dp))
             }
@@ -540,11 +628,122 @@ class EventEditScreen(private val existing: CalEvent?, private val day: LocalDat
                     } else end = v
                 }
             }
+            "until" -> DateTimePick((until ?: start.date.plus(DatePeriod(months = 1))).atTime(LocalTime(0, 0)), withTime = false, onDismiss = { pick = null }) { v -> until = v.date; count = null }
             "calendar" -> ChoiceDialog("Календарь", CalStore.calendars.filter { !it.readonly }, { it.name }, CalStore.calendars.firstOrNull { it.uri == calendar }, onDismiss = { pick = null }) { calendar = it.uri }
             "repeat" -> ChoiceDialog("Повтор", listOf("", "DAILY", "WEEKLY", "MONTHLY", "YEARLY"),
-                { when (it) { "DAILY" -> "Каждый день"; "WEEKLY" -> "Каждую неделю"; "MONTHLY" -> "Каждый месяц"; "YEARLY" -> "Каждый год"; else -> "Не повторять" } }, repeat, onDismiss = { pick = null }) { repeat = it }
+                { when (it) { "DAILY" -> "Каждый день"; "WEEKLY" -> "Каждую неделю"; "MONTHLY" -> "Каждый месяц"; "YEARLY" -> "Каждый год"; else -> "Не повторять" } }, repeat, onDismiss = { pick = null }) {
+                if (it != repeat) { interval = 1; byday.clear() }
+                repeat = it
+            }
             "alarm" -> ChoiceDialog("Напоминание", listOf(-1, 0, 5, 15, 30, 60, 120, 1440), { if (it < 0) "Без напоминания" else "За " + alarmText(it) }, alarm, onDismiss = { pick = null }) { alarm = it }
         }
+    }
+}
+
+/** Дни недели в правиле повтора (RFC 5545), с понедельника. */
+private val WD = listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")
+
+/** Подробности повтора: раз в сколько, по каким дням недели, когда закончить. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RepeatDetails(
+    freq: String, interval: Int, onInterval: (Int) -> Unit, byday: MutableList<String>,
+    until: LocalDate?, count: Int?, onUntil: () -> Unit, onCount: (Int) -> Unit, onNever: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Раз в", Modifier.weight(1f))
+            Stepper(interval, 1..99, onInterval)
+            Spacer(Modifier.width(8.dp))
+            Text(when (freq) {
+                "DAILY" -> Fmt.plural(interval, "день", "дня", "дней"); "WEEKLY" -> Fmt.plural(interval, "неделю", "недели", "недель")
+                "MONTHLY" -> Fmt.plural(interval, "месяц", "месяца", "месяцев"); else -> Fmt.plural(interval, "год", "года", "лет")
+            }, Modifier.width(72.dp))
+        }
+        if (freq == "WEEKLY") FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            WD.forEachIndexed { i, code ->
+                val on = code in byday
+                Box(Modifier.size(38.dp).clip(CircleShape).background(if (on) P.accent else P.surface).border(1.dp, if (on) P.accent else P.border2, CircleShape)
+                    .clickable { if (on) byday.remove(code) else byday.add(code) }, contentAlignment = Alignment.Center) {
+                    Text(Fmt.weekdaysShort[i], fontSize = 13.sp, color = if (on) P.accentOn else P.text)
+                }
+            }
+        }
+        Text("Окончание", style = MaterialTheme.typography.labelMedium, color = P.muted)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            Chip("Никогда", until == null && count == null, onNever)
+            Chip(until?.let { "До ${Fmt.dateShort(it)}" } ?: "До даты…", until != null, onUntil)
+            Chip(count?.let { "$it ${Fmt.plural(it, "раз", "раза", "раз")}" } ?: "Сколько раз…", count != null, { onCount(count ?: 10) })
+        }
+        if (count != null) Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Повторить", Modifier.weight(1f)); Stepper(count, 1..999, onCount); Spacer(Modifier.width(8.dp)); Text(Fmt.plural(count, "раз", "раза", "раз"), Modifier.width(72.dp))
+        }
+    }
+}
+
+@Composable
+private fun Stepper(v: Int, range: IntRange, onChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconBtn("minus", "Меньше") { if (v > range.first) onChange(v - 1) }
+        Text(v.toString(), Modifier.width(36.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium)
+        IconBtn("plus", "Больше") { if (v < range.last) onChange(v + 1) }
+    }
+}
+
+/**
+ * Занятость участников в день встречи — полоска с 7 до 21 часа на каждого и окно самой встречи,
+ * плюс предупреждение, кто в это время занят. Как в веб-почте; неизвестная занятость (внешний адрес) — не конфликт.
+ */
+@Composable
+private fun FreeBusy(mails: List<String>, start: LocalDateTime, end: LocalDateTime, own: Boolean) {
+    val tz = CalStore.tz
+    val me = Session.account?.user?.lowercase() ?: ""
+    var data by remember { mutableStateOf<Map<String, List<Pair<LocalDateTime, LocalDateTime>>?>>(emptyMap()) }
+    val key = mails.joinToString(",") + start.date
+    LaunchedEffect(key) {
+        kotlinx.coroutines.delay(300)
+        data = runCatching {
+            val day0 = start.date.atTime(LocalTime(0, 0)).toInstant(tz)
+            val raw = Session.api!!.freebusy(listOf(me) + mails, day0.toString(), (day0 + kotlin.time.Duration.parse("24h")).toString())
+            raw.jsonObject.mapValues { (_, v) ->
+                (v as? kotlinx.serialization.json.JsonArray)?.mapNotNull { b ->
+                    val o = b.jsonObject
+                    val s = Fmt.local(o["start"]?.jsonPrimitive?.content) ?: return@mapNotNull null
+                    val e = Fmt.local(o["end"]?.jsonPrimitive?.content) ?: return@mapNotNull null
+                    s to e
+                }
+            }.mapKeys { it.key.lowercase() }
+        }.getOrDefault(emptyMap())
+    }
+    if (data.isEmpty()) return
+    val from = 7 * 60; val to = 21 * 60
+    fun pos(t: LocalDateTime) = (if (t.date < start.date) 0 else if (t.date > start.date) 1440 else t.hour * 60 + t.minute).coerceIn(from, to)
+    val conflict = mails.filter { m ->
+        m.lowercase() != me && data[m.lowercase()]?.any { (s, e) -> s < end && e > start } == true
+    }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row { Spacer(Modifier.width(96.dp)); listOf(7, 11, 15, 19).forEach { h -> Text("$h:00", Modifier.weight(1f), fontSize = 10.sp, color = P.faint) } }
+        (listOf(me) + mails.map { it.lowercase() }).distinct().forEach { m ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (m == me) "Вы" else m.substringBefore('@'), Modifier.width(96.dp), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                BoxWithConstraints(Modifier.weight(1f).height(16.dp).clip(RoundedCornerShape(4.dp)).background(P.surface)) {
+                    val w = maxWidth
+                    val list = data[m]
+                    if (list == null) Text("нет сведений", fontSize = 10.sp, color = P.faint, modifier = Modifier.padding(start = 4.dp))
+                    list?.forEach { (s, e) ->
+                        val a = pos(s); val b = pos(e)
+                        if (b > a) Box(Modifier.offset(x = w * ((a - from) / (to - from).toFloat())).width(w * ((b - a) / (to - from).toFloat())).fillMaxHeight().background(P.muted.copy(alpha = .45f)))
+                    }
+                    val a = pos(start); val b = pos(end)
+                    if (b > a) Box(Modifier.offset(x = w * ((a - from) / (to - from).toFloat())).width(w * ((b - a) / (to - from).toFloat())).fillMaxHeight()
+                        .border(2.dp, if (conflict.isEmpty()) P.ok else P.no, RoundedCornerShape(3.dp)))
+                }
+            }
+        }
+        if (conflict.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+            Ico("warn", size = 16.dp, tint = P.no); Spacer(Modifier.width(6.dp))
+            Text("В это время заняты: " + conflict.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = P.no)
+        } else if (own) Text("Ваша занятость включает и это событие.", style = MaterialTheme.typography.bodySmall, color = P.faint)
     }
 }
 
@@ -591,7 +790,9 @@ fun DateTimePick(initial: LocalDateTime, withTime: Boolean, onDismiss: () -> Uni
 private fun TasksView() {
     val s = CalStore
     var showDone by remember { mutableStateOf(false) }
-    val open = s.tasks.filter { !it.done }.sortedWith(compareBy({ it.due == null }, { it.due ?: "" }, { -it.priority }))
+    // Важные выше обычных, «не срочно» — ниже (в iCalendar 1 — высшая важность, 9 — низшая, 0 — не задана).
+    val rank = { t: TaskItem -> when (t.priority) { in 1..4 -> 0; 0, 5 -> 1; else -> 2 } }
+    val open = s.tasks.filter { !it.done }.sortedWith(compareBy({ it.due == null }, { it.due ?: "" }, rank))
     val done = s.tasks.filter { it.done }
     if (s.tasks.isEmpty()) { Empty("check", "Задач нет", "Добавьте первую — кнопка внизу"); return }
     LazyColumn(Modifier.fillMaxSize()) {
@@ -622,6 +823,7 @@ private fun TaskRow(t: TaskItem) {
             if (due != null) Text((if (t.allDay) Fmt.dayTitle(due.date) else Fmt.full(t.due)), style = MaterialTheme.typography.bodySmall, color = if (overdue) P.no else P.muted)
         }
         if (t.priority in 1..4) Ico("flag", size = 16.dp, tint = P.no)
+        if (t.priority in 6..9) Text("не срочно", style = MaterialTheme.typography.labelSmall, color = P.faint)
         Box(Modifier.padding(start = 6.dp, end = 6.dp).size(8.dp).clip(CircleShape).background(hexColor(t.color)))
     }
     Divider()
@@ -635,7 +837,8 @@ class TaskEditScreen(private val existing: TaskItem?) : Screen() {
         var title by remember { mutableStateOf(existing?.title ?: "") }
         var description by remember { mutableStateOf(existing?.description ?: "") }
         var due by remember { mutableStateOf(existing?.due?.let { Fmt.local(it) }) }
-        var important by remember { mutableStateOf((existing?.priority ?: 0) in 1..4) }
+        // Важность как в веб-почте: 1 — высокая, 0 — обычная, 9 — не срочно (RFC 5545).
+        var priority by remember { mutableStateOf(when (existing?.priority ?: 0) { in 1..4 -> 1; in 6..9 -> 9; else -> 0 }) }
         var calendar by remember { mutableStateOf(existing?.calendar ?: CalStore.calendars.firstOrNull { it.kind == "personal" }?.uri) }
         var pick by remember { mutableStateOf<String?>(null) }
         var confirm by remember { mutableStateOf(false) }
@@ -649,7 +852,7 @@ class TaskEditScreen(private val existing: TaskItem?) : Screen() {
                 if (existing != null) IconBtn("trash", "Удалить") { confirm = true }
                 TextButton(enabled = title.isNotBlank(), onClick = {
                     scope.launchSafe {
-                        val input = TaskInput(calendar = calendar, title = title, description = description, due = due?.toInstant(tz)?.toString() ?: "", priority = if (important) 1 else 0)
+                        val input = TaskInput(calendar = calendar, title = title, description = description, due = due?.toInstant(tz)?.toString() ?: "", priority = priority)
                         val api = Session.api!!
                         if (existing == null) api.createTask(input) else api.updateTask(existing.calendar, existing.id, input)
                         CalStore.loadTasks(); Nav.pop()
@@ -661,7 +864,12 @@ class TaskEditScreen(private val existing: TaskItem?) : Screen() {
                 OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth().testTag("task-title"), label = { Text("Что сделать") })
                 Field("Срок", due?.let { Fmt.dateShort(it.date) + ", " + Fmt.time(it) } ?: "Без срока") { pick = "due" }
                 if (due != null) TextButton(onClick = { due = null }) { Text("Убрать срок") }
-                Row(verticalAlignment = Alignment.CenterVertically) { Text("Важная", Modifier.weight(1f)); Switch(important, { important = it }) }
+                Text("Важность", style = MaterialTheme.typography.labelMedium, color = P.muted)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("Высокая", priority == 1, { priority = 1 }, icon = "flag")
+                    Chip("Обычная", priority == 0, { priority = 0 })
+                    Chip("Не срочно", priority == 9, { priority = 9 })
+                }
                 if (existing == null && CalStore.calendars.count { !it.readonly } > 1)
                     Field("Список", CalStore.calendars.firstOrNull { it.uri == calendar }?.name ?: "—") { pick = "calendar" }
                 OutlinedTextField(description, { description = it }, Modifier.fillMaxWidth(), label = { Text("Заметка") }, minLines = 3)
@@ -724,6 +932,7 @@ private fun CalendarSettings(c: Calendar, onDismiss: () -> Unit) {
     var color by remember { mutableStateOf(c.color) }
     var shares by remember { mutableStateOf<List<su.innotec.mail.api.CalendarShare>?>(null) }
     var add by remember { mutableStateOf("") }
+    var level by remember { mutableStateOf("read") }
     var confirm by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val api = Session.api!!
@@ -750,9 +959,13 @@ private fun CalendarSettings(c: Calendar, onDismiss: () -> Unit) {
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(add, { add = it.trim() }, Modifier.weight(1f), label = { Text("Адрес коллеги") }, singleLine = true)
-                    IconBtn("plus", "Дать доступ на чтение") {
-                        if (add.contains('@')) scope.launchSafe { api.shareCalendar(c.uri, add, "read"); add = ""; shares = api.calendarShares(c.uri) }
+                    IconBtn("plus", "Дать доступ") {
+                        if (add.contains('@')) scope.launchSafe { api.shareCalendar(c.uri, add, level); add = ""; shares = api.calendarShares(c.uri) }
                     }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("Только смотрит", level == "read", { level = "read" })
+                    Chip("Может изменять", level == "write", { level = "write" })
                 }
                 if (c.kind == "own") TextButton(onClick = { confirm = true }) { Text("Удалить календарь", color = P.no) }
             }
