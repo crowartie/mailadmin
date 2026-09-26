@@ -65,6 +65,8 @@ enum class Section(val title: String, val icon: String) {
 abstract class Screen {
     /** Во весь экран даже на планшете (окно «Написать»). */
     open val fullScreen: Boolean get() = false
+    /** Такой же экран сверху заменяется, а не копится: «Назад» из письма ведёт в папку, а не по истории переходов. */
+    open val replacesSame: Boolean get() = false
     @Composable abstract fun Content()
 }
 
@@ -73,7 +75,10 @@ object Nav {
     var section by mutableStateOf(Section.MAIL)
     val stack = mutableStateListOf<Screen>()
 
-    fun push(s: Screen) { stack.add(s) }
+    fun push(s: Screen) {
+        val top = stack.lastOrNull()
+        if (s.replacesSame && top != null && top::class == s::class) stack[stack.lastIndex] = s else stack.add(s)
+    }
     fun pop(): Boolean = if (stack.isNotEmpty()) { stack.removeAt(stack.lastIndex); true } else false
     fun replace(s: Screen) { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex); stack.add(s) }
     fun go(section: Section) { stack.clear(); this.section = section }

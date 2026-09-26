@@ -61,6 +61,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -402,42 +406,113 @@ private fun openMessage(m: MessageSummary, wide: Boolean) {
     if (wide) MailStore.openUid = m.uid else Nav.push(MessageScreen(folder, m.uid))
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Какая строка сейчас «приоткрыта» жестом: открыта всегда одна, остальные закрываются. */
+private object SwipeOpen { var key by mutableStateOf<Long?>(null) }
+
+/**
+ * Жест по строке — как в почте iOS, Gmail и Outlook:
+ *  · тянешь — выезжает полоса действия;
+ *  · отпустил, не дотянув до середины, — полоса «залипает» открытой: её можно нажать или закрыть касанием;
+ *  · дотянул за 55 % ширины — лёгкая отдача, и при отпускании действие выполняется.
+ * Решение — по положению строки с поправкой на скорость (смещение + скорость × 0,18), как в UIKit:
+ * короткий быстрый бросок до конца не долетает и письмо не удаляет.
+ */
 @Composable
 private fun SwipeRow(m: MessageSummary, onMove: (List<Long>) -> Unit, onSnooze: (List<Long>) -> Unit, content: @Composable () -> Unit) {
     val prefs = Session.prefs
-    val state = rememberSwipeToDismissBoxState(confirmValueChange = { v ->
-        val op = when (v) {
-            SwipeToDismissBoxValue.StartToEnd -> prefs.swipeRight
-            SwipeToDismissBoxValue.EndToStart -> prefs.swipeLeft
-            else -> null
-        } ?: return@rememberSwipeToDismissBoxState false
+    val scope = rememberCoroutineScope()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val offset = remember(m.uid) { androidx.compose.animation.core.Animatable(0f) }
+    var width by remember { mutableStateOf(1f) }
+    var armed by remember { mutableStateOf(false) }
+    val reveal = with(density) { 96.dp.toPx() }
+    // Порог удаления — в «сантиметрах пальца», а не в долях экрана: 45 % строки, но не дальше 200 dp.
+    // На широком планшете 55 % строки означало тянуть через пол-экрана.
+    val commitPx = with(density) { 200.dp.toPx() }
+    fun commitLine() = minOf(width * 0.45f, commitPx)
+    val canRight = prefs.swipeRight != "none"
+    val canLeft = prefs.swipeLeft != "none"
+
+    // Другую строку открыли — эту закрываем.
+    LaunchedEffect(SwipeOpen.key) { if (SwipeOpen.key != m.uid && offset.value != 0f) offset.animateTo(0f) }
+
+    fun perform(op: String) {
         when (op) {
-            "read" -> { MailStore.act(if (m.seen) "unseen" else "seen", listOf(m.uid)); false }
-            "flag" -> { MailStore.act(if (m.flagged) "unflag" else "flag", listOf(m.uid)); false }
-            "move" -> { onMove(listOf(m.uid)); false }
-            "snooze" -> { onSnooze(listOf(m.uid)); false }
-            "none" -> false
-            else -> { MailStore.act(op, listOf(m.uid)); true }
+            "read" -> MailStore.act(if (m.seen) "unseen" else "seen", listOf(m.uid))
+            "flag" -> MailStore.act(if (m.flagged) "unflag" else "flag", listOf(m.uid))
+            "move" -> onMove(listOf(m.uid))
+            "snooze" -> onSnooze(listOf(m.uid))
+            "none" -> {}
+            else -> MailStore.act(op, listOf(m.uid))
         }
-    })
-    SwipeToDismissBox(
-        state = state,
-        enableDismissFromStartToEnd = prefs.swipeRight != "none",
-        enableDismissFromEndToStart = prefs.swipeLeft != "none",
-        backgroundContent = {
-            // Подложка — только пока смахивают: иначе она просвечивает сквозь выделенную строку.
-            if (state.dismissDirection == SwipeToDismissBoxValue.Settled) return@SwipeToDismissBox
-            val right = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+    }
+    // Действия, после которых письмо уходит из папки: строка уезжает целиком, иначе возвращается на место.
+    fun leaves(op: String) = op in setOf("delete", "archive", "spam")
+
+    fun commit(right: Boolean) {
+        val op = if (right) prefs.swipeRight else prefs.swipeLeft
+        scope.launch {
+            if (leaves(op)) offset.animateTo(if (right) width else -width, androidx.compose.animation.core.tween(160))
+            SwipeOpen.key = null
+            perform(op)
+            if (!leaves(op)) offset.animateTo(0f)
+        }
+    }
+
+    val drag = androidx.compose.foundation.gestures.rememberDraggableState { d ->
+        val min = if (canLeft) -width else 0f
+        val max = if (canRight) width else 0f
+        val v = (offset.value + d).coerceIn(min, max)
+        scope.launch { offset.snapTo(v) }
+        val now = kotlin.math.abs(v) >= commitLine()
+        if (now != armed) { armed = now; if (now) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) }
+    }
+
+    Box(Modifier.fillMaxWidth().onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }) {
+        val x = offset.value
+        if (x != 0f) {
+            val right = x > 0
             val op = if (right) prefs.swipeRight else prefs.swipeLeft
             val (icon, color, text) = swipeLook(op)
-            Row(
-                Modifier.fillMaxSize().background(color).padding(horizontal = 24.dp),
-                horizontalArrangement = if (right) Arrangement.Start else Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) { Ico(icon, tint = Color.White); Spacer(Modifier.width(8.dp)); Text(text, color = Color.White, fontWeight = FontWeight.SemiBold) }
-        },
-    ) { content() }
+            val far = kotlin.math.abs(x) >= commitLine()
+            // Открытая часть подложки — от края строки до её сдвинутого края; кнопка по центру этой части.
+            val revealDp = with(density) { kotlin.math.abs(x).toDp() }
+            Box(Modifier.matchParentSize().background(if (far) color else color.copy(alpha = .9f))) {
+                Column(
+                    Modifier.align(if (right) Alignment.CenterStart else Alignment.CenterEnd).width(revealDp).fillMaxHeight()
+                        .clickable { commit(right) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Ico(icon, tint = Color.White, size = if (far) 26.dp else 22.dp)
+                    Text(text, color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                }
+            }
+        }
+        Box(
+            Modifier.offset { androidx.compose.ui.unit.IntOffset(offset.value.roundToInt(), 0) }
+                .draggable(
+                    state = drag,
+                    orientation = androidx.compose.foundation.gestures.Orientation.Horizontal,
+                    onDragStarted = { SwipeOpen.key = m.uid },
+                    onDragStopped = { velocity ->
+                        val projected = offset.value + velocity * 0.18f
+                        armed = false
+                        when {
+                            kotlin.math.abs(offset.value) >= commitLine() || (kotlin.math.abs(projected) >= commitLine() * 1.5f && kotlin.math.abs(offset.value) >= commitLine() * 0.7f) ->
+                                commit(offset.value > 0)
+                            kotlin.math.abs(projected) >= reveal / 2 -> offset.animateTo(if (offset.value > 0) reveal else -reveal)
+                            else -> { offset.animateTo(0f); if (SwipeOpen.key == m.uid) SwipeOpen.key = null }
+                        }
+                    },
+                ),
+        ) {
+            content()
+            // Открытую полосу закрывает касание по самой строке (а не открывает письмо).
+            if (offset.value != 0f) Box(Modifier.matchParentSize().clickable { scope.launch { offset.animateTo(0f) }; SwipeOpen.key = null })
+        }
+    }
 }
 
 private fun swipeLook(op: String): Triple<String, Color, String> = when (op) {

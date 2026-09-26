@@ -93,6 +93,8 @@ import su.innotec.mail.ui.hexColor
 import su.innotec.mail.ui.launchSafe
 
 class MessageScreen(private val folder: String, private val uid: Long) : Screen() {
+    override val replacesSame: Boolean get() = true
+
     @Composable
     override fun Content() = MessageContent(folder, uid, inPane = false, onClose = { Nav.pop() })
 }
@@ -324,6 +326,7 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
             }
         }
         // Цепочка: /thread отдаёт остальные письма переписки, открытое добавляем сами по дате.
+        // Письмо из цепочки раскрывается здесь же (как в веб-почте), а не новым экраном со своей цепочкой.
         val t = thread
         if (t != null && t.messages.isNotEmpty()) {
             val self = su.innotec.mail.api.ThreadMessage(uid = uid, subject = m.subject, from = m.from, date = m.date, seen = true, folder = folder)
@@ -331,31 +334,66 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
             Text("В цепочке ${all.size} ${Fmt.plural(all.size, "письмо", "письма", "писем")}", Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp),
                 style = MaterialTheme.typography.labelLarge, color = P.muted)
             Column(Modifier.padding(horizontal = 12.dp).testTag("thread")) {
-                all.forEach { tm ->
-                    val current = tm.uid == uid && tm.folder == folder
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(10.dp)).background(if (current) P.accentSoft else P.surface2)
-                            .clickable(enabled = !current) { Nav.push(MessageScreen(tm.folder, tm.uid)) }.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Avatar(tm.from.display.ifBlank { "?" }, tm.from.mail, 32.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(tm.from.display + if (current) " · это письмо" else "", style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (tm.seen) FontWeight.Normal else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (!current) Text((tm.preview ?: tm.text ?: "").trim().take(160), style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(Fmt.listDate(tm.date), style = MaterialTheme.typography.bodySmall, color = P.faint)
-                            if (tm.folderName.isNotBlank() && tm.folder != folder) Text(tm.folderName, style = MaterialTheme.typography.labelSmall, color = P.faint)
-                        }
-                    }
-                }
+                all.forEach { tm -> ThreadItem(tm, current = tm.uid == uid && tm.folder == folder, openFolder = folder, dark = dark) }
             }
         }
         Spacer(Modifier.height(24.dp))
     }
 }
+
+/** Письмо цепочки: свёрнуто — строка, развёрнуто — шапка, текст, вложения, ответ. */
+@Composable
+private fun ThreadItem(tm: su.innotec.mail.api.ThreadMessage, current: Boolean, openFolder: String, dark: Boolean) {
+    var open by remember(tm.folder, tm.uid) { mutableStateOf(false) }
+    var full by remember(tm.folder, tm.uid) { mutableStateOf<Message?>(null) }
+    var error by remember(tm.folder, tm.uid) { mutableStateOf<String?>(null) }
+    LaunchedEffect(open) {
+        if (open && full == null) {
+            try { full = Session.api!!.message(tm.folder, tm.uid); MailStore.markOpened(tm.uid) } catch (e: ApiException) { error = e.message }
+        }
+    }
+    Column(Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(10.dp)).background(if (current) P.accentSoft else P.surface2)) {
+        Row(
+            Modifier.fillMaxWidth().clickable(enabled = !current) { open = !open }.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Avatar(tm.from.display.ifBlank { "?" }, tm.from.mail, 32.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(tm.from.display + if (current) " · это письмо" else "", style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (tm.seen || open) FontWeight.Normal else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (!current && !open) Text((tm.preview ?: tm.text ?: "").trim().take(160), style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(if (open) Fmt.full(tm.date) else Fmt.listDate(tm.date), style = MaterialTheme.typography.bodySmall, color = P.faint)
+                if (tm.folderName.isNotBlank() && tm.folder != openFolder) Text(tm.folderName, style = MaterialTheme.typography.labelSmall, color = P.faint)
+            }
+            if (!current) { Spacer(Modifier.width(6.dp)); Ico(if (open) "up" else "down", size = 16.dp, tint = P.faint) }
+        }
+        if (open) {
+            val f = full
+            when {
+                error != null -> Text(error!!, Modifier.padding(12.dp), color = P.no)
+                f == null -> Loading(Modifier.fillMaxWidth().height(80.dp))
+                else -> Column(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 10.dp)) {
+                    Text("кому: " + recipientsShort(f.to + f.cc), Modifier.padding(start = 4.dp, bottom = 6.dp), style = MaterialTheme.typography.bodySmall, color = P.muted)
+                    val html = remember(f.html, f.text) { unblockImagesIf(f.html?.takeIf { it.isNotBlank() } ?: textToHtml(f.text ?: "")) }
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))) {
+                        HtmlView(html, dark, Modifier.fillMaxWidth(), onLink = { url -> openLink(url) }, loadResource = { p -> Transfers.inlineResource(p) })
+                    }
+                    f.attachments.filter { !it.inline }.forEach { a -> AttachmentRow(a, tm.folder, tm.uid, null) }
+                    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ReplyButton("reply", "Ответить", Modifier.weight(1f), accent = true) { Nav.push(ComposeScreen(ComposeStart.Reply(tm.folder, tm.uid, all = false))) }
+                        ReplyButton("fwd", "Переслать", Modifier.weight(1f)) { Nav.push(ComposeScreen(ComposeStart.Forward(tm.folder, tm.uid))) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Внешние картинки в развёрнутом письме цепочки — по той же настройке, что и в открытом. */
+private fun unblockImagesIf(h: String) = if (MailStore.settings.showImages == "always") unblockImages(h) else h
 
 private fun recipientsShort(list: List<Person>): String {
     val me = Session.account?.user?.lowercase()
