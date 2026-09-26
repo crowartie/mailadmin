@@ -57,3 +57,12 @@ actual fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray? = runCatchin
     val bmp = if (k < 1f) Bitmap.createScaledBitmap(src, (src.width * k).toInt().coerceAtLeast(1), (src.height * k).toInt().coerceAtLeast(1), true) else src
     java.io.ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
 }.getOrNull()
+
+actual fun sha256Of(file: SavedFile): String? = runCatching {
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    java.io.File(file.location).inputStream().use { input ->
+        val buf = ByteArray(64 * 1024)
+        while (true) { val n = input.read(buf); if (n <= 0) break; md.update(buf, 0, n) }
+    }
+    md.digest().joinToString("") { "%02x".format(it) }
+}.getOrNull()

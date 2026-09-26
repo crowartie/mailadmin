@@ -251,3 +251,12 @@ actual fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray? = runCatchin
     surface.canvas.drawImageRect(img, org.jetbrains.skia.Rect.makeWH(w.toFloat(), h.toFloat()))
     surface.makeImageSnapshot().encodeToData(org.jetbrains.skia.EncodedImageFormat.JPEG, 85)!!.bytes
 }.getOrNull()
+
+actual fun sha256Of(file: SavedFile): String? = runCatching {
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    java.io.File(file.location).inputStream().use { input ->
+        val buf = ByteArray(64 * 1024)
+        while (true) { val n = input.read(buf); if (n <= 0) break; md.update(buf, 0, n) }
+    }
+    md.digest().joinToString("") { "%02x".format(it) }
+}.getOrNull()

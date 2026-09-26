@@ -60,6 +60,19 @@ data class Me(
     val hosts: Hosts? = null,
 )
 
+/** Выпуск приложения на сервере почты: /api/v1/app/latest. */
+@Serializable
+data class AppLatest(
+    val version: String = "",
+    val code: Int = 0,
+    val size: Long = 0,
+    val sha256: String = "",
+    val notes: String = "",
+    val date: String = "",
+    val url: String = "",
+    val page: String = "",
+)
+
 @Serializable
 data class Hosts(val imap: String = "", val imapPort: Int = 993, val smtp: String = "", val smtpPort: Int = 465, val dav: String = "", val mobileconfig: String = "")
 

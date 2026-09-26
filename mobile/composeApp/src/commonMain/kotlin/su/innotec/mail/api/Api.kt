@@ -194,6 +194,8 @@ class Api(
     suspend fun login(req: LoginRequest): LoginResponse = post("/login", json(req))
     suspend fun loginCode(req: LoginCodeRequest): LoginResponse = post("/login/code", json(req))
     suspend fun me(): Me = get("/me")
+    /** Текущий выпуск приложения на этом сервере (страница /app). */
+    suspend fun appLatest(): AppLatest = get("/app/latest")
     suspend fun composeMeta(): ComposeMeta = get("/compose-meta")
     suspend fun logout() = deleteOk("/session")
     suspend fun devices(): List<Device> = get("/devices")

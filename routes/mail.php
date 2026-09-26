@@ -47,6 +47,9 @@ Route::middleware('area:mail')->group(function () {
 
         return response("version: STSv1\nmode: {$s['mode']}\nmx: {$mx}\nmax_age: " . (int) ($s['max_age'] ?: 604800) . "\n", 200, ['Content-Type' => 'text/plain; charset=utf-8']);
     });
+    // Приложение для Android со своего сервера: страница, файл (без входа — ставят до того, как войти).
+    Route::get('/app', [\App\Http\Controllers\Mail\MobileAppController::class, 'page']);
+    Route::get('/app/pochta.apk', [\App\Http\Controllers\Mail\MobileAppController::class, 'download'])->middleware('throttle:30,1');
     Route::get('/mail/help', [\App\Http\Controllers\Mail\HelpController::class, 'index']);
     Route::get('/mail/setup', [\App\Http\Controllers\Mail\SetupController::class, 'index']);
     Route::get('/mail/server.crt', [\App\Http\Controllers\Mail\SetupController::class, 'certificate']);

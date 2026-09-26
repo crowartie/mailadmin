@@ -148,3 +148,6 @@ expect object DiskCache {
 
 /** Уменьшить картинку до [maxSide] точек и сжать в JPEG (фото контакта). null — платформа не умеет. */
 expect fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray?
+
+/** SHA-256 скачанного файла (сверка обновления с тем, что выложено на сервере). null — не удалось прочитать. */
+expect fun sha256Of(file: SavedFile): String?

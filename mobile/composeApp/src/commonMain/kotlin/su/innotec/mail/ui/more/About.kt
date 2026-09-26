@@ -1,5 +1,8 @@
 package su.innotec.mail.ui.more
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import su.innotec.mail.api.ApiException
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -16,26 +19,15 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.prepareGet
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.isSuccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
 import su.innotec.mail.AppInfo
 import su.innotec.mail.Screen
-import su.innotec.mail.api.ApiJson
 import su.innotec.mail.data.Session
 import su.innotec.mail.platform.FileStore
 import su.innotec.mail.platform.PlatformInfo
@@ -50,17 +42,12 @@ import su.innotec.mail.ui.login.compareVersions
 import su.innotec.mail.ui.mail.SubBar
 import kotlin.time.Clock
 
-@Serializable
-data class GhAsset(val name: String = "", val browser_download_url: String = "", val size: Long = 0)
-
-@Serializable
-data class GhRelease(val tag_name: String = "", val name: String = "", val body: String = "", val html_url: String = "", val draft: Boolean = false, val prerelease: Boolean = false, val assets: List<GhAsset> = emptyList())
-
-data class Release(val version: String, val notes: String, val page: String, val apk: GhAsset?)
+/** Выпуск приложения — на своём сервере почты (страница /app), без GitHub и магазинов. */
+data class Release(val version: String, val notes: String, val page: String, val url: String, val size: Long, val sha256: String)
 
 /**
- * Обновление приложения: выпуски лежат в GitHub Releases репозитория (метка mobile-vX.Y.Z, файл .apk).
- * Запрос идёт без токена почты — на GitHub уходит только обычное обращение к открытому API.
+ * Обновление приложения со своего сервера: /api/v1/app/latest говорит, какая версия выложена,
+ * файл качается с /app/pochta.apk, перед установкой сверяется SHA-256 — битый или подменённый файл не ставится.
  */
 object Updates {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -70,16 +57,12 @@ object Updates {
     var lastError by mutableStateOf<String?>(null); private set
 
     suspend fun latest(): Release? {
-        val http = Session.client(emptyMap())
-        val r = http.get("https://api.github.com/repos/${AppInfo.REPO}/releases?per_page=20") { header("Accept", "application/vnd.github+json") }
-        if (!r.status.isSuccess()) throw IllegalStateException("GitHub ответил ${r.status.value}")
-        val list = ApiJson.decodeFromString(ListSerializer(GhRelease.serializer()), r.bodyAsText())
-        val rel = list.filter { !it.draft && !it.prerelease && it.tag_name.startsWith("mobile-v") }
-            .maxWithOrNull { a, b -> compareVersions(a.tag_name.removePrefix("mobile-v"), b.tag_name.removePrefix("mobile-v")) } ?: return null
-        return Release(rel.tag_name.removePrefix("mobile-v"), rel.body, rel.html_url, rel.assets.firstOrNull { it.name.endsWith(".apk") })
+        val api = Session.api ?: return null
+        val r = try { api.appLatest() } catch (e: ApiException) { if (e.status == 404) return null else throw e }
+        return Release(r.version, r.notes, r.page, r.url, r.size, r.sha256)
     }
 
-    fun check(manual: Boolean) {
+    fun check(manual: Boolean, offer: Boolean = false) {
         if (checking) return
         checking = true; lastError = null
         scope.launch {
@@ -88,6 +71,8 @@ object Updates {
                 available = r?.takeIf { compareVersions(it.version, AppInfo.VERSION) > 0 }
                 Session.updatePrefs { it.copy(lastUpdateCheck = Clock.System.now().toEpochMilliseconds()) }
                 if (manual && available == null) Toasts.show("Установлена последняя версия")
+                // При запуске — предложить сразу, не заставляя идти в «О приложении».
+                available?.let { rel -> if (offer && Updater.canInstall) Toasts.action("Доступна «Почта» ${rel.version}", "Обновить", 12) { install(rel) } }
             } catch (e: Throwable) {
                 lastError = e.message
                 if (manual) Toasts.show("Не удалось проверить обновления: ${e.message}")
@@ -95,21 +80,26 @@ object Updates {
         }
     }
 
-    /** Раз в сутки при открытии «Ещё». */
-    fun checkQuietly() {
+    /** Раз в сутки: при запуске приложения (с предложением обновиться) и при открытии «Ещё». */
+    fun checkQuietly(offer: Boolean = false) {
         val day = 24 * 3600 * 1000L
-        if (Clock.System.now().toEpochMilliseconds() - Session.prefs.lastUpdateCheck > day) check(false)
+        if (Clock.System.now().toEpochMilliseconds() - Session.prefs.lastUpdateCheck > day) check(false, offer)
     }
 
     fun install(r: Release) {
-        val apk = r.apk
-        if (!Updater.canInstall || apk == null) { Sys.openUrl(r.page); return }
+        if (!Updater.canInstall) { Sys.openUrl(r.page); return }
+        if (progress != null) return
         progress = 0f
         scope.launch {
             try {
-                val saved = Session.client(emptyMap()).prepareGet(apk.browser_download_url).execute { resp ->
-                    if (!resp.status.isSuccess()) throw IllegalStateException("GitHub ответил ${resp.status.value}")
-                    FileStore.save(apk.name, "application/vnd.android.package-archive", resp.bodyAsChannel(), apk.size, { n -> progress = if (apk.size > 0) n.toFloat() / apk.size else null }, forOpen = true)
+                val saved = Session.api!!.download(r.url) { len, _, _, ch ->
+                    val total = len ?: r.size
+                    FileStore.save("Pochta-${r.version}.apk", "application/vnd.android.package-archive", ch, total, { n -> progress = if (total > 0) n.toFloat() / total else null }, forOpen = true)
+                }
+                // Скачалось не то (оборвалось, подменили по дороге) — не ставим.
+                if (r.sha256.isNotBlank()) {
+                    val got = su.innotec.mail.platform.sha256Of(saved)
+                    if (got != null && !got.equals(r.sha256, true)) { Toasts.show("Файл обновления повреждён — попробуйте ещё раз"); return@launch }
                 }
                 if (!Updater.install(saved)) Toasts.show("Разрешите установку из этого приложения и нажмите «Обновить» ещё раз")
             } catch (e: Throwable) {
@@ -133,14 +123,20 @@ class AboutScreen : Screen() {
                     Spacer(Modifier.height(12.dp))
                     val r = Updates.available
                     when {
-                        Updates.progress != null -> LinearProgressIndicator(progress = { Updates.progress ?: 0f }, modifier = Modifier.fillMaxWidth())
+                        Updates.progress != null -> Column {
+                            Text("Скачивается обновление ${Updates.available?.version ?: ""}… ${((Updates.progress ?: 0f) * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium)
+                            LinearProgressIndicator(progress = { Updates.progress ?: 0f }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                        }
                         r != null -> {
                             Text("Доступна версия ${r.version}", style = MaterialTheme.typography.titleSmall, color = P.accentInk)
                             if (r.notes.isNotBlank()) Text(r.notes.take(1500), style = MaterialTheme.typography.bodySmall, color = P.muted, modifier = Modifier.padding(vertical = 6.dp))
-                            Button(onClick = { Updates.install(r) }) { Text(if (Updater.canInstall) "Обновить" else "Открыть страницу выпуска") }
+                            Button(onClick = { Updates.install(r) }) { Text(if (Updater.canInstall) "Обновить" else "Открыть страницу загрузки") }
                         }
                         else -> OutlinedButton(onClick = { Updates.check(true) }, enabled = !Updates.checking) { Text(if (Updates.checking) "Проверяю…" else "Проверить обновления") }
                     }
+                }
+                acc?.let { a ->
+                    ListRow("Страница приложения", a.origin.substringAfter("://") + "/app — скачать, показать коллегам", icon = "download") { Sys.openUrl(a.origin + "/app") }
                 }
                 SectionTitle("Сервер")
                 Column(Modifier.background(P.surface)) {

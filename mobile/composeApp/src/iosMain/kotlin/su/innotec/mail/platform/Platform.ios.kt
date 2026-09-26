@@ -195,3 +195,6 @@ actual object DiskCache {
 
 /** На iPhone — с первой сборкой на Mac (UIImage); пока фото контакта меняется в веб-почте. */
 actual fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray? = null
+
+/** На iPhone обновления идут через App Store / TestFlight — сверка файла не нужна. */
+actual fun sha256Of(file: SavedFile): String? = null

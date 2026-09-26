@@ -114,6 +114,7 @@ fun App() {
                     Notifier.ensurePermission()
                     Notifier.schedule(Session.prefs.notify)
                     Notifier.fast(Session.prefs.fastNotify)
+                    su.innotec.mail.ui.more.Updates.checkQuietly(offer = true)
                     // Имя и адрес — с сервера, если вход сохранён без них (и заодно проверка, что токен жив).
                     runCatching { Session.api!!.me() }.onSuccess { me ->
                         if (me.user != acc.user || me.name != acc.name) Session.signIn(acc.copy(user = me.user, name = me.name))

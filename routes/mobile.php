@@ -13,6 +13,8 @@ Route::middleware('area:mail')->group(function () {
 
     Route::prefix('/api/v1')->group(function () {
         Route::post('login', [MobileController::class, 'login'])->middleware('throttle:20,1');
+        // Есть ли новая версия приложения — спрашивают и до входа (на экране входа), поэтому без токена.
+        Route::get('app/latest', [\App\Http\Controllers\Mail\MobileAppController::class, 'latest'])->middleware('throttle:60,1');
         Route::post('login/code', [MobileController::class, 'code'])->middleware('throttle:20,1');
 
         Route::middleware(['mobile.token', 'mail.activity'])->group(function () {
