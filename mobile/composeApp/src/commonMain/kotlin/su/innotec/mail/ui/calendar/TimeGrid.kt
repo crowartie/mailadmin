@@ -1,5 +1,14 @@
 package su.innotec.mail.ui.calendar
 
+import su.innotec.mail.ui.launchSafe
+import su.innotec.mail.ui.Toasts
+import su.innotec.mail.data.Session
+import su.innotec.mail.api.EventInput
+import kotlin.math.roundToInt
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -184,11 +193,13 @@ fun TimeGrid(days: List<LocalDate>, onNew: (LocalDateTime) -> Unit, onPage: (Int
                     val colW = maxWidth
                     for (h in 1 until 24) Box(Modifier.offset(y = HOUR * h).fillMaxWidth().height(1.dp).background(P.border.copy(alpha = .6f)))
                     Box(Modifier.fillMaxHeight().width(1.dp).background(P.border.copy(alpha = .6f)))
+                    val colPx = constraints.maxWidth.toFloat()
                     layoutDay(d, events).forEach { p ->
                         val top = HOUR * (p.from / 60f)
                         val height = HOUR * ((p.to - p.from) / 60f)
                         val w = colW / p.cols
-                        EventBlock(p.e, Modifier.offset(x = w * p.col, y = top).width(w).height(height).padding(1.dp), compact = days.size > 1)
+                        EventBlock(p.e, Modifier.offset(x = w * p.col, y = top).width(w).height(height).padding(1.dp), compact = days.size > 1,
+                            hourPx = hourPx, colPx = if (days.size > 1) colPx else 0f, onMoved = { minutes, daysShift -> moveEvent(p.e, minutes, daysShift) })
                     }
                     if (d == today) {
                         val y = HOUR * ((now.hour * 60 + now.minute) / 60f)
@@ -201,14 +212,61 @@ fun TimeGrid(days: List<LocalDate>, onNew: (LocalDateTime) -> Unit, onPage: (Int
     }
 }
 
+/**
+ * Перенос события пальцем, как в веб-почте (useEventDrag): долгое нажатие и тянуть — время с шагом 15 минут,
+ * в «Неделе» и на другой день. Повторяющиеся и чужие (только чтение) — не переносятся, об этом говорим.
+ */
+private fun moveEvent(e: CalEvent, minutes: Int, daysShift: Int) {
+    if (e.readonly) { Toasts.show("Календарь «${e.calendarName}» только для чтения"); return }
+    if (e.rrule != null || e.recurrenceId != null) { Toasts.show("У повторяющегося события время меняется в правке — откройте его"); return }
+    val tz = CalStore.tz
+    val shift = kotlin.time.Duration.parse("${minutes + daysShift * 1440}m")
+    val s = Fmt.parse(e.start) ?: return
+    val en = Fmt.parse(e.end) ?: s
+    val ns = (s + shift).toString(); val ne = (en + shift).toString()
+    // Новое время — сразу, иначе событие прыгнет на старое место и обратно, пока сервер отвечает.
+    CalStore.events = CalStore.events.map { if (it.id == e.id && it.calendar == e.calendar) it.copy(start = ns, end = ne) else it }
+    moveScope.launchSafe {
+        Session.api!!.updateEvent(e.calendar, e.id, EventInput(
+            calendar = e.calendar, title = e.title, start = ns, end = ne, allDay = false, location = e.location, description = e.description,
+            url = e.url, status = e.status, transparent = e.transparent, attendees = e.attendees, alarm = e.alarm,
+        ))
+        val at = (s + shift).toLocalDateTime(tz)
+        Toasts.show((if (e.attendees.isNotEmpty()) "Время изменено, участники извещены" else "Перенесено") + ": " + Fmt.dateShort(at.date) + ", " + Fmt.time(at))
+        CalStore.load()
+    }
+}
+
+private val moveScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+
 @Composable
-private fun EventBlock(e: CalEvent, modifier: Modifier, compact: Boolean) {
+private fun EventBlock(e: CalEvent, modifier: Modifier, compact: Boolean, hourPx: Float, colPx: Float, onMoved: (Int, Int) -> Unit) {
     val c = hexColor(e.color)
     val declined = myStatus(e) == "DECLINED"
+    var drag by remember { mutableStateOf(Offset.Zero) }
+    var dragging by remember { mutableStateOf(false) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    fun minutes() = (drag.y / hourPx * 4).roundToInt() * 15
+    fun daysShift() = if (colPx > 0f) (drag.x / colPx).roundToInt() else 0
     Box(
-        modifier.clip(RoundedCornerShape(6.dp)).background(if (e.transparent || declined) c.copy(alpha = .10f) else c.copy(alpha = .22f))
+        modifier.zIndex(if (dragging) 2f else 0f)
+            .graphicsLayer { translationX = if (colPx > 0f) drag.x else 0f; translationY = drag.y; if (dragging) { shadowElevation = 12f; scaleX = 1.03f; scaleY = 1.03f } }
+            .clip(RoundedCornerShape(6.dp)).background(if (dragging) c.copy(alpha = .45f) else if (e.transparent || declined) c.copy(alpha = .10f) else c.copy(alpha = .22f))
+            .pointerInput(e.id, e.start) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { dragging = true; haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) },
+                    onDrag = { ch, d -> ch.consume(); drag += d },
+                    onDragEnd = { val m = minutes(); val dd = daysShift(); dragging = false; drag = Offset.Zero; if (m != 0 || dd != 0) onMoved(m, dd) },
+                    onDragCancel = { dragging = false; drag = Offset.Zero },
+                )
+            }
             .clickable { Nav.push(EventScreen(e)) },
     ) {
+        if (dragging) Fmt.parse(e.start)?.let { st ->
+            val at = (st + kotlin.time.Duration.parse("${minutes() + daysShift() * 1440}m")).toLocalDateTime(CalStore.tz)
+            Text((if (daysShift() != 0) Fmt.weekdaysShort[at.date.dayOfWeek.ordinal] + " " else "") + Fmt.time(at), Modifier.align(Alignment.BottomEnd).padding(3.dp)
+                .clip(RoundedCornerShape(4.dp)).background(P.surface).padding(horizontal = 4.dp), fontSize = 11.sp, color = P.text, fontWeight = FontWeight.SemiBold)
+        }
         Box(Modifier.width(3.dp).fillMaxHeight().background(c))
         Column(Modifier.padding(start = 6.dp, end = 3.dp, top = 2.dp)) {
             Text(e.title.ifBlank { "(без названия)" }, fontSize = if (compact) 11.sp else 13.sp, fontWeight = FontWeight.Medium, color = P.text,
