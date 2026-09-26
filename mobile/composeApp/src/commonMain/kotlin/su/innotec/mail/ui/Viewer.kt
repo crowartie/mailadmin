@@ -112,15 +112,16 @@ class ViewerScreen(private val items: List<ViewItem>, private val start: Int) : 
     }
 }
 
-private suspend fun bytesOf(path: String): ByteArray {
+private suspend fun bytesOf(path: String, progress: (Long, Long?) -> Unit = { _, _ -> }): ByteArray {
     val api = Session.api ?: throw IllegalStateException("нет входа")
-    return api.download(path) { _, _, _, ch ->
+    return api.download(path) { len, _, _, ch ->
         val out = kotlinx.io.Buffer()
         val buf = ByteArray(64 * 1024)
+        var got = 0L
         while (true) {
             val r = ch.readAvailable(buf, 0, buf.size)
             if (r == -1) break
-            if (r > 0) out.write(buf, 0, r)
+            if (r > 0) { out.write(buf, 0, r); got += r; progress(got, len) }
             if (r == 0 && ch.isClosedForRead) break
         }
         out.readByteArray()
@@ -136,13 +137,15 @@ private sealed class Loaded {
 
 @Composable
 private fun ViewPage(item: ViewItem, onZoom: (Boolean) -> Unit) {
+    // Сколько скачано: крупный файл грузится заметное время, и одна крутилка выглядела как зависание.
+    var got by remember(item.path) { mutableStateOf(0L to (null as Long?)) }
     val state by produceState<Loaded>(Loaded.Wait, item.path) {
         value = try {
             withContext(Dispatchers.Default) {
                 when (item.kind) {
-                    "image" -> decodeImage(bytesOf(item.path))?.let { Loaded.Img(it) } ?: Loaded.Fail("Картинку не удалось показать")
+                    "image" -> decodeImage(bytesOf(item.path) { a, b -> got = a to b })?.let { Loaded.Img(it) } ?: Loaded.Fail("Картинку не удалось показать")
                     else -> {
-                        val b = bytesOf(if (item.kind == "office") item.preview ?: item.path else item.path)
+                        val b = bytesOf(if (item.kind == "office") item.preview ?: item.path else item.path) { a, t -> got = a to t }
                         openPdf(b)?.let { Loaded.Pdf(it) } ?: Loaded.Fail("Здесь документ не показать")
                     }
                 }
@@ -156,7 +159,18 @@ private fun ViewPage(item: ViewItem, onZoom: (Boolean) -> Unit) {
     val doc = (state as? Loaded.Pdf)?.doc
     DisposableEffect(doc) { onDispose { doc?.close() } }
     when (val s = state) {
-        Loaded.Wait -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) }
+        Loaded.Wait -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
+            val (a, t) = got
+            if (t != null && t > 0) CircularProgressIndicator(progress = { (a.toFloat() / t).coerceIn(0f, 1f) }, color = Color.White, trackColor = Color.White.copy(alpha = .2f))
+            else CircularProgressIndicator(color = Color.White)
+            Spacer(Modifier.height(12.dp))
+            Text(when {
+                a == 0L && item.kind == "office" -> "Сервер готовит просмотр документа…"
+                a == 0L -> "Загрузка…"
+                t != null && t > 0 -> "${Fmt.size(a)} из ${Fmt.size(t)}"
+                else -> Fmt.size(a)
+            }, color = Color.White.copy(alpha = .8f))
+        }
         is Loaded.Fail -> Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
             Text(s.text, color = Color.White.copy(alpha = .8f))
             Spacer(Modifier.height(16.dp))

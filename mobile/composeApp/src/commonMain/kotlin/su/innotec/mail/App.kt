@@ -1,5 +1,7 @@
 package su.innotec.mail
 
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.zIndex
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -147,6 +149,8 @@ private fun Main() {
                     if (kind != WindowKind.PHONE && top?.fullScreen != true) Rail()
                     // Вложенным экранам и планшету (нет нижней панели) — отступ под системную полоску жестов.
                     Box(Modifier.weight(1f).fillMaxHeight().then(if (top != null || kind != WindowKind.PHONE) Modifier.navigationBarsPadding() else Modifier)) {
+                        // Ход отправки тяжёлого письма — поверх любого экрана, над кнопкой «Написать».
+                        su.innotec.mail.ui.mail.SendProgressBar(Modifier.align(Alignment.BottomCenter).padding(bottom = 88.dp).zIndex(5f))
                         AnimatedContent(targetState = top ?: Nav.section, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "nav") { s ->
                             when (s) {
                                 is Screen -> s.Content()

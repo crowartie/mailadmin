@@ -329,8 +329,10 @@ class ComposeModel(val start: ComposeStart) {
         val api = Session.api ?: return false
         if (saving) return false
         saving = true
+        val heavy = files.isNotEmpty()
+        SendProgress.start(subject, isDraft = true, heavy = heavy && !quiet || heavy && files.sumOf { it.size } > 2 * 1048576)
         try {
-            val r = api.saveDraft(form(forDraft = true))
+            val r = api.saveDraft(form(forDraft = true)) { a, b -> SendProgress.upload(a, b) }
             val uid = r.draftUid ?: return false
             draftUid = uid
             sourceFolder = r.folder ?: MailStore.folders.firstOrNull { it.role == "drafts" }?.path
@@ -349,11 +351,19 @@ class ComposeModel(val start: ComposeStart) {
             return false
         } finally {
             saving = false
+            SendProgress.done()
         }
     }
 
+    /**
+     * Вложение исходного письма крупнее порога облака сервер при отправке сам кладёт в облако и шлёт ссылкой
+     * (MailBuilder::keptAttachments) — как в веб-почте (keptCloud). В размер письма оно не входит.
+     */
+    fun keptViaCloud(a: Attachment): Boolean = meta.cloud.enabled && a.size >= meta.cloud.thresholdMb.toLong() * 1024 * 1024
+
     /** Сколько места займут вложения внутри письма (без ушедших ссылкой). */
-    fun inMailSize(): Long = files.withIndex().filter { it.index !in viaCloud }.sumOf { it.value.size } + existing.filter { it.index in keep }.sumOf { it.size }
+    fun inMailSize(): Long = files.withIndex().filter { it.index !in viaCloud }.sumOf { it.value.size } +
+        existing.filter { it.index in keep && !keptViaCloud(it) }.sumOf { it.size }
 
     fun problems(): String? {
         if (to.isEmpty() && cc.isEmpty() && bcc.isEmpty()) return "Укажите, кому отправить письмо"
@@ -383,8 +393,10 @@ fun sendWithUndo(m: ComposeModel) {
     val seconds = MailStore.settings.undoSeconds
     fun doSend() {
         sendScope.launch {
+            // Письмо с файлами или с крупными вложениями исходного — показать ход отправки (иначе молчание на минуты).
+            SendProgress.start(m.subject, isDraft = false, heavy = m.files.isNotEmpty() || m.existing.any { it.index in m.keep && m.keptViaCloud(it) })
             try {
-                val r = Session.api!!.send(m.form(forDraft = false))
+                val r = Session.api!!.send(m.form(forDraft = false)) { a, b -> SendProgress.upload(a, b) }
                 if (r.scheduled != null) Toasts.show("Письмо уйдёт ${Fmt.full(r.sendAt)}") else Toasts.show("Письмо отправлено")
                 m.answeredUid?.let { u -> MailStore.updateLocal(listOf(u)) { it.copy(answered = true) } }
                 MailStore.refreshFolders()
@@ -393,6 +405,8 @@ fun sendWithUndo(m: ComposeModel) {
             } catch (e: ApiException) {
                 Toasts.error(e)
                 Nav.push(ComposeScreen(m.start, m))
+            } finally {
+                SendProgress.done()
             }
         }
     }
@@ -416,7 +430,10 @@ private fun ComposeView(m: ComposeModel) {
     var viewport by remember { mutableStateOf(0) }         // px видимой части
     val pickFiles = rememberFilePicker(multiple = true) { list ->
         val threshold = m.meta.cloud.thresholdMb.toLong() * 1024 * 1024
-        list.forEach { f ->
+        // Больше предела облака файл не уйдёт даже ссылкой — говорим сразу, а не при отправке (как в веб-почте).
+        val cap = (if (m.meta.cloud.enabled) m.meta.cloud.maxMb else m.meta.limits.messageMb).toLong() * 1024 * 1024
+        list.filter { it.size > cap }.forEach { Toasts.show("«${it.name}» больше ${cap / 1048576} МБ — такой файл не отправить, даже ссылкой") }
+        list.filter { it.size <= cap }.forEach { f ->
             m.files.add(f)
             if (m.meta.cloud.enabled && f.size >= threshold) m.viaCloud.add(m.files.lastIndex)
         }
@@ -745,8 +762,12 @@ private fun Attachments(m: ComposeModel) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).clickable { if (on) m.keep.remove(a.index) else m.keep.add(a.index); m.dirty = true }
                 .padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(on, { v -> if (v) m.keep.add(a.index) else m.keep.remove(a.index); m.dirty = true })
-                Ico(fileIcon(a.name, a.type), size = 16.dp, tint = P.muted); Spacer(Modifier.width(8.dp))
-                Text(a.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                val cloud = m.keptViaCloud(a)
+                Ico(if (cloud) "cloud" else fileIcon(a.name, a.type), size = 16.dp, tint = if (cloud) P.accentInk else P.muted); Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                    if (cloud && on) Text("крупнее ${m.meta.cloud.thresholdMb} МБ — уйдёт ссылкой на облако", style = MaterialTheme.typography.bodySmall, color = P.accentInk)
+                }
                 Text(Fmt.size(a.size), style = MaterialTheme.typography.bodySmall, color = P.faint, modifier = Modifier.padding(end = 8.dp))
             }
         }

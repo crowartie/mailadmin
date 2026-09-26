@@ -1,5 +1,6 @@
 package su.innotec.mail.api
 
+import io.ktor.client.plugins.onUpload
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.timeout
@@ -282,8 +283,11 @@ class Api(
         }
     })
 
-    suspend fun send(f: ComposeForm): SendResult = raw(HttpMethod.Post, "/send", composeBody(f), timeoutMs = 1_800_000).body()
-    suspend fun saveDraft(f: ComposeForm): SendResult = raw(HttpMethod.Post, "/draft", composeBody(f), timeoutMs = 1_800_000).body()
+    /** [progress] — сколько байт письма ушло на сервер и сколько всего (для плашки «Отправляется…»). */
+    suspend fun send(f: ComposeForm, progress: ((Long, Long?) -> Unit)? = null): SendResult =
+        raw(HttpMethod.Post, "/send", composeBody(f), timeoutMs = 1_800_000) { progress?.let { p -> onUpload { sent, total -> p(sent, total) } } }.body()
+    suspend fun saveDraft(f: ComposeForm, progress: ((Long, Long?) -> Unit)? = null): SendResult =
+        raw(HttpMethod.Post, "/draft", composeBody(f), timeoutMs = 1_800_000) { progress?.let { p -> onUpload { sent, total -> p(sent, total) } } }.body()
     suspend fun openDraft(uid: Long): Draft = get("/draft/$uid")
     suspend fun outbox(): List<OutboxItem> = get("/outbox")
     suspend fun cancelOutbox(id: Long) = deleteOk("/outbox/$id")
