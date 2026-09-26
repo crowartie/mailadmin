@@ -541,7 +541,7 @@ private fun ComposeView(m: ComposeModel) {
             }
         }
         if (rerouted > 0) Toasts.show("Вместе файлы не помещаются в письмо (предел ${m.meta.limits.messageMb} МБ) — $rerouted " +
-            (if (rerouted == 1) "файл уйдёт" else "файла уйдут") + " ссылкой")
+            (when { rerouted % 10 == 1 && rerouted % 100 != 11 -> "файл уйдёт"; rerouted % 10 in 2..4 && rerouted % 100 !in 12..14 -> "файла уйдут"; else -> "файлов уйдут" }) + " ссылкой")
         m.dirty = true
         // Загрузка — сразу и не в окне: закроют окно — файл всё равно догрузится в черновик.
         if (toDraft) sendScope.launch { m.saveDraft() }

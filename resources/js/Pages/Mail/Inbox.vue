@@ -38,6 +38,9 @@ const props = defineProps({
     list: Object,
     outbox: { type: Number, default: 0 },
     cloud: { type: Object, default: () => ({ enabled: false, thresholdMb: 10, maxMb: 50 }) },
+    // Предел письма почтового сервера и число файлов (InboxController). Раньше страница его не принимала,
+    // и окно письма жило с запасными 25 МБ вместо настоящих 40 — лишние файлы уходили ссылкой зря.
+    limits: { type: Object, default: () => ({ messageMb: 25, maxFiles: 20 }) },
     quarantine: { type: Number, default: 0 },
     // Занятое место в ящике: индикатор внизу панели папок (справка обещала его с самого начала).
     quota: { type: Object, default: null },
@@ -882,6 +885,7 @@ onBeforeUnmount(() => {
                         :identities="identities"
                         :settings="settings"
                         :cloud="cloud"
+                        :limits="limits"
                         @close="(o) => onComposeClose(o, t)"
                         @send="(p) => send(p, t)"
                         @toast="showToast"

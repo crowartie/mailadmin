@@ -10,7 +10,7 @@ import Popover from './Popover.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
 import { viewable, viewerItems, localViewable, localViewerItems } from '../../mail/attachments';
 import { api, composeForm, xsrf } from '../../mail/api';
-import { addrString, presets, size, toLocalInput, when } from '../../mail/format';
+import { addrString, plural, presets, size, toLocalInput, when } from '../../mail/format';
 import { ask as confirmAsk } from '../../confirm';
 
 const props = defineProps({
@@ -427,7 +427,7 @@ function addFiles(list) {
         else room -= encoded(f.size);
     }
     if (rerouted) {
-        emit('toast', { text: `Вместе файлы не помещаются в письмо (предел ${Math.round(MAX_MESSAGE / 1048576)} МБ) — ${rerouted} ${rerouted === 1 ? 'файл уйдёт' : 'файла уйдут'} ссылкой, получатель скачает по ссылке из письма` }, 7000);
+        emit('toast', { text: `Вместе файлы не помещаются в письмо (предел ${Math.round(MAX_MESSAGE / 1048576)} МБ) — ${rerouted} ${plural(rerouted, 'файл уйдёт', 'файла уйдут', 'файлов уйдут')} ссылкой, получатель скачает по ссылке из письма` }, 7000);
     }
     dirty.value = true;
 }
