@@ -314,7 +314,8 @@ object MailStore {
         val srcs = groups.keys.map { f -> folders.firstOrNull { it.path == f } }
         val targetFolder = target?.let { t -> folders.firstOrNull { it.path == t } }
         val askKind = when {
-            srcs.any { it?.role == "shared" || it?.owner != null } -> null
+            // owner — строка, не null: сравнение с null было всегда истинным, и вопрос о правиле не задавался никогда.
+            srcs.any { it?.role == "shared" || it?.isShared == true } -> null
             op == "spam" -> "spam"
             op == "lists" -> "lists"
             op == "notspam" -> "ham"

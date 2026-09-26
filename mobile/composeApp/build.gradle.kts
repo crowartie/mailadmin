@@ -11,8 +11,8 @@ plugins {
 }
 
 // Версия приложения — одна на все платформы. Сервер сравнивает её с minApp (/.well-known/mailadmin).
-val appVersion = "1.2.7"
-val appVersionCode = 12
+val appVersion = "1.2.8"
+val appVersionCode = 13
 
 // AppInfo.kt с версией и номером сборки для общего кода (User-Agent, «О программе», проверка обновлений:
 // при равной версии сервер может выложить сборку с большим code).
