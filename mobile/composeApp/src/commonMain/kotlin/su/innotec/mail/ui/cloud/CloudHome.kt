@@ -120,8 +120,18 @@ object CloudUploads {
     }
 
     private suspend fun run(path: String, f: LocalFile, job: Job) {
+        uploadFile(path, f, onStarted = {}) { job.done = it }
+    }
+
+    /**
+     * Загрузить файл в папку облака частями, с докачкой после обрыва; вернуть путь, под которым он лёг
+     * (сервер сам добавит «(2)», если имя занято). [onStarted] — связь установлена, сервер принял загрузку.
+     */
+    suspend fun uploadFile(path: String, f: LocalFile, onStarted: () -> Unit, onProgress: (Long) -> Unit): String {
         val api = Session.api!!
         var st = api.cloudUploadStart(path, f.name, f.size)
+        onStarted()
+        var done = 0L
         var attempts = 0
         while (true) {
             try {
@@ -131,16 +141,16 @@ object CloudUploads {
                     for (n in 1..st.chunks) {
                         val from = (n - 1) * st.chunkSize
                         val len = minOf(st.chunkSize, f.size - from)
-                        if (n in st.have) { job.done = maxOf(job.done, from + len); continue }
+                        if (n in st.have) { done = maxOf(done, from + len); onProgress(done); continue }
                         if (src == null || pos != from) { src?.close(); src = f.open(); if (from > 0) src.skip(from); pos = from }
                         val bytes = src.readByteArray(len.toInt())
                         pos += len
-                        api.cloudUploadChunk(st.id, n, bytes)
-                        job.done = from + len
+                        api.cloudUploadChunk(st.id, n, bytes) { sent -> onProgress(from + sent) }
+                        done = from + len; onProgress(done)
                     }
                 } finally { src?.close() }
                 api.cloudUploadFinish(st.id)
-                return
+                return st.path
             } catch (e: ApiException) {
                 if (e.status in 400..499 && e.status != 408 && e.status != 429) throw e
                 if (++attempts > 5) throw e

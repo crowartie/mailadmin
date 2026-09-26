@@ -408,9 +408,11 @@ class Api(
     suspend fun cloudEmptyTrash() = deleteOk("/cloud/trash")
     suspend fun cloudUploadStart(path: String, name: String, size: Long): UploadState = post("/cloud/uploads", buildJsonObject { put("path", path); put("name", name); put("size", size) })
     suspend fun cloudUploadStatus(id: String): UploadState = get("/cloud/uploads/${enc(id)}")
-    suspend fun cloudUploadChunk(id: String, n: Int, bytes: ByteArray) {
+    /** [progress] — сколько байт части уже ушло: ход загрузки плавный, а не скачками по размеру части. */
+    suspend fun cloudUploadChunk(id: String, n: Int, bytes: ByteArray, progress: ((Long) -> Unit)? = null) {
         raw(HttpMethod.Put, "/cloud/uploads/${enc(id)}/$n", null, timeoutMs = 600_000) {
             contentType(ContentType.Application.OctetStream); setBody(bytes)
+            progress?.let { p -> onUpload { sent, _ -> p(sent) } }
         }
     }
     suspend fun cloudUploadFinish(id: String): UploadFinished = post("/cloud/uploads/${enc(id)}/finish", timeoutMs = 600_000)

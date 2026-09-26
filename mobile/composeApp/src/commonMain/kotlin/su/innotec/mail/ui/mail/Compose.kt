@@ -158,7 +158,7 @@ class ComposeModel(val start: ComposeStart) {
     var meta by mutableStateOf(ComposeMeta())
 
     val bodyHasContent get() = editor.html.contains("<img", true) || Html.toText(editor.html).isNotBlank()
-    val hasContent get() = to.isNotEmpty() || cc.isNotEmpty() || subject.isNotBlank() || bodyHasContent || files.isNotEmpty()
+    val hasContent get() = to.isNotEmpty() || cc.isNotEmpty() || subject.isNotBlank() || bodyHasContent || files.isNotEmpty() || cloudFiles.isNotEmpty()
 
     fun identity(): Identity? = meta.identities.firstOrNull { it.mail.equals(from ?: Session.account?.user ?: "", true) }
 
@@ -325,6 +325,42 @@ class ComposeModel(val start: ComposeStart) {
     )
 
     /** Сохранить черновик. Свои файлы после первого сохранения живут уже в черновике. */
+    /** Крупный файл, который сейчас грузится в облако, чтобы уйти ссылкой (этап — словами в списке вложений). */
+    class CloudJob(val file: LocalFile) {
+        var started by mutableStateOf(false)
+        var done by mutableStateOf(0L)
+        var linking by mutableStateOf(false)
+    }
+    val cloudJobs = mutableStateListOf<CloudJob>()
+    val busy get() = saving || cloudJobs.isNotEmpty()
+
+    /**
+     * Крупный файл — сразу в облако («Вложения из почты»), в письмо — ссылка на него. Тогда при отправке серверу
+     * не надо перекладывать сотни мегабайт из черновика в облако (это и было «повторной загрузкой» при отправке),
+     * а черновик не разрастается. Не вышло (нет места в облаке) — прежний путь: файл в черновик, ссылкой при отправке.
+     */
+    fun uploadToCloud(f: LocalFile, scope: CoroutineScope) {
+        val job = CloudJob(f)
+        cloudJobs.add(job)
+        scope.launch {
+            try {
+                val api = Session.api!!
+                runCatching { api.cloudMkdir("", CLOUD_DIR) }   // уже есть — не страшно
+                val path = su.innotec.mail.ui.cloud.CloudUploads.uploadFile(CLOUD_DIR, f, onStarted = { job.started = true }) { job.done = it; if (it >= f.size) job.linking = true }
+                cloudFiles.add(CloudFileRef(path, path.substringAfterLast('/'), f.size))
+                dirty = true
+            } catch (e: ApiException) {
+                if (e.isAuth) { Toasts.error(e); return@launch }
+                Toasts.show("«${f.name}»: ${e.message} — файл уйдёт через черновик")
+                files.add(f); viaCloud.add(files.lastIndex); dirty = true
+            } finally {
+                cloudJobs.remove(job)
+            }
+            // Окно могли закрыть, пока файл грузился: ссылку всё равно записываем в черновик.
+            saveDraft()
+        }
+    }
+
     /** Файлы, которые сейчас уходят на сервер, и сколько байт уже ушло (ход — у каждого файла в списке). */
     var uploadingFiles by mutableStateOf<List<LocalFile>>(emptyList()); private set
     var uploadSent by mutableStateOf(0L); private set
@@ -420,6 +456,9 @@ class ComposeModel(val start: ComposeStart) {
 
 data class DomainWarn(val text: String, val suggestion: String?)
 
+/** Папка облака для крупных вложений писем. */
+const val CLOUD_DIR = "Вложения из почты"
+
 class ComposeScreen(start: ComposeStart, private val existingModel: ComposeModel? = null) : Screen() {
     private val model = existingModel ?: ComposeModel(start)
     override val fullScreen: Boolean get() = true
@@ -477,13 +516,16 @@ private fun ComposeView(m: ComposeModel) {
         // Больше предела облака файл не уйдёт даже ссылкой — говорим сразу, а не при отправке (как в веб-почте).
         val cap = (if (m.meta.cloud.enabled) m.meta.cloud.maxMb else m.meta.limits.messageMb).toLong() * 1024 * 1024
         list.filter { it.size > cap }.forEach { Toasts.show("«${it.name}» больше ${cap / 1048576} МБ — такой файл не отправить, даже ссылкой") }
+        var toDraft = false
         list.filter { it.size <= cap }.forEach { f ->
-            m.files.add(f)
-            if (m.meta.cloud.enabled && f.size >= threshold) m.viaCloud.add(m.files.lastIndex)
+            when {
+                m.meta.cloud.personal && f.size >= threshold -> m.uploadToCloud(f, sendScope)
+                else -> { m.files.add(f); if (m.meta.cloud.enabled && f.size >= threshold) m.viaCloud.add(m.files.lastIndex); toDraft = true }
+            }
         }
         m.dirty = true
         // Загрузка — сразу и не в окне: закроют окно — файл всё равно догрузится в черновик.
-        if (list.isNotEmpty()) sendScope.launch { m.saveDraft() }
+        if (toDraft) sendScope.launch { m.saveDraft() }
     }
     // Картинка в текст — как в веб-почте, до 400 КБ (встраивается в письмо); больше — уходит обычным вложением.
     val pickImage = rememberFilePicker(multiple = false, mimes = listOf("image/*")) { list ->
@@ -545,7 +587,7 @@ private fun ComposeView(m: ComposeModel) {
         if (step <= 1 && m.warningsFor(m.to + m.cc + m.bcc).isNotEmpty()) { dialog = "confirm-domain"; return }
         if (step <= 2 && m.subject.isBlank()) { dialog = "confirm-subject"; return }
         // Файлы ещё грузятся — письмо уйдёт само, как только они загрузятся (иначе загрузились бы дважды).
-        if (m.saving) { waitUpload = true; if (pendingAt == null) pendingAt = at; Toasts.show("Файлы загружаются — письмо уйдёт, как только они загрузятся"); return }
+        if (m.busy) { waitUpload = true; if (pendingAt == null) pendingAt = at; Toasts.show("Файлы загружаются — письмо уйдёт, как только они загрузятся"); return }
         autosave?.cancel()
         if (pendingAt != null) m.sendAt = pendingAt
         Nav.pop()
@@ -553,7 +595,7 @@ private fun ComposeView(m: ComposeModel) {
     }
 
     // Загрузка закончилась, а «Отправить» уже нажимали — отправляем.
-    LaunchedEffect(m.saving) { if (!m.saving && waitUpload) { waitUpload = false; send(pendingAt, 3) } }
+    LaunchedEffect(m.busy) { if (!m.busy && waitUpload) { waitUpload = false; send(pendingAt, 3) } }
 
     Column(Modifier.fillMaxSize().background(P.surface).imePadding()) {
         // Верхняя панель
@@ -823,7 +865,7 @@ fun RecipientsField(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Attachments(m: ComposeModel) {
-    if (m.files.isEmpty() && m.existing.isEmpty() && m.cloudFiles.isEmpty() && m.attachMessages.isEmpty()) return
+    if (m.files.isEmpty() && m.existing.isEmpty() && m.cloudFiles.isEmpty() && m.attachMessages.isEmpty() && m.cloudJobs.isEmpty()) return
     Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         m.attachMessages.toList().forEach { a -> AttChip("mail", a.name ?: "письмо", null, "письмо целиком") { m.attachMessages.remove(a); m.dirty = true } }
         m.existing.toList().forEach { a ->
@@ -837,7 +879,7 @@ private fun Attachments(m: ComposeModel) {
                     Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                     val fromDraft = m.sourceFolder != null && m.sourceFolder == MailStore.folders.firstOrNull { it.role == "drafts" }?.path
                     Text(
-                        (if (fromDraft) "загружен" else "из исходного письма") + if (cloud && on) " · крупнее ${m.meta.cloud.thresholdMb} МБ, уйдёт ссылкой на облако" else "",
+                        (if (fromDraft) "в черновике" else "из исходного письма") + if (cloud && on) " · крупнее ${m.meta.cloud.thresholdMb} МБ: при отправке сервер выложит в облако и пошлёт ссылку" else "",
                         style = MaterialTheme.typography.bodySmall, color = if (cloud && on) P.accentInk else P.faint,
                     )
                 }
@@ -879,7 +921,25 @@ private fun Attachments(m: ComposeModel) {
                 }
             }
         }
-        m.cloudFiles.toList().forEach { c -> AttChip("cloud", c.name.ifBlank { c.path.substringAfterLast('/') }, c.size, "из облака, ссылкой") { m.cloudFiles.remove(c); m.dirty = true } }
+        m.cloudJobs.toList().forEach { j ->
+            val f = j.file
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.surface2).padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.CircularProgressIndicator(progress = { if (f.size > 0) j.done.toFloat() / f.size else 1f }, modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = P.accent, trackColor = P.border)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                    Text(when {
+                        !j.started -> "Связь с сервером…"
+                        j.linking -> "Загружено в облако, готовлю ссылку…"
+                        j.done == 0L -> "Связь установлена, загрузка в облако…"
+                        else -> "Загрузка в облако: ${Fmt.size(j.done)} из ${Fmt.size(f.size)}"
+                    }, style = MaterialTheme.typography.bodySmall, color = P.accentInk)
+                    androidx.compose.material3.LinearProgressIndicator(progress = { if (f.size > 0) j.done.toFloat() / f.size else 1f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(2.dp)), color = P.accent, trackColor = P.border)
+                }
+            }
+        }
+        m.cloudFiles.toList().forEach { c -> AttChip("cloud", c.name.ifBlank { c.path.substringAfterLast('/') }, c.size, "в облаке, уйдёт ссылкой") { m.cloudFiles.remove(c); m.dirty = true } }
         // Заранее, а не только при отправке: 60 % предела — письмо может не пройти у получателя.
         val limit = m.meta.limits.messageMb.toLong() * 1024 * 1024
         val used = m.inMailSize()
