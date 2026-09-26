@@ -152,6 +152,8 @@ actual fun SystemBarsTheme(dark: Boolean) {}
 actual fun BackHandler(enabled: Boolean, onBack: () -> Unit) {}
 
 actual object Notifier {
+    actual val fastAvailable: Boolean get() = false
+    actual fun fast(enabled: Boolean) {}
     actual fun ensurePermission() {
         UNUserNotificationCenter.currentNotificationCenter().requestAuthorizationWithOptions(
             UNAuthorizationOptionAlert or UNAuthorizationOptionSound or UNAuthorizationOptionBadge,

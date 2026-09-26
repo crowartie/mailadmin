@@ -103,12 +103,13 @@ fun App() {
         Box(Modifier.fillMaxSize().background(P.bg)) {
             val acc = Session.account
             if (acc == null) {
-                LaunchedEffect(Unit) { Nav.reset(); MailStore.reset() }
+                LaunchedEffect(Unit) { Nav.reset(); MailStore.reset(); Notifier.fast(false) }
                 LoginScreen()
             } else {
                 LaunchedEffect(acc.origin, acc.user) {
                     Notifier.ensurePermission()
                     Notifier.schedule(Session.prefs.notify)
+                    Notifier.fast(Session.prefs.fastNotify)
                     // Имя и адрес — с сервера, если вход сохранён без них (и заодно проверка, что токен жив).
                     runCatching { Session.api!!.me() }.onSuccess { me ->
                         if (me.user != acc.user || me.name != acc.name) Session.signIn(acc.copy(user = me.user, name = me.name))

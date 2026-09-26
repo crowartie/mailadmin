@@ -238,8 +238,11 @@ class AppSettingsScreen : Screen() {
                 }
                 SectionTitle("Уведомления")
                 Column(Modifier.background(P.surface)) {
-                    SwitchRow("О новых письмах", "Проверка примерно раз в 15 минут и сразу при открытии приложения", p.notify) { v ->
-                        Session.updatePrefs { it.copy(notify = v) }; Notifier.schedule(v); if (v) Notifier.ensurePermission()
+                    SwitchRow("О новых письмах", if (p.fastNotify) "Мгновенно — включено ниже" else "Проверка примерно раз в 15 минут и сразу при открытии приложения", p.notify) { v ->
+                        Session.updatePrefs { it.copy(notify = v) }; Notifier.schedule(v); Notifier.fast(v); if (v) Notifier.ensurePermission()
+                    }
+                    if (Notifier.fastAvailable && p.notify) SwitchRow("Мгновенно", "Проверка раз в минуту, пока есть сеть; в шторке — тихий постоянный значок. На Huawei и Honor разрешите работу в фоне: Настройки → Батарея → Запуск приложений → Почта → вручную", p.fastNotify) { v ->
+                        Session.updatePrefs { it.copy(fastNotify = v) }; Notifier.fast(v); if (v) Notifier.ensurePermission()
                     }
                     SwitchRow("Из общих ящиков", "Например, info@ — если у вас к нему доступ", p.notifyShared) { v -> Session.updatePrefs { it.copy(notifyShared = v) } }
                 }

@@ -321,6 +321,9 @@ actual object Notifier {
         }
     }
 
+    actual val fastAvailable: Boolean get() = true
+    actual fun fast(enabled: Boolean) { su.innotec.mail.MailWatchService.sync(AndroidCtx.app) }
+
     actual fun schedule(enabled: Boolean) {
         val wm = WorkManager.getInstance(AndroidCtx.app)
         if (!enabled) { wm.cancelUniqueWork("mail-check"); return }

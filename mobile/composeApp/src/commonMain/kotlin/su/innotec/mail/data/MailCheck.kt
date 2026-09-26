@@ -1,11 +1,17 @@
 package su.innotec.mail.data
 
+import kotlinx.coroutines.sync.withLock
 import su.innotec.mail.platform.Notifier
 
 /** Проверка новых писем во «Входящих» для уведомлений (фоновая задача и опрос на ПК). */
 object MailCheck {
+    /** Проверку делают и служба (раз в минуту), и WorkManager (раз в 15 минут): одновременно — дважды одно уведомление. */
+    private val lock = kotlinx.coroutines.sync.Mutex()
+
     /** Возвращает, сколько уведомлений показано. */
-    suspend fun run(): Int {
+    suspend fun run(): Int = lock.withLock { check() }
+
+    private suspend fun check(): Int {
         val api = Session.api ?: return 0
         val prefs = Session.prefs
         val folders = api.folders()

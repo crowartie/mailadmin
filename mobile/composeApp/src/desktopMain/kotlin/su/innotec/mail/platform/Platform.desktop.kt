@@ -205,6 +205,8 @@ object DesktopBack {
 }
 
 actual object Notifier {
+    actual val fastAvailable: Boolean get() = false
+    actual fun fast(enabled: Boolean) {}
     private var tray: TrayIcon? = null
     actual fun ensurePermission() {}
     actual fun schedule(enabled: Boolean) {}

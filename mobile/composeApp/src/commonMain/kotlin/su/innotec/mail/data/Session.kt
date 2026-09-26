@@ -36,6 +36,8 @@ data class LocalPrefs(
     val swipeLeft: String = "delete",
     val swipeRight: String = "archive",
     val lastUpdateCheck: Long = 0,
+    /** Мгновенные уведомления: проверка раз в минуту фоновой службой (Android), без Firebase. */
+    val fastNotify: Boolean = false,
 )
 
 object Session {
