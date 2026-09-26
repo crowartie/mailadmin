@@ -71,6 +71,7 @@ actual class KeyValueStore actual constructor(name: String) {
     actual fun get(key: String): String? = props.getProperty(key)
     actual fun put(key: String, value: String?) {
         if (value == null) props.remove(key) else props.setProperty(key, value)
+        file.parentFile?.mkdirs()   // папку могли удалить на ходу (очистка, тесты с отдельной папкой)
         file.outputStream().use { props.store(it, "mailadmin") }
         runCatching { file.setReadable(false, false); file.setReadable(true, true) }
     }
