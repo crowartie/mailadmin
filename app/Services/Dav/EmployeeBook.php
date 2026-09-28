@@ -138,6 +138,13 @@ class EmployeeBook
             }
             $units[] = $u->name;
         }
+        // Телефоны из профиля сотрудника (админка): раньше в карточку не попадали, и коллеги видели только почту.
+        if (trim((string) ($profile?->phone ?? '')) !== '') {
+            $card->add('TEL', trim((string) $profile->phone), ['TYPE' => ['WORK', 'VOICE']]);
+        }
+        if (trim((string) ($profile?->mobile ?? '')) !== '') {
+            $card->add('TEL', trim((string) $profile->mobile), ['TYPE' => ['CELL', 'VOICE']]);
+        }
         $card->add('ORG', [$org, $units[0] ?? '']);
         if (trim((string) ($profile?->title ?? '')) !== '') {
             $card->add('TITLE', trim((string) $profile->title));
