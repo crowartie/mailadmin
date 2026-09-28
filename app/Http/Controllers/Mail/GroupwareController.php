@@ -50,7 +50,9 @@ class GroupwareController extends Controller
             'isAdmin' => $store->isAdmin($user),
             'books' => $store->books($user),
             'book' => $group ? 'group:' . $group : $book,
-            'contacts' => $store->cards($user, $book ?: null, (string) $request->query('q', '')),
+            // Как и в API: без отбора по книге дубли одного человека (сотрудник + личная карточка) сливаются.
+            'contacts' => $book ? $store->cards($user, $book, (string) $request->query('q', ''))
+                : \App\Services\Dav\ContactMerge::merge($store->cards($user, null, (string) $request->query('q', ''))),
             'query' => (string) $request->query('q', ''),
             'openUri' => $request->query('open'),
         ]);
