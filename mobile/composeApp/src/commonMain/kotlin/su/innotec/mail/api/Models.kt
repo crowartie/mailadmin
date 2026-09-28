@@ -140,7 +140,13 @@ data class MessageSummary(
     val folderName: String? = null,
     val snoozed: String? = null,
     val thread: Int? = null,
+    /** Общая папка: кто из коллег уже прочитал (null — папка своя, поле не приходит). */
+    val readers: List<Reader>? = null,
 )
+
+/** Кто прочитал письмо в общей папке (обращение №51): at — когда впервые открыл, в списке пусто. */
+@Serializable
+data class Reader(val mail: String = "", val name: String = "", val at: String = "")
 
 @Serializable
 data class MessageList(
@@ -213,6 +219,9 @@ data class Message(
     val text: String? = null,
     val attachments: List<Attachment> = emptyList(),
     val listUnsubscribe: String = "",
+    /** Общая папка: кто прочитал и кому папка открыта, но не читал. */
+    val readers: List<Reader>? = null,
+    val notRead: List<Reader> = emptyList(),
     val cloudFiles: List<CloudFileRef> = emptyList(),
     val markedSeen: Boolean = false,
 )
@@ -373,7 +382,6 @@ data class Settings(
     @SerialName("notify_browser") val notifyBrowser: Boolean = false,
     // В веб-почте «не задано» значит «спрашивать» (ask_rule_on_move !== false).
     @SerialName("ask_rule_on_move") val askRuleOnMove: Boolean = true,
-    @SerialName("shared_mark_seen") val sharedMarkSeen: Boolean = true,
     @SerialName("undo_seconds") val undoSeconds: Int = 0,
     @SerialName("quick_replies") val quickReplies: List<String> = emptyList(),
     val shortcuts: Boolean = true,
@@ -437,6 +445,10 @@ data class RuleCondition(val field: String = "from", val op: String = "contains"
 @Serializable
 data class RuleAction(val type: String = "move", val value: String = "")
 
+/** Уточнение внутри правила: свои условия и действия, проверяется раньше основных действий (SieveBuilder). */
+@Serializable
+data class RuleRefine(val match: String = "all", val conditions: List<RuleCondition> = emptyList(), val actions: List<RuleAction> = emptyList())
+
 @Serializable
 data class Rule(
     val id: String = "",
@@ -446,6 +458,8 @@ data class Rule(
     val stop: Boolean = false,
     val conditions: List<RuleCondition> = emptyList(),
     val actions: List<RuleAction> = emptyList(),
+    // Уточнения обязательно ходят туда и обратно: иначе сохранение из приложения стирало бы сделанное в веб-почте.
+    val refine: List<RuleRefine> = emptyList(),
 )
 
 /** Автоответ: from/to — период (ГГГГ-ММ-ДД), days — не чаще раза в N дней одному адресату. */
@@ -460,7 +474,7 @@ data class AutoReply(
 )
 
 @Serializable
-data class Rules(val rules: List<Rule> = emptyList(), val autoreply: AutoReply? = null, val script: String = "")
+data class Rules(val rules: List<Rule> = emptyList(), val autoreply: AutoReply? = null, val script: String = "", val custom: String = "")
 
 // ---------- Карантин, обращения ----------
 

@@ -115,7 +115,6 @@ class MailSettingsScreen : Screen() {
                     ListRow("Отмена отправки и удаления", if (s.undoSeconds <= 0) "выключена" else "${s.undoSeconds} секунд", icon = "clock") { dialog = "undo" }
                     ListRow("Картинки из интернета", if (s.showImages == "always") "показывать всегда" else "спрашивать", icon = "img") { dialog = "images" }
                     ListRow("Быстрые ответы", s.quickReplies.filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "нет" }, icon = "reply") { dialog = "quick" }
-                    SwitchRow("Общие ящики: отмечать прочитанным", "Открытое письмо в общей папке станет прочитанным для всех", s.sharedMarkSeen) { v -> scope.launchSafe { patch(buildJsonObject { put("shared_mark_seen", v) }) } }
                     SwitchRow("Предлагать правило при переносе", "Перенесли письмо в свою папку — спросить, класть ли туда всё от этого отправителя", s.askRuleOnMove) { v -> scope.launchSafe { patch(buildJsonObject { put("ask_rule_on_move", v) }) } }
                 }
                 SectionTitle("Список писем")

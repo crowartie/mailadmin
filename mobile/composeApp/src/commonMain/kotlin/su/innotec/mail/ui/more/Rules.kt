@@ -43,6 +43,7 @@ import su.innotec.mail.api.ApiException
 import su.innotec.mail.api.AutoReply
 import su.innotec.mail.api.Rule
 import su.innotec.mail.api.RuleAction
+import su.innotec.mail.api.RuleRefine
 import su.innotec.mail.api.RuleCondition
 import su.innotec.mail.api.Rules
 import su.innotec.mail.data.Session
@@ -66,7 +67,7 @@ val RULE_FIELDS = linkedMapOf("from" to "Отправитель", "to" to "По�
 // «matches» сервер принимает (sieve :matches, шаблон с * и ?), в веб-почте подписи нет — без своей он показывался бы кодом.
 val RULE_OPS = linkedMapOf("contains" to "содержит", "not_contains" to "не содержит", "is" to "равно", "starts" to "начинается с", "ends" to "заканчивается на", "matches" to "соответствует шаблону", "over" to "больше", "under" to "меньше")
 val RULE_ACTIONS = linkedMapOf(
-    "move" to "Переместить в папку", "copy" to "Копию в папку", "move_by_sender" to "В папку по адресу отправителя", "move_by_domain" to "В папку по домену отправителя",
+    "move" to "Переместить в папку", "copy" to "Копию в папку", "move_by_sender" to "В папку по адресу отправителя", "move_by_domain" to "В папку по домену отправителя", "move_by_name" to "В папку по имени отправителя",
     "label" to "Поставить метку", "flag" to "Флажок", "seen" to "Пометить прочитанным", "forward" to "Переслать на адрес", "forward_copy" to "Переслать копию на адрес",
     "discard" to "Удалить", "reply" to "Ответить текстом", "stop" to "Не проверять другие правила",
 )
@@ -80,12 +81,14 @@ fun ruleSummary(r: Rule): String {
     val a = r.actions.joinToString(", ") { a ->
         when (a.type) {
             "move", "copy" -> "${RULE_ACTIONS[a.type]?.lowercase()} «${MailStore.folders.firstOrNull { it.path == a.value }?.name ?: a.value}»"
+            "move_by_sender", "move_by_domain", "move_by_name" -> RULE_ACTIONS[a.type]!!.lowercase() + (if (a.value.isBlank()) "" else " внутри «${MailStore.folders.firstOrNull { it.path == a.value }?.name ?: a.value}»")
             "label" -> "метка «${MailStore.labels.firstOrNull { it.id.toString() == a.value }?.name ?: a.value}»"
             "forward", "forward_copy" -> "${RULE_ACTIONS[a.type]?.lowercase()} ${a.value}"
             else -> RULE_ACTIONS[a.type]?.lowercase() ?: a.type
         }
     }
-    return "Если $c → $a"
+    val refine = if (r.refine.isEmpty()) "" else " · ${r.refine.size} " + Fmt.plural(r.refine.size, "уточнение", "уточнения", "уточнений")
+    return "Если $c → $a$refine"
 }
 
 class RulesScreen : Screen() {
@@ -190,7 +193,8 @@ class RuleEditScreen(private val existing: Rule?, private val onSave: suspend (R
     @Composable
     override fun Content() {
         var r by remember { mutableStateOf(existing ?: Rule(id = "r" + kotlin.random.Random.nextLong(1, 1_000_000_000), enabled = true, match = "all", conditions = listOf(RuleCondition()), actions = listOf(RuleAction()))) }
-        var pick by remember { mutableStateOf<Pair<String, Int>?>(null) }
+        // Что выбирают в диалоге: вид, номер уточнения (-1 — само правило), номер условия/действия.
+        var pick by remember { mutableStateOf<Triple<String, Int, Int>?>(null) }
         var remove by remember { mutableStateOf(false) }
         var saving by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
@@ -201,8 +205,17 @@ class RuleEditScreen(private val existing: Rule?, private val onSave: suspend (R
             r.conditions.firstOrNull { it.value.isBlank() }?.let { return "Заполните условие «${RULE_FIELDS[it.field]}» — пустое совпадает со всеми письмами" }
             r.actions.firstOrNull { needsValue(it.type) && it.value.isBlank() }?.let { return "Выберите, что подставить в действие «${RULE_ACTIONS[it.type]}»" }
             if (r.actions.isEmpty()) return "Нужно хотя бы одно действие"
+            r.refine.forEachIndexed { k, ref ->
+                if (ref.actions.isEmpty()) return "Уточнение ${k + 1}: нужно хотя бы одно действие"
+                ref.conditions.firstOrNull { it.value.isBlank() }?.let { return "Уточнение ${k + 1}: заполните условие «${RULE_FIELDS[it.field]}»" }
+                ref.actions.firstOrNull { needsValue(it.type) && it.value.isBlank() }?.let { return "Уточнение ${k + 1}: выберите, что подставить в действие «${RULE_ACTIONS[it.type]}»" }
+            }
             return null
         }
+        fun condsOf(ref: Int) = if (ref < 0) r.conditions else r.refine[ref].conditions
+        fun actsOf(ref: Int) = if (ref < 0) r.actions else r.refine[ref].actions
+        fun setConds(ref: Int, l: List<RuleCondition>) { r = if (ref < 0) r.copy(conditions = l) else r.copy(refine = r.refine.mapIndexed { k, x -> if (k == ref) x.copy(conditions = l) else x }) }
+        fun setActs(ref: Int, l: List<RuleAction>) { r = if (ref < 0) r.copy(actions = l) else r.copy(refine = r.refine.mapIndexed { k, x -> if (k == ref) x.copy(actions = l) else x }) }
         // Закрываем форму только после удачного ответа сервера: при ошибке правка не пропадает, её можно поправить и повторить.
         fun submit(rule: Rule) {
             if (saving) return
@@ -228,55 +241,48 @@ class RuleEditScreen(private val existing: Rule?, private val onSave: suspend (R
                     Spacer(Modifier.padding(4.dp))
                     Pill(if (r.match == "any") "любое из условий" else "все условия") { r = r.copy(match = if (r.match == "any") "all" else "any") }
                 }
-                r.conditions.forEachIndexed { i, c ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).border(1.dp, P.border, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Pill(RULE_FIELDS[c.field] ?: c.field) { pick = "field" to i }
-                            Spacer(Modifier.padding(3.dp))
-                            Pill(RULE_OPS[c.op] ?: c.op) { pick = "op" to i }
-                            Spacer(Modifier.weight(1f))
-                            if (r.conditions.size > 1) IconBtn("x", "Убрать условие", tint = P.muted) { r = r.copy(conditions = r.conditions.filterIndexed { j, _ -> j != i }) }
-                        }
-                        if (c.field == "header") OutlinedTextField(c.header ?: "", { v -> r = r.copy(conditions = r.conditions.mapIndexed { j, x -> if (j == i) x.copy(header = v.filter { ch -> ch.isLetterOrDigit() || ch == '-' }) else x }) },
-                            Modifier.fillMaxWidth(), label = { Text("Имя заголовка, например List-Id") }, singleLine = true)
-                        OutlinedTextField(c.value, { v -> r = r.copy(conditions = r.conditions.mapIndexed { j, x -> if (j == i) x.copy(value = if (c.field == "size") v.filter { it.isDigit() } else v) else x }) },
-                            Modifier.fillMaxWidth(), label = { Text(if (c.field == "size") "КБ" else "Значение") }, singleLine = true)
-                    }
-                }
-                if (r.conditions.size < 10) TextButton(onClick = { r = r.copy(conditions = r.conditions + RuleCondition()) }) { Text("+ условие") }
+                CondRows(r.conditions, min = 1, onChange = { setConds(-1, it) }) { kind, i -> pick = Triple(kind, -1, i) }
                 Text("То", style = MaterialTheme.typography.titleSmall)
-                r.actions.forEachIndexed { i, a ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).border(1.dp, P.border, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ActRows(r.actions, min = 1, onChange = { setActs(-1, it) }) { kind, i -> pick = Triple(kind, -1, i) }
+                // Уточнения (просьба Носкова): вместо десятков правил на одну компанию — одно с ветками внутри.
+                Text("Уточнения", Modifier.padding(top = 6.dp), style = MaterialTheme.typography.titleSmall)
+                Text("Для писем, подошедших под правило: проверяются по порядку, срабатывает первое подошедшее, остальным достаются действия выше", style = MaterialTheme.typography.labelMedium, color = P.muted)
+                r.refine.forEachIndexed { k, ref ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(P.surface2).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Pill(RULE_ACTIONS[a.type] ?: a.type) { pick = "action" to i }
-                            Spacer(Modifier.weight(1f))
-                            if (r.actions.size > 1) IconBtn("x", "Убрать действие", tint = P.muted) { r = r.copy(actions = r.actions.filterIndexed { j, _ -> j != i }) }
+                            Text("Уточнение ${k + 1}", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = P.accentInk)
+                            IconBtn("x", "Убрать уточнение", tint = P.muted) { r = r.copy(refine = r.refine.filterIndexed { j, _ -> j != k }) }
                         }
-                        when (a.type) {
-                            "move", "copy" -> Pill(MailStore.folders.firstOrNull { it.path == a.value }?.name ?: "Выбрать папку…") { pick = "folder" to i }
-                            "label" -> Pill(MailStore.labels.firstOrNull { it.id.toString() == a.value }?.name ?: "Выбрать метку…") { pick = "label" to i }
-                            "forward", "forward_copy" -> OutlinedTextField(a.value, { v -> r = r.copy(actions = r.actions.mapIndexed { j, x -> if (j == i) x.copy(value = v.trim()) else x }) }, Modifier.fillMaxWidth(), label = { Text("Адрес") }, singleLine = true)
-                            "reply" -> OutlinedTextField(a.value, { v -> r = r.copy(actions = r.actions.mapIndexed { j, x -> if (j == i) x.copy(value = v) else x }) }, Modifier.fillMaxWidth(), label = { Text("Текст ответа") }, minLines = 3)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Если", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.padding(4.dp))
+                            Pill(if (ref.match == "any") "любое из условий" else "все условия") { r = r.copy(refine = r.refine.mapIndexed { j, x -> if (j == k) x.copy(match = if (x.match == "any") "all" else "any") else x }) }
                         }
+                        CondRows(ref.conditions, min = 0, onChange = { setConds(k, it) }) { kind, i -> pick = Triple(kind, k, i) }
+                        Text("То", style = MaterialTheme.typography.titleSmall)
+                        ActRows(ref.actions, min = 1, onChange = { setActs(k, it) }) { kind, i -> pick = Triple(kind, k, i) }
                     }
                 }
-                if (r.actions.size < 6) TextButton(onClick = { r = r.copy(actions = r.actions + RuleAction()) }) { Text("+ действие") }
+                if (r.refine.size < 10) TextButton(onClick = { r = r.copy(refine = r.refine + RuleRefine(conditions = listOf(RuleCondition()), actions = listOf(RuleAction()))) }) { Text("+ уточнение") }
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("Дальше правила не проверять", Modifier.weight(1f)); Switch(r.stop, { r = r.copy(stop = it) }) }
                 Spacer(Modifier.height(40.dp))
             }
         }
         val p = pick
         if (p != null) {
-            val (kind, i) = p
+            val (kind, ref, i) = p
             val close = { pick = null }
+            val conds = condsOf(ref)
+            val acts = actsOf(ref)
             when (kind) {
-                "field" -> ChoiceDialog("Что проверять", RULE_FIELDS.keys.toList(), { RULE_FIELDS[it]!! }, r.conditions[i].field, onDismiss = close) { f ->
-                    r = r.copy(conditions = r.conditions.mapIndexed { j, x -> if (j == i) x.copy(field = f, op = if (x.op in opsFor(f)) x.op else opsFor(f).first(), value = if (f == "size") x.value.filter { it.isDigit() } else x.value) else x })
+                "field" -> ChoiceDialog("Что проверять", RULE_FIELDS.keys.toList(), { RULE_FIELDS[it]!! }, conds[i].field, onDismiss = close) { f ->
+                    setConds(ref, conds.mapIndexed { j, x -> if (j == i) x.copy(field = f, op = if (x.op in opsFor(f)) x.op else opsFor(f).first(), value = if (f == "size") x.value.filter { it.isDigit() } else x.value) else x })
                 }
-                "op" -> ChoiceDialog("Условие", opsFor(r.conditions[i].field), { RULE_OPS[it]!! }, r.conditions[i].op, onDismiss = close) { o -> r = r.copy(conditions = r.conditions.mapIndexed { j, x -> if (j == i) x.copy(op = o) else x }) }
-                "action" -> ChoiceDialog("Действие", RULE_ACTIONS.keys.toList(), { RULE_ACTIONS[it]!! }, r.actions[i].type, onDismiss = close) { t -> r = r.copy(actions = r.actions.mapIndexed { j, x -> if (j == i) x.copy(type = t, value = "") else x }) }
-                "folder" -> FolderPicker("Папка", null, onDismiss = close) { f -> r = r.copy(actions = r.actions.mapIndexed { j, x -> if (j == i) x.copy(value = f.path) else x }) }
-                "label" -> ChoiceDialog("Метка", MailStore.labels, { it.name }, null, onDismiss = close) { l -> r = r.copy(actions = r.actions.mapIndexed { j, x -> if (j == i) x.copy(value = l.id.toString()) else x }) }
+                "op" -> ChoiceDialog("Условие", opsFor(conds[i].field), { RULE_OPS[it]!! }, conds[i].op, onDismiss = close) { o -> setConds(ref, conds.mapIndexed { j, x -> if (j == i) x.copy(op = o) else x }) }
+                "action" -> ChoiceDialog("Действие", RULE_ACTIONS.keys.toList(), { RULE_ACTIONS[it]!! }, acts[i].type, onDismiss = close) { t -> setActs(ref, acts.mapIndexed { j, x -> if (j == i) x.copy(type = t, value = "") else x }) }
+                "folder" -> FolderPicker("Папка", null, onDismiss = close) { f -> setActs(ref, acts.mapIndexed { j, x -> if (j == i) x.copy(value = f.path) else x }) }
+                "parent" -> FolderPicker("Внутри какой папки", null, onDismiss = close) { f -> setActs(ref, acts.mapIndexed { j, x -> if (j == i) x.copy(value = f.path) else x }) }
+                "label" -> ChoiceDialog("Метка", MailStore.labels, { it.name }, null, onDismiss = close) { l -> setActs(ref, acts.mapIndexed { j, x -> if (j == i) x.copy(value = l.id.toString()) else x }) }
             }
         }
         if (remove) ConfirmDialog("Удалить правило?", confirm = "Удалить", danger = true, onDismiss = { remove = false }) { submit(r.copy(id = "__delete__")) }
@@ -287,4 +293,50 @@ class RuleEditScreen(private val existing: Rule?, private val onSave: suspend (R
 private fun Pill(text: String, onClick: () -> Unit) {
     Text(text, Modifier.clip(RoundedCornerShape(8.dp)).background(P.accentSoft).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 6.dp),
         color = P.accentInk, style = MaterialTheme.typography.bodyMedium)
+}
+
+
+/** Условия правила или уточнения; [min] — сколько нельзя убрать (у правила одно остаётся, у уточнения можно все — «остальным»). */
+@Composable
+private fun CondRows(conds: List<RuleCondition>, min: Int, onChange: (List<RuleCondition>) -> Unit, onPick: (kind: String, i: Int) -> Unit) {
+    conds.forEachIndexed { i, c ->
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).border(1.dp, P.border, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Pill(RULE_FIELDS[c.field] ?: c.field) { onPick("field", i) }
+                Spacer(Modifier.padding(3.dp))
+                Pill(RULE_OPS[c.op] ?: c.op) { onPick("op", i) }
+                Spacer(Modifier.weight(1f))
+                if (conds.size > min) IconBtn("x", "Убрать условие", tint = P.muted) { onChange(conds.filterIndexed { j, _ -> j != i }) }
+            }
+            if (c.field == "header") OutlinedTextField(c.header ?: "", { v -> onChange(conds.mapIndexed { j, x -> if (j == i) x.copy(header = v.filter { ch -> ch.isLetterOrDigit() || ch == '-' }) else x }) },
+                Modifier.fillMaxWidth(), label = { Text("Имя заголовка, например List-Id") }, singleLine = true)
+            OutlinedTextField(c.value, { v -> onChange(conds.mapIndexed { j, x -> if (j == i) x.copy(value = if (c.field == "size") v.filter { it.isDigit() } else v) else x }) },
+                Modifier.fillMaxWidth(), label = { Text(if (c.field == "size") "КБ" else "Значение") }, singleLine = true)
+        }
+    }
+    if (conds.size < 10) TextButton(onClick = { onChange(conds + RuleCondition()) }) { Text("+ условие") }
+    else if (conds.isEmpty()) Text("Без условий — для всех остальных писем правила", style = MaterialTheme.typography.labelMedium, color = P.muted)
+}
+
+/** Действия правила или уточнения. */
+@Composable
+private fun ActRows(acts: List<RuleAction>, min: Int, onChange: (List<RuleAction>) -> Unit, onPick: (kind: String, i: Int) -> Unit) {
+    acts.forEachIndexed { i, a ->
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).border(1.dp, P.border, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Pill(RULE_ACTIONS[a.type] ?: a.type) { onPick("action", i) }
+                Spacer(Modifier.weight(1f))
+                if (acts.size > min) IconBtn("x", "Убрать действие", tint = P.muted) { onChange(acts.filterIndexed { j, _ -> j != i }) }
+            }
+            when (a.type) {
+                "move", "copy" -> Pill(MailStore.folders.firstOrNull { it.path == a.value }?.name ?: "Выбрать папку…") { onPick("folder", i) }
+                // Папка по отправителю/домену/имени создаётся сама; здесь выбирают, внутри какой папки.
+                "move_by_sender", "move_by_domain", "move_by_name" -> Pill(MailStore.folders.firstOrNull { it.path == a.value }?.let { "внутри: " + it.name } ?: "В корне — выбрать родителя…") { onPick("parent", i) }
+                "label" -> Pill(MailStore.labels.firstOrNull { it.id.toString() == a.value }?.name ?: "Выбрать метку…") { onPick("label", i) }
+                "forward", "forward_copy" -> OutlinedTextField(a.value, { v -> onChange(acts.mapIndexed { j, x -> if (j == i) x.copy(value = v.trim()) else x }) }, Modifier.fillMaxWidth(), label = { Text("Адрес") }, singleLine = true)
+                "reply" -> OutlinedTextField(a.value, { v -> onChange(acts.mapIndexed { j, x -> if (j == i) x.copy(value = v) else x }) }, Modifier.fillMaxWidth(), label = { Text("Текст ответа") }, minLines = 3)
+            }
+        }
+    }
+    if (acts.size < 6) TextButton(onClick = { onChange(acts + RuleAction()) }) { Text("+ действие") }
 }

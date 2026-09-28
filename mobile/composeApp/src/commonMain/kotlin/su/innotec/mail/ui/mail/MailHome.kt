@@ -709,6 +709,15 @@ fun MessageRow(m: MessageSummary, selected: Boolean, open: Boolean, selecting: B
                 Text(m.subject.ifBlank { "(без темы)" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = weight,
                     color = P.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (m.flagged) { Spacer(Modifier.width(4.dp)); Ico("flag", size = 15.dp, tint = P.warn) }
+                // Общая папка (обращение №51): кто из коллег уже прочитал — до трёх кружков и «+N», иначе «ещё никто».
+                m.readers?.let { rd ->
+                    Spacer(Modifier.width(6.dp))
+                    if (rd.isEmpty()) Text("ещё никто", style = MaterialTheme.typography.labelSmall, color = P.warnInk, maxLines = 1)
+                    else Row(verticalAlignment = Alignment.CenterVertically) {
+                        rd.take(3).forEachIndexed { k, r -> Box(Modifier.padding(start = if (k == 0) 0.dp else 2.dp)) { Avatar(r.name.ifBlank { r.mail }, r.mail, 16.dp) } }
+                        if (rd.size > 3) Text("+${rd.size - 3}", Modifier.padding(start = 3.dp), style = MaterialTheme.typography.labelSmall, color = P.faint)
+                    }
+                }
             }
             val preview = m.preview?.trim().orEmpty()
             if (!compact && (preview.isNotEmpty() || m.hasAttachments)) Row(verticalAlignment = Alignment.CenterVertically) {

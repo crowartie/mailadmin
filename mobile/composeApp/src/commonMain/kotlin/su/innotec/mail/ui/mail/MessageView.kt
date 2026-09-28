@@ -312,6 +312,8 @@ fun MessageBody(m: Message, folder: String, uid: Long, attachedIndex: Int? = nul
                     }
                 }
             }
+            // Общая папка (обращение №51): кто прочитал и кто ещё нет.
+            m.readers?.let { rd -> ReadersLine(rd, m.notRead, m.markedSeen) }
             if (showRecipients) {
                 Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 6.dp)) {
                     RecipientLine("От", listOf(m.from)) { card = it }
@@ -420,9 +422,10 @@ private fun ThreadItem(tm: su.innotec.mail.api.ThreadMessage, current: Boolean, 
     LaunchedEffect(open) {
         if (open && full == null) {
             val api = Session.api ?: return@LaunchedEffect
-            // Папка только для чтения или чужая (без «отмечать прочитанным в общих»): смотрим, не трогая флаг.
+            // Папка только для чтения: смотрим, не трогая флаг. В общих папках флаг «прочитано» с 29.09.2026
+            // у каждого свой (Dovecot INDEXPVT), поэтому открытие отмечает как в своём ящике.
             val src = MailStore.folders.firstOrNull { it.path == tm.folder }
-            val peek = src?.readonly == true || (src?.isShared == true && !MailStore.settings.sharedMarkSeen)
+            val peek = src?.readonly == true
             try {
                 full = api.message(tm.folder, tm.uid, peek = peek)
                 // Строка списка — только в открытой папке: в другой папке тот же uid — другое письмо.
@@ -962,5 +965,31 @@ private fun RuleFromSenderDialog(sender: String, onDismiss: () -> Unit) {
             Toasts.show("Письма от $sender будут попадать в «${f.name}»")
             MailStore.load(); MailStore.reloadRules()
         }
+    }
+}
+
+
+/** «Прочитали: Аносов М. вчера 16:40 …» и «ещё не читали: …» под шапкой письма из общей папки. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReadersLine(readers: List<su.innotec.mail.api.Reader>, notRead: List<su.innotec.mail.api.Reader>, markedSeen: Boolean) {
+    Column(Modifier.fillMaxWidth().background(P.surface2).padding(horizontal = 12.dp, vertical = 8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Прочитали:", Modifier.padding(top = 3.dp), style = MaterialTheme.typography.bodySmall, color = P.muted)
+            if (readers.isEmpty()) {
+                Text(if (markedSeen) "ещё никто — вы первый" else "ещё никто", Modifier.clip(RoundedCornerShape(12.dp)).background(P.warnSoft).padding(horizontal = 10.dp, vertical = 3.dp), style = MaterialTheme.typography.bodySmall, color = P.warnInk)
+            } else readers.forEach { r ->
+                Row(Modifier.clip(RoundedCornerShape(12.dp)).background(P.surface).border(1.dp, P.border, RoundedCornerShape(12.dp)).padding(start = 3.dp, end = 10.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(r.name.ifBlank { r.mail }, r.mail, 20.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(Fmt.shortName(r.name.ifBlank { r.mail }), style = MaterialTheme.typography.bodySmall, color = P.text)
+                    if (r.at.isNotBlank()) Text(" " + Fmt.listDate(r.at), style = MaterialTheme.typography.bodySmall, color = P.muted)
+                }
+            }
+        }
+        if (notRead.isNotEmpty()) Text(
+            "ещё не читали: " + notRead.take(4).joinToString(", ") { Fmt.shortName(it.name.ifBlank { it.mail }) } + if (notRead.size > 4) " и ещё ${notRead.size - 4}" else "",
+            Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
     }
 }

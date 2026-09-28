@@ -41,6 +41,22 @@ class CoreTest {
         assertEquals("-_.!~*'()", enc("-_.!~*'()"))
     }
 
+    /** Уточнения правила и «кто прочитал» ходят через JSON без потерь: иначе сохранение из приложения стирало бы сделанное в веб-почте. */
+    @Test
+    fun ruleRefineAndReadersRoundTrip() {
+        val json = """{"id":"r1","name":"Дельта","enabled":true,"match":"all","stop":true,"conditions":[{"field":"from","op":"ends","value":"@d.test"}],"actions":[{"type":"move_by_name","value":"Delta"}],"refine":[{"match":"any","conditions":[{"field":"subject","op":"contains","value":"счёт"}],"actions":[{"type":"flag"}]}]}"""
+        val r = su.innotec.mail.api.ApiJson.decodeFromString(su.innotec.mail.api.Rule.serializer(), json)
+        assertEquals(1, r.refine.size); assertEquals("any", r.refine[0].match); assertEquals("flag", r.refine[0].actions[0].type)
+        val back = su.innotec.mail.api.ApiJson.encodeToString(su.innotec.mail.api.Rule.serializer(), r)
+        assertTrue(back.contains("\"refine\":[{"), back)
+        assertTrue(back.contains("move_by_name"))
+        val m = su.innotec.mail.api.ApiJson.decodeFromString(su.innotec.mail.api.MessageSummary.serializer(), """{"uid":5,"subject":"x","readers":[{"mail":"a@d.test","name":"Аносов Михаил"}]}""")
+        assertEquals("Аносов Михаил", m.readers!![0].name)
+        assertEquals(null, su.innotec.mail.api.ApiJson.decodeFromString(su.innotec.mail.api.MessageSummary.serializer(), """{"uid":5,"subject":"x"}""").readers, "своя папка — поля нет")
+        assertEquals("Аносов М.", su.innotec.mail.ui.Fmt.shortName("Аносов Михаил Леонидович"))
+        assertEquals("ivan@d.test", su.innotec.mail.ui.Fmt.shortName("ivan@d.test"))
+    }
+
     @Test
     fun phoneFormat() {
         for (raw in listOf("89025485650", "+7 902 548 56 50", "9025485650", "8 (902) 548-56-50")) assertEquals("+7 (902) 548-56-50", su.innotec.mail.ui.Fmt.phone(raw), raw)

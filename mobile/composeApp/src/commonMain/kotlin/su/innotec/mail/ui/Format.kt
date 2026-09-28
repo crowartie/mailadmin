@@ -120,6 +120,13 @@ object Fmt {
         }
     }
 
+    /** «Аносов Михаил Леонидович» → «Аносов М.»; адрес и одно слово — как есть (то же, что SharedReads::shortName). */
+    fun shortName(name: String): String {
+        val parts = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (parts.size < 2 || name.contains('@')) return name.trim()
+        return parts[0] + " " + parts[1].take(1) + "."
+    }
+
     fun initials(name: String): String {
         // У адреса — только имя ящика: «ivanov@innotec.su» → «IV», а не «II» из домена.
         val base = name.trim().let { if ('@' in it && ' ' !in it) it.substringBefore('@') else it }
