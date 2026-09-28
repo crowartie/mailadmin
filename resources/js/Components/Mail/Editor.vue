@@ -2,15 +2,15 @@
 // HTML-редактор на contenteditable. Панель оформления (обращение №53) — два ряда под текстом, как в Gmail:
 // символы (шрифт, размер, B I U S, цвет, выделение, ссылка, картинка, смайлик) и абзац (выравнивание, списки,
 // отступы, цитата, таблица, линия, код, заголовок). Показывается по prop expanded — кнопка «A» у «Отправить».
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
-import { uiSimple } from '../../mail/uiMode';
 
 const props = defineProps({
     modelValue: { type: String, default: '' },
     placeholder: { type: String, default: 'Текст письма…' },
     compact: Boolean,
-    // Панель оформления раскрыта (кнопка «A» в подвале письма). В простом виде — только первый ряд.
+    // Панель оформления раскрыта (кнопка «A» в подвале письма). Простой вид её не урезает:
+    // раз человек сам нажал «A», ему нужна панель целиком.
     expanded: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue', 'submit', 'save', 'toast']);
@@ -60,7 +60,7 @@ function insertTable(rows, cols) {
     insertHtml('<table style="border-collapse: collapse; margin: 6px 0">' + row.repeat(rows) + '</table><p><br></p>');
 }
 function insertEmoji(e) { insertHtml(e + ' '); }
-const showRow2 = computed(() => props.expanded && !uiSimple.value);
+
 // Пустое тело письма определяем по содержимому, а не правилом :empty: шаблон ответа
 // начинается с пустого абзаца, элемент формально не пуст, и подсказка не показывалась.
 const blank = ref(true);
@@ -343,7 +343,7 @@ defineExpose({
             <span class="grow" />
             <button type="button" title="Убрать форматирование (Ctrl+\)" aria-label="Убрать форматирование" @click="cmd('removeFormat')"><Icon name="eraser" :size="15" /></button>
         </div>
-        <div v-if="showRow2" class="fmt fmt__row" role="toolbar" aria-label="Оформление: абзац" @mousedown="$event.target.closest('select, .fmt__pop') || $event.preventDefault()">
+        <div class="fmt fmt__row" role="toolbar" aria-label="Оформление: абзац" @mousedown="$event.target.closest('select, .fmt__pop') || $event.preventDefault()">
             <button type="button" :class="{ on: state.align === 'left' }" title="По левому краю (Ctrl+Shift+L)" aria-label="По левому краю" @click="cmd('justifyLeft')"><Icon name="alignl" :size="15" /></button>
             <button type="button" :class="{ on: state.align === 'center' }" title="По центру (Ctrl+Shift+E)" aria-label="По центру" @click="cmd('justifyCenter')"><Icon name="alignc" :size="15" /></button>
             <button type="button" :class="{ on: state.align === 'right' }" title="По правому краю (Ctrl+Shift+R)" aria-label="По правому краю" @click="cmd('justifyRight')"><Icon name="alignr" :size="15" /></button>
