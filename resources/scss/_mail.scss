@@ -1001,7 +1001,10 @@
 
     // Панель оформления (обращение №53): два ряда, списки шрифта/размера/заголовка, всплывашки цветов и таблицы.
     &__row { flex-wrap: wrap; width: 100%; }
-    &__sel { height: 28px; padding: 0 22px 0 8px; border: 1px solid v.$c-border; border-radius: 6px; background: v.$c-surface; color: v.$c-text; font: inherit; font-size: 12.5px; }
+    // Ширина списков ограничена, иначе первый ряд не влезал в окно письма на 1440 и «ластик» падал на новую строку.
+    &__sel { height: 28px; max-width: 128px; padding: 0 22px 0 8px; border: 1px solid v.$c-border; border-radius: 6px; background: v.$c-surface; color: v.$c-text; font: inherit; font-size: 12.5px; text-overflow: ellipsis; }
+    // На телефоне кнопки 32 px: 30 не проходит по размеру для пальца.
+    @media (max-width: 700px) { &__row button { width: 32px; height: 32px; } }
     &__wrap { position: relative; display: inline-flex; }
     &__pop { position: absolute; bottom: 34px; left: 0; z-index: 5; background: v.$c-surface; border: 1px solid v.$c-border; border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, .14); padding: 8px; display: grid; grid-template-columns: repeat(5, 24px); gap: 6px; }
     &__pop--emoji { grid-template-columns: repeat(8, 28px); gap: 2px; }
