@@ -30,6 +30,7 @@ class SettingsController extends Controller
             'notify_browser' => ['nullable', 'boolean'],
             'ask_rule_on_move' => ['nullable', 'boolean'],
             'shared_mark_seen' => ['nullable', 'boolean'],
+            'row_actions' => ['nullable', 'boolean'],
             'undo_seconds' => ['nullable', 'integer', 'min:0', 'max:30'],
             'quick_replies' => ['nullable', 'array', 'max:8'],
             'quick_replies.*' => ['string', 'max:200'],

@@ -839,6 +839,7 @@ onBeforeUnmount(() => {
                 :highlight-unread="settings.unread_highlight !== false"
                 :unread-color="settings.unread_color || ''"
                 :density="settings.density || 'normal'"
+                :row-actions="!!settings.row_actions"
                 :filter="filter"
                 :sort="sort"
                 @sort="setSort"

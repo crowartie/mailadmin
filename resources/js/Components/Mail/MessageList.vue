@@ -23,6 +23,8 @@ const props = defineProps({
     opening: { type: Number, default: null },   // письмо, которое сейчас открывается
     highlightUnread: { type: Boolean, default: true },
     density: { type: String, default: 'normal' },
+    // Кнопки при наведении на строку (настройка row_actions): по умолчанию выключены — см. Setting::DEFAULTS.
+    rowActions: { type: Boolean, default: false },
     unreadColor: { type: String, default: '' },
     openUid: { type: Number, default: null },
     labels: { type: Array, default: () => [] },
@@ -234,7 +236,7 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
 </script>
 
 <template>
-    <section class="mlist" :class="{ 'mlist--hl': highlightUnread, 'mlist--select': selectMode, 'mlist--roomy': density === 'roomy', 'mlist--compact': density === 'compact' }" :style="unreadColor ? { '--unread-c': unreadColor } : null">
+    <section class="mlist" :class="{ 'mlist--hl': highlightUnread, 'mlist--select': selectMode, 'mlist--roomy': density === 'roomy', 'mlist--compact': density === 'compact', 'mlist--acts': rowActions }" :style="unreadColor ? { '--unread-c': unreadColor } : null">
         <AppPromo />
         <div class="mobile-bar">
             <button class="ib" type="button" @click="$emit('menu')" aria-label="Папки"><Icon name="menu" :size="22" /></button>
@@ -401,6 +403,15 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
                         <span v-if="m.flagged" class="mrow__star mrow__star--on"><Icon name="flag" :size="13" /></span>
                     </span>
                     <span>{{ when(m.date) }}</span>
+                    <!-- Панель по наведению (mlist--acts): встаёт на место значков скрепки и флажка, дату не закрывает,
+                         появляется с задержкой (CSS), чтобы не мелькать при движении мыши. Удаление идёт обычным
+                         путём: окно «Отменить» или подтверждение, если окно выключено. -->
+                    <span v-if="rowActions && !selectMode" class="mrow__acts" @click.stop @keydown.enter.stop @keydown.space.stop>
+                        <button class="ib ib--sm" type="button" :title="m.seen ? 'Непрочитано' : 'Прочитано'" :aria-label="m.seen ? 'Непрочитано' : 'Прочитано'" @click.stop="$emit('act', m.seen ? 'unseen' : 'seen', [m.uid])"><Icon :name="m.seen ? 'unread' : 'eye'" :size="15" /></button>
+                        <button class="ib ib--sm" type="button" :class="{ 'ib--on': m.flagged }" :title="m.flagged ? 'Снять флажок' : 'Флажок'" :aria-label="m.flagged ? 'Снять флажок' : 'Флажок'" @click.stop="$emit('act', m.flagged ? 'unflag' : 'flag', [m.uid])"><Icon name="flag" :size="15" /></button>
+                        <button v-if="!readonly && folderRole !== 'archive' && folderRole !== 'trash'" class="ib ib--sm" type="button" title="Архив" aria-label="Архив" @click.stop="$emit('act', 'archive', [m.uid])"><Icon name="archive" :size="15" /></button>
+                        <button v-if="!readonly" class="ib ib--sm ib--danger" type="button" title="Удалить" aria-label="Удалить" @click.stop="$emit('act', 'delete', [m.uid])"><Icon name="trash" :size="15" /></button>
+                    </span>
                 </span>
             </div>
             </template>
