@@ -1152,7 +1152,12 @@
     small { display: block; font-size: 11px; color: v.$c-faint; }
     &__cond { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     &__cond select, &__cond input { flex: 1; min-width: 120px; }
+
+    // Уточнения внутри правила — ступенькой, с полосой слева.
+    &__refine { margin: 4px 0 10px 12px; padding: 8px 14px 4px; border-left: 3px solid v.$c-accent-soft; background: v.$c-surface-2; border-radius: 0 10px 10px 0; }
+    &__refine-hd { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 }
+textarea.mono, pre.mono { font-family: ui-monospace, Consolas, "Courier New", monospace; }
 
 textarea.input { height: auto; min-height: 100px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
 select.input { padding-right: 28px; }

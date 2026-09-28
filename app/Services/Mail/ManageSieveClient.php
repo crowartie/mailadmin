@@ -60,6 +60,13 @@ class ManageSieveClient
         $this->readResponse();
     }
 
+    /** Проверить скрипт без сохранения (RFC 5804 CHECKSCRIPT): ошибка разбора приходит как NO с текстом. */
+    public function checkScript(string $script): void
+    {
+        $this->send('CHECKSCRIPT ' . $this->literal($script));
+        $this->readResponse();
+    }
+
     public function setActive(string $name): void
     {
         $this->send('SETACTIVE ' . $this->quote($name));

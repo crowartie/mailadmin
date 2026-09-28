@@ -36,31 +36,51 @@ class RuleRunner
                 $out[] = $row;
                 continue;
             }
-            $actions = collect($rule['actions'] ?? [])->filter(fn ($a) => in_array($a['type'] ?? '', ['move', 'copy', 'label', 'flag', 'seen', 'discard'], true));
-            if ($actions->isEmpty()) {
+            $applicable = fn (array $list) => collect($list)->filter(fn ($a) => in_array($a['type'] ?? '', self::APPLICABLE, true));
+            $actions = $applicable($rule['actions'] ?? []);
+            $refines = collect($rule['refine'] ?? [])->filter(fn ($r) => $applicable($r['actions'] ?? [])->isNotEmpty() && ! collect($r['conditions'] ?? [])->first(fn ($c) => ! $this->supported($c)));
+            if ($actions->isEmpty() && $refines->isEmpty()) {
                 $row['skipped'] = 'нет действий, применимых к старой почте';
                 $out[] = $row;
                 continue;
             }
             $uids = $this->match($folder, $rule);
             $uids = array_values(array_diff($uids, $stopped));
-            if ($uids) {
-                foreach ($actions as $a) {
-                    $this->apply($folder, $uids, $a, $labels);
-                    if (in_array($a['type'], ['move', 'discard'], true)) {
-                        $stopped = array_merge($stopped, $uids); // письмо уже не во «Входящих»
-                        break;
-                    }
-                }
-                if (! empty($rule['stop'])) {
-                    $stopped = array_merge($stopped, $uids);
+            $row['count'] = count($uids);
+            // Уточнения — по порядку, каждое забирает свои письма; остаток — основным действиям.
+            $rest = $uids;
+            foreach ($refines as $ref) {
+                $mine = $ref['conditions'] ? array_values(array_intersect($rest, $this->match($folder, $ref))) : $rest;
+                if ($mine) {
+                    $this->applyAll($folder, $mine, $applicable($ref['actions'] ?? []), $labels);
+                    $rest = array_values(array_diff($rest, $mine));
                 }
             }
-            $row['count'] = count($uids);
+            if ($rest && $actions->isNotEmpty()) {
+                $this->applyAll($folder, $rest, $actions, $labels);
+            }
+            // «Остановить» — или письмо уже перенесено/удалено: следующим правилам оно не достанется.
+            $moves = fn ($list) => collect($list)->contains(fn ($a) => in_array($a['type'] ?? '', ['move', 'discard'], true));
+            if ($uids && (! empty($rule['stop']) || $moves($rule['actions'] ?? []) || $refines->contains(fn ($r) => $moves($r['actions'] ?? [])))) {
+                $stopped = array_merge($stopped, $uids);
+            }
             $out[] = $row;
         }
 
         return $out;
+    }
+
+    private const APPLICABLE = ['move', 'copy', 'label', 'flag', 'seen', 'discard'];
+
+    /** Действия по порядку; после переноса или удаления письма во «Входящих» уже нет — дальше не идём. */
+    private function applyAll(string $folder, array $uids, \Illuminate\Support\Collection $actions, array $labels): void
+    {
+        foreach ($actions as $a) {
+            $this->apply($folder, $uids, $a, $labels);
+            if (in_array($a['type'], ['move', 'discard'], true)) {
+                break;
+            }
+        }
     }
 
     private function supported(array $c): bool

@@ -5,6 +5,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import MailLayout from '../../Layouts/MailLayout.vue';
 import Icon from '../../Components/Icon.vue';
 import Editor from '../../Components/Mail/Editor.vue';
+import RuleParts from '../../Components/Mail/RuleParts.vue';
 import Toast from '../../Components/Mail/Toast.vue';
 import { plural, size, when as whenCommon } from '../../mail/format';
 import { uiSimple, setUiSimple } from '../../mail/uiMode';
@@ -47,6 +48,25 @@ const folders = ref(props.folders);
 const labels = ref(props.labels);
 const rules = ref((props.rules?.rules || []).map((r) => ({ ...r })));
 const autoreply = ref({ enabled: false, from: '', to: '', subject: 'Автоответ', body: '', days: 1, ...(props.rules?.autoreply || {}) });
+// Свой скрипт Sieve (вкладка «Свой скрипт»): проверяется самим сервером до сохранения.
+const rulesTab = ref('builder');
+const sieveCustom = ref(props.rules?.custom || '');
+const sieveCheck = ref(null);   // { ok, error }
+async function checkCustom() {
+    busy.value = true;
+    try { const r = await api.checkSieve(sieveCustom.value); sieveCheck.value = r; }
+    catch (e) { sieveCheck.value = { ok: false, error: e.message }; } finally { busy.value = false; }
+}
+async function saveCustom() {
+    busy.value = true;
+    try {
+        const r = await api.checkSieve(sieveCustom.value);
+        sieveCheck.value = r;
+        if (!r.ok) { say('Скрипт не сохранён: ' + r.error, true); return; }
+        await api.saveRules(rules.value, autoreply.value, sieveCustom.value);
+        say(sieveCustom.value.trim() ? 'Свой скрипт сохранён — сервер выполняет его после правил конструктора' : 'Свой скрипт убран');
+    } catch (e) { say(e.message, true); } finally { busy.value = false; }
+}
 const toast = ref(null);
 const dialog = ref(null);
 const editing = ref(null); // редактируемое правило
@@ -201,8 +221,8 @@ const quickOver = computed(() => Math.max(0, quickReplies.value.length - MAX_QUI
 // Правила и автоответ живут в своём композабле: там же и ограничения сервера,
 // продублированные на клиенте, и проверки, выведенные из живых жалоб.
 const {
-    applying, FIELDS, OPS, ACTIONS, MAX_RULES, MAX_CONDITIONS, MAX_ACTIONS,
-    applyRules, opsFor, onFieldChange, newRule, describeCond, describeAct, ruleName,
+    applying, FIELDS, OPS, ACTIONS, MAX_RULES, MAX_CONDITIONS, MAX_ACTIONS, MAX_REFINE,
+    applyRules, opsFor, onFieldChange, newRule, addRefine, describeCond, describeAct, ruleName,
     saveRule, removeRule, moveRule, pushRules, saveAutoreply,
 } = useMailRules({ rules, autoreply, editing, folders, labels, busy, say, ask });
 // Пришли из «Папок» по кнопке «Правило»: открываем новое правило с уже выбранной папкой,
@@ -412,65 +432,54 @@ const shortcuts = [
                     <!-- Правила -->
                     <template v-if="section === 'rules'">
                         <div class="card mset__section">
-                            <h2>Правила <span class="chip chip--off">{{ rules.length }}</span><span class="grow" /><button v-if="rules.length" class="btn btn--sm" type="button" :disabled="applying" title="Прогнать правила по письмам, которые уже во «Входящих»" @click="applyRules"><Icon :name="applying ? 'refresh' : 'move'" :size="14" />{{ applying ? 'Раскладываю…' : 'Разложить Входящие' }}</button><button class="btn btn--sm btn--primary" type="button" @click="newRule"><Icon name="plus" :size="14" />Новое правило</button></h2>
-                            <div v-if="!rules.length" class="empty">Правил пока нет. Например: письма от бухгалтерии — в папку «Счета» и с меткой «Срочно».</div>
-                            <div v-for="(r, i) in rules" :key="r.id" class="rule">
+                            <h2>Правила <span class="chip chip--off">{{ rules.length }}</span>
+                                <span class="seg seg--sm" style="margin-left: 12px"><button type="button" class="seg__item" :class="{ 'seg__item--on': rulesTab === 'builder' }" @click="rulesTab = 'builder'">Конструктор</button><button type="button" class="seg__item" :class="{ 'seg__item--on': rulesTab === 'custom' }" @click="rulesTab = 'custom'">Свой скрипт<span v-if="sieveCustom.trim()" class="seg__count">✓</span></button></span>
+                                <span class="grow" /><template v-if="rulesTab === 'builder'"><button v-if="rules.length" class="btn btn--sm" type="button" :disabled="applying" title="Прогнать правила по письмам, которые уже во «Входящих»" @click="applyRules"><Icon :name="applying ? 'refresh' : 'move'" :size="14" />{{ applying ? 'Раскладываю…' : 'Разложить Входящие' }}</button><button class="btn btn--sm btn--primary" type="button" @click="newRule"><Icon name="plus" :size="14" />Новое правило</button></template></h2>
+                            <!-- Свой скрипт Sieve: для тех, кому конструктора мало. Проверяется Dovecot до сохранения. -->
+                            <template v-if="rulesTab === 'custom'">
+                                <p class="hint" style="margin: 0 0 8px">Скрипт на языке Sieve (RFC 5228, Dovecot Pigeonhole) выполняется после правил конструктора. Строки <code>require</code> можно писать как обычно — они сольются с нашими. Что искать: «sieve fileinto», «sieve variables», «dovecot pigeonhole».</p>
+                                <textarea v-model="sieveCustom" class="input mono" rows="14" spellcheck="false" placeholder='require ["fileinto", "variables"];
+if address :domain :is "from" "example.ru" {
+  if address :localpart :matches "from" "*" { set "who" "${1}"; }
+  fileinto :create "Пример/${who}";
+  stop;
+}' @input="sieveCheck = null" />
+                                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px">
+                                    <button class="btn btn--primary" type="button" :disabled="busy" @click="saveCustom">Сохранить</button>
+                                    <button class="btn" type="button" :disabled="busy" @click="checkCustom">Проверить</button>
+                                    <span v-if="sieveCheck" :class="sieveCheck.ok ? 'hint' : 'error'" style="margin: 0; color: var(--ok-ink)" :style="sieveCheck.ok ? '' : 'color: var(--no)'">{{ sieveCheck.ok ? '✓ скрипт разобран сервером, ошибок нет' : sieveCheck.error }}</span>
+                                </div>
+                                <p v-if="sieveCheck && !sieveCheck.ok && sieveCheck.script" class="hint" style="margin: 8px 0 0">Строки в ошибке — по общему скрипту (правила конструктора идут первыми). <button type="button" class="linklike" @click="sieveCheck = { ...sieveCheck, showAll: !sieveCheck.showAll }">{{ sieveCheck.showAll ? 'скрыть общий скрипт' : 'показать общий скрипт' }}</button></p>
+                                <pre v-if="sieveCheck && sieveCheck.showAll" class="mono" style="font-size: 12px; white-space: pre-wrap; background: var(--surface-2); padding: 10px 12px; border-radius: 8px; max-height: 320px; overflow: auto">{{ sieveCheck.script }}</pre>
+                            </template>
+                            <div v-if="rulesTab === 'builder' && !rules.length" class="empty">Правил пока нет. Например: письма от бухгалтерии — в папку «Счета» и с меткой «Срочно».</div>
+                            <div v-for="(r, i) in rules" v-show="rulesTab === 'builder'" :key="r.id" class="rule">
                                 <label class="toggle"><input v-model="r.enabled" type="checkbox" @change="pushRules"><span class="toggle__track" /></label>
                                 <div><small>Если</small>{{ r.conditions?.length ? r.conditions.map(describeCond).join(r.match === 'any' ? ' или ' : ' и ') : 'любое письмо' }}</div>
-                                <div><small>То</small>{{ r.actions.map(describeAct).join(', ') }}{{ r.stop ? ', остановить' : '' }}</div>
+                                <div><small>То</small>{{ r.actions.map(describeAct).join(', ') }}{{ r.stop ? ', остановить' : '' }}<span v-if="r.refine?.length" class="chip chip--acc" style="margin-left: 8px" :title="r.refine.map((x, k) => `${k + 1}. ${(x.conditions || []).map(describeCond).join(x.match === 'any' ? ' или ' : ' и ') || 'иначе'} → ${(x.actions || []).map(describeAct).join(', ')}`).join('\n')">{{ r.refine.length }} {{ plural(r.refine.length, 'уточнение', 'уточнения', 'уточнений') }}</span></div>
                                 <div style="display: flex; gap: 2px">
                                     <button class="ib ib--sm" type="button" title="Выше" :disabled="i === 0" @click="moveRule(i, -1)" aria-label="Выше"><Icon name="up" :size="14" /></button>
                                     <button class="ib ib--sm" type="button" title="Ниже" :disabled="i === rules.length - 1" @click="moveRule(i, 1)" aria-label="Ниже"><Icon name="down" :size="14" /></button>
-                                    <button class="ib ib--sm" type="button" title="Изменить" @click="editing = JSON.parse(JSON.stringify(r))" aria-label="Изменить"><Icon name="edit" :size="14" /></button>
+                                    <button class="ib ib--sm" type="button" title="Изменить" @click="editing = { refine: [], ...JSON.parse(JSON.stringify(r)) }" aria-label="Изменить"><Icon name="edit" :size="14" /></button>
                                     <button class="ib ib--sm ib--danger" type="button" title="Удалить" @click="removeRule(r.id)" aria-label="Удалить"><Icon name="trash" :size="14" /></button>
                                 </div>
                             </div>
-                            <p class="hint" style="margin: 0">Правила выполняются на сервере по порядку — работают и для телефона, и для почтовой программы. «Разложить Входящие» применяет их к уже полученным письмам (условия по отправителю, получателю и теме; действия — папка, метка, флажок, прочитано, удалить).</p>
+                            <p v-if="rulesTab === 'builder'" class="hint" style="margin: 0">Правила выполняются на сервере по порядку — работают и для телефона, и для почтовой программы. «Разложить Входящие» применяет их к уже полученным письмам (условия по отправителю, получателю и теме; действия — папка, метка, флажок, прочитано, удалить).</p>
                         </div>
 
                         <form v-if="editing" class="card mset__section" @submit.prevent="saveRule">
                             <h2>{{ rules.some((x) => x.id === editing.id) ? 'Правило' : 'Новое правило' }}</h2>
                             <div class="field"><label>Название (необязательно)</label><input v-model="editing.name" class="input" placeholder="Счета от Сибстроя"></div>
+                            <RuleParts :part="editing" :fields="FIELDS" :ops="OPS" :actions="ACTIONS" :folders="folders" :labels="labels" :ops-for="opsFor" :on-field-change="onFieldChange" :max-conditions="MAX_CONDITIONS" :max-actions="MAX_ACTIONS" />
+                            <!-- Уточнения (просьба Носкова): вместо 20–30 правил на одну компанию — одно с ветками внутри.
+                                 Проверяются по порядку раньше основных действий; подошло — выполняется только оно. -->
                             <div class="field">
-                                <label>Если <select v-model="editing.match" style="font: inherit; border: none; background: none; color: var(--accent-ink)"><option value="all">выполнены все условия</option><option value="any">выполнено любое условие</option></select></label>
-                                <div v-for="(c, ci) in editing.conditions" :key="ci" class="rule__cond">
-                                    <select v-model="c.field" class="input" style="max-width: 190px" @change="onFieldChange(c)"><option v-for="(t, k) in FIELDS" :key="k" :value="k">{{ t }}</option></select>
-                                    <input v-if="c.field === 'header'" v-model="c.header" class="input" placeholder="X-Priority" style="max-width: 160px">
-                                    <!-- Список операторов строим по типу условия: v-show на <option> часть браузеров
-                                         игнорирует, и у темы письма показывался оператор «больше». -->
-                                    <select v-model="c.op" class="input" style="max-width: 170px">
-                                        <option v-for="k in opsFor(c.field)" :key="k" :value="k">{{ OPS[k] }}</option>
-                                    </select>
-                                    <input v-model="c.value" class="input" :inputmode="c.field === 'size' ? 'numeric' : 'text'" :placeholder="c.field === 'size' ? '10240' : 'значение'">
-                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.conditions.splice(ci, 1)" aria-label="Убрать"><Icon name="x" :size="14" /></button>
+                                <label>Уточнения <span class="hint" style="margin: 0; font-weight: 400">— для писем, подошедших под правило: проверяются по порядку, срабатывает первое подошедшее, остальным достаются действия выше</span></label>
+                                <div v-for="(ref, ri) in (editing.refine || [])" :key="ri" class="rule__refine">
+                                    <div class="rule__refine-hd"><span class="tag">уточнение {{ ri + 1 }}</span><span class="grow" /><button class="ib ib--sm" type="button" title="Убрать уточнение" aria-label="Убрать уточнение" @click="editing.refine.splice(ri, 1)"><Icon name="x" :size="14" /></button></div>
+                                    <RuleParts :part="ref" compact :fields="FIELDS" :ops="OPS" :actions="ACTIONS" :folders="folders" :labels="labels" :ops-for="opsFor" :on-field-change="onFieldChange" :max-conditions="MAX_CONDITIONS" :max-actions="MAX_ACTIONS" />
                                 </div>
-                                <button v-if="editing.conditions.length < MAX_CONDITIONS" type="button" class="linklike" style="font-size: 13px; align-self: start" @click="editing.conditions.push({ field: 'subject', op: 'contains', value: '' })">+ ещё условие</button>
-                                <span v-else class="hint" style="margin: 0">Условий в одном правиле не больше {{ MAX_CONDITIONS }}</span>
-                            </div>
-                            <div class="field">
-                                <label>То</label>
-                                <div v-for="(a, ai) in editing.actions" :key="ai" class="rule__cond">
-                                    <select v-model="a.type" class="input" style="max-width: 240px"><option v-for="(t, k) in ACTIONS" :key="k" :value="k">{{ t }}</option></select>
-                                    <!-- Заглушка «— выберите —»: без неё новое правило выглядело настроенным,
-                                         хотя папка не выбрана, и на сервере оно ничего не делало. -->
-                                    <select v-if="a.type === 'move' || a.type === 'copy'" v-model="a.value" class="input">
-                                        <option value="">— выберите папку —</option>
-                                        <option v-for="f in folders" :key="f.path" :value="f.path">{{ '— '.repeat(f.depth) + f.name }}</option>
-                                    </select>
-                                    <select v-else-if="a.type === 'move_by_sender' || a.type === 'move_by_domain'" v-model="a.value" class="input" :title="a.type === 'move_by_sender' ? 'Папка получит имя по части адреса до «@»: ivanov@polyus.com → «ivanov». Точки заменяются на «-». Папка создаётся сама при первом письме.' : 'Папка получит имя по домену без зоны: polyus.com → «polyus». Папка создаётся сама при первом письме.'">
-                                        <option value="">— среди своих папок (в корне) —</option>
-                                        <option v-for="f in folders" :key="f.path" :value="f.path">внутри: {{ '— '.repeat(f.depth) + f.name }}</option>
-                                    </select>
-                                    <select v-else-if="a.type === 'label'" v-model="a.value" class="input">
-                                        <option value="">— выберите метку —</option>
-                                        <option v-for="l in labels" :key="l.id" :value="String(l.id)">{{ l.name }}</option>
-                                    </select>
-                                    <input v-else-if="a.type === 'forward' || a.type === 'forward_copy'" v-model="a.value" class="input" type="email" placeholder="кому@домен">
-                                    <input v-else-if="a.type === 'reply'" v-model="a.value" class="input" placeholder="Текст ответа">
-                                    <button class="ib ib--sm" type="button" title="Убрать" @click="editing.actions.splice(ai, 1)" aria-label="Убрать"><Icon name="x" :size="14" /></button>
-                                </div>
-                                <a style="cursor: pointer; font-size: 13px" @click="editing.actions.push({ type: 'label', value: '' })">+ ещё действие</a>
-                                <p v-if="editing.actions.some((a) => a.type === 'move_by_sender' || a.type === 'move_by_domain')" class="hint" style="margin: 6px 0 0">Папка для каждого отправителя создаётся сама при первом письме: по адресу — «ivanov» из ivanov@polyus.com, по домену — «polyus». Точки в имени заменяются на «-». Так одно правило «От содержит @polyus.com» раскладывает письма всех сотрудников этой компании по персональным папкам.</p>
+                                <button v-if="(editing.refine || []).length < MAX_REFINE" type="button" class="linklike" style="font-size: 13px; align-self: start" @click="addRefine(editing)">+ уточнение</button>
                             </div>
                             <label class="toggle"><input v-model="editing.stop" type="checkbox"><span class="toggle__track" />Не применять следующие правила к этому письму</label>
                             <div style="display: flex; gap: 8px"><button class="btn btn--primary" type="submit" :disabled="busy">Сохранить</button><button class="btn" type="button" @click="editing = null">Отмена</button></div>

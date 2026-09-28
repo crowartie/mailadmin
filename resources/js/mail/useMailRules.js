@@ -50,10 +50,10 @@ export function useMailRules(ctx) {
         if (!allowed.includes(c.op)) c.op = allowed[0];
         if (c.field === 'size' && !/^\d*$/.test(String(c.value ?? ''))) c.value = '';
     }
-    const ACTIONS = { move: 'Переместить в папку', copy: 'Копию в папку', move_by_sender: 'В папку по адресу отправителя', move_by_domain: 'В папку по домену отправителя', label: 'Поставить метку', flag: 'Флажок', seen: 'Пометить прочитанным', forward: 'Переслать на адрес', forward_copy: 'Переслать копию на адрес', discard: 'Уничтожить письмо (без «Корзины»)', reply: 'Ответить текстом', stop: 'Остановить обработку' };
+    const ACTIONS = { move: 'Переместить в папку', copy: 'Копию в папку', move_by_sender: 'В папку по адресу отправителя', move_by_domain: 'В папку по домену отправителя', move_by_name: 'В папку по имени отправителя', label: 'Поставить метку', flag: 'Флажок', seen: 'Пометить прочитанным', forward: 'Переслать на адрес', forward_copy: 'Переслать копию на адрес', discard: 'Уничтожить письмо (без «Корзины»)', reply: 'Ответить текстом', stop: 'Остановить обработку' };
 
     function newRule() {
-        editing.value = { id: Date.now(), name: '', enabled: true, match: 'all', stop: false, conditions: [{ field: 'from', op: 'contains', value: '' }], actions: [{ type: 'move', value: '' }] };
+        editing.value = { id: Date.now(), name: '', enabled: true, match: 'all', stop: false, conditions: [{ field: 'from', op: 'contains', value: '' }], actions: [{ type: 'move', value: '' }], refine: [] };
         if (rules.value.length >= MAX_RULES) { editing.value = null; say(`Правил не больше ${MAX_RULES} — удалите ненужные`, true); }
     }
     function describeCond(c) {
@@ -68,6 +68,7 @@ export function useMailRules(ctx) {
             case 'copy': return `копия в «${folderName(a.value)}»`;
             case 'move_by_sender': return a.value ? `в папку отправителя внутри «${folderName(a.value)}»` : 'в папку отправителя';
             case 'move_by_domain': return a.value ? `в папку домена отправителя внутри «${folderName(a.value)}»` : 'в папку домена отправителя';
+            case 'move_by_name': return a.value ? `в папку по имени отправителя внутри «${folderName(a.value)}»` : 'в папку по имени отправителя';
             case 'label': return `метка «${labelName(a.value)}»`;
             case 'forward': case 'forward_copy': return `${ACTIONS[a.type].toLowerCase()} ${a.value}`;
             case 'reply': return 'автоответ';
@@ -82,6 +83,24 @@ export function useMailRules(ctx) {
     const MAX_RULES = 50;
     const MAX_CONDITIONS = 10;
     const MAX_ACTIONS = 6;
+    const MAX_REFINE = 10;
+    /** Уточнение внутри правила: свои условия и действия, проверяется раньше основных действий. */
+    function addRefine(r) {
+        r.refine ||= [];
+        if (r.refine.length >= MAX_REFINE) { say(`Уточнений не больше ${MAX_REFINE}`, true); return; }
+        r.refine.push({ match: 'all', conditions: [{ field: 'from', op: 'contains', value: '' }], actions: [{ type: 'move', value: '' }] });
+    }
+    /** Проверка одной части (правила или уточнения): пустые значения и незаполненные действия. */
+    function partError(p, what) {
+        if (!p.actions?.length) return `${what}: добавьте хотя бы одно действие`;
+        const empty = (p.conditions || []).find((c) => String(c.value ?? '').trim() === '');
+        if (empty) return `${what}: заполните значение условия «${FIELDS[empty.field] || empty.field}» — пустое совпадает со всеми письмами`;
+        const blank = p.actions.find((a) => NEEDS_VALUE.includes(a.type) && String(a.value ?? '').trim() === '');
+        if (blank) return `${what}: выберите, что подставить в действие «${ACTIONS[blank.type]}»`;
+        if ((p.conditions || []).length > MAX_CONDITIONS) return `${what}: условий не больше ${MAX_CONDITIONS}`;
+        if (p.actions.length > MAX_ACTIONS) return `${what}: действий не больше ${MAX_ACTIONS}`;
+        return null;
+    }
     const NEEDS_VALUE = ['move', 'copy', 'label', 'forward', 'forward_copy', 'reply'];
 
     async function saveRule() {
@@ -104,6 +123,10 @@ export function useMailRules(ctx) {
         if (blank) { say(`Выберите, что подставить в действие «${ACTIONS[blank.type]}» — иначе правило ничего не сделает`, true); return; }
         if (r.conditions.length > MAX_CONDITIONS) { say(`Условий в одном правиле не больше ${MAX_CONDITIONS}`, true); return; }
         if (r.actions.length > MAX_ACTIONS) { say(`Действий в одном правиле не больше ${MAX_ACTIONS}`, true); return; }
+        for (const [i, ref] of (r.refine || []).entries()) {
+            const err = partError(ref, `Уточнение ${i + 1}`);
+            if (err) { say(err, true); return; }
+        }
         const i = rules.value.findIndex((x) => x.id === r.id);
         if (i < 0 && rules.value.length >= MAX_RULES) { say(`Правил не больше ${MAX_RULES} — удалите ненужные`, true); return; }
         if (i >= 0) rules.value[i] = r; else rules.value.push(r);
@@ -158,8 +181,8 @@ export function useMailRules(ctx) {
     }
     
     return {
-        applying, FIELDS, OPS, ACTIONS, MAX_RULES, MAX_CONDITIONS, MAX_ACTIONS,
-        applyRules, opsFor, onFieldChange, newRule, describeCond, describeAct, ruleName,
+        applying, FIELDS, OPS, ACTIONS, MAX_RULES, MAX_CONDITIONS, MAX_ACTIONS, MAX_REFINE,
+        applyRules, opsFor, onFieldChange, newRule, addRefine, describeCond, describeAct, ruleName,
         saveRule, removeRule, moveRule, pushRules, saveAutoreply,
     };
 }

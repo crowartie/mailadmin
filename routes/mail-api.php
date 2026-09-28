@@ -121,6 +121,7 @@ Route::post('security/remember', [MailSecurityController::class, 'remember']);
 Route::get('rules', [RulesController::class, 'show']);
 Route::put('rules', [RulesController::class, 'update']);
 Route::post('rules/apply', [RulesController::class, 'apply']);
+Route::post('rules/check', [RulesController::class, 'check']);
 Route::post('sender/mark', [\App\Http\Controllers\Mail\Api\SenderController::class, 'mark']);
 
 // Контакты.

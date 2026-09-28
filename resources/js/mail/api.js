@@ -173,7 +173,9 @@ export const api = {
     deleteLabel: (id) => request('DELETE', `/mail/api/labels/${id}`),
 
     rules: () => request('GET', '/mail/api/rules'),
-    saveRules: (rules, autoreply) => request('PUT', '/mail/api/rules', { rules, autoreply }),
+    // custom — свой скрипт Sieve; без него сервер оставляет прежний.
+    saveRules: (rules, autoreply, custom) => request('PUT', '/mail/api/rules', custom === undefined ? { rules, autoreply } : { rules, autoreply, custom }),
+    checkSieve: (custom) => request('POST', '/mail/api/rules/check', { custom }),
     applyRules: () => request('POST', '/mail/api/rules/apply'),
     markSender: (kind, match, value, resort = true, folder = null) => request('POST', '/mail/api/sender/mark', { kind, match, value, resort, folder }),
 

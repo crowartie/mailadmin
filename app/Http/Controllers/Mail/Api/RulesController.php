@@ -20,7 +20,44 @@ class RulesController extends Controller
     {
         $set = RuleSet::find($imap->user());
 
-        return response()->json(['rules' => $set?->rules ?? [], 'autoreply' => $set?->autoreply, 'script' => $set?->script]);
+        return response()->json(['rules' => $set?->rules ?? [], 'autoreply' => $set?->autoreply, 'script' => $set?->script, 'custom' => $set?->custom ?? '']);
+    }
+
+    /** Условия и действия — одни и те же у правила и у его уточнений. */
+    private static function partRules(string $p): array
+    {
+        return [
+            $p . 'conditions' => ['nullable', 'array', 'max:10'],
+            $p . 'conditions.*.field' => ['required', 'in:from,to,recipient,subject,body,header,size'],
+            $p . 'conditions.*.header' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9-]+$/'],
+            $p . 'conditions.*.op' => ['required', 'in:contains,not_contains,is,starts,ends,matches,over,under'],
+            $p . 'conditions.*.value' => ['nullable', 'string', 'max:500'],
+            $p . 'actions' => ['required', 'array', 'min:1', 'max:6'],
+            $p . 'actions.*.type' => ['required', 'in:move,copy,move_by_sender,move_by_domain,move_by_name,label,flag,seen,forward,forward_copy,discard,reply,stop'],
+            $p . 'actions.*.value' => ['nullable', 'string', 'max:2000'],
+        ];
+    }
+
+    /**
+     * Проверить свой скрипт самим Dovecot (CHECKSCRIPT), не сохраняя: вместе с правилами конструктора,
+     * как он и будет выполняться. Ошибка приходит со строкой — но строки считаются по общему скрипту,
+     * поэтому отдаём и его.
+     */
+    public function check(Request $request, ImapSession $imap, SieveBuilder $builder): JsonResponse
+    {
+        $data = $request->validate(['custom' => ['nullable', 'string', 'max:20000']]);
+        $set = RuleSet::find($imap->user());
+        $labels = Label::where('user', $imap->user())->pluck('name', 'id')->all();
+        $script = $builder->build($set?->rules ?? [], $set?->autoreply, $labels, $data['custom'] ?? '');
+        try {
+            $sieve = ManageSieveClient::forUser($imap->loginName(), $imap->password());
+            $sieve->checkScript($script);
+            $sieve->logout();
+        } catch (\RuntimeException $e) {
+            return response()->json(['ok' => false, 'error' => $e->getMessage(), 'script' => $script]);
+        }
+
+        return response()->json(['ok' => true, 'script' => $script]);
     }
 
     public function update(Request $request, ImapSession $imap, SieveBuilder $builder): JsonResponse
@@ -32,14 +69,12 @@ class RulesController extends Controller
             'rules.*.enabled' => ['nullable', 'boolean'],
             'rules.*.match' => ['nullable', 'in:all,any'],
             'rules.*.stop' => ['nullable', 'boolean'],
-            'rules.*.conditions' => ['nullable', 'array', 'max:10'],
-            'rules.*.conditions.*.field' => ['required', 'in:from,to,recipient,subject,body,header,size'],
-            'rules.*.conditions.*.header' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9-]+$/'],
-            'rules.*.conditions.*.op' => ['required', 'in:contains,not_contains,is,starts,ends,matches,over,under'],
-            'rules.*.conditions.*.value' => ['nullable', 'string', 'max:500'],
-            'rules.*.actions' => ['required', 'array', 'min:1', 'max:6'],
-            'rules.*.actions.*.type' => ['required', 'in:move,copy,move_by_sender,move_by_domain,label,flag,seen,forward,forward_copy,discard,reply,stop'],
-            'rules.*.actions.*.value' => ['nullable', 'string', 'max:2000'],
+            ...self::partRules('rules.*.'),
+            // Уточнения внутри правила (см. SieveBuilder): до десяти, каждое — свои условия и действия.
+            'rules.*.refine' => ['nullable', 'array', 'max:10'],
+            'rules.*.refine.*.match' => ['nullable', 'in:all,any'],
+            ...self::partRules('rules.*.refine.*.'),
+            'custom' => ['nullable', 'string', 'max:20000'],
             'autoreply' => ['nullable', 'array'],
             'autoreply.enabled' => ['nullable', 'boolean'],
             'autoreply.from' => ['nullable', 'date_format:Y-m-d'],
@@ -50,7 +85,9 @@ class RulesController extends Controller
         ]);
 
         $labels = Label::where('user', $imap->user())->pluck('name', 'id')->all();
-        $script = $builder->build($data['rules'], $data['autoreply'] ?? null, $labels);
+        // Свой скрипт присылают только с его вкладки; иначе остаётся прежний.
+        $custom = array_key_exists('custom', $data) ? (string) ($data['custom'] ?? '') : (string) (RuleSet::find($imap->user())?->custom ?? '');
+        $script = $builder->build($data['rules'], $data['autoreply'] ?? null, $labels, $custom);
 
         try {
             $sieve = ManageSieveClient::forUser($imap->loginName(), $imap->password());
@@ -58,11 +95,11 @@ class RulesController extends Controller
             $sieve->setActive(SieveBuilder::SCRIPT);
             $sieve->logout();
         } catch (\RuntimeException $e) {
-            abort(422, 'Сервер не принял правила: ' . $e->getMessage());
+            abort(422, ($custom !== '' ? 'Сервер не принял скрипт (проверьте свой скрипт на вкладке «Свой скрипт»): ' : 'Сервер не принял правила: ') . $e->getMessage());
         }
 
         RuleSet::updateOrCreate(['user' => $imap->user()], [
-            'rules' => $data['rules'], 'autoreply' => $data['autoreply'] ?? null, 'script' => $script,
+            'rules' => $data['rules'], 'autoreply' => $data['autoreply'] ?? null, 'script' => $script, 'custom' => $custom,
         ]);
 
         return response()->json(['ok' => true, 'script' => $script]);
