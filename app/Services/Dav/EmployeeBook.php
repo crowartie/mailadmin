@@ -142,7 +142,8 @@ class EmployeeBook
         if (trim((string) ($profile?->title ?? '')) !== '') {
             $card->add('TITLE', trim((string) $profile->title));
         }
-        $card->add('CATEGORIES', array_merge(['Сотрудники'], $units));
+        // Группа «Сотрудники» не нужна — есть одноимённая книга; без отдела — своя группа, чтобы таких было видно.
+        $card->add('CATEGORIES', $units ?: ['Без подразделения']);
         $card->add('X-EMPLOYEE', '1');
 
         return $card->serialize();
