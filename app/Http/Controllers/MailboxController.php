@@ -7,6 +7,9 @@ use App\Models\Vmail\Domain;
 use App\Models\Vmail\Forwarding;
 use App\Models\Vmail\Mailbox;
 use App\Services\Vmail\MailboxService;
+use App\Models\AdminAction;
+use App\Services\Dav\EmployeeBook;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,6 +17,20 @@ use Inertia\Response;
 
 class MailboxController extends Controller
 {
+    /**
+     * Обновить общую книгу «Сотрудники» сейчас, не дожидаясь часового расписания (dav:sync-employees).
+     * Заодно сбрасываем кэш справочника подсказок адресов — иначе новый сотрудник ещё 10 минут не подсказывался бы.
+     */
+    public function syncEmployees(EmployeeBook $book): RedirectResponse
+    {
+        $stats = $book->sync();
+        Cache::forget('mail.directory');
+        $text = sprintf('добавлено %d, обновлено %d, удалено %d', $stats['added'], $stats['updated'], $stats['removed']);
+        AdminAction::log('mailboxes.sync-employees', null, $text);
+
+        return back()->with('success', 'Книга «Сотрудники» обновлена: ' . $text . '. На телефонах — после обновления списка контактов.');
+    }
+
     public function __construct(private readonly MailboxService $service)
     {
     }

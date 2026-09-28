@@ -57,6 +57,8 @@ Route::middleware('area:admin')->group(function () {
         Route::post('/mailboxes/import/preview', [ImportController::class, 'preview']);
         Route::post('/mailboxes/import/check', [ImportController::class, 'check']);
         Route::post('/mailboxes/import/run', [ImportController::class, 'run']);
+        // Книга «Сотрудники» обновляется по расписанию раз в час; кнопка — чтобы не ждать после правок ящиков.
+        Route::post('/mailboxes/sync-employees', [MailboxController::class, 'syncEmployees']);
         Route::post('/mailboxes/{mailbox}/access', [EmployeeController::class, 'access'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/impersonate', [EmployeeController::class, 'impersonate'])->where('mailbox', '.*');
         Route::post('/mailboxes/{mailbox}/kick', [EmployeeController::class, 'kick'])->where('mailbox', '.*');

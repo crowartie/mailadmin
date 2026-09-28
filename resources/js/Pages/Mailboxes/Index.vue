@@ -15,6 +15,12 @@ const props = defineProps({
 });
 
 const importing = ref(false);
+// Книга «Сотрудники» обновляется раз в час; после импорта или правок можно не ждать.
+const syncing = ref(false);
+function syncEmployees() {
+    syncing.value = true;
+    router.post('/mailboxes/sync-employees', {}, { preserveScroll: true, onFinish: () => { syncing.value = false; } });
+}
 const search = ref(props.filters.search ?? '');
 const filter = ref(props.filters.filter ?? 'all');
 let timer = null;
@@ -105,6 +111,7 @@ function close() {
             </div>
             <input v-model="search" class="input input--w" style="width: 260px" type="search" placeholder="Имя или адрес">
             <button class="btn" type="button" @click="importing = true"><Icon name="upload" :size="16" />Импорт CSV</button>
+            <button class="btn" type="button" :disabled="syncing" title="Обновить общую адресную книгу «Сотрудники» по ящикам сейчас, не дожидаясь часового расписания" @click="syncEmployees"><Icon name="refresh" :size="16" />{{ syncing ? 'Обновляю…' : 'Обновить книгу сотрудников' }}</button>
             <Link class="btn btn--primary" href="/mailboxes/create"><Icon name="plus" :size="16" />Добавить</Link>
         </template>
 
