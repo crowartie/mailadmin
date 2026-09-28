@@ -10,7 +10,7 @@ import Toast from '../../Components/Mail/Toast.vue';
 import { api } from '../../mail/api';
 import { useContactForm } from '../../mail/useContactForm';
 import { useContactActions } from '../../mail/useContactActions';
-import { avatarColor, hotkey, initials, plural, quoteName, when } from '../../mail/format';
+import { avatarColor, hotkey, initials, phone, phoneDial, plural, quoteName, when } from '../../mail/format';
 
 const props = defineProps({
     user: String,
@@ -294,7 +294,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             <span class="mrow__av" :class="{ 'mrow__av--emp': r.contact.employee }" :style="{ '--av': avatarColor(r.contact.email || r.contact.fn) }">{{ initials(r.contact.fn, r.contact.email) }}</span>
                             <span class="mrow__body">
                                 <span class="mrow__from"><b>{{ r.contact.fn }}</b><Icon v-if="r.contact.favorite" name="star" :size="13" style="color: var(--warn)" /></span>
-                                <span class="mrow__prev">{{ r.contact.email || (r.contact.phones && r.contact.phones[0] && r.contact.phones[0].value) || [r.contact.title, r.contact.org].filter(Boolean).join(' · ') || '—' }}</span>
+                                <span class="mrow__prev">{{ r.contact.email || (r.contact.phones && r.contact.phones[0] && phone(r.contact.phones[0].value)) || [r.contact.title, r.contact.org].filter(Boolean).join(' · ') || '—' }}</span>
                             </span>
                             <span class="mrow__when"><span class="crow__book" :title="isDup(r.contact) ? 'Этот человек есть в нескольких книгах' : null">{{ isDup(r.contact) ? (r.contact.bookName || 'Мои контакты') : (r.contact.book === 'personal' ? '' : r.contact.bookName) }}</span></span>
                         </div>
@@ -412,7 +412,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                         </div>
                         <div class="msg ccard__body">
                             <div v-for="(e, i) in open.emails" :key="'e' + i" class="kv"><span>Почта <small>{{ TYPES[e.type] || e.type }}</small></span><b><a href="#" @click.prevent="write({ ...open, email: e.value })">{{ e.value }}</a></b></div>
-                            <div v-for="(p, i) in open.phones" :key="'p' + i" class="kv"><span>Телефон <small>{{ TYPES[p.type] || p.type }}</small></span><b><a :href="'tel:' + p.value.replace(/[^+\d]/g, '')">{{ p.value }}</a></b></div>
+                            <div v-for="(p, i) in open.phones" :key="'p' + i" class="kv"><span>Телефон <small>{{ TYPES[p.type] || p.type }}</small></span><b><a :href="'tel:' + phoneDial(p.value)">{{ phone(p.value) }}</a></b></div>
                             <div v-for="(a, i) in open.addresses" :key="'a' + i" class="kv"><span>Адрес</span><b>{{ [a.postal, a.country, a.city, a.street].filter(Boolean).join(', ') }}</b></div>
                             <div v-if="open.department" class="kv"><span>Отдел</span><b>{{ open.department }}</b></div>
                             <div v-if="open.birthday" class="kv"><span>День рождения</span><b>{{ new Date(open.birthday).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) }}</b></div>

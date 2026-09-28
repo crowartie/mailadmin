@@ -140,8 +140,10 @@ class EmployeeBook
         }
         // Телефоны из профиля сотрудника (админка): раньше в карточку не попадали, и коллеги видели только почту.
         // Форма ящика в админке пишет телефоны в сам ящик (telephone, mobile); профиль — запасной источник.
-        $work = trim((string) ($mailbox->telephone ?: ($profile?->phone ?? '')));
-        $cell = trim((string) ($mailbox->mobile ?: ($profile?->mobile ?? '')));
+        // Номер в карточке — в международном виде (+79025485650): так работает кнопка «Позвонить»,
+        // а вид «+7 (902) 548-56-50» клиенты строят сами (format.js phone(), Fmt.phone).
+        $work = \App\Support\Format::phoneDial($mailbox->telephone ?: ($profile?->phone ?? ''));
+        $cell = \App\Support\Format::phoneDial($mailbox->mobile ?: ($profile?->mobile ?? ''));
         if ($work !== '') {
             $card->add('TEL', $work, ['TYPE' => ['WORK', 'VOICE']]);
         }

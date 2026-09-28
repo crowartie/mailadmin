@@ -42,6 +42,23 @@ export function hotkey(e) {
     return e.key;
 }
 
+/** Телефон в едином виде: российский — «+7 (902) 548-56-50», прочие — как введены. То же, что Format::phone на сервере. */
+export function phone(raw) {
+    const s = String(raw || '').trim();
+    let d = s.replace(/\D/g, '');
+    if (d.length === 11 && (d[0] === '7' || d[0] === '8')) d = d.slice(1);
+    if (d.length === 10) return `+7 (${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6, 8)}-${d.slice(8)}`;
+    return s.replace(/\s+/g, ' ');
+}
+
+/** Номер для ссылки tel: — российский в «+7…», иначе цифры и «+». */
+export function phoneDial(raw) {
+    let d = String(raw || '').replace(/\D/g, '');
+    if (d.length === 11 && (d[0] === '7' || d[0] === '8')) return '+7' + d.slice(1);
+    if (d.length === 10) return '+7' + d;
+    return String(raw || '').replace(/[^+\d]/g, '');
+}
+
 export function size(bytes) {
     if (!bytes && bytes !== 0) return '';
     if (bytes < 1024) return `${bytes} Б`;

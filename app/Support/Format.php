@@ -12,6 +12,38 @@ namespace App\Support;
 final class Format
 {
     /** Размер в байтах словами: «812 КБ», «1,4 МБ». */
+    /**
+     * Российский номер в вид «+7 (902) 548-56-50». Берём только цифры: «8902…», «7902…», «902…»
+     * (10–11 цифр) — российский; всё прочее (внутренний «1234», иностранный) — как ввели, но без лишних пробелов.
+     */
+    public static function phone(?string $raw): string
+    {
+        $raw = trim((string) $raw);
+        $d = preg_replace('/\D/', '', $raw) ?? '';
+        if (strlen($d) === 11 && ($d[0] === '7' || $d[0] === '8')) {
+            $d = substr($d, 1);
+        }
+        if (strlen($d) === 10) {
+            return sprintf('+7 (%s) %s-%s-%s', substr($d, 0, 3), substr($d, 3, 3), substr($d, 6, 2), substr($d, 8, 2));
+        }
+
+        return preg_replace('/\s+/', ' ', $raw) ?? $raw;
+    }
+
+    /** Номер для звонка (tel:): российский — «+79025485650», иначе цифры и «+» как есть. */
+    public static function phoneDial(?string $raw): string
+    {
+        $d = preg_replace('/\D/', '', (string) $raw) ?? '';
+        if (strlen($d) === 11 && ($d[0] === '7' || $d[0] === '8')) {
+            return '+7' . substr($d, 1);
+        }
+        if (strlen($d) === 10) {
+            return '+7' . $d;
+        }
+
+        return preg_replace('/[^+\d]/', '', (string) $raw) ?? '';
+    }
+
     public static function size(?int $bytes): string
     {
         if ($bytes === null) {
