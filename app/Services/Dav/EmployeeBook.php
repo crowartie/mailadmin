@@ -109,7 +109,8 @@ class EmployeeBook
         $parts = preg_split('/\s+/', $name, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         // Русский порядок «Фамилия Имя Отчество»; латинский «First Last» — наоборот.
         $cyr = $name !== '' && preg_match('/\p{Cyrillic}/u', $name);
-        $profileMiddle = (string) (\App\Models\EmployeeProfile::query()->where('username', $mailbox->username)->value('middle_name') ?? '');
+        $profile = \App\Models\EmployeeProfile::query()->with('unit.parent')->where('username', $mailbox->username)->first();
+        $profileMiddle = (string) ($profile?->middle_name ?? '');
         [$last, $first, $middle] = match (true) {
             trim((string) $mailbox->last_name) !== '' || trim((string) $mailbox->first_name) !== '' => [trim((string) $mailbox->last_name), trim((string) $mailbox->first_name), $profileMiddle],
             count($parts) >= 3 && $cyr => [$parts[0], $parts[1], implode(' ', array_slice($parts, 2))],
@@ -127,8 +128,21 @@ class EmployeeBook
         ]);
         $card->add('N', [$last, $first, $middle, '', '']);
         $card->add('EMAIL', strtolower($mailbox->username), ['TYPE' => ['WORK', 'INTERNET', 'PREF']]);
-        $card->add('ORG', [$org, '']);
-        $card->add('CATEGORIES', ['Сотрудники']);
+        // Подразделение — в карточку общей книги: у каждого отдела есть своя книга, но её видят только его члены,
+        // а сотрудники хотят смотреть всех коллег по отделам. CATEGORIES клиент показывает как «Группы»;
+        // вложенный отдел даёт и родительские, чтобы «Дирекция» включала «Дирекция / Бухгалтерия».
+        $units = [];
+        for ($u = $profile?->unit; $u; $u = $u->parent) {
+            if (in_array($u->name, $units, true)) {
+                break;
+            }
+            $units[] = $u->name;
+        }
+        $card->add('ORG', [$org, $units[0] ?? '']);
+        if (trim((string) ($profile?->title ?? '')) !== '') {
+            $card->add('TITLE', trim((string) $profile->title));
+        }
+        $card->add('CATEGORIES', array_merge(['Сотрудники'], $units));
         $card->add('X-EMPLOYEE', '1');
 
         return $card->serialize();

@@ -148,6 +148,12 @@ class UnitService
             $this->dav->setUnitMembers($unit, $this->memberUsernames($unit));
         } catch (\Throwable $e) {
             Log::warning('Календарь отдела: доступ не обновлён', ['unit' => $unit->id, 'error' => $e->getMessage()]);
+        }        // Подразделение записано в карточки общей книги «Сотрудники» — перевели человека, переименовали отдел: обновить сразу.
+        try {
+            app(\App\Services\Dav\EmployeeBook::class)->sync();
+            Cache::forget('mail.directory');
+        } catch (\Throwable $e) {
+            Log::warning('Книга «Сотрудники»: не обновлена после изменения подразделения', ['unit' => $unit->id, 'error' => $e->getMessage()]);
         }
     }
 
