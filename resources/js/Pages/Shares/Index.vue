@@ -83,7 +83,23 @@ function summaryLine(b) {
 function plural(n, a, b, c) { const m = n % 100; if (m >= 11 && m <= 19) return c; const k = n % 10; return k === 1 ? a : k >= 2 && k <= 4 ? b : c; }
 function ini(s) { const p = (s || '').replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean); return p.slice(0, 2).map((x) => x[0].toUpperCase()).join('') || '?'; }
 function personLevels(p) { return p.scope === 'all' || p.hasInbox ? ['reader', 'editor', 'owner'] : ['reader', 'editor']; }
-function folderLevels(f) { return f.role === 'inbox' ? ['reader', 'editor', 'owner'] : ['reader', 'editor']; }
+function folderLevels(f) { const base = f.role === 'inbox' ? ['reader', 'editor', 'owner'] : ['reader', 'editor']; return base.includes(f.level) ? base : [...base, f.level]; }
+// Права по «Входящим» задают папки: владелец — все папки ящика, редактор — системные. Планировщик (shares:sync)
+// раз в 10 минут докладывает их обратно, поэтому менять такие папки по одной бессмысленно — они заперты,
+// а понижение делается по «Входящим» (или селектом строки), после чего папки можно настраивать выборочно.
+const SYSTEM = ['sent', 'drafts', 'spam', 'trash', 'archive', 'lists'];
+function inboxLevel(p) { return p.perFolder.find((f) => f.folder.toUpperCase() === 'INBOX')?.level || null; }
+function locked(p, f) {
+    if (f.role === 'inbox') return false;
+    const il = inboxLevel(p);
+    return il === 'owner' || (il === 'editor' && SYSTEM.includes(f.role));
+}
+function lockHint(p) {
+    const il = inboxLevel(p);
+    if (il === 'owner') return 'владелец — это весь ящик: права на папки задаются «Входящими» и восстанавливаются автоматически. Чтобы открыть выборочно, понизьте уровень по «Входящим» до редактора или читателя, потом настройте папки';
+    if (il === 'editor') return 'редактор по «Входящим» получает и системные папки — их уровень задаётся «Входящими»; остальные папки настраиваются отдельно';
+    return p.level === 'mixed' ? 'права по папкам отличаются' : 'уровень и закрытие — по каждой папке отдельно';
+}
 function freeFolders(b, p) { const have = new Set(p.perFolder.map((f) => f.folder)); return b.folders.filter((f) => !have.has(f.path)); }
 
 // ── по сотрудникам: сотрудник × ящик ──
@@ -224,16 +240,17 @@ function goTo(owner, withMail) {
                             <div><button class="ib ib--sm" type="button" title="Закрыть весь ящик" :disabled="busy" @click="removePerson(b, p)" aria-label="Закрыть доступ"><Icon name="x" :size="13" /></button></div>
                         </div>
                         <div v-if="expanded.has(key(b, p))" class="sp__detail">
-                            <div class="sp__detail-head"><b>{{ p.withName }} — по папкам</b><span class="faint">{{ p.level === 'mixed' ? 'права по папкам отличаются' : 'уровень и закрытие — по каждой папке отдельно' }}</span></div>
+                            <div class="sp__detail-head"><b>{{ p.withName }} — по папкам</b><span class="faint">{{ lockHint(p) }}</span></div>
                             <div class="sp__grid">
                                 <div v-for="f in p.perFolder" :key="f.folder" class="sp__cell">
                                     <span class="sp__cell-name" :title="f.folder">{{ f.name }}</span>
-                                    <select class="input input--sm" style="width: 104px" :value="f.level" aria-label="Уровень" :disabled="busy" @change="setFolderLevel(b, p, f, $event.target.value)"><option v-for="l in folderLevels(f)" :key="l" :value="l">{{ levels[l] }}</option></select>
-                                    <button class="ib ib--sm" type="button" title="Закрыть папку" :disabled="busy" @click="removeFolder(b, p, f)" aria-label="Закрыть папку"><Icon name="x" :size="12" /></button>
+                                    <select class="input input--sm" style="width: 104px" :value="f.level" aria-label="Уровень" :disabled="busy || locked(p, f)" :title="locked(p, f) ? 'Задано уровнем по «Входящим»' : ''" @change="setFolderLevel(b, p, f, $event.target.value)"><option v-for="l in folderLevels(f)" :key="l" :value="l" :disabled="l !== f.level && f.role !== 'inbox' && l === 'owner'">{{ levels[l] }}</option></select>
+                                    <button class="ib ib--sm" type="button" :title="locked(p, f) ? 'Задано уровнем по «Входящим»' : 'Закрыть папку'" :disabled="busy || locked(p, f)" @click="removeFolder(b, p, f)" aria-label="Закрыть папку"><Icon name="x" :size="12" /></button>
                                 </div>
                             </div>
                             <div class="sp__detail-actions">
-                                <template v-if="p.level === 'mixed'"><span class="faint">Сделать одинаково:</span><button v-for="l in personLevels(p)" :key="l" class="btn btn--sm" type="button" :disabled="busy" @click="setPersonLevel(b, p, l)">{{ levels[l] }}</button></template>
+                                <template v-if="inboxLevel(p) === 'owner'"><span class="faint">Понизить на весь ящик:</span><button v-for="l in ['editor', 'reader']" :key="l" class="btn btn--sm" type="button" :disabled="busy" @click="setPersonLevel(b, p, l)">до {{ l === 'editor' ? 'редактора' : 'читателя' }}</button></template>
+                                <template v-else-if="p.level === 'mixed'"><span class="faint">Сделать одинаково:</span><button v-for="l in personLevels(p)" :key="l" class="btn btn--sm" type="button" :disabled="busy" @click="setPersonLevel(b, p, l)">{{ levels[l] }}</button></template>
                                 <select v-if="freeFolders(b, p).length" class="input input--sm" style="width: 200px" aria-label="Открыть ещё папку" :disabled="busy" @change="addFolder(b, p, $event.target.value); $event.target.value = ''">
                                     <option value="">открыть ещё папку…</option>
                                     <option value="*">Все папки ящика</option>
