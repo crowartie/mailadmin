@@ -67,6 +67,8 @@ const visible = computed(() => {
     const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return all.value.filter((c) => {
         if (filter.value === 'favorites' && !c.favorite) return false;
+        // Личная карточка, слитая с карточкой сотрудника, показывается только внутри своей книги.
+        if (c.mergedInto && (filter.value === 'all' || filter.value === 'favorites' || filter.value.startsWith('group:'))) return false;
         if (filter.value.startsWith('group:') && !(c.groups || []).includes(filter.value.slice(6))) return false;
         if (filter.value !== 'all' && filter.value !== 'favorites' && !filter.value.startsWith('group:') && c.book !== filter.value) return false;
         if (!words.length) return true;
@@ -412,7 +414,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                         </div>
                         <div class="msg ccard__body">
                             <div v-for="(e, i) in open.emails" :key="'e' + i" class="kv"><span>Почта <small>{{ TYPES[e.type] || e.type }}</small></span><b><a href="#" @click.prevent="write({ ...open, email: e.value })">{{ e.value }}</a></b></div>
-                            <div v-for="(p, i) in open.phones" :key="'p' + i" class="kv"><span>Телефон <small>{{ TYPES[p.type] || p.type }}</small></span><b><a :href="'tel:' + phoneDial(p.value)">{{ phone(p.value) }}</a></b></div>
+                            <div v-for="(p, i) in open.phones" :key="'p' + i" class="kv"><span>Телефон <small>{{ TYPES[p.type] || p.type }}{{ p.source ? ' · из «' + p.source + '»' : '' }}</small></span><b><a :href="'tel:' + phoneDial(p.value)">{{ phone(p.value) }}</a></b></div>
                             <div v-for="(a, i) in open.addresses" :key="'a' + i" class="kv"><span>Адрес</span><b>{{ [a.postal, a.country, a.city, a.street].filter(Boolean).join(', ') }}</b></div>
                             <div v-if="open.department" class="kv"><span>Отдел</span><b>{{ open.department }}</b></div>
                             <div v-if="open.birthday" class="kv"><span>День рождения</span><b>{{ new Date(open.birthday).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) }}</b></div>
@@ -421,6 +423,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             <div v-if="open.note" class="kv kv--note"><span>Заметка</span><b>{{ open.note }}</b></div>
                             <div v-if="!open.emails.length && !open.phones.length" class="empty">Ни адреса, ни телефона</div>
                         </div>
+                        <p v-if="open.merged && open.merged.length" class="hint">Сюда добавлены данные из вашей карточки «{{ open.merged[0].fn }}» ({{ open.merged[0].bookName }}) — <a href="#" @click.prevent="go(open.merged[0].book)">открыть книгу</a>, чтобы изменить их.</p>
                         <p v-if="open.readonly" class="hint">Это общая книга: править её может администратор. Хотите свой вариант — скопируйте контакт к себе.</p>
                     </div>
                 </div>

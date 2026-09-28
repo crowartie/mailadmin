@@ -25,7 +25,10 @@ class ContactsController extends Controller
 
     public function index(Request $request, ImapSession $imap): JsonResponse
     {
-        return $this->guard(fn () => $this->store->cards($imap->user(), $request->query('book') ?: null, (string) $request->query('q', '')));
+        $book = $request->query('book') ?: null;
+        // Без отбора по книге дубли одного человека (сотрудник + его личная карточка) — одной строкой.
+        return $this->guard(fn () => $book ? $this->store->cards($imap->user(), $book, (string) $request->query('q', ''))
+            : \App\Services\Dav\ContactMerge::merge($this->store->cards($imap->user(), null, (string) $request->query('q', ''))));
     }
 
     public function show(ImapSession $imap, string $book, string $uri): JsonResponse
