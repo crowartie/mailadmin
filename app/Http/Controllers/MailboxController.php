@@ -77,8 +77,20 @@ class MailboxController extends Controller
     public function update(MailboxRequest $request, string $mailbox): RedirectResponse
     {
         $model = Mailbox::query()->findOrFail($mailbox);
-        $this->service->update($model, $request->validated());
-        $this->applyProfile($model, $request->validated());
+        $data = $request->validated();
+        $before = array_intersect_key($model->getAttributes(), array_flip(['name', 'telephone', 'mobile', 'department', 'rank', 'recovery_email', 'active']));
+        $this->service->update($model, $data);
+        $this->applyProfile($model, $data);
+        // Что изменилось — в журнал: без этого нельзя было понять, сохранилась ли правка (телефон и т.п.).
+        $changed = array_keys(array_filter($before, fn ($v, $k) => (string) $v !== (string) ($model->getAttributes()[$k] ?? ''), ARRAY_FILTER_USE_BOTH));
+        AdminAction::log('mailbox.update', $model->username, $changed ? 'изменено: ' . implode(', ', $changed) : 'без изменений в ящике');
+        // Общая книга «Сотрудники» берёт имя и телефоны из ящика — обновить сразу, не дожидаясь часа.
+        try {
+            app(EmployeeBook::class)->sync();
+            Cache::forget('mail.directory');
+        } catch (\Throwable) {
+            // книга обновится по расписанию
+        }
 
         // back(): карточка открыта поверх списка с page/search/filter в адресе — не откатывать на первую страницу.
         return back()->with('success', "Изменения для {$model->username} сохранены");

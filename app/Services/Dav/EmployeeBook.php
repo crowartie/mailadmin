@@ -139,11 +139,14 @@ class EmployeeBook
             $units[] = $u->name;
         }
         // Телефоны из профиля сотрудника (админка): раньше в карточку не попадали, и коллеги видели только почту.
-        if (trim((string) ($profile?->phone ?? '')) !== '') {
-            $card->add('TEL', trim((string) $profile->phone), ['TYPE' => ['WORK', 'VOICE']]);
+        // Форма ящика в админке пишет телефоны в сам ящик (telephone, mobile); профиль — запасной источник.
+        $work = trim((string) ($mailbox->telephone ?: ($profile?->phone ?? '')));
+        $cell = trim((string) ($mailbox->mobile ?: ($profile?->mobile ?? '')));
+        if ($work !== '') {
+            $card->add('TEL', $work, ['TYPE' => ['WORK', 'VOICE']]);
         }
-        if (trim((string) ($profile?->mobile ?? '')) !== '') {
-            $card->add('TEL', trim((string) $profile->mobile), ['TYPE' => ['CELL', 'VOICE']]);
+        if ($cell !== '') {
+            $card->add('TEL', $cell, ['TYPE' => ['CELL', 'VOICE']]);
         }
         $card->add('ORG', [$org, $units[0] ?? '']);
         if (trim((string) ($profile?->title ?? '')) !== '') {
