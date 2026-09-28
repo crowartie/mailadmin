@@ -65,7 +65,11 @@ const openBoxes = ref(new Set(boxes.value.slice(0, boxes.value.length <= 3 ? 3 :
 const showAll = ref(new Set());
 const expanded = ref(new Set());   // «owner|with» — раскрытые по папкам строки
 const key = (b, p) => `${b.owner}|${p.with}`;
-function toggle(set, k) { const s = new Set(set.value); s.has(k) ? s.delete(k) : s.add(k); set.value = s; }
+// В шаблоне ref разворачивается в само множество, поэтому переключатели именованные — по своему ref каждый.
+function flip(set, k) { const s = new Set(set.value); s.has(k) ? s.delete(k) : s.add(k); set.value = s; }
+const toggleBox = (owner) => flip(openBoxes, owner);
+const toggleAll = (owner) => flip(showAll, owner);
+const toggleExpand = (k) => flip(expanded, k);
 function visiblePeople(b) {
     if (q.value || showAll.value.has(b.owner) || b.people.length <= 8) return b.people;
     const nonStd = b.people.filter((p) => !p.standard);
@@ -186,7 +190,7 @@ function goTo(owner, withMail) {
         <template v-if="view === 'owners'">
             <div v-for="b in shown" :key="b.owner" class="card card--flush" style="margin-bottom: 16px">
                 <div class="sbox__head">
-                    <button class="sbox__toggle" type="button" :aria-expanded="openBoxes.has(b.owner)" @click="toggle(openBoxes, b.owner)"><Icon name="chevron" :size="16" :style="{ transform: openBoxes.has(b.owner) ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }" /></button>
+                    <button class="sbox__toggle" type="button" :aria-expanded="openBoxes.has(b.owner)" :aria-label="openBoxes.has(b.owner) ? 'Свернуть ящик' : 'Раскрыть ящик'" @click="toggleBox(b.owner)"><Icon name="chevron" :size="16" :style="{ transform: openBoxes.has(b.owner) ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }" /></button>
                     <div class="avatar">{{ ini(b.ownerName) }}</div>
                     <div style="min-width: 0">
                         <div class="sbox__name">{{ b.ownerName }} <span class="mono faint">{{ b.owner }}</span></div>
@@ -208,7 +212,7 @@ function goTo(owner, withMail) {
                                 <span v-if="p.scope === 'all'" class="chip chip--ok">Все папки</span>
                                 <template v-else-if="p.scope === 'except'"><span class="chip chip--ok">Все папки</span><span class="chip chip--warn">кроме: {{ p.except.join(', ') }}</span></template>
                                 <template v-else><span v-for="n in p.folders" :key="n" class="chip chip--off">{{ n }}</span></template>
-                                <button class="sp__link" type="button" @click="toggle(expanded, key(b, p))">{{ expanded.has(key(b, p)) ? 'свернуть' : (p.level === 'mixed' ? 'по папкам…' : 'изменить папки…') }}</button>
+                                <button class="sp__link" type="button" @click="toggleExpand(key(b, p))">{{ expanded.has(key(b, p)) ? 'свернуть' : (p.level === 'mixed' ? 'по папкам…' : 'изменить папки…') }}</button>
                             </div>
                             <div>
                                 <select class="input input--sm" :value="p.level" aria-label="Уровень доступа" :disabled="busy" @change="setPersonLevel(b, p, $event.target.value)">
@@ -236,8 +240,8 @@ function goTo(owner, withMail) {
                             </div>
                         </div>
                     </template>
-                    <div v-if="hiddenCount(b) > 0" class="row__foot">ещё {{ hiddenCount(b) }} {{ plural(hiddenCount(b), 'сотрудник', 'сотрудника', 'сотрудников') }} с доступом ко всем папкам · <button class="sp__link" type="button" @click="toggle(showAll, b.owner)">показать</button></div>
-                    <div v-else-if="showAll.has(b.owner) && b.people.length > 8" class="row__foot"><button class="sp__link" type="button" @click="toggle(showAll, b.owner)">свернуть стандартные</button></div>
+                    <div v-if="hiddenCount(b) > 0" class="row__foot">ещё {{ hiddenCount(b) }} {{ plural(hiddenCount(b), 'сотрудник', 'сотрудника', 'сотрудников') }} с доступом ко всем папкам · <button class="sp__link" type="button" @click="toggleAll(b.owner)">показать</button></div>
+                    <div v-else-if="showAll.has(b.owner) && b.people.length > 8" class="row__foot"><button class="sp__link" type="button" @click="toggleAll(b.owner)">свернуть стандартные</button></div>
                     <p v-if="!b.people.length && !b.error" class="hint" style="padding: 8px 18px 14px">Ящик никому не открыт.</p>
                 </template>
             </div>
