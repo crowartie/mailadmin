@@ -370,7 +370,7 @@
     .mlist--acts &:hover &__acts, .mlist--acts &:focus-within &__acts { display: flex; }
     // Прячем дату и значки, но не саму панель — она тоже span внутри __when.
     .mlist--acts &:hover &__when > span:not(.mrow__acts), .mlist--acts &:focus-within &__when > span:not(.mrow__acts) { visibility: hidden; }
-    @media (hover: none) { &__acts { display: none; } }
+    @media (hover: none) { &__acts { display: none !important; } }   // !important: правило наведения ниже сильнее по весу
 
     &:focus-visible { outline: 2px solid v.$c-accent; outline-offset: -2px; }
 
