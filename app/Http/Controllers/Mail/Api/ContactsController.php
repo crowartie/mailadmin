@@ -151,6 +151,8 @@ class ContactsController extends Controller
             // книги недоступны — покажем всё
         }
         $known = array_flip(array_filter($known));
+        // Уволенных и выключенных сотрудников в «недавних» не показываем — писать им уже некуда.
+        $known += \App\Services\Mail\Directory::hidden();
         $rows = \App\Models\Webmail\Recent::query()->where('user', $imap->user())->orderByDesc('last_at')->limit(500)->get();
         $out = [];
         foreach ($rows as $r) {

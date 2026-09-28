@@ -25,6 +25,7 @@ class MailboxController extends Controller
     {
         $stats = $book->sync();
         Cache::forget('mail.directory');
+        Cache::forget('mail.directory.hidden');
         $text = sprintf('добавлено %d, обновлено %d, удалено %d', $stats['added'], $stats['updated'], $stats['removed']);
         AdminAction::log('mailboxes.sync-employees', null, $text);
 

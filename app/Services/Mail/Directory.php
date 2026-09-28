@@ -37,6 +37,26 @@ final class Directory
         }
     }
 
+    /**
+     * Адреса своего домена, которых в подсказках и истории быть не должно: ящики выключены, без IMAP
+     * или с закрытым входом (уволенные). Раньше они подсказывались, как и действующие сотрудники.
+     *
+     * @return array<string,true>  адрес в нижнем регистре → true
+     */
+    public static function hidden(): array
+    {
+        try {
+            return Cache::remember('mail.directory.hidden', 60, function () {
+                $list = Mailbox::query()->where(fn ($q) => $q->where('active', 0)->orWhere('enableimap', 0))->pluck('username')->all();
+                $list = array_merge($list, \App\Models\EmployeeProfile::blockedUsernames());
+
+                return array_fill_keys(array_map('strtolower', $list), true);
+            });
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
     /** Имя коллеги по адресу или null, если это не наш ящик. */
     public static function nameFor(?string $mail): ?string
     {

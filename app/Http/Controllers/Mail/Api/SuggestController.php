@@ -22,7 +22,10 @@ class SuggestController extends Controller
         $out = [];
 
         if (mb_strlen($q) >= 1) {
-            $employees = Mailbox::query()->where('domain', $imap->domain())->where('active', 1)
+            // Только действующие: выключенные ящики и закрытый вход (уволенные) не подсказываем.
+            $hidden = \App\Services\Mail\Directory::hidden();
+            $employees = Mailbox::query()->where('domain', $imap->domain())->where('active', 1)->where('enableimap', 1)
+                ->whereNotIn('username', array_keys($hidden) ?: ['-'])
                 ->where(fn ($w) => $w->where('username', 'like', "%{$like}%")->orWhere('name', 'like', "%{$like}%"))
                 ->orderBy('name')->limit(8)->get(['username', 'name', 'recovery_email']);
             $personal = \App\Models\EmployeeProfile::query()->whereIn('username', $employees->pluck('username'))->pluck('personal_email', 'username');
@@ -48,7 +51,7 @@ class SuggestController extends Controller
                 ->orderByDesc('uses')->orderByDesc('last_at')->limit(8)->get();
             $recentRows = [];
             foreach ($recents as $r) {
-                if (! isset($out[$r->email])) {
+                if (! isset($out[$r->email]) && ! isset($hidden[strtolower($r->email)])) {
                     $recentRows[$r->email] = ['mail' => $r->email, 'name' => $r->name ?: $r->email, 'kind' => 'recent'];
                 }
             }
