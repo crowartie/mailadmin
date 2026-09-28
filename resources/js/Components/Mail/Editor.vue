@@ -45,8 +45,8 @@ function cssCmd(name, value) {
 function setFont(v) { cssCmd('fontName', v || 'inherit'); }
 function setSize(v) {
     // execCommand fontSize понимает только 1–7 и делает <font size>; при styleWithCSS Chrome переводит
-    // 1–7 в именованные размеры CSS (x-small…xxx-large). Наши ступени: 2 = small, 3 = обычный, 5 = large, 7 = xx-large.
-    const n = { small: 2, '': 3, large: 5, 'xx-large': 7 }[v] ?? 3;
+    // 1–7 в именованные размеры CSS: 1 x-small, 2 small, 3 medium, 4 large, 5 x-large, 6 xx-large, 7 xxx-large.
+    const n = { small: 2, '': 3, large: 4, 'xx-large': 6 }[v] ?? 3;
     cssCmd('fontSize', String(n));
 }
 function setColor(c) { cssCmd('foreColor', c === '#2B3036' ? 'inherit' : c); }
