@@ -227,23 +227,16 @@ class MailStore
 
     /** @see FolderTree::roleOfPath() */
     /**
-     * Отмечать ли письмо прочитанным при открытии.
+     * Отмечать ли письмо прочитанным при открытии: да, кроме «заглянуть» (peek).
      *
-     * В своём ящике — да (кроме «заглянуть», peek). В чужой папке, открытой по общему доступу
-     * (info@ читают десять человек), флаг один на всех: открыл один — для владельца и остальных
-     * письмо «прочитано». Поэтому там открытие ничего не отмечает, пока человек сам не включит
-     * это в настройках; явное действие «Прочитано» доступно всегда.
+     * Раньше в чужой (общей) папке открытие ничего не отмечало, потому что флаг «прочитано» был один
+     * на всех. С 29.09.2026 у общих папок личные флаги (Dovecot INDEXPVT в namespace shared): открыл — прочитано
+     * только у тебя, у коллег письмо остаётся непрочитанным. Настройка shared_mark_seen упразднена.
+     * Кто именно прочитал — SharedReads.
      */
-    public static function marksSeenOnOpen(string $folder, array $settings, bool $peek = false): bool
+    public static function marksSeenOnOpen(string $folder, array $settings = [], bool $peek = false): bool
     {
-        if ($peek) {
-            return false;
-        }
-        if (! str_starts_with($folder, self::SHARED_PREFIX)) {
-            return true;
-        }
-
-        return (bool) ($settings['shared_mark_seen'] ?? false);
+        return ! $peek;
     }
 
     public static function roleOfPath(string $path): string

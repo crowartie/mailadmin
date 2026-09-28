@@ -28,6 +28,7 @@ Schedule::command('feedback:import')->everyMinute()->withoutOverlapping();
 Schedule::command('reports:fetch')->hourly()->withoutOverlapping();
 // Сервисы меняют свои серверы — SPF-диапазоны для «отправки с чужих серверов» перечитываем ежедневно.
 Schedule::command('external-senders:refresh')->dailyAt('04:10')->withoutOverlapping();
+Schedule::command('shared-reads:purge')->dailyAt('04:20')->withoutOverlapping();
 // Хранилище больших вложений: по умолчанию ничего не удаляет (keep_days = 0), только чистит временные каталоги конвертера.
 Schedule::command('files:purge')->dailyAt('04:30')->withoutOverlapping();
 // Целостность хранилища: размеры — каждую ночь, контрольные суммы — по воскресеньям.

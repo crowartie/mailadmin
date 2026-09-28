@@ -20,6 +20,13 @@ const props = defineProps({
 });
 const emit = defineEmits(['act', 'reply', 'quick', 'context', 'back', 'unsubscribe', 'meeting', 'search', 'print', 'toast', 'close']);
 
+// «Аносов Михаил Леонидович» → «Аносов М.» — для строки «Прочитали» (то же, что SharedReads::shortName).
+function shortName(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length < 2 || String(name).includes('@')) return String(name || '').trim();
+    return parts[0] + ' ' + parts[1][0] + '.';
+}
+
 // Карточка адресата — как в Mail.ru: по щелчку на имени всплывают адрес и действия.
 const card = ref(null);   // { x, y, name, mail }
 function openCard(e, a) {
@@ -438,6 +445,16 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                         Картинки из интернета скрыты
                         <button type="button" class="linklike" style="font-weight: 600" @click="showImages[key(m)] = true">Показать</button>
                     </template>
+                </div>
+                <!-- Общая папка (обращение №51): кто из коллег прочитал и когда, кто из имеющих доступ ещё нет. -->
+                <div v-if="isOpen(m) && m.readers" class="msg__readers">
+                    <span class="msg__readers-cap">Прочитали:</span>
+                    <template v-if="m.readers.length">
+                        <span v-for="r in m.readers" :key="r.mail" class="msg__reader" :title="r.mail + (r.at ? ' · ' + when(r.at) : '')"><i :style="{ '--av': avatarColor(r.mail) }">{{ initials(r.name, r.mail) }}</i>{{ shortName(r.name) }} <small v-if="r.at">{{ when(r.at) }}</small></span>
+                    </template>
+                    <span v-else class="chip chip--warn">ещё никто{{ m.markedSeen ? ' — вы первый' : '' }}</span>
+                    <span class="grow" />
+                    <span v-if="m.notRead && m.notRead.length" class="msg__readers-not" :title="m.notRead.map((p) => p.name).join(', ')">ещё не читали: {{ m.notRead.slice(0, 4).map((p) => shortName(p.name)).join(', ') }}{{ m.notRead.length > 4 ? ' и ещё ' + (m.notRead.length - 4) : '' }}</span>
                 </div>
                 <!-- Внутренняя обёртка ограничивает ширину: письма верстают под 600–640 px,
                      и во всю ширину панели они разъезжаются. -->

@@ -403,6 +403,15 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
                         <span v-if="m.flagged" class="mrow__star mrow__star--on"><Icon name="flag" :size="13" /></span>
                     </span>
                     <span>{{ when(m.date) }}</span>
+                    <!-- Общая папка (обращение №51): кто из коллег уже прочитал — до трёх кружков и «+N»;
+                         «ещё никто» — письмо, которым никто не занимался. -->
+                    <span v-if="m.readers" class="mrow__rd" :title="m.readers.length ? 'Прочитали: ' + m.readers.map((r) => r.name).join(', ') : 'Ещё никто не читал'">
+                        <template v-if="m.readers.length">
+                            <i v-for="r in m.readers.slice(0, 3)" :key="r.mail" :style="{ '--av': avatarColor(r.mail) }">{{ initials(r.name, r.mail) }}</i>
+                            <em>{{ m.readers.length > 3 ? '+' + (m.readers.length - 3) : m.readers.length }}</em>
+                        </template>
+                        <em v-else class="mrow__rd-none">ещё никто</em>
+                    </span>
                     <!-- Панель по наведению (mlist--acts): встаёт на место значков скрепки и флажка, дату не закрывает,
                          появляется с задержкой (CSS), чтобы не мелькать при движении мыши. Удаление идёт обычным
                          путём: окно «Отменить» или подтверждение, если окно выключено. -->

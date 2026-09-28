@@ -233,6 +233,12 @@ class FolderShares
         return ['rows' => $rows, 'folders' => $folders];
     }
 
+    /** Кому и с каким уровнем открыта папка ящика (mail → уровень) — служебной сессией владельца. */
+    public function levels(string $owner, string $imapPath): array
+    {
+        return self::aclLevels(new MailStore(ImapSession::master($owner)), $imapPath);
+    }
+
     /** Кому и с каким уровнем открыта папка — через IMAP GETACL (быстро, без doveadm). @return array<string,string> */
     private static function aclLevels(MailStore $store, string $imapPath): array
     {

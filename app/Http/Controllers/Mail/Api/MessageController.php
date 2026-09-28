@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Cloud\LocalFiles;
 use App\Services\Mail\ImapSession;
 use App\Services\Mail\MailStore;
+use App\Services\Mail\SharedReads;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -50,6 +51,14 @@ class MessageController extends Controller
         if ($request->query('folders') !== '0') {
             $list['folders'] = $store->folders();
         }
+        // Общая папка: к каждой строке — кто из коллег уже прочитал (кружки справа в списке).
+        if (! $everywhere && ($owner = SharedReads::ownerOf($folder)) !== null) {
+            $map = SharedReads::forMessages($owner, array_column($list['messages'] ?? [], 'messageId'));
+            foreach ($list['messages'] as &$row) {
+                $row['readers'] = array_map(fn ($r) => ['mail' => $r['mail'], 'name' => $r['name']], $map[SharedReads::key($row['messageId'] ?? null)] ?? []);
+            }
+            unset($row);
+        }
 
         return response()->json($list);
     }
@@ -75,6 +84,14 @@ class MessageController extends Controller
         $m = $store->message($folder, $uid, $markSeen);
         // Клиент по этому признаку решает, гасить ли «непрочитанное» в строке списка.
         $m['markedSeen'] = $markSeen;
+        // Общая папка: запоминаем, что этот человек прочитал, и отдаём «кто прочитал / кто ещё нет».
+        if (($owner = SharedReads::ownerOf($folder)) !== null) {
+            if ($markSeen) {
+                SharedReads::record($owner, $m['messageId'] ?? null, $imap->user());
+            }
+            $m['readers'] = SharedReads::forMessages($owner, [$m['messageId'] ?? null])[SharedReads::key($m['messageId'] ?? null)] ?? [];
+            $m['notRead'] = SharedReads::notRead($owner, SharedReads::ownerPath($folder), $m['readers']);
+        }
         // Ссылки на своё хранилище в теле письма — карточками: посмотреть, скачать, продлить.
         $m['cloudFiles'] = LocalFiles::cardsIn($m['html'] ?? null, $imap->user());
         // История общения: отправитель прочитанного письма — тоже контакт (кроме своих, рассылок и роботов).

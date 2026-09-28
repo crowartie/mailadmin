@@ -9,6 +9,7 @@ use App\Models\Webmail\Snooze;
 use App\Services\Mail\Charset;
 use App\Services\Mail\ImapSession;
 use App\Services\Mail\MailStore;
+use App\Services\Mail\SharedReads;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -56,6 +57,23 @@ class ActionController extends Controller
         return response()->json(($result ?? []) + ['ok' => true, 'done' => count($uids), 'folders' => $store->folders()]);
     }
 
+    /** В общей папке ручное «Прочитано»/«Непрочитано» ставит и снимает отметку «кто прочитал» (SharedReads). */
+    private function sharedReads(MailStore $store, ImapSession $imap, string $folder, array $uids, bool $on): void
+    {
+        $owner = SharedReads::ownerOf($folder);
+        if ($owner === null) {
+            return;
+        }
+        try {
+            foreach ($store->rawHeaders($folder, $uids) as $raw) {
+                $mid = \App\Services\Mail\Mime::messageIds(\App\Services\Mail\Mime::headerValue($raw, 'Message-ID'))[0] ?? null;
+                $on ? SharedReads::record($owner, $mid, $imap->user()) : SharedReads::forget($owner, $mid, $imap->user());
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Отметка «кто прочитал» не записана', ['folder' => $folder, 'error' => $e->getMessage()]);
+        }
+    }
+
     /** Действия, которые можно применить ко всей папке сразу (без отложить/напомнить: там по письму в базе). */
     private const FOR_ALL = ['seen', 'unseen', 'flag', 'unflag', 'delete', 'move', 'archive', 'spam', 'notspam', 'lists', 'label', 'unlabel'];
 
@@ -64,9 +82,11 @@ class ActionController extends Controller
         switch ($data['op']) {
             case 'seen':
                 $store->flag($folder, $uids, '\\Seen', true);
+                $this->sharedReads($store, $imap, $folder, $uids, true);
                 break;
             case 'unseen':
                 $store->flag($folder, $uids, '\\Seen', false);
+                $this->sharedReads($store, $imap, $folder, $uids, false);
                 break;
             case 'flag':
                 $store->flag($folder, $uids, '\\Flagged', true);

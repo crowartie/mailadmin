@@ -144,7 +144,7 @@ if (props.section === 'files') loadFiles();
 function snap() {
     return JSON.stringify([s.value.display_name, s.value.signature, quickText.value, s.value.undo_seconds,
         s.value.preview, s.value.show_images, s.value.unread_highlight, s.value.unread_color,
-        s.value.reply_all, s.value.ask_rule_on_move, s.value.shared_mark_seen, s.value.row_actions, autoreply.value]);
+        s.value.reply_all, s.value.ask_rule_on_move, s.value.row_actions, autoreply.value]);
 }
 const clean = ref(snap());
 const dirty = computed(() => snap() !== clean.value || !!editing.value);
@@ -187,7 +187,7 @@ async function saveOne(patch, text = 'Сохранено') {
 function saveGeneral() {
     if (quickOver.value) { say(`Быстрых ответов не больше ${MAX_QUICK} — уберите лишние ${quickOver.value}`, true); return; }
     saveSettings({
-        display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, ask_rule_on_move: !!s.value.ask_rule_on_move, shared_mark_seen: !!s.value.shared_mark_seen, row_actions: !!s.value.row_actions, undo_seconds: Number(s.value.undo_seconds),
+        display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, ask_rule_on_move: !!s.value.ask_rule_on_move, row_actions: !!s.value.row_actions, undo_seconds: Number(s.value.undo_seconds),
         preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, scheme: s.value.scheme, show_images: s.value.show_images, unread_highlight: !!s.value.unread_highlight, unread_color: s.value.unread_color || '',
         quick_replies: quickReplies.value,
     });
@@ -341,7 +341,7 @@ const shortcuts = [
                             <label class="toggle" title="Меньше кнопок на панели письма и в меню правой кнопки; галочки у писем — при наведении"><input :checked="uiSimple" type="checkbox" @change="setUiSimple($event.target.checked)"><span class="toggle__track" />Простой вид <span class="hint" style="margin: 0">— меньше кнопок, редкое убрано в «Ещё»; сохраняется сразу</span></label>
                             <label class="toggle"><input v-model="s.shortcuts" type="checkbox" @change="saveOne({ shortcuts: s.shortcuts })"><span class="toggle__track" />Горячие клавиши <span class="hint" style="margin: 0">— сохраняется сразу</span></label>
                             <label class="toggle"><input v-model="s.reply_all" type="checkbox"><span class="toggle__track" />По умолчанию отвечать всем</label>
-                            <label class="toggle" title="Флаг «прочитано» в общей папке один на всех: если его ставит каждый, кто заглянул, владелец и коллеги перестают видеть, что письмо ещё никто не разбирал. Отметить письмо можно кнопкой «Прочитано»."><input v-model="s.shared_mark_seen" type="checkbox"><span class="toggle__track" />В общих папках (чужой ящик) отмечать письмо прочитанным при открытии</label>
+                            <!-- Настройки «отмечать ли прочитанным в общих папках» больше нет: с 29.09.2026 флаг там у каждого свой (Dovecot INDEXPVT). -->
                             <label class="toggle"><input v-model="s.ask_rule_on_move" type="checkbox"><span class="toggle__track" />При переносе письма из «Входящих» в папку предлагать правило для отправителя</label>
                             <!-- Обращение №54: панель при наведении, как в Outlook. Только по желанию: у всех она была и мешала. -->
                             <label class="toggle" title="При наведении мышью на письмо справа появляются кнопки: архив, удалить, флажок, прочитано. Появляются с задержкой, дату не закрывают; удаление — с «Отменить» или с подтверждением, как обычно. На телефоне не показываются."><input v-model="s.row_actions" type="checkbox"><span class="toggle__track" />Кнопки действий при наведении на письмо в списке <span class="hint" style="margin: 0">— архив, удалить, флажок, прочитано</span></label>
