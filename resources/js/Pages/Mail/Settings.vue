@@ -386,7 +386,7 @@ const shortcuts = [
                     <template v-if="section === 'signature'">
                         <div class="card mset__section">
                             <h2>Подпись</h2>
-                            <div class="editor-box"><Editor v-model="s.signature" placeholder="Имя, должность, телефон…" /></div>
+                            <div class="editor-box"><Editor v-model="s.signature" placeholder="Имя, должность, телефон…" :expanded="true" /></div>
                             <label class="toggle"><input v-model="s.signature_reply" type="checkbox"><span class="toggle__track" />Добавлять подпись в ответах и пересылках</label>
                             <div><button class="btn btn--primary" type="button" :disabled="busy" @click="saveSettings({ signature: s.signature, signature_reply: s.signature_reply })">Сохранить</button></div>
                         </div>

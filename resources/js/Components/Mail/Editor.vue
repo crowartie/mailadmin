@@ -1,16 +1,66 @@
 <script setup>
-// Простой HTML-редактор на contenteditable: жирный, курсив, списки, ссылка, цитата.
-import { onMounted, ref, watch } from 'vue';
+// HTML-редактор на contenteditable. Панель оформления (обращение №53) — два ряда под текстом, как в Gmail:
+// символы (шрифт, размер, B I U S, цвет, выделение, ссылка, картинка, смайлик) и абзац (выравнивание, списки,
+// отступы, цитата, таблица, линия, код, заголовок). Показывается по prop expanded — кнопка «A» у «Отправить».
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
+import { uiSimple } from '../../mail/uiMode';
 
 const props = defineProps({
     modelValue: { type: String, default: '' },
     placeholder: { type: String, default: 'Текст письма…' },
     compact: Boolean,
+    // Панель оформления раскрыта (кнопка «A» в подвале письма). В простом виде — только первый ряд.
+    expanded: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue', 'submit', 'save', 'toast']);
 const el = ref(null);
-const state = ref({ bold: false, italic: false, underline: false });
+const state = ref({ bold: false, italic: false, underline: false, strike: false, align: 'left', block: 'p', font: '', size: '' });
+
+// ── Наборы панели. Значения — то, что понимают почтовые программы получателей: три семейства шрифтов
+// с запасными, размеры именами CSS (получатель увидит те же ступени), десять цветов.
+const FONTS = [['', 'Обычный'], ['Georgia, "Times New Roman", serif', 'С засечками'], ['"Courier New", Consolas, monospace', 'Моноширинный']];
+const SIZES = [['small', 'Мелкий'], ['', 'Средний'], ['large', 'Крупный'], ['xx-large', 'Очень крупный']];
+const BLOCKS = [['p', 'Обычный текст'], ['h1', 'Заголовок 1'], ['h2', 'Заголовок 2'], ['h3', 'Заголовок 3']];
+const COLORS = ['#2B3036', '#C62828', '#C94E00', '#9A6700', '#1F7A4D', '#1D5FD1', '#6B3FA0', '#0F766E', '#646B76', '#FFFFFF'];
+const MARKS = ['#FFF3B0', '#FFD9C2', '#D7F5E1', '#DCE8FF', '#EAD9FF', '#E6E4E0'];
+const EMOJI = ['🙂', '😊', '😀', '😉', '👍', '👌', '🙏', '👏', '🤝', '✅', '❗', '❓', '⭐', '🔥', '💡', '📌', '📎', '📅', '📞', '✉️', '🎉', '☕', '🚀', '⚠️'];
+const pop = ref(null);   // открытая всплывашка: color | mark | table | emoji | null
+const tableHover = ref([0, 0]);
+function togglePop(name) { pop.value = pop.value === name ? null : name; }
+function closePop(e) { if (pop.value && !e.target.closest?.('.fmt__pop, .fmt__popbtn')) pop.value = null; }
+onMounted(() => document.addEventListener('mousedown', closePop));
+onBeforeUnmount(() => document.removeEventListener('mousedown', closePop));
+
+// Цвет, выделение, шрифт и размер — через CSS (span style=…), а не через <font>: <font> устарел и
+// в некоторых программах теряется. Для остальных команд остаётся привычная разметка <b>, <i>, <u>.
+function cssCmd(name, value) {
+    el.value.focus();
+    document.execCommand('styleWithCSS', false, true);
+    try { document.execCommand(name, false, value); } finally { document.execCommand('styleWithCSS', false, false); }
+    sync();
+    refresh();
+    pop.value = null;
+}
+function setFont(v) { cssCmd('fontName', v || 'inherit'); }
+function setSize(v) {
+    // execCommand fontSize понимает только 1–7 и делает <font size>; при styleWithCSS Chrome переводит
+    // 1–7 в именованные размеры CSS (x-small…xxx-large). Наши ступени: 2 = small, 3 = обычный, 5 = large, 7 = xx-large.
+    const n = { small: 2, '': 3, large: 5, 'xx-large': 7 }[v] ?? 3;
+    cssCmd('fontSize', String(n));
+}
+function setColor(c) { cssCmd('foreColor', c === '#2B3036' ? 'inherit' : c); }
+function setMark(c) { cssCmd('hiliteColor', c === '' ? 'transparent' : c); }
+function setBlock(v) { cmd('formatBlock', v); }
+function insertHtml(html) { el.value.focus(); document.execCommand('insertHTML', false, html); sync(); pop.value = null; }
+function insertTable(rows, cols) {
+    // Рамки — прямо в атрибутах стиля: у получателя нет наших таблиц стилей, а без рамок таблица «рассыпается».
+    const td = 'border: 1px solid #cfcbc4; padding: 4px 8px; min-width: 40px';
+    const row = '<tr>' + '<td style="' + td + '"><br></td>'.repeat(cols) + '</tr>';
+    insertHtml('<table style="border-collapse: collapse; margin: 6px 0">' + row.repeat(rows) + '</table><p><br></p>');
+}
+function insertEmoji(e) { insertHtml(e + ' '); }
+const showRow2 = computed(() => props.expanded && !uiSimple.value);
 // Пустое тело письма определяем по содержимому, а не правилом :empty: шаблон ответа
 // начинается с пустого абзаца, элемент формально не пуст, и подсказка не показывалась.
 const blank = ref(true);
@@ -52,10 +102,26 @@ function link() {
 }
 
 function refresh() {
+    const q = (n) => { try { return document.queryCommandState(n); } catch { return false; } };
+    const v = (n) => { try { return String(document.queryCommandValue(n) || ''); } catch { return ''; } };
+    const block = v('formatBlock').toLowerCase();
+    const font = v('fontName').replace(/["']/g, '').toLowerCase();
+    // Размер: у выделенного текста смотрим вычисленный font-size — queryCommandValue('fontSize') отдаёт 1–7 и только для <font>.
+    let size = '';
+    const node = window.getSelection()?.anchorNode;
+    const elem = node ? (node.nodeType === 1 ? node : node.parentElement) : null;
+    if (elem && el.value?.contains(elem)) {
+        const fs = elem.closest('[style*="font-size"]');
+        const m = fs && el.value.contains(fs) ? /font-size:\s*([a-z-]+)/i.exec(fs.getAttribute('style') || '') : null;
+        size = m ? m[1].toLowerCase() : '';
+        if (size === 'medium') size = '';
+    }
     state.value = {
-        bold: document.queryCommandState('bold'),
-        italic: document.queryCommandState('italic'),
-        underline: document.queryCommandState('underline'),
+        bold: q('bold'), italic: q('italic'), underline: q('underline'), strike: q('strikeThrough'),
+        align: q('justifyCenter') ? 'center' : q('justifyRight') ? 'right' : 'left',
+        block: /^h[1-3]$/.test(block) ? block : 'p',
+        font: font.includes('georgia') ? FONTS[1][0] : font.includes('courier') ? FONTS[2][0] : '',
+        size: ['small', 'large', 'xx-large'].includes(size) ? size : '',
     };
 }
 
@@ -64,7 +130,14 @@ function onKey(e) {
     // По физической клавише: в русской раскладке e.key даёт «ы» и «л» вместо «s» и «k».
     if (e.key === 'Enter') { e.preventDefault(); emit('submit'); return; }
     if (e.code === 'KeyS') { e.preventDefault(); emit('save'); return; }
-    if (e.code === 'KeyK') { e.preventDefault(); link(); }
+    if (e.code === 'KeyK') { e.preventDefault(); link(); return; }
+    // Как в Gmail: Ctrl+Shift+7/8 — списки, Ctrl+Shift+L/E/R — выравнивание, Ctrl+\ — убрать оформление.
+    if (e.shiftKey && e.code === 'Digit7') { e.preventDefault(); cmd('insertOrderedList'); return; }
+    if (e.shiftKey && e.code === 'Digit8') { e.preventDefault(); cmd('insertUnorderedList'); return; }
+    if (e.shiftKey && e.code === 'KeyL') { e.preventDefault(); cmd('justifyLeft'); return; }
+    if (e.shiftKey && e.code === 'KeyE') { e.preventDefault(); cmd('justifyCenter'); return; }
+    if (e.shiftKey && e.code === 'KeyR') { e.preventDefault(); cmd('justifyRight'); return; }
+    if (e.code === 'Backslash') { e.preventDefault(); cmd('removeFormat'); }
 }
 
 // Что оставляем при вставке из Word, Excel и с сайтов: смысл разметки без чужого оформления.
@@ -211,24 +284,7 @@ defineExpose({
 </script>
 
 <template>
-    <div class="compose__tools">
-        <!-- Нажатие мышью по кнопке уводит фокус из поля ввода, и выделение схлопывается:
-             команда применялась к месту курсора, а не к выделенному тексту. Гасим перевод
-             фокуса — выделение остаётся, клавиатурный обход по Tab не меняется. -->
-        <div class="fmt" role="toolbar" aria-label="Форматирование текста" @mousedown.prevent>
-            <button type="button" :class="{ on: state.bold }" title="Жирный (Ctrl+B)" aria-label="Жирный" @click="cmd('bold')"><Icon name="bold" :size="15" /></button>
-            <button type="button" :class="{ on: state.italic }" title="Курсив (Ctrl+I)" aria-label="Курсив" @click="cmd('italic')"><Icon name="italic" :size="15" /></button>
-            <button type="button" :class="{ on: state.underline }" title="Подчёркнутый (Ctrl+U)" aria-label="Подчёркнутый" @click="cmd('underline')"><Icon name="underline" :size="15" /></button>
-            <span class="v" />
-            <button type="button" title="Ссылка (Ctrl+K)" aria-label="Вставить ссылку" @click="link"><Icon name="link" :size="15" /></button>
-            <button type="button" title="Список" aria-label="Маркированный список" @click="cmd('insertUnorderedList')"><Icon name="ul" :size="15" /></button>
-            <button type="button" title="Нумерованный список" aria-label="Нумерованный список" @click="cmd('insertOrderedList')"><Icon name="ol" :size="15" /></button>
-            <button type="button" title="Цитата" aria-label="Цитата" @click="cmd('formatBlock', 'blockquote')"><Icon name="quote" :size="15" /></button>
-            <button type="button" title="Картинка (файл или вставка из буфера)" aria-label="Вставить картинку" @click="pickImage"><Icon name="img" :size="15" /></button>
-            <input ref="fileInput" type="file" accept="image/*" style="display: none" @change="onImageFile">
-            <span class="v" />
-            <button type="button" title="Убрать форматирование" aria-label="Убрать форматирование" @click="cmd('removeFormat')"><Icon name="eraser" :size="15" /></button>
-        </div>
+    <div v-if="$slots.right" class="compose__tools compose__tools--top">
         <span class="grow" />
         <slot name="right" />
     </div>
@@ -248,4 +304,69 @@ defineExpose({
         @keydown="onKey"
         @paste="onPaste"
     />
+    <!-- Панель оформления — под текстом, над «Отправить». Нажатие мышью по кнопке уводит фокус из поля,
+         и выделение схлопывается: команда применялась бы к месту курсора. Гасим перевод фокуса
+         (@mousedown.prevent) — выделение остаётся; select и всплывашки исключены, им фокус нужен. -->
+    <div v-if="expanded" class="compose__tools compose__tools--fmt" data-testid="fmt">
+        <div class="fmt fmt__row" role="toolbar" aria-label="Оформление: шрифт и начертание" @mousedown="$event.target.closest('select, .fmt__pop') || $event.preventDefault()">
+            <select class="fmt__sel" :value="state.font" aria-label="Шрифт" title="Шрифт" @change="setFont($event.target.value)"><option v-for="[v, n] in FONTS" :key="n" :value="v">{{ n }}</option></select>
+            <select class="fmt__sel" :value="state.size" aria-label="Размер" title="Размер текста" @change="setSize($event.target.value)"><option v-for="[v, n] in SIZES" :key="n" :value="v">{{ n }}</option></select>
+            <span class="v" />
+            <button type="button" :class="{ on: state.bold }" title="Жирный (Ctrl+B)" aria-label="Жирный" @click="cmd('bold')"><Icon name="bold" :size="15" /></button>
+            <button type="button" :class="{ on: state.italic }" title="Курсив (Ctrl+I)" aria-label="Курсив" @click="cmd('italic')"><Icon name="italic" :size="15" /></button>
+            <button type="button" :class="{ on: state.underline }" title="Подчёркнутый (Ctrl+U)" aria-label="Подчёркнутый" @click="cmd('underline')"><Icon name="underline" :size="15" /></button>
+            <button type="button" :class="{ on: state.strike }" title="Зачёркнутый" aria-label="Зачёркнутый" @click="cmd('strikeThrough')"><Icon name="strike" :size="15" /></button>
+            <span class="v" />
+            <span class="fmt__wrap">
+                <button type="button" class="fmt__popbtn" :class="{ on: pop === 'color' }" title="Цвет текста" aria-label="Цвет текста" aria-haspopup="true" @click="togglePop('color')"><Icon name="fontcolor" :size="15" /></button>
+                <div v-if="pop === 'color'" class="fmt__pop" role="menu" aria-label="Цвет текста">
+                    <button v-for="c in COLORS" :key="c" type="button" class="fmt__swatch" :style="{ background: c }" :title="c === '#2B3036' ? 'Обычный' : c" :aria-label="'Цвет ' + c" @click="setColor(c)" />
+                </div>
+            </span>
+            <span class="fmt__wrap">
+                <button type="button" class="fmt__popbtn" :class="{ on: pop === 'mark' }" title="Выделение маркером" aria-label="Выделение маркером" aria-haspopup="true" @click="togglePop('mark')"><Icon name="marker" :size="15" /></button>
+                <div v-if="pop === 'mark'" class="fmt__pop" role="menu" aria-label="Выделение">
+                    <button v-for="c in MARKS" :key="c" type="button" class="fmt__swatch" :style="{ background: c }" :title="c" :aria-label="'Выделить ' + c" @click="setMark(c)" />
+                    <button type="button" class="fmt__swatch fmt__swatch--none" title="Без выделения" aria-label="Без выделения" @click="setMark('')"><Icon name="x" :size="12" /></button>
+                </div>
+            </span>
+            <span class="v" />
+            <button type="button" title="Ссылка (Ctrl+K)" aria-label="Вставить ссылку" @click="link"><Icon name="link" :size="15" /></button>
+            <button type="button" title="Картинка (файл или вставка из буфера)" aria-label="Вставить картинку" @click="pickImage"><Icon name="img" :size="15" /></button>
+            <input ref="fileInput" type="file" accept="image/*" style="display: none" @change="onImageFile">
+            <span class="fmt__wrap">
+                <button type="button" class="fmt__popbtn" :class="{ on: pop === 'emoji' }" title="Смайлик" aria-label="Смайлик" aria-haspopup="true" @click="togglePop('emoji')"><Icon name="smile" :size="15" /></button>
+                <div v-if="pop === 'emoji'" class="fmt__pop fmt__pop--emoji" role="menu" aria-label="Смайлики">
+                    <button v-for="e in EMOJI" :key="e" type="button" class="fmt__emoji" :aria-label="e" @click="insertEmoji(e)">{{ e }}</button>
+                </div>
+            </span>
+            <span class="grow" />
+            <button type="button" title="Убрать форматирование (Ctrl+\)" aria-label="Убрать форматирование" @click="cmd('removeFormat')"><Icon name="eraser" :size="15" /></button>
+        </div>
+        <div v-if="showRow2" class="fmt fmt__row" role="toolbar" aria-label="Оформление: абзац" @mousedown="$event.target.closest('select, .fmt__pop') || $event.preventDefault()">
+            <button type="button" :class="{ on: state.align === 'left' }" title="По левому краю (Ctrl+Shift+L)" aria-label="По левому краю" @click="cmd('justifyLeft')"><Icon name="alignl" :size="15" /></button>
+            <button type="button" :class="{ on: state.align === 'center' }" title="По центру (Ctrl+Shift+E)" aria-label="По центру" @click="cmd('justifyCenter')"><Icon name="alignc" :size="15" /></button>
+            <button type="button" :class="{ on: state.align === 'right' }" title="По правому краю (Ctrl+Shift+R)" aria-label="По правому краю" @click="cmd('justifyRight')"><Icon name="alignr" :size="15" /></button>
+            <span class="v" />
+            <button type="button" title="Список (Ctrl+Shift+8)" aria-label="Маркированный список" @click="cmd('insertUnorderedList')"><Icon name="ul" :size="15" /></button>
+            <button type="button" title="Нумерованный список (Ctrl+Shift+7)" aria-label="Нумерованный список" @click="cmd('insertOrderedList')"><Icon name="ol" :size="15" /></button>
+            <button type="button" title="Уменьшить отступ" aria-label="Уменьшить отступ" @click="cmd('outdent')"><Icon name="outdent" :size="15" /></button>
+            <button type="button" title="Увеличить отступ" aria-label="Увеличить отступ" @click="cmd('indent')"><Icon name="indent" :size="15" /></button>
+            <span class="v" />
+            <button type="button" title="Цитата" aria-label="Цитата" @click="cmd('formatBlock', 'blockquote')"><Icon name="quote" :size="15" /></button>
+            <span class="fmt__wrap">
+                <button type="button" class="fmt__popbtn" :class="{ on: pop === 'table' }" title="Таблица" aria-label="Вставить таблицу" aria-haspopup="true" @click="togglePop('table'); tableHover = [0, 0]"><Icon name="table" :size="15" /></button>
+                <div v-if="pop === 'table'" class="fmt__pop fmt__pop--table" role="menu" aria-label="Размер таблицы">
+                    <div class="fmt__grid" @mouseleave="tableHover = [0, 0]">
+                        <template v-for="r in 8" :key="r"><button v-for="c in 8" :key="c" type="button" class="fmt__cell" :class="{ on: r <= tableHover[0] && c <= tableHover[1] }" :aria-label="`${r} × ${c}`" @mouseenter="tableHover = [r, c]" @focus="tableHover = [r, c]" @click="insertTable(r, c)" /></template>
+                    </div>
+                    <div class="fmt__gridhint">{{ tableHover[0] ? `${tableHover[0]} × ${tableHover[1]}` : 'строк × столбцов' }}</div>
+                </div>
+            </span>
+            <button type="button" title="Горизонтальная линия" aria-label="Горизонтальная линия" @click="cmd('insertHorizontalRule')"><Icon name="hr" :size="15" /></button>
+            <button type="button" :class="{ on: state.block === 'pre' }" title="Моноширинный блок (код, номера)" aria-label="Моноширинный блок" @click="cmd('formatBlock', 'pre')"><Icon name="code" :size="15" /></button>
+            <span class="v" />
+            <select class="fmt__sel" :value="state.block" aria-label="Заголовок" title="Заголовок" @change="setBlock($event.target.value)"><option v-for="[v, n] in BLOCKS" :key="v" :value="v">{{ n }}</option></select>
+        </div>
+    </div>
 </template>

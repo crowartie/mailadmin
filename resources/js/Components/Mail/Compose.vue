@@ -117,7 +117,14 @@ const menuAt = ref({ x: 0, y: 0 });
 const customAt = ref(toLocalInput(new Date(Date.now() + 3600000)));
 const dirty = ref(false);
 const status = ref('');
-const waitingStage = ref(false);   // «Отправить» нажато, ждём загрузки больших файлов
+const waitingStage = ref(false);
+// Панель оформления текста: раскрыта кнопкой «A», выбор помнится в этом браузере (mail.fmt).
+const fmtOpen = ref((() => { try { return localStorage.getItem('mail.fmt') === '1'; } catch { return false; } })());
+function toggleFmt() {
+    fmtOpen.value = !fmtOpen.value;
+    try { localStorage.setItem('mail.fmt', fmtOpen.value ? '1' : '0'); } catch { /* приватный режим */ }
+    editor.value?.focus();
+}   // «Отправить» нажато, ждём загрузки больших файлов
 const drop = ref(false);
 const editor = ref(null);
 const toInput = ref(null);
@@ -644,7 +651,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                 <span v-if="receipt" class="chip">Уведомить о прочтении</span>
         </div>
 
-        <Editor ref="editor" v-model="html" @submit="send()" @save="saveDraft()" @toast="$emit('toast', $event)">
+        <Editor ref="editor" v-model="html" :expanded="fmtOpen" @submit="send()" @save="saveDraft()" @toast="$emit('toast', $event)">
             <template #right>
                 <label v-if="existing.length" class="toggle" style="font-size: 12.5px">
                     <input v-model="keepAttachments" type="checkbox"><span class="toggle__track" />Вложения исходного письма ({{ existing.length }})
@@ -701,6 +708,8 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
                     <Icon name="clock" :size="16" />
                 </button>
             </span>
+            <!-- Панель оформления (обращение №53): скрыта, пока не нужна; выбор запоминается в браузере. -->
+            <button class="ib ib--fmt" type="button" :class="{ 'ib--on': fmtOpen }" :title="fmtOpen ? 'Скрыть панель оформления' : 'Оформление текста'" aria-label="Оформление текста" :aria-pressed="fmtOpen" @click="toggleFmt"><Icon name="textsize" :size="17" /></button>
             <button class="ib" type="button" title="Вложить файл" aria-label="Вложить файл" @click="fileInput?.click()"><Icon name="clip" :size="17" /></button>
             <input ref="fileInput" type="file" multiple hidden @change="onFiles">
             <button v-if="cloud.personal" class="ib" type="button" title="Приложить из облака — уйдёт ссылкой" aria-label="Приложить из облака" @click="picker = true"><Icon name="cloud" :size="17" /></button>

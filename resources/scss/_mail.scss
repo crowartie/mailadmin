@@ -923,6 +923,17 @@
         flex-wrap: wrap;
         .grow { flex: 1; }
     }
+    // Панель оформления — под текстом, над подвалом: раскрывается кнопкой «A» (обращение №53).
+    &__tools--fmt { border-bottom: none; border-top: 1px solid v.$c-border; background: v.$c-surface-2; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px 10px; }
+    &__tools--top:empty { display: none; }
+    // Что вставляет панель, должно выглядеть в редакторе так же, как у получателя.
+    &__editor table { border-collapse: collapse; }
+    &__editor td, &__editor th { border: 1px solid v.$c-border-2; padding: 4px 8px; min-width: 40px; }
+    &__editor hr { border: none; border-top: 1px solid v.$c-border-2; margin: 10px 0; }
+    &__editor pre { font-family: ui-monospace, Consolas, monospace; font-size: 13px; background: v.$c-surface-2; padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; }
+    &__editor h1 { font-size: 22px; margin: 12px 0 6px; }
+    &__editor h2 { font-size: 18px; margin: 10px 0 6px; }
+    &__editor h3 { font-size: 15.5px; margin: 8px 0 4px; }
 
     &__editor {
         flex: 1;
@@ -987,6 +998,23 @@
         &.on { background: v.$c-accent-soft; color: v.$c-accent-ink; }
     }
     .v { width: 1px; height: 18px; background: v.$c-border; margin: 0 4px; }
+
+    // Панель оформления (обращение №53): два ряда, списки шрифта/размера/заголовка, всплывашки цветов и таблицы.
+    &__row { flex-wrap: wrap; width: 100%; }
+    &__sel { height: 28px; padding: 0 22px 0 8px; border: 1px solid v.$c-border; border-radius: 6px; background: v.$c-surface; color: v.$c-text; font: inherit; font-size: 12.5px; }
+    &__wrap { position: relative; display: inline-flex; }
+    &__pop { position: absolute; bottom: 34px; left: 0; z-index: 5; background: v.$c-surface; border: 1px solid v.$c-border; border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, .14); padding: 8px; display: grid; grid-template-columns: repeat(5, 24px); gap: 6px; }
+    &__pop--emoji { grid-template-columns: repeat(8, 28px); gap: 2px; }
+    &__pop--table { display: block; }
+    &__swatch { width: 24px; height: 24px; border-radius: 6px; border: 1px solid rgba(0, 0, 0, .15); padding: 0; cursor: pointer; }
+    &__swatch:hover { outline: 2px solid v.$c-accent; outline-offset: 1px; }
+    &__swatch--none { background: v.$c-surface; color: v.$c-muted; display: inline-flex; align-items: center; justify-content: center; }
+    &__emoji { width: 28px; height: 28px; font-size: 18px; line-height: 1; border: none; background: none; border-radius: 6px; cursor: pointer; padding: 0; }
+    &__emoji:hover { background: v.$c-surface-2; }
+    &__grid { display: grid; grid-template-columns: repeat(8, 18px); gap: 3px; }
+    &__cell { width: 18px; height: 18px; border: 1px solid v.$c-border-2; border-radius: 3px; background: v.$c-surface; padding: 0; cursor: pointer; }
+    &__cell.on { background: v.$c-accent-soft; border-color: v.$c-accent; }
+    &__gridhint { text-align: center; font-size: 12px; color: v.$c-muted; margin-top: 6px; }
 }
 
 // Поле получателей: фишки + ввод + подсказки.
