@@ -130,7 +130,7 @@ class EmployeeController extends Controller
         } catch (\Throwable $e) {
             return response()->json(['message' => 'IMAP не отвечает: ' . mb_substr($e->getMessage(), 0, 160)], 500);
         }
-        $svc = new \App\Services\Mail\FolderShares();
+        $svc = app(\App\Services\Mail\FolderShares::class);
         $out = [];
         foreach ($folders as $f) {
             $out[] = ['path' => $f['path'], 'name' => $f['name'], 'depth' => $f['depth'], 'shares' => $svc->list($model->username, \App\Services\Mail\FolderShares::utf8($f['path']))];
@@ -142,13 +142,17 @@ class EmployeeController extends Controller
     public function share(Request $request, string $mailbox): \Illuminate\Http\JsonResponse
     {
         $model = Mailbox::query()->findOrFail($mailbox);
-        $data = $request->validate(['folder' => ['required', 'string', 'max:200'], 'with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor,owner']]);
-        $svc = new \App\Services\Mail\FolderShares();
-        // «*» — все папки ящика одним уровнем (форма «Открыть доступ» на странице «Общий доступ»).
-        $all = $data['folder'] === '*';
+        $data = $request->validate(['folder' => ['required_without:folders', 'string', 'max:200'], 'folders' => ['sometimes', 'array', 'min:1'], 'folders.*' => ['string', 'max:200'], 'with' => ['required', 'email'], 'level' => ['required', 'in:reader,editor,owner']]);
+        $svc = app(\App\Services\Mail\FolderShares::class);
+        // «*» — все папки ящика одним уровнем (форма «Открыть доступ» на странице «Общий доступ»);
+        // folders[] — перечень папок одним уровнем (строка сотрудника там же).
+        $all = ($data['folder'] ?? '') === '*';
+        $many = ! empty($data['folders']);
         try {
             if ($all) {
                 $svc->setAll($model->username, $data['with'], $data['level']);
+            } elseif ($many) {
+                $svc->setMany($model->username, array_map([\App\Services\Mail\FolderShares::class, 'utf8'], $data['folders']), $data['with'], $data['level']);
             } else {
                 $svc->set($model->username, \App\Services\Mail\FolderShares::utf8($data['folder']), $data['with'], $data['level']);
             }
@@ -157,7 +161,8 @@ class EmployeeController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json(['message' => 'Не удалось выдать доступ: ' . mb_substr($e->getMessage(), 0, 200)], 500);
         }
-        AdminAction::log('mailbox.update', $model->username, ($all ? 'все папки открыты' : 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» открыта') . ' для ' . $data['with'] . ' (' . (\App\Services\Mail\FolderShares::TITLES[$data['level']] ?? $data['level']) . ')');
+        $what = $all ? 'все папки открыты' : ($many ? 'папки «' . implode('», «', array_map([\App\Services\Mail\FolderShares::class, 'utf8'], $data['folders'])) . '» открыты' : 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» открыта');
+        AdminAction::log('mailbox.update', $model->username, $what . ' для ' . $data['with'] . ' (' . (\App\Services\Mail\FolderShares::TITLES[$data['level']] ?? $data['level']) . ')');
 
         return $this->shares($mailbox);
     }
@@ -166,12 +171,15 @@ class EmployeeController extends Controller
     {
         $model = Mailbox::query()->findOrFail($mailbox);
         $data = $request->validate(['folder' => ['required', 'string', 'max:200'], 'with' => ['required', 'email']]);
+        // «*» — закрыть весь ящик (все папки), как кнопка «✕» у строки сотрудника на странице «Общий доступ».
+        $all = $data['folder'] === '*';
         try {
-            (new \App\Services\Mail\FolderShares())->remove($model->username, \App\Services\Mail\FolderShares::utf8($data['folder']), $data['with']);
+            $svc = app(\App\Services\Mail\FolderShares::class);
+            $all ? $svc->removeAll($model->username, $data['with']) : $svc->remove($model->username, \App\Services\Mail\FolderShares::utf8($data['folder']), $data['with']);
         } catch (\RuntimeException $e) {
             return response()->json(['message' => 'Не удалось снять доступ: ' . mb_substr($e->getMessage(), 0, 200)], 500);
         }
-        AdminAction::log('mailbox.update', $model->username, 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» закрыта для ' . $data['with']);
+        AdminAction::log('mailbox.update', $model->username, ($all ? 'ящик закрыт' : 'папка «' . \App\Services\Mail\FolderShares::utf8($data['folder']) . '» закрыта') . ' для ' . $data['with']);
 
         return $this->shares($mailbox);
     }

@@ -4,12 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminAction;
 use App\Services\Mail\FolderShares;
+use App\Services\Mail\ShareSummary;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Artisan;
 use Inertia\Inertia;
 use Inertia\Response;
 
-/** Страница «Общий доступ»: все открытые папки всех ящиков — по ящикам и по сотрудникам. */
+/** Страница «Общий доступ»: все открытые папки всех ящиков — по ящикам, по сотрудникам и таблицей. */
 class SharesController extends Controller
 {
     public function __construct(private readonly FolderShares $shares)
@@ -38,10 +39,12 @@ class SharesController extends Controller
 
     private function payload(): array
     {
-        $rows = $this->shares->overview();
+        $all = $this->shares->overviewWithFolders();
 
         return [
-            'rows' => $rows,
+            // Строка на сотрудника с итогом по папкам (ShareSummary); сырые строки «папка → кому» — для вида «Таблица».
+            'boxes' => ShareSummary::build($all['rows'], $all['folders']),
+            'rows' => $all['rows'],
             'candidates' => FolderShares::candidates(''),
             // «Чей ящик» — и служебные ящики (info@, продажи): их как раз чаще всего и открывают.
             // «Кому» — только люди (candidates).

@@ -194,16 +194,29 @@ class FolderShares
      */
     public function overview(): array
     {
+        return $this->overviewWithFolders()['rows'];
+    }
+
+    /**
+     * То же плюс список всех папок каждого ящика (и тех, что никому не открыты): сводке ShareSummary
+     * нужно знать, «все папки» это или «все, кроме…».
+     * @return array{rows:array<int,array<string,mixed>>,folders:array<string,array<int,array{path:string,name:string,role:string}>>}
+     */
+    public function overviewWithFolders(): array
+    {
+        $folders = [];
         $owners = \Illuminate\Support\Facades\DB::connection('vmail')->table('share_folder')->distinct()->pluck('from_user')->map('strtolower')->sort()->values();
         $names = Mailbox::query()->pluck('name', 'username');
         $rows = [];
         foreach ($owners as $owner) {
             try {
                 $store = new MailStore(ImapSession::master($owner));
+                $folders[$owner] = [];
                 foreach ($store->folders() as $f) {
                     if ($f['role'] === 'shared') {
                         continue;
                     }
+                    $folders[$owner][] = ['path' => $f['path'], 'name' => $f['name'], 'role' => $f['role']];
                     foreach (self::aclLevels($store, $f['path']) as $with => $level) {
                         $rows[] = [
                             'owner' => $owner, 'ownerName' => $names[$owner] ?: $owner,
@@ -217,7 +230,7 @@ class FolderShares
             }
         }
 
-        return $rows;
+        return ['rows' => $rows, 'folders' => $folders];
     }
 
     /** Кому и с каким уровнем открыта папка — через IMAP GETACL (быстро, без doveadm). @return array<string,string> */
@@ -247,6 +260,34 @@ class FolderShares
     {
         \Illuminate\Support\Facades\Cache::forget('sendas.' . strtolower(trim($with)));
         \Illuminate\Support\Facades\Cache::forget('shares-any.' . strtolower($owner));
+    }
+
+    /**
+     * Один уровень на перечень папок (строка сотрудника на странице «Общий доступ»: «Входящие, Отправленные → редактор»).
+     * «Владелец» возможен только через «Входящие» и означает весь ящик — тогда это обычный set('INBOX').
+     */
+    public function setMany(string $owner, array $foldersUtf8, string $with, string $level): int
+    {
+        if ($level === 'owner') {
+            $this->set($owner, 'INBOX', $with, 'owner');
+
+            return 1;
+        }
+        $n = 0;
+        // «Входящие» — первыми: set('INBOX') снимает права с остальных папок, и они должны раздаваться после.
+        usort($foldersUtf8, fn ($a, $b) => (strtoupper($a) === 'INBOX' ? 0 : 1) <=> (strtoupper($b) === 'INBOX' ? 0 : 1));
+        foreach (array_unique($foldersUtf8) as $f) {
+            $this->set($owner, $f, $with, $level);
+            $n++;
+        }
+
+        return $n;
+    }
+
+    /** Закрыть сотруднику весь ящик: снять права со всех папок (снятие по «Входящим» как раз это и делает). */
+    public function removeAll(string $owner, string $with): void
+    {
+        $this->remove($owner, 'INBOX', $with);
     }
 
     public function remove(string $owner, string $folderUtf8, string $with): void
