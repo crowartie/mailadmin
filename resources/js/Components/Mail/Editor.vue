@@ -56,7 +56,8 @@ function insertHtml(html) { el.value.focus(); document.execCommand('insertHTML',
 function insertTable(rows, cols) {
     // Рамки — прямо в атрибутах стиля: у получателя нет наших таблиц стилей, а без рамок таблица «рассыпается».
     const td = 'border: 1px solid #cfcbc4; padding: 4px 8px; min-width: 40px';
-    const row = '<tr>' + '<td style="' + td + '"><br></td>'.repeat(cols) + '</tr>';
+    // Скобки обязательны: без них repeat относился бы только к последней строке-литералу.
+    const row = '<tr>' + ('<td style="' + td + '"><br></td>').repeat(cols) + '</tr>';
     insertHtml('<table style="border-collapse: collapse; margin: 6px 0">' + row.repeat(rows) + '</table><p><br></p>');
 }
 function insertEmoji(e) { insertHtml(e + ' '); }
