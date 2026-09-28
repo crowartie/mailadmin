@@ -72,6 +72,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -153,10 +154,15 @@ object CalStore {
         loading = true; error = null
         val from = month.minus(DatePeriod(days = 7))
         val to = month.plus(DatePeriod(months = 1)).plus(DatePeriod(days = 45))
+        val asked = month
         scope.launch {
-            try { events = api.events(from.toString(), to.toString()) }
-            catch (e: ApiException) { if (e.isAuth) Toasts.error(e) else error = e.message }
-            finally { loading = false }
+            try {
+                val list = api.events(from.toString(), to.toString())
+                // Быстро листали месяцы: поздний ответ за прошлый месяц не должен перекрыть текущий.
+                if (asked == month) events = list
+            }
+            catch (e: ApiException) { if (e.isAuth) Toasts.error(e) else if (asked == month) error = e.message }
+            finally { if (asked == month) loading = false }
         }
     }
 
@@ -204,7 +210,11 @@ object CalStore {
         else -> "${Fmt.monthsNom[month.month.ordinal]} ${month.year}"
     }
 
-    fun reset() { calendars = emptyList(); events = emptyList(); tasks = emptyList(); hidden.clear(); search = null; loaded = false }
+    /** Смена ящика или выход: незавершённые запросы отменяем — иначе события ящика A показались бы в B. */
+    fun reset() {
+        scope.coroutineContext.cancelChildren()
+        calendars = emptyList(); events = emptyList(); tasks = emptyList(); hidden.clear(); search = null; loaded = false; loading = false
+    }
 }
 
 /**
@@ -1144,7 +1154,7 @@ class CalendarsScreen : Screen() {
         }
         edit?.let { c -> CalendarSettings(c, onDismiss = { edit = null }) }
         unsubscribe?.let { c ->
-            ConfirmDialog("Отписаться от «${c.name}»?", "Календарь ${c.owner.name.ifBlank { c.owner.mail ?: "" }} пропадёт из вашего списка; владелец сможет открыть его снова.", "Отписаться", danger = true, onDismiss = { unsubscribe = null }) {
+            ConfirmDialog("Отписаться от «${c.name}»?", "Календарь «${c.name}» (владелец ${c.owner.name.ifBlank { c.owner.mail ?: "" }}) пропадёт из вашего списка; владелец сможет открыть его снова.", "Отписаться", danger = true, onDismiss = { unsubscribe = null }) {
                 scope.launchSafe { Session.api!!.unsubscribeCalendar(c.uri); CalStore.hidden.remove(c.uri); CalStore.loadCalendars(); CalStore.load(); Toasts.show("Вы отписались от календаря") }
             }
         }

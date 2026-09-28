@@ -1,5 +1,7 @@
 package su.innotec.mail.data
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import su.innotec.mail.api.Api
 import su.innotec.mail.api.ApiException
@@ -19,7 +21,10 @@ object MailCheck {
      * а папки — когда появились новые письма (для общих ящиков) или раз в 10 минут (переименовали, добавили общий).
      * У каждого ящика свой набор.
      */
-    private class Folders(var list: List<Folder> = emptyList(), var inbox: Folder? = null, var at: Long = 0L)
+    private class Folders(var list: List<Folder> = emptyList(), var inbox: Folder? = null, var at: Long = 0L) {
+        /** Последний показанный uid по каждой общей папке: без этого одни и те же письма показывались бы каждый раз. */
+        val sharedSeen: MutableMap<String, Long> = mutableMapOf()
+    }
     private var folders: Map<String, Folders> = emptyMap()
     private const val FOLDERS_TTL_MS = 10 * 60_000L
 
@@ -36,7 +41,8 @@ object MailCheck {
                 shown += check(a)
                 answered = true
             } catch (e: ApiException) {
-                if (e.isAuth) Session.signOut("Вход устарел или отозван — войдите заново.", a.key)
+                // Session и состояние Compose — только с главного потока: служба и WorkManager сюда приходят с IO/Default.
+                if (e.isAuth) withContext(Dispatchers.Main) { Session.signOut("Вход устарел или отозван — войдите заново.", a.key) }
                 else if (failure == null) failure = e
             }
         }
@@ -61,26 +67,34 @@ object MailCheck {
         Reminders.handle(st.reminders, start.key)
         // Счётчики берём свежие: пока шёл запрос, открытый список писем мог их сдвинуть (MailStore.load).
         val a = Session.accounts.firstOrNull { it.key == start.key } ?: return 0
-        if (st.folder.uidnext <= a.lastNotifiedUidNext) return 0
-        // Новые письма есть — заодно освежить папки: список общих ящиков и их непрочитанное.
-        if (now - fs.at > 60_000L) runCatching { refreshFolders(api, a.key, now) }
-        val first = a.lastNotifiedUid == 0L
-        val fresh = api.list(ib.path, 0, 20, "unread").messages.filter { it.uid > a.lastNotifiedUid }
-        val maxUid = maxOf(a.lastNotifiedUid, fresh.maxOfOrNull { it.uid } ?: 0)
-        Session.updateAccount(a.key) { it.copy(lastNotifiedUid = maxUid, lastNotifiedUidNext = st.folder.uidnext) }
-        // Первый запуск после входа: старые непрочитанные — не повод для уведомлений.
-        if (first) return 0
         val prefix = AccountList.notifyPrefix(Session.accounts, a)
         var shown = 0
-        fresh.sortedBy { it.uid }.takeLast(5).forEach { m ->
-            Notifier.show(AccountList.notifyId(a.key, m.uid), AccountList.notifyTitle(prefix, m.from.display.ifBlank { "Новое письмо" }), m.subject.ifBlank { "(без темы)" }, ib.path, m.uid, a.key)
-            shown++
+        if (st.folder.uidnext > a.lastNotifiedUidNext) {
+            // Новые письма есть — заодно освежить папки: список общих ящиков и их непрочитанное.
+            if (now - fs.at > 60_000L) runCatching { refreshFolders(api, a.key, now) }
+            val first = a.lastNotifiedUid == 0L
+            val fresh = api.list(ib.path, 0, 20, "unread").messages.filter { it.uid > a.lastNotifiedUid }
+            // База после первого запуска — даже если непрочитанных нет: иначе следующее письмо тоже сочли бы «первым».
+            val maxUid = maxOf(a.lastNotifiedUid, fresh.maxOfOrNull { it.uid } ?: 0, if (first) st.folder.uidnext - 1 else 0)
+            withContext(Dispatchers.Main) { Session.updateAccount(a.key) { it.copy(lastNotifiedUid = maxUid, lastNotifiedUidNext = st.folder.uidnext) } }
+            // Первый запуск после входа: старые непрочитанные — не повод для уведомлений.
+            if (!first) fresh.sortedBy { it.uid }.takeLast(5).forEach { m ->
+                Notifier.show(AccountList.notifyId(a.key, m.uid), AccountList.notifyTitle(prefix, m.from.display.ifBlank { "Новое письмо" }), m.subject.ifBlank { "(без темы)" }, ib.path, m.uid, a.key)
+                shown++
+            }
         }
+        // Общие ящики — независимо от своих «Входящих» (раньше проверялись только вместе с новым своим письмом),
+        // и каждое письмо показывается один раз: по папке помним последний показанный uid.
         if (Session.prefs.notifyShared) {
-            fs.list.filter { it.isShared && it.inbox }.forEach { f ->
+            val cur = folders[a.key] ?: fs   // список папок могли только что перечитать
+            cur.list.filter { it.isShared && it.inbox }.forEach { f ->
                 runCatching {
-                    api.list(f.path, 0, 5, "unread").messages.filter { Fmt2.recent(it.date) }.take(2).forEach { m ->
+                    val last = cur.sharedSeen[f.path] ?: 0L
+                    val list = api.list(f.path, 0, 5, "unread").messages.filter { it.uid > last && Fmt2.recent(it.date) }
+                    if (list.isNotEmpty()) cur.sharedSeen[f.path] = maxOf(last, list.maxOf { it.uid })
+                    list.sortedBy { it.uid }.takeLast(2).forEach { m ->
                         Notifier.show(AccountList.notifyId(a.key + f.path, m.uid), AccountList.notifyTitle(prefix, "${f.ownerName.ifBlank { f.owner }}: ${m.from.display}"), m.subject.ifBlank { "(без темы)" }, f.path, m.uid, a.key)
+                        shown++
                     }
                 }
             }
@@ -91,6 +105,8 @@ object MailCheck {
     private suspend fun refreshFolders(api: Api, key: String, now: Long): Folders {
         val list = api.folders()
         val fs = Folders(list, list.firstOrNull { it.role == "inbox" && !it.isShared }, now)
+        // Отметки показанных писем общих папок переживают перечитывание списка папок.
+        folders[key]?.sharedSeen?.let { fs.sharedSeen.putAll(it) }
         folders = folders + (key to fs)
         return fs
     }

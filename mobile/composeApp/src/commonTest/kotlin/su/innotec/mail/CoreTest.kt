@@ -142,7 +142,7 @@ class CoreTest {
             expectSuccess = false
             install(ContentNegotiation) { json(ApiJson) }
         }
-        return Api(http, "https://mail.test") { "TOKEN" } to seen
+        return Api(http, "https://mail.test", { "TOKEN" }) to seen
     }
 
     private val jsonHeaders = headersOf(HttpHeaders.ContentType, "application/json")

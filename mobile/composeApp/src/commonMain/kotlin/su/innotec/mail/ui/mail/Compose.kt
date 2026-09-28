@@ -117,6 +117,8 @@ sealed class ComposeStart {
 
 /** Состояние окна «Написать»; переживает отмену отправки (окно открывается заново с тем же). */
 class ComposeModel(val start: ComposeStart) {
+    /** API ящика, где письмо начали писать: отправка, черновик и файлы идут в него, даже если ящик переключили. */
+    val boundApi: su.innotec.mail.api.Api? = Session.api
     val to = mutableStateListOf<Person>()
     val cc = mutableStateListOf<Person>()
     val bcc = mutableStateListOf<Person>()
@@ -176,7 +178,7 @@ class ComposeModel(val start: ComposeStart) {
 
     /** Проверить домены новых адресатов (есть ли такой, принимает ли почту) — как в веб-почте. */
     suspend fun verifyDomains() {
-        val api = Session.api ?: return
+        val api = boundApi ?: return
         (to + cc + bcc).map { it.mail.lowercase() }.filter { it.contains('@') && checked.add(it) }.forEach { mail ->
             val r = runCatching { api.checkDomain(mail.substringAfter('@')).jsonObject }.getOrNull() ?: return@forEach
             val status = r["status"]?.jsonPrimitive?.contentOrNull ?: "ok"
@@ -216,7 +218,7 @@ class ComposeModel(val start: ComposeStart) {
     }
 
     suspend fun load() {
-        val api = Session.api ?: return
+        val api = boundApi ?: return
         try {
             meta = runCatching { api.composeMeta() }.getOrDefault(ComposeMeta())
             var body = ""
@@ -374,7 +376,7 @@ class ComposeModel(val start: ComposeStart) {
     val stageBusy get() = staged.any { it.state == "upload" || it.state == "check" }
 
     fun stageFile(f: LocalFile, scope: CoroutineScope) {
-        val api = Session.api ?: return
+        val api = boundApi ?: return
         val s = StagedFile(f.name, f.size)
         staged.add(s); dirty = true
         s.job = scope.launch {
@@ -406,13 +408,13 @@ class ComposeModel(val start: ComposeStart) {
     fun dropStaged(s: StagedFile) {
         staged.remove(s); s.job?.cancel()
         val t = s.token
-        if (t != null && !s.fromDraft) sendScope.launch { runCatching { Session.api?.unstage(t) } }
+        if (t != null && !s.fromDraft) sendScope.launch { runCatching { boundApi?.unstage(t) } }
         dirty = true
     }
 
     /** Черновик удалили — файлам в хранилище делать нечего. */
     fun unstageAll() {
-        staged.toList().forEach { s -> s.job?.cancel(); s.token?.let { t -> sendScope.launch { runCatching { Session.api?.unstage(t) } } } }
+        staged.toList().forEach { s -> s.job?.cancel(); s.token?.let { t -> sendScope.launch { runCatching { boundApi?.unstage(t) } } } }
         staged.clear()
     }
 
@@ -432,7 +434,7 @@ class ComposeModel(val start: ComposeStart) {
      * а черновик не разрастается. Не вышло (нет места в облаке) — прежний путь: файл в черновик, ссылкой при отправке.
      */
     fun uploadToCloud(f: LocalFile, scope: CoroutineScope) {
-        val api = Session.api ?: return
+        val api = boundApi ?: return
         val job = CloudJob(f)
         cloudJobs.add(job)
         scope.launch {
@@ -504,7 +506,7 @@ class ComposeModel(val start: ComposeStart) {
      * Если сохранение уже идёт, ждём его: оно само сделает ещё заход (again), раз что-то изменилось.
      */
     suspend fun saveDraft(quiet: Boolean = true): Boolean {
-        val api = Session.api ?: return false
+        val api = boundApi ?: return false
         if (saving) { again = true; saveJob?.join(); return lastSaveOk }
         saving = true
         saveJob = currentCoroutineContext()[Job]

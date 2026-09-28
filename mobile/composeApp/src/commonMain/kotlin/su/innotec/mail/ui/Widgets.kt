@@ -140,7 +140,8 @@ object Toasts {
     fun expireAll() { scope.launch { current?.expire(); queue.toList().forEach { it.expire() } } }
 
     fun error(e: Throwable) {
-        if (e is ApiException && e.isAuth) { Session.signOut("Вход устарел или отозван — войдите заново."); return }
+        // Выкидываем тот ящик, чей запрос упал: при нескольких ящиках запоздалый 401 от ящика A не должен ронять B.
+        if (e is ApiException && e.isAuth) { Session.signOut("Вход устарел или отозван — войдите заново.", e.account ?: Session.account?.key); return }
         show(e.message ?: "Что-то пошло не так")
     }
 }

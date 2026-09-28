@@ -88,7 +88,7 @@ class SecurityScreen : Screen() {
                     Column(Modifier.background(P.surface)) {
                         sec.sessions.forEach { s ->
                             ListRow(s.device.ifBlank { "Неизвестное устройство" } + if (s.me) " · этот" else "",
-                                listOf(s.ip, Fmt.listDate(s.seen), if (s.count > 1) "${s.count} входа" else null, if (s.remembered) "запомнен" else null).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "),
+                                listOf(s.ip, Fmt.listDate(s.seen), if (s.count > 1) "${s.count} " + Fmt.plural(s.count, "вход", "входа", "входов") else null, if (s.remembered) "запомнен" else null).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "),
                                 icon = if (s.kind == "app") "mobile" else "laptop",
                                 trailing = { if (!s.me) IconBtn("x", "Завершить", tint = P.muted) { kick = s } })
                         }

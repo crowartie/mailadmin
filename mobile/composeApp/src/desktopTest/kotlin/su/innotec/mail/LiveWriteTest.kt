@@ -28,7 +28,7 @@ class LiveWriteTest {
     private fun log(s: String) = println("  · $s")
     private val stamp = System.currentTimeMillis().toString().takeLast(6)
 
-    private fun api() = Api(createHttpClient(), server) { token }
+    private fun api() = Api(createHttpClient(), server, { token })
 
     @Test
     fun contactsCalendarTasksLabels() = runBlocking {

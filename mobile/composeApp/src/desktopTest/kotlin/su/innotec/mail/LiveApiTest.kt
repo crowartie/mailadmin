@@ -32,7 +32,7 @@ class LiveApiTest {
     fun fullReadAndReversibleWrites() = runBlocking {
         if (login.isNullOrBlank() || password.isNullOrBlank()) { println("LiveApiTest: вход не задан — пропуск"); return@runBlocking }
         val http = createHttpClient(hosts)
-        val anon = Api(http, server) { null }
+        val anon = Api(http, server, { null })
         val d = anon.discover()
         log("сервер: ${d.name} ${d.version}, minApp ${d.minApp}, ${d.features}")
         assertTrue(d.api.endsWith("/api/v1"), d.api)
@@ -41,7 +41,7 @@ class LiveApiTest {
         val r = anon.login(LoginRequest(login, password, DeviceInfo("Тест приложения", "desktop", AppInfo.VERSION)))
         if (r.token == null) { println("LiveApiTest: включена 2FA — дальше без кода нельзя"); return@runBlocking }
         var token: String? = r.token
-        val api = Api(http, server) { token }
+        val api = Api(http, server, { token })
         try {
             val me = api.me()
             assertEquals(login.lowercase(), me.user.lowercase())

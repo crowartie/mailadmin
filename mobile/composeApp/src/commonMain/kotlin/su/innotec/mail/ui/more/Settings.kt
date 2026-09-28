@@ -112,7 +112,7 @@ class MailSettingsScreen : Screen() {
                 SectionTitle("Письма")
                 Column(Modifier.background(P.surface)) {
                     SwitchRow("«Ответить» — всем участникам", "Кнопка «Ответить» отвечает всем, если в письме несколько адресатов", s.replyAll) { v -> scope.launchSafe { patch(buildJsonObject { put("reply_all", v) }) } }
-                    ListRow("Отмена отправки и удаления", if (s.undoSeconds <= 0) "выключена" else "${s.undoSeconds} секунд", icon = "clock") { dialog = "undo" }
+                    ListRow("Отмена отправки и удаления", if (s.undoSeconds <= 0) "выключена" else "${s.undoSeconds} " + Fmt.plural(s.undoSeconds, "секунда", "секунды", "секунд"), icon = "clock") { dialog = "undo" }
                     ListRow("Картинки из интернета", if (s.showImages == "always") "показывать всегда" else "спрашивать", icon = "img") { dialog = "images" }
                     ListRow("Быстрые ответы", s.quickReplies.filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "нет" }, icon = "reply") { dialog = "quick" }
                     SwitchRow("Предлагать правило при переносе", "Перенесли письмо в свою папку — спросить, класть ли туда всё от этого отправителя", s.askRuleOnMove) { v -> scope.launchSafe { patch(buildJsonObject { put("ask_rule_on_move", v) }) } }
@@ -150,7 +150,7 @@ class MailSettingsScreen : Screen() {
         }
         when (dialog) {
             "name" -> InputDialog("Имя в письмах", "Имя", initial = s.displayName, onDismiss = { dialog = null }) { v -> scope.launchSafe { patch(buildJsonObject { put("display_name", v) }) } }
-            "undo" -> ChoiceDialog("Сколько ждать перед отправкой и удалением", listOf(0, 5, 10, 20, 30), { if (it == 0) "Не ждать" else "$it секунд" }, s.undoSeconds, onDismiss = { dialog = null }) { v ->
+            "undo" -> ChoiceDialog("Сколько ждать перед отправкой и удалением", listOf(0, 5, 10, 20, 30), { if (it == 0) "Не ждать" else "$it " + Fmt.plural(it, "секунда", "секунды", "секунд") }, s.undoSeconds, onDismiss = { dialog = null }) { v ->
                 scope.launchSafe { patch(buildJsonObject { put("undo_seconds", v) }) }
             }
             "images" -> ChoiceDialog("Картинки из интернета", listOf("ask", "always"), { if (it == "always") "Показывать всегда" else "Спрашивать (защита от следящих пикселей)" }, s.showImages, onDismiss = { dialog = null }) { v ->
@@ -159,7 +159,8 @@ class MailSettingsScreen : Screen() {
             "quick" -> QuickRepliesDialog(s.quickReplies, onDismiss = { dialog = null }) { list ->
                 scope.launchSafe { patch(buildJsonObject { putJsonArray("quick_replies") { list.forEach { add(JsonPrimitive(it)) } } }) }
             }
-            "density" -> ChoiceDialog("Плотность списка", listOf("normal", "compact"), ::densityName, s.density.ifBlank { "normal" }.let { if (it == "roomy") "normal" else it }, onDismiss = { dialog = null }) { v ->
+            // Те же три плотности, что в веб-почте (density: roomy / normal / compact).
+            "density" -> ChoiceDialog("Плотность списка", listOf("roomy", "normal", "compact"), ::densityName, s.density.ifBlank { "normal" }, onDismiss = { dialog = null }) { v ->
                 scope.launchSafe { patch(buildJsonObject { put("density", v) }) }
             }
             "unread" -> UnreadColorDialog(s, onDismiss = { dialog = null }) { highlight, color ->
@@ -169,7 +170,7 @@ class MailSettingsScreen : Screen() {
     }
 }
 
-private fun densityName(d: String) = when (d) { "compact" -> "компактная — без первых строк письма"; "roomy" -> "просторная"; else -> "обычная" }
+private fun densityName(d: String) = when (d) { "compact" -> "компактная — без первых строк письма"; "roomy" -> "просторная — больше воздуха между письмами"; else -> "обычная" }
 
 /** Цвет непрочитанных: «как текст» — подсветка выключена; иначе акцент темы или свой цвет. */
 private val UNREAD_COLORS = listOf("#2F6FEB" to "Синий", "#16A05C" to "Зелёный", "#D9791F" to "Оранжевый", "#8E44AD" to "Фиолетовый", "#C0392B" to "Красный", "#0E8A9E" to "Бирюзовый")

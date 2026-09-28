@@ -26,7 +26,7 @@ class LiveCalendarTest {
     @Test
     fun seriesOneOccurrenceAndFreeBusy() = runBlocking {
         if (token.isNullOrBlank()) { println("LiveCalendarTest: токен не задан — пропуск"); return@runBlocking }
-        val api = Api(createHttpClient(), server) { token }
+        val api = Api(createHttpClient(), server, { token })
         val cal = api.calendars().first { it.kind == "personal" }
         val title = "Серия приложения $stamp"
         // Пн и Ср раз в две недели, 4 раза, с понедельника 4 января 2027.

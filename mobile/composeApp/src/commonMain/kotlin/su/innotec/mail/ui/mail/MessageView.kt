@@ -609,8 +609,12 @@ private fun AttachmentCard(a: Attachment, folder: String, uid: Long, attachedInd
     val api = Session.api!!
     val path = if (attachedIndex == null) api.attachmentPath(folder, uid, a.index) else api.attachedPartPath(folder, uid, attachedIndex, a.index)
     val isEml = a.type == "message/rfc822" || a.name.endsWith(".eml", true)
+    val scope = rememberCoroutineScope()
+    // Маячок в журнал действий (как в веб-почте): по какому файлу нажали, а не только что скачали.
+    fun beacon() { scope.launch { api.activity("attachment", a.name) } }
     FileCard(a.name, a.size, fileIcon(a.name, a.type), fileKindLabel(a.name, a.type),
         onOpen = {
+            beacon()
             val at = views.indexOfFirst { it.path == path }
             when {
                 isEml && attachedIndex == null -> Nav.push(AttachedMessageScreen(folder, uid, a.index))
@@ -618,8 +622,8 @@ private fun AttachmentCard(a: Attachment, folder: String, uid: Long, attachedInd
                 else -> Transfers.fetch(path, a.name, Transfers.Then.OPEN)
             }
         },
-        onSave = { Transfers.fetch(path, a.name, Transfers.Then.SAVE) },
-        onShare = { Transfers.fetch(path, a.name, Transfers.Then.SHARE) },
+        onSave = { beacon(); Transfers.fetch(path, a.name, Transfers.Then.SAVE) },
+        onShare = { beacon(); Transfers.fetch(path, a.name, Transfers.Then.SHARE) },
     )
 }
 

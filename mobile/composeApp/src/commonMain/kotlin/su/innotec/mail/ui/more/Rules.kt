@@ -102,6 +102,8 @@ class RulesScreen : Screen() {
             // Удалённое правило приходит из RuleEditScreen с id "__delete__".
             val r = r0.copy(rules = r0.rules.filter { it.id != "__delete__" })
             Session.api!!.saveRules(r.rules, r.autoreply); data = r; Toasts.show("Правила сохранены")
+            // Список писем решает по MailStore.rules, спрашивать ли про правило при переносе — иначе он до перезапуска живёт со старыми.
+            MailStore.reloadRules()
         }
         fun save(r0: Rules) { scope.launchSafe { saveNow(r0) } }
         Column(Modifier.fillMaxSize().background(P.bg)) {

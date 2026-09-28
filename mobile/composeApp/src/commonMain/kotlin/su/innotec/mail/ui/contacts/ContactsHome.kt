@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import su.innotec.mail.LocalWindow
@@ -144,7 +145,12 @@ object ContactsStore {
 
     fun visible(): List<Contact> = all.filter { c -> (group == null || group in c.groups) && (book != null || c.mergedInto == null) }
 
-    fun reset() { all.clear(); books = emptyList(); groups = emptyList(); book = null; group = null; q = ""; selected = null; loaded = false }
+    /** Смена ящика или выход: незавершённые запросы отменяем — иначе ответ ящика A показался бы в B. */
+    fun reset() {
+        searchJob?.cancel(); searchJob = null
+        scope.coroutineContext.cancelChildren()
+        all.clear(); books = emptyList(); groups = emptyList(); book = null; group = null; q = ""; selected = null; loaded = false; loading = false
+    }
 }
 
 /** Итог загрузки .vcf: «Загружено 12 в «Мои контакты», пропущено 3 (уже есть)». */

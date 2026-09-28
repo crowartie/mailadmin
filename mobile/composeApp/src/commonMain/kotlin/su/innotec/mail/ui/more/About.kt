@@ -106,7 +106,7 @@ object Updates {
 
     private fun rememberPending(f: su.innotec.mail.platform.SavedFile?, r: Release?) {
         // Строки через перевод строки: имён файлов с ним не бывает, а сериализатор для одного поля ни к чему.
-        store.put(PENDING, if (f == null || r == null) null else listOf(r.version, f.name, f.location, f.mime ?: "", f.size.toString(), r.sha256, r.size.toString()).joinToString("\n"))
+        store.put(PENDING, if (f == null || r == null) null else listOf(r.version, f.name, f.location, f.mime ?: "", f.size.toString(), r.sha256, r.size.toString(), r.code.toString()).joinToString("\n"))
     }
 
     fun resume() {
@@ -117,8 +117,9 @@ object Updates {
         val version = p[0]
         val file = su.innotec.mail.platform.SavedFile(p[1], p[2], p[3].ifBlank { null }, p[4].toLongOrNull() ?: 0)
         store.put(PENDING, null)
-        // Уже стоит эта или более новая версия — файл устарел, ставить нечего.
-        if (compareVersions(version, AppInfo.VERSION) <= 0) return
+        // Уже стоит эта или более новая сборка — файл устарел, ставить нечего. Сравниваем как при проверке
+        // обновлений: пересборка той же версии с большим code — тоже обновление (записи без code — старого формата, code 0).
+        if (!isNewerRelease(version, p.getOrNull(7)?.toIntOrNull() ?: 0)) return
         scope.launch {
             // Файл мог пропасть (очистка кэша) или измениться — перед установкой сверяем ещё раз, не на главном потоке.
             val problem = kotlinx.coroutines.withContext(Dispatchers.Default) { verifyDownload(su.innotec.mail.platform.sha256Of(file), p[5], file.size, p[6].toLongOrNull() ?: 0) }

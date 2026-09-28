@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -78,6 +79,8 @@ object MailStore {
     private var loadJob: Job? = null
     private var pollJob: Job? = null
     private var started = false
+    /** uidnext папки на прошлом опросе: перечитываем список только когда он сдвинулся. */
+    private var lastUidNext = 0L
 
     private val api get() = Session.api ?: throw ApiException(401, "unauthorized", "Не выполнен вход")
 
@@ -89,12 +92,15 @@ object MailStore {
      */
     fun reset(switching: Boolean = false) {
         loadJob?.cancel(); pollJob?.cancel()
+        // И остальные корутины раздела (настройки, метки, правила, папки): ответ прежнего ящика иначе доезжал в новый.
+        scope.coroutineContext.cancelChildren()
         started = false
+        lastUidNext = 0
         // При выходе окна «Отменить» снимаем молча: вход уже отозван, запрос всё равно не пройдёт.
         pendingToasts.toList().forEach { if (switching) it.expire() else it.dismiss() }; pendingToasts.clear(); pending.clear()
         folders = emptyList(); labels = emptyList(); settings = Settings(); rules = emptyList()
         messages.clear(); selected.clear(); total = 0; openUid = null; query = ListQuery(); error = null; shownQuery = null; offline = false
-        inboxUnread = 0; outboxCount = 0; quarantineCount = 0; loading = false; loadingMore = false
+        inboxUnread = 0; outboxCount = 0; quarantineCount = 0; loading = false; loadingMore = false; quota = null
     }
 
     /**
@@ -153,7 +159,11 @@ object MailStore {
             val st = api.status(query.folder)
             inboxUnread = st.inboxUnseen
             val topUid = messages.firstOrNull()?.uid ?: 0
-            if (query.q.isBlank() && st.folder.uidnext > topUid + 1 && !loading && selected.isEmpty()) {
+            // Раньше сравнение было только с верхним uid: при сортировке не по дате, фильтре или после удаления
+            // верхнего письма оно выполнялось всегда, и каждую минуту перечитывалось до 200 писем.
+            val moved = lastUidNext != 0L && st.folder.uidnext != lastUidNext
+            lastUidNext = st.folder.uidnext
+            if (moved && query.q.isBlank() && query.sort == "date" && st.folder.uidnext > topUid + 1 && !loading && selected.isEmpty()) {
                 // Новые письма сверху: тихо перечитать первую страницу.
                 val r = api.list(query.folder, 0, maxOf(pageSize, messages.size.coerceAtMost(200)), query.filter, sort = query.sort)
                 replaceTop(r.messages)
@@ -186,6 +196,7 @@ object MailStore {
 
     fun load() {
         loadJob?.cancel()
+        lastUidNext = 0
         loading = true
         error = null
         val q0 = query
@@ -392,6 +403,11 @@ object MailStore {
                     SenderRules.offer(SenderAsk(askKind, askMails, targetFolder))
                 }
             }
+            return
+        }
+        // Окно «Отменить» выключено в настройках — действие сразу, как обещает подпись «Не ждать».
+        if (settings.undoSeconds <= 0) {
+            scope.launch { perform { Toasts.show(opText(op, uids.size, target)) } }
             return
         }
         val seconds = settings.undoSeconds.coerceAtLeast(4)

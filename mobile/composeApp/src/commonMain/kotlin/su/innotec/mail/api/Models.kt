@@ -382,11 +382,12 @@ data class Settings(
     @SerialName("notify_browser") val notifyBrowser: Boolean = false,
     // В веб-почте «не задано» значит «спрашивать» (ask_rule_on_move !== false).
     @SerialName("ask_rule_on_move") val askRuleOnMove: Boolean = true,
-    @SerialName("undo_seconds") val undoSeconds: Int = 0,
+    // Умолчания — как Setting::DEFAULTS на сервере: пока настройки не загрузились, список и отмена ведут себя как в веб-почте.
+    @SerialName("undo_seconds") val undoSeconds: Int = 5,
     @SerialName("quick_replies") val quickReplies: List<String> = emptyList(),
     val shortcuts: Boolean = true,
     val preview: Boolean = true,
-    @SerialName("unread_highlight") val unreadHighlight: Boolean = false,
+    @SerialName("unread_highlight") val unreadHighlight: Boolean = true,
     @SerialName("unread_color") val unreadColor: String = "",
     @SerialName("show_images") val showImages: String = "ask",
     @SerialName("totp_enabled") val totpEnabled: Boolean = false,

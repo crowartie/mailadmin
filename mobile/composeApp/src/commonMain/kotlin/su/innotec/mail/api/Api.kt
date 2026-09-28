@@ -43,6 +43,8 @@ val ApiJson = Json {
 
 /** Ошибка сервера: текст для человека (как в веб-почте) и код из MailException. */
 class ApiException(val status: Int, val code: String?, override val message: String) : Exception(message) {
+    /** Ключ ящика, чей запрос упал: при нескольких ящиках 401 выкидывает именно его, а не активный (Toasts.error). */
+    var account: String? = null
     /** Токен больше не годится — приложение уходит на вход. */
     val isAuth: Boolean get() = status == 401
     val isNetwork: Boolean get() = status == 0
@@ -108,6 +110,8 @@ class Api(
     /** https://mail.example.ru — без завершающей косой. */
     val origin: String,
     private val token: () -> String?,
+    /** Ключ ящика (Account.key) — попадает в ApiException, см. там. */
+    val accountKey: String? = null,
 ) {
     private val v1 = "$origin/api/v1"
 
@@ -170,7 +174,7 @@ class Api(
                 in 500..599 -> "Сервер не ответил. Попробуйте позже."
                 else -> "Ошибка ${resp.status.value}"
             }
-        return ApiException(resp.status.value, body?.code, msg)
+        return ApiException(resp.status.value, body?.code, msg).also { it.account = accountKey }
     }
 
     private suspend inline fun <reified T> get(path: String): T = parsed(raw(HttpMethod.Get, path))
@@ -402,12 +406,7 @@ class Api(
     suspend fun contactGroups(): List<ContactGroup> = get("/contacts/groups")
     suspend fun contactHistory(): List<HistoryEntry> = get("/contacts/history")
     suspend fun forgetHistory(email: String) = deleteOk("/contacts/history/${enc(email)}")
-    suspend fun importContacts(file: LocalFile, book: String = "personal"): JsonElement =
-        parsed(raw(HttpMethod.Post, "/contacts/import", MultiPartFormDataContent(formData {
-            append("book", book)
-            append("file", InputProvider(file.size) { file.open() }, Headers.build { append(HttpHeaders.ContentType, file.mime); append(HttpHeaders.ContentDisposition, "filename=\"${file.name}\"") })
-        })))
-    /** То же, что [importContacts], но с разбором ответа — чтобы сказать человеку, сколько загрузилось. */
+    /** Файл .vcf / .csv в книгу [book]; ответ разобран — чтобы сказать человеку, сколько загрузилось. */
     suspend fun importCards(file: LocalFile, book: String = "personal"): ImportResult =
         parsed(raw(HttpMethod.Post, "/contacts/import", MultiPartFormDataContent(formData {
             append("book", book)
@@ -421,7 +420,6 @@ class Api(
     suspend fun createCalendar(name: String, color: String): JsonElement = post("/calendars", buildJsonObject { put("name", name); put("color", color) })
     suspend fun updateCalendar(uri: String, name: String?, color: String?) { raw(HttpMethod.Patch, "/calendars/${enc(uri)}", buildJsonObject { name?.let { put("name", it) }; color?.let { put("color", it) } }) }
     suspend fun deleteCalendar(uri: String) = deleteOk("/calendars/${enc(uri)}")
-    /** Отписаться от чужого общего календаря: на сервере это тот же DELETE — sabre убирает только свою строку доступа (Calendars::deleteCalendar). */
     /** Отписаться от чужого общего календаря: свой маршрут, чтобы случайно не удалить свой календарь. */
     suspend fun unsubscribeCalendar(uri: String) = deleteOk("/calendars/${enc(uri)}/subscription")
     suspend fun calendarShares(uri: String): List<CalendarShare> = get("/calendars/${enc(uri)}/shares")
@@ -478,7 +476,6 @@ class Api(
     suspend fun updateLink(path: String, days: Int, password: Boolean? = null): LinkResult =
         send(HttpMethod.Put, "/cloud/link", buildJsonObject { put("path", path); put("days", days); password?.let { put("password", it) } })
     suspend fun cloudUnlink(path: String) = postOk("/cloud/unlink", buildJsonObject { put("path", path) })
-    suspend fun cloudAttach(paths: List<String>): JsonElement = post("/cloud/attach", buildJsonObject { putJsonArray("paths") { paths.forEach { add(JsonPrimitive(it)) } } })
     suspend fun cloudPin(path: String, on: Boolean): PinResult = post("/cloud/pin", buildJsonObject { put("path", path); put("on", on) })
     fun cloudFilePath(path: String, inline: Boolean = false) = "/cloud/file?path=${enc(path)}" + if (inline) "&inline=1" else ""
 
@@ -492,7 +489,14 @@ class Api(
 
     // ---------- журнал ----------
 
-    suspend fun activity(kind: String, detail: String) { runCatching { postOk("/activity", buildJsonObject { put("kind", kind); put("detail", detail) }) } }
+    /**
+     * Маячок журнала действий, которых сервер сам не видит (как track.js в веб-почте): формат тот же,
+     * что у /mail/api/activity — пачка events {a, d}, иначе сервер ответит 422 и запись не появится.
+     * Сбой отправки никого не касается: маячок молчит.
+     */
+    suspend fun activity(kind: String, detail: String) {
+        runCatching { postOk("/activity", buildJsonObject { putJsonArray("events") { add(buildJsonObject { put("a", kind); put("d", detail.take(120)) }) } }) }
+    }
 
     companion object {
         const val NETWORK_ERROR = "Нет связи с сервером. Проверьте интернет."

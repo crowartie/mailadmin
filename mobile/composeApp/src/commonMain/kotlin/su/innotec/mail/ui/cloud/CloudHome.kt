@@ -93,6 +93,8 @@ object CloudUploads {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     class Job(val name: String, val size: Long) {
+        /** API ящика, куда идёт загрузка: отмена уходит в него, даже если ящик переключили. */
+        var api: su.innotec.mail.api.Api? = null
         var done by mutableStateOf(0L)
         var error by mutableStateOf<String?>(null)
         var finished by mutableStateOf(false)
@@ -106,6 +108,7 @@ object CloudUploads {
     fun upload(path: String, files: List<LocalFile>, onDone: () -> Unit) {
         files.forEach { f ->
             val job = Job(f.name, f.size)
+            job.api = Session.api
             jobs.add(job)
             job.task = scope.launch {
                 try {
@@ -126,18 +129,18 @@ object CloudUploads {
     fun cancel(job: Job) {
         job.task?.cancel()
         jobs.remove(job)
-        abort(job.uploadId)
+        abort(job.uploadId, job.api)
     }
 
-    /** При выходе из аккаунта: всё остановить и убрать, чужому входу эти загрузки не принадлежат. */
+    /** При выходе из ящика и при переключении: всё остановить и убрать, чужому входу эти загрузки не принадлежат. */
     fun clear() {
-        jobs.toList().forEach { j -> j.task?.cancel(); abort(j.uploadId) }
+        jobs.toList().forEach { j -> j.task?.cancel(); abort(j.uploadId, j.api) }
         jobs.clear()
     }
 
-    private fun abort(id: String?) {
+    private fun abort(id: String?, api: su.innotec.mail.api.Api?) {
         id ?: return
-        val api = Session.api ?: return
+        api ?: return
         scope.launch { runCatching { api.cloudUploadAbort(id) } }
     }
 

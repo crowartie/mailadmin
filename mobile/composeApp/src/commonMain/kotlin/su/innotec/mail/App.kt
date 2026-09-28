@@ -13,13 +13,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -63,6 +71,7 @@ import su.innotec.mail.ui.cloud.CloudUploads
 import su.innotec.mail.ui.contacts.ContactsHome
 import su.innotec.mail.ui.contacts.ContactsStore
 import su.innotec.mail.ui.login.LoginScreen
+import su.innotec.mail.ui.login.outdatedFor
 import su.innotec.mail.ui.mail.MailHome
 import su.innotec.mail.ui.mail.MailStore
 import su.innotec.mail.ui.more.MoreHome
@@ -73,6 +82,12 @@ enum class Section(val title: String, val icon: String) {
     CONTACTS("Контакты", "users"),
     CLOUD("Облако", "cloud"),
     MORE("Ещё", "menu"),
+}
+
+/** Разделы, доступные на сервере активного ящика: «Облако» показывается, только если сервер его отдал в features. */
+fun visibleSections(): List<Section> {
+    val f = Session.account?.features ?: emptyList()
+    return Section.entries.filter { it != Section.CLOUD || f.isEmpty() || "cloud" in f }
 }
 
 /** Экран поверх раздела (письмо, окно «Написать», карточка контакта…). */
@@ -123,9 +138,7 @@ private fun resetOnSignOut() {
     ContactsStore.reset()
     CalStore.reset()
     CloudStore.reset()
-    // Список загрузок облака чистим; сами корутины CloudUploads снаружи не отменить — с отозванным токеном они
-    // упрутся в 401 и остановятся сами.
-    CloudUploads.jobs.clear()
+    CloudUploads.clear()
     Notifier.fast(false)
 }
 
@@ -138,6 +151,7 @@ private fun resetOnSwitch() {
     Nav.reset()
     MailStore.reset(switching = true)
     ContactsStore.reset()
+    CloudUploads.clear()
     CalStore.reset()
     CloudStore.reset()
 }
@@ -156,6 +170,8 @@ fun App() {
         MailStore.flushPending()
         Toasts.expireAll()
     }
+    // Текст «нужно обновить», если сервер (me().server.minApp) уже не работает с этой версией; null — всё в порядке.
+    var outdated by remember { mutableStateOf<String?>(null) }
     MailTheme(Session.prefs.theme, Session.prefs.scheme) {
         Box(Modifier.fillMaxSize().background(P.bg)) {
             val acc = Session.account
@@ -173,18 +189,26 @@ fun App() {
                     }
                 }
                 LaunchedEffect(acc.key) {
+                    outdated = null
                     Notifier.ensurePermission()
                     Notifier.schedule(Session.prefs.notify)
                     Notifier.fast(Session.prefs.fastNotify)
                     su.innotec.mail.ui.more.Updates.checkQuietly(offer = true)
                     // Имя и адрес — с сервера, если вход сохранён без них (и заодно проверка, что токен жив).
                     runCatching { Session.apiFor(acc).me() }.onSuccess { me ->
-                        if (me.user != acc.user || me.name != acc.name) Session.updateAccount(acc.key) { it.copy(user = me.user, name = me.name) }
+                        // Набор разделов сервера (features) со входа мог измениться — облако включили или выключили;
+                        // пустой список — старый сервер без этого поля, тогда оставляем то, что запомнили при входе.
+                        Session.updateAccount(acc.key) { it.copy(user = me.user.ifBlank { it.user }, name = me.name, features = me.server.features.ifEmpty { it.features }) }
+                        // Сервер поднял minApp после нашего входа: как на экране входа — дальше только обновляться.
+                        outdated = outdatedFor(me.server.minApp)
                     }.onFailure { if (it is su.innotec.mail.api.ApiException && it.isAuth) Session.signOut("Вход устарел или отозван — войдите заново.", acc.key) }
-                    // Тема — настройка ящика (как в веб-почте): при входе берём её с сервера, при смене пишем туда (Settings.kt).
-                    runCatching { Session.api!!.settings() }.onSuccess { s ->
+                    // Тема и схема — настройки устройства, общие для всех ящиков. С сервера (как в веб-почте) берём их
+                    // один раз, при первом появлении ящика на устройстве: раньше они переписывались при каждом переключении,
+                    // и тема «прыгала». При смене руками пишем в активный ящик (Settings.kt).
+                    if (acc.key !in Session.prefs.themeSynced) runCatching { Session.apiFor(acc).settings() }.onSuccess { s ->
                         if (s.theme in setOf("light", "dark", "system") && s.theme != Session.prefs.theme) Session.updatePrefs { it.copy(theme = s.theme) }
                         if (s.scheme in setOf("brand", "classic") && s.scheme != Session.prefs.scheme) Session.updatePrefs { it.copy(scheme = s.scheme) }
+                        Session.updatePrefs { it.copy(themeSynced = (it.themeSynced + acc.key).takeLast(20)) }
                     }
                 }
                 // Напоминания о встречах, пока приложение открыто: раз в минуту статус «Входящих» (в нём же reminders),
@@ -204,7 +228,7 @@ fun App() {
                 }
                 // По ключу ящика: при переключении всё дерево экранов строится заново, и разделы запускают
                 // загрузку сами (LaunchedEffect(Unit) в MailHome и остальных) — отдельного «перезагрузить» не нужно.
-                key(acc.key) { Main() }
+                outdated?.let { OutdatedScreen(it, acc.origin) } ?: key(acc.key) { Main() }
                 if (Shortcuts.help) HotkeysHelp { Shortcuts.help = false }
             }
         }
@@ -261,6 +285,29 @@ private fun Main() {
     }
 }
 
+/**
+ * Приложение старше minApp сервера: тот же текст и вид, что у ошибки на экране входа, вместо разделов —
+ * запросы всё равно вернут ошибку. «Обновить» ставит выложенную сборку (Android) или открывает страницу /app.
+ */
+@Composable
+private fun OutdatedScreen(message: String, origin: String) {
+    Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(), contentAlignment = Alignment.Center) {
+        Column(Modifier.widthIn(max = 420.dp).fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Почта", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.noSoft).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Ico("warn", tint = P.noInk, size = 18.dp); Spacer(Modifier.width(8.dp))
+                Text(message, color = P.noInk, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("outdated"))
+            }
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = { su.innotec.mail.ui.more.Updates.available?.let { su.innotec.mail.ui.more.Updates.install(it) } ?: su.innotec.mail.platform.Sys.openUrl("$origin/app") },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("Обновить") }
+        }
+    }
+}
+
 /** Подсказка по горячим клавишам ПК («?» — как в веб-почте). */
 @Composable
 private fun HotkeysHelp(onDismiss: () -> Unit) {
@@ -284,7 +331,7 @@ private fun HotkeysHelp(onDismiss: () -> Unit) {
 @Composable
 private fun BottomBar() {
     NavigationBar(containerColor = P.surface, tonalElevation = 0.dp, modifier = Modifier.testTag("bottom-bar")) {
-        Section.entries.forEach { s ->
+        visibleSections().forEach { s ->
             NavigationBarItem(
                 selected = Nav.section == s,
                 onClick = { if (Nav.section == s) MailStore.scrollTopSignal++ ; Nav.go(s) },
@@ -304,7 +351,7 @@ private fun BottomBar() {
 @Composable
 private fun Rail() {
     NavigationRail(containerColor = P.surface, modifier = Modifier.statusBarsPadding().width(84.dp)) {
-        Section.entries.forEach { s ->
+        visibleSections().forEach { s ->
             NavigationRailItem(
                 selected = Nav.section == s && Nav.stack.isEmpty(),
                 onClick = { Nav.go(s) },

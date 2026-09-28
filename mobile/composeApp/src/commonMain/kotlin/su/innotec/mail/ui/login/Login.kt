@@ -72,6 +72,13 @@ fun compareVersions(a: String, b: String): Int {
     return 0
 }
 
+/**
+ * Сервер работает только с приложением не старше [minApp] (docs/mobile-api.md, minApp): текст «нужно обновить»,
+ * если наша версия старше, иначе null. Один и тот же для входа и для проверки me() при запуске (App.kt).
+ */
+fun outdatedFor(minApp: String, own: String = AppInfo.VERSION): String? =
+    if (compareVersions(own, minApp) < 0) "Эта версия приложения устарела для сервера. Обновите приложение (нужна $minApp или новее)." else null
+
 /** Откуда брать сервер: введён явно — он; иначе mail.<домен адреса>, затем сам домен. */
 fun serverCandidates(login: String, server: String): List<String> {
     val s = server.trim().trimEnd('/')
@@ -127,9 +134,7 @@ class LoginModel(private val onDone: (Account) -> Unit = { Session.signIn(it) })
         busy = true
         try {
             val (o, d) = discover()
-            if (compareVersions(AppInfo.VERSION, d.minApp) < 0) {
-                throw ApiException(0, "old", "Эта версия приложения устарела для сервера. Обновите приложение (нужна ${d.minApp} или новее).")
-            }
+            outdatedFor(d.minApp)?.let { throw ApiException(0, "old", it) }
             origin = o; discovery = d
             val r = Session.anonymous(o, hosts(o)).login(LoginRequest(login.trim(), password, device()))
             if (r.token == null && r.challenge != null) {
@@ -154,7 +159,8 @@ class LoginModel(private val onDone: (Account) -> Unit = { Session.signIn(it) })
             finish(r.token ?: throw ApiException(0, "invalid", r.message ?: "Код не подошёл"), r.user, r.name, r.device.id)
         } catch (e: ApiException) {
             error = e.message
-            if (e.status == 410 || e.code == "expired") challenge = null
+            // Код протух или попыток больше нет (429 tooMany) — сервер этот challenge уже не примет, возвращаемся к паролю.
+            if (e.status == 410 || e.code == "expired" || e.status == 429 || e.code == "tooMany") { challenge = null; code = "" }
         } finally {
             busy = false
         }

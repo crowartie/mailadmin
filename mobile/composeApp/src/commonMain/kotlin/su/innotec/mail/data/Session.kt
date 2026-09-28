@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import su.innotec.mail.api.Api
 import su.innotec.mail.api.ApiJson
@@ -48,6 +49,8 @@ data class LocalPrefs(
     val fastNotify: Boolean = false,
     /** Второй ряд панели оформления письма раскрыт (кнопка «A»); помнится, как в веб-почте (mail.fmt). */
     val fmtOpen: Boolean = false,
+    /** Ящики, у которых тема и схема уже взяты с сервера при первом появлении (App.kt). */
+    val themeSynced: List<String> = emptyList(),
 )
 
 /**
@@ -120,6 +123,11 @@ object Session {
     fun addAccount(a: Account) {
         val existing = accounts.firstOrNull { it.key == a.key }
         val merged = if (existing != null) a.copy(lastNotifiedUid = existing.lastNotifiedUid, lastNotifiedUidNext = existing.lastNotifiedUidNext) else a
+        // Повторный вход в тот же ящик: старый токен на сервере иначе жил бы «устройством» ещё 90 дней.
+        val old = apis[a.key]
+        if (existing != null && existing.token != a.token && old != null) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch { runCatching { old.logout() } }
+        }
         accounts = AccountList.add(accounts, merged)
         // Токен или IP сменились — старый клиент этого ящика не годится.
         apis = apis - a.key
@@ -196,12 +204,12 @@ object Session {
 
     /** API любого ящика (фоновая проверка обходит все). Токен читается из списка при каждом запросе — после повторного входа новый. */
     fun apiFor(a: Account): Api =
-        apis[a.key] ?: Api(client(a.hosts), a.origin) { accounts.firstOrNull { it.key == a.key }?.token }.also { apis = apis + (a.key to it) }
+        apis[a.key] ?: Api(client(a.hosts), a.origin, { accounts.firstOrNull { it.key == a.key }?.token }, a.key).also { apis = apis + (a.key to it) }
 
     /** API активного ящика; null — не вошли. */
     val api: Api?
         get() = account?.let { apiFor(it) }
 
     /** API без входа — для обнаружения сервера и самого входа. */
-    fun anonymous(origin: String, hosts: Map<String, String>): Api = Api(client(hosts), origin) { null }
+    fun anonymous(origin: String, hosts: Map<String, String>): Api = Api(client(hosts), origin, { null })
 }

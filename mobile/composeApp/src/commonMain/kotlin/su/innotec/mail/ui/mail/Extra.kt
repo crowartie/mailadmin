@@ -33,6 +33,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import su.innotec.mail.Nav
 import su.innotec.mail.Screen
 import su.innotec.mail.api.ApiException
@@ -132,18 +136,18 @@ class QuarantineScreen : Screen() {
             AlertDialog(
                 onDismissRequest = { notSpam = null },
                 title = { Text("Это не спам?") },
-                text = { Text("Больше не задерживать письма с этого адреса или со всего домена. Исключение действует для всей компании.") },
+                text = { Text("Больше не задерживать письма с этого адреса или со всего домена.") },
                 confirmButton = {
                     TextButton(onClick = {
                         notSpam = null
-                        scope.launchSafe { Session.api!!.markSender("ham", "address", mail, resort = true); Toasts.show("Письма с $mail больше не задерживаются") }
+                        scope.launchSafe { Toasts.show(hamResult(Session.api!!.markSender("ham", "address", mail, resort = true), mail)) }
                     }) { Text("Адрес $mail") }
                 },
                 dismissButton = {
                     Row {
                         TextButton(onClick = {
                             notSpam = null
-                            scope.launchSafe { Session.api!!.markSender("ham", "domain", domain, resort = true); Toasts.show("Письма с @$domain больше не задерживаются") }
+                            scope.launchSafe { Toasts.show(hamResult(Session.api!!.markSender("ham", "domain", domain, resort = true), "@$domain")) }
                         }) { Text("Домен @$domain") }
                         TextButton(onClick = { notSpam = null }) { Text("Не нужно") }
                     }
@@ -155,6 +159,22 @@ class QuarantineScreen : Screen() {
                 scope.launchSafe { items = Session.api!!.quarantineDelete(q.id).items; MailStore.refreshFolders() }
             }
         }
+    }
+}
+
+/**
+ * Что сказать после «не спам» из карантина — по ответу sender/mark, как в SenderRule.kt: global — адрес уже
+ * в исключениях фильтра у всей компании; иначе это только заявка администратору (docs/mobile-api.md, sender/mark),
+ * и обещать «больше не задерживаются» нельзя. personalOnly — отправитель своего домена, правило только у нас.
+ */
+private fun hamResult(r: JsonElement, who: String): String {
+    val o = r.jsonObject
+    val global = o["global"]?.jsonPrimitive?.booleanOrNull == true
+    val personalOnly = o["personalOnly"]?.jsonPrimitive?.booleanOrNull == true
+    return when {
+        personalOnly -> "Письма с $who больше не задерживаются — отправитель вашего домена, правило только у вас."
+        global -> "Письма с $who больше не задерживаются — у всех сотрудников."
+        else -> "Заявка на исключение для $who ушла администратору."
     }
 }
 

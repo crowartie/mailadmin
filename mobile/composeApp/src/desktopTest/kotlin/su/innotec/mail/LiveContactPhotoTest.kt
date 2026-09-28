@@ -26,7 +26,7 @@ class LiveContactPhotoTest {
         assertTrue(maxOf(img.width, img.height) <= 256 && jpeg.size < 60_000, "сжато до ${img.width}×${img.height}, ${jpeg.size} байт")
         if (token.isNullOrBlank()) { println("LiveContactPhotoTest: токен не задан — только сжатие"); return@runBlocking }
 
-        val api = Api(createHttpClient(), server) { token }
+        val api = Api(createHttpClient(), server, { token })
         val stamp = System.currentTimeMillis().toString().takeLast(6)
         val c = api.createContact(ContactInput(book = "personal", first = "Фото", last = "Проба $stamp",
             photo = "data:image/jpeg;base64," + kotlin.io.encoding.Base64.Default.encode(jpeg)))
