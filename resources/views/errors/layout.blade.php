@@ -26,15 +26,15 @@
         p { margin: 0 0 18px; color: #4A5563; }
         .btns { display: flex; flex-wrap: wrap; gap: 10px; }
         a.btn { text-decoration: none; font-weight: 500; font-size: 14px; padding: 9px 15px; border-radius: 9px; border: 1px solid #DFE5EC; color: #161D26; background: #fff; }
-        a.btn--primary { background: #1B4FC4; border-color: #1B4FC4; color: #fff; }
-        a.btn:focus-visible { outline: 2px solid #1B4FC4; outline-offset: 2px; }
+        a.btn--primary { background: #C94E00; border-color: #C94E00; color: #fff; }
+        a.btn:focus-visible { outline: 2px solid #C94E00; outline-offset: 2px; }
         .code { margin-top: 20px; font-size: 12.5px; color: #6E7A89; }
         @media (prefers-color-scheme: dark) {
             body { background: #10151B; color: #E8EDF3; }
             .card { background: #171E26; border-color: #2A343F; }
             p { color: #B4BECB; }
             a.btn { background: #171E26; border-color: #2A343F; color: #E8EDF3; }
-            a.btn--primary { background: #2F6FEB; border-color: #2F6FEB; color: #fff; }
+            a.btn--primary { background: #FF8A3D; border-color: #FF8A3D; color: #1E2226; }
             .code { color: #8593A3; }
         }
     </style>
