@@ -129,7 +129,8 @@ async function removeFolder(b, p, f) {
     if (!(await confirmAsk(`Закрыть «${f.name}» ящика ${b.ownerName} для ${p.withName}?`, { ok: 'Закрыть', danger: true }))) return;
     return act(() => del(b.owner, { folder: f.folder, with: p.with }), 'Папка закрыта');
 }
-const addFolder = (b, p, path) => path && act(() => post(b.owner, { folder: path, with: p.with, level: p.level === 'mixed' ? 'reader' : p.level }), 'Папка открыта');
+// «*» — все папки ящика разом тем же уровнем: открывать по одной, когда решили дать всё, неудобно.
+const addFolder = (b, p, path) => path && act(() => post(b.owner, { folder: path, with: p.with, level: p.level === 'mixed' ? 'reader' : p.level }), path === '*' ? 'Открыты все папки ящика' : 'Папка открыта');
 function grant() {
     if (!add.value.owner || !add.value.with) return;
     return act(() => post(add.value.owner, { folder: add.value.folder, with: add.value.with, level: add.value.level }), add.value.folder === '*' ? 'Доступ ко всем папкам выдан' : 'Доступ выдан').then(() => { add.value.with = ''; });
@@ -235,6 +236,8 @@ function goTo(owner, withMail) {
                                 <template v-if="p.level === 'mixed'"><span class="faint">Сделать одинаково:</span><button v-for="l in personLevels(p)" :key="l" class="btn btn--sm" type="button" :disabled="busy" @click="setPersonLevel(b, p, l)">{{ levels[l] }}</button></template>
                                 <select v-if="freeFolders(b, p).length" class="input input--sm" style="width: 200px" aria-label="Открыть ещё папку" :disabled="busy" @change="addFolder(b, p, $event.target.value); $event.target.value = ''">
                                     <option value="">открыть ещё папку…</option>
+                                    <option value="*">Все папки ящика</option>
+                                    <option value="" disabled>──────────</option>
                                     <option v-for="f in freeFolders(b, p)" :key="f.path" :value="f.path">{{ f.name }}</option>
                                 </select>
                             </div>
