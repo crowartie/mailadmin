@@ -560,6 +560,8 @@ data class Contact(
     val org: String = "",
     val department: String = "",
     val title: String = "",
+    /** Личная карточка слита с карточкой сотрудника (uri): в общем списке её не показываем, в своей книге — да. */
+    val mergedInto: String? = null,
     val emails: List<TypedValue> = emptyList(),
     val phones: List<TypedValue> = emptyList(),
     val addresses: List<PostalAddress> = emptyList(),

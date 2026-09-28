@@ -23,15 +23,24 @@ object Pinned {
     val items = mutableStateListOf<PinnedMessage>()
     private var loadedFor: String? = null
 
-    private val key get() = "list:" + (Session.account?.user ?: "")
+    /** Ключ хранения — по ящику целиком (Account.key): один адрес на двух серверах — разные списки. */
+    fun storeKey(account: String) = "list:$account"
 
-    /** Список того ящика, в который вошли (при смене ящика перечитывается). */
+    private val key get() = storeKey(Session.account?.key ?: "")
+
+    /** Список активного ящика (при смене ящика перечитывается). */
     fun load() {
-        val user = Session.account?.user ?: return
-        if (loadedFor == user) return
-        loadedFor = user
+        val acc = Session.account?.key ?: return
+        if (loadedFor == acc) return
+        loadedFor = acc
         items.clear()
         store.get(key)?.let { runCatching { ApiJson.decodeFromString(ListSerializer(PinnedMessage.serializer()), it) }.getOrNull() }?.let { items.addAll(it) }
+    }
+
+    /** Выход из ящика: его список стираем; если он был на экране — и из памяти. */
+    fun forget(account: String) {
+        store.put(storeKey(account), null)
+        if (loadedFor == account) { items.clear(); loadedFor = null }
     }
 
     private fun save() { store.put(key, ApiJson.encodeToString(ListSerializer(PinnedMessage.serializer()), items.toList())) }

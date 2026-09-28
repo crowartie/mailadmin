@@ -210,7 +210,8 @@ actual object Notifier {
     private var tray: TrayIcon? = null
     actual fun ensurePermission() {}
     actual fun schedule(enabled: Boolean) {}
-    actual fun show(id: Int, title: String, text: String, folder: String, uid: Long) = balloon(title, text)
+    /** Ящик и письмо не передаются: у всплывающего сообщения на ПК нет действия по нажатию. */
+    actual fun show(id: Int, title: String, text: String, folder: String, uid: Long, account: String) = balloon(title, text)
     actual fun event(title: String, text: String, id: Int) = balloon(title, text)
 
     /** Всплывающее сообщение у значка в области уведомлений — одно и для писем, и для напоминаний. */
@@ -266,6 +267,7 @@ actual object DiskCache {
     actual fun read(name: String): String? = runCatching { File(dir, name).takeIf { it.exists() }?.readText() }.getOrNull()
     actual fun write(name: String, text: String) { runCatching { File(dir, name).writeText(text) } }
     actual fun clear() { runCatching { dir.deleteRecursively() } }
+    actual fun clear(prefix: String) { runCatching { dir.listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { it.delete() } } }
 }
 
 actual fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray? = runCatching {

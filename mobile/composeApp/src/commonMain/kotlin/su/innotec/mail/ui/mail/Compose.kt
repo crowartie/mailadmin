@@ -932,31 +932,75 @@ private fun DomainNotice(m: ComposeModel) {
 @Composable
 fun FormatBarPublic(e: RichEditorState, onImage: () -> Unit) = FormatBar(e, onImage)
 
-/** Кнопки оформления над клавиатурой. Нажатие не уводит курсор из поля. */
+// Наборы панели оформления — те же, что в веб-почте (Editor.vue): три семейства шрифтов, четыре размера,
+// десять цветов; значения понимают почтовые программы получателей.
+private val FMT_COLORS = listOf("#2B3036" to "Обычный", "#C62828" to "Красный", "#C94E00" to "Оранжевый", "#9A6700" to "Коричневый", "#1F7A4D" to "Зелёный", "#1D5FD1" to "Синий", "#6B3FA0" to "Фиолетовый", "#0F766E" to "Бирюзовый", "#646B76" to "Серый")
+private val FMT_MARKS = listOf("" to "Без выделения", "#FFF3B0" to "Жёлтый", "#FFD9C2" to "Оранжевый", "#D7F5E1" to "Зелёный", "#DCE8FF" to "Синий", "#EAD9FF" to "Сиреневый", "#E6E4E0" to "Серый")
+// execCommand fontSize: 2 small, 3 medium, 4 large, 6 xx-large (при styleWithCSS Chrome пишет именованные размеры CSS).
+private val FMT_SIZES = listOf("2" to "Мелкий", "3" to "Средний", "4" to "Крупный", "6" to "Очень крупный")
+private val FMT_BLOCKS = listOf("p" to "Обычный текст", "h1" to "Заголовок 1", "h2" to "Заголовок 2", "h3" to "Заголовок 3", "pre" to "Моноширинный блок")
+private val FMT_TABLES = listOf(2 to 2, 2 to 3, 3 to 3, 3 to 4, 4 to 4, 5 to 3, 6 to 4)
+
+/**
+ * Кнопки оформления над клавиатурой. Нажатие не уводит курсор из поля. Первый ряд — как был; кнопка «A»
+ * раскрывает второй (обращение №53): цвет, выделение, размер, шрифт, заголовок, выравнивание, отступы,
+ * таблица, линия. Раскрытие помнится (LocalPrefs.fmtOpen), как в веб-почте.
+ */
 @Composable
 private fun FormatBar(e: RichEditorState, onImage: () -> Unit) {
     var linkAsk by remember { mutableStateOf(false) }
+    var ask by remember { mutableStateOf<String?>(null) }   // color | mark | size | block | table
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val more = Session.prefs.fmtOpen
     Divider()
-    Row(Modifier.fillMaxWidth().background(P.surface2), verticalAlignment = Alignment.CenterVertically) {
-        Row(
-            Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
+    Column(Modifier.fillMaxWidth().background(P.surface2)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FmtBtn("bold", "Жирный", e.bold) { e.cmd("bold") }
+                FmtBtn("italic", "Курсив", e.italic) { e.cmd("italic") }
+                FmtBtn("underline", "Подчёркнутый", e.underline) { e.cmd("underline") }
+                FmtBtn("strike", "Зачёркнутый", e.strike) { e.cmd("strikeThrough") }
+                FmtBtn("link", "Ссылка", false) { linkAsk = true }
+                FmtBtn("ul", "Список", e.bullets) { e.cmd("insertUnorderedList") }
+                FmtBtn("ol", "Нумерованный список", e.numbers) { e.cmd("insertOrderedList") }
+                FmtBtn("quote", "Цитата", e.quote) { e.cmd("formatBlock", "blockquote") }
+                FmtBtn("img", "Картинка", false) { onImage() }
+                FmtBtn("eraser", "Убрать оформление", false) { e.cmd("removeFormat") }
+            }
+            // Закреплены справа, вне прокрутки: на узком телефоне уезжали за край. На планшете без кнопок «Назад»
+            // жест закрывал окно письма — кнопка клавиатуры убирает только клавиатуру.
+            Box(Modifier.width(1.dp).height(28.dp).background(P.border))
+            FmtBtn("textsize", if (more) "Скрыть оформление" else "Ещё оформление", more) { Session.updatePrefs { it.copy(fmtOpen = !it.fmtOpen) } }
+            FmtBtn("keyboard-down", "Скрыть клавиатуру", false) { e.blur(); keyboard?.hide() }
+        }
+        if (more) Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp).testTag("fmt2"),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FmtBtn("bold", "Жирный", e.bold) { e.cmd("bold") }
-            FmtBtn("italic", "Курсив", e.italic) { e.cmd("italic") }
-            FmtBtn("underline", "Подчёркнутый", e.underline) { e.cmd("underline") }
-            FmtBtn("link", "Ссылка", false) { linkAsk = true }
-            FmtBtn("ul", "Список", e.bullets) { e.cmd("insertUnorderedList") }
-            FmtBtn("ol", "Нумерованный список", e.numbers) { e.cmd("insertOrderedList") }
-            FmtBtn("quote", "Цитата", e.quote) { e.cmd("formatBlock", "blockquote") }
-            FmtBtn("img", "Картинка", false) { onImage() }
-            FmtBtn("eraser", "Убрать оформление", false) { e.cmd("removeFormat") }
+            FmtBtn("fontcolor", "Цвет текста", false) { ask = "color" }
+            FmtBtn("marker", "Выделение маркером", false) { ask = "mark" }
+            FmtBtn("textsize", "Размер текста", false) { ask = "size" }
+            FmtBtn("heading", "Заголовок", e.block != "p") { ask = "block" }
+            Box(Modifier.width(1.dp).height(28.dp).background(P.border))
+            FmtBtn("alignl", "По левому краю", e.align == "left") { e.cmd("justifyLeft") }
+            FmtBtn("alignc", "По центру", e.align == "center") { e.cmd("justifyCenter") }
+            FmtBtn("alignr", "По правому краю", e.align == "right") { e.cmd("justifyRight") }
+            FmtBtn("outdent", "Уменьшить отступ", false) { e.cmd("outdent") }
+            FmtBtn("indent", "Увеличить отступ", false) { e.cmd("indent") }
+            Box(Modifier.width(1.dp).height(28.dp).background(P.border))
+            FmtBtn("table", "Таблица", false) { ask = "table" }
+            FmtBtn("hr", "Горизонтальная линия", false) { e.cmd("insertHorizontalRule") }
         }
-        // Закреплена справа, вне прокрутки: на узком телефоне уезжала за край. На планшете без кнопок «Назад»
-        // жест закрывал окно письма — эта кнопка убирает только клавиатуру.
-        Box(Modifier.width(1.dp).height(28.dp).background(P.border))
-        FmtBtn("keyboard-down", "Скрыть клавиатуру", false) { e.blur(); keyboard?.hide() }
+    }
+    when (ask) {
+        "color" -> su.innotec.mail.ui.ChoiceDialog("Цвет текста", FMT_COLORS, { it.second }, null, onDismiss = { ask = null }) { e.cssCmd("foreColor", if (it.first == "#2B3036") "inherit" else it.first) }
+        "mark" -> su.innotec.mail.ui.ChoiceDialog("Выделение", FMT_MARKS, { it.second }, null, onDismiss = { ask = null }) { e.cssCmd("hiliteColor", it.first.ifEmpty { "transparent" }) }
+        "size" -> su.innotec.mail.ui.ChoiceDialog("Размер текста", FMT_SIZES, { it.second }, null, onDismiss = { ask = null }) { e.cssCmd("fontSize", it.first) }
+        "block" -> su.innotec.mail.ui.ChoiceDialog("Заголовок", FMT_BLOCKS, { it.second }, FMT_BLOCKS.firstOrNull { it.first == e.block }, onDismiss = { ask = null }) { e.cmd("formatBlock", it.first) }
+        "table" -> su.innotec.mail.ui.ChoiceDialog("Таблица: строк × столбцов", FMT_TABLES, { "${it.first} × ${it.second}" }, null, onDismiss = { ask = null }) { e.insertTable(it.first, it.second) }
     }
     if (linkAsk) su.innotec.mail.ui.InputDialog("Ссылка", "Адрес", initial = "https://", confirm = "Вставить", keyboard = KeyboardType.Uri, onDismiss = { linkAsk = false }) { raw ->
         var url = raw.trim()

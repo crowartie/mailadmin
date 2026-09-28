@@ -362,13 +362,14 @@ actual object Notifier {
     }
 
     @SuppressLint("MissingPermission")
-    actual fun show(id: Int, title: String, text: String, folder: String, uid: Long) {
+    actual fun show(id: Int, title: String, text: String, folder: String, uid: Long, account: String) {
         channel()
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(AndroidCtx.app, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
+        // Ключ ящика — чтобы MainActivity открыла письмо в том ящике, откуда оно, а не в активном.
         val open = Intent(AndroidCtx.app, MainActivity::class.java)
-            .setAction("open-message").putExtra("folder", folder).putExtra("uid", uid)
+            .setAction("open-message").putExtra("folder", folder).putExtra("uid", uid).putExtra("account", account)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val pi = PendingIntent.getActivity(AndroidCtx.app, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(AndroidCtx.app, CHANNEL)

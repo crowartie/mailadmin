@@ -80,6 +80,7 @@ actual object DiskCache {
     actual fun read(name: String): String? = runCatching { File(dir, name).takeIf { it.exists() }?.readText() }.getOrNull()
     actual fun write(name: String, text: String) { runCatching { File(dir, "$name.tmp").apply { writeText(text) }.renameTo(File(dir, name)) } }
     actual fun clear() { runCatching { dir.deleteRecursively() } }
+    actual fun clear(prefix: String) { runCatching { dir.listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { it.delete() } } }
 }
 
 actual fun shrinkToJpeg(bytes: ByteArray, maxSide: Int): ByteArray? = runCatching {

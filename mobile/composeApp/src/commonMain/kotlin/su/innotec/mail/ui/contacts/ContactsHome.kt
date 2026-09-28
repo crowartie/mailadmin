@@ -142,7 +142,7 @@ object ContactsStore {
         searchJob = scope.launch { kotlinx.coroutines.delay(300); load() }
     }
 
-    fun visible(): List<Contact> = all.filter { c -> group == null || group in c.groups }
+    fun visible(): List<Contact> = all.filter { c -> (group == null || group in c.groups) && (book != null || c.mergedInto == null) }
 
     fun reset() { all.clear(); books = emptyList(); groups = emptyList(); book = null; group = null; q = ""; selected = null; loaded = false }
 }
@@ -397,7 +397,7 @@ fun ContactDetail(start: Contact, onClose: () -> Unit) {
             }
             Divider()
             c.emails.forEach { e -> Field("mail", e.value, typeName(e.type, "почта")) { Nav.push(ComposeScreen(ComposeStart.New(to = e.value))) } }
-            c.phones.forEach { p -> Field("phone", p.value, typeName(p.type, "телефон")) { Sys.dial(p.value) } }
+            c.phones.forEach { p -> Field("phone", Fmt.phone(p.value), typeName(p.type, "телефон")) { Sys.dial(p.value) } }
             c.addresses.forEach { a -> Field("map", a.oneLine, typeName(a.type, "адрес")) { Sys.openUrl("geo:0,0?q=" + su.innotec.mail.api.enc(a.oneLine)) } }
             if (c.birthday.isNotBlank()) Field("cake", c.birthday, "день рождения")
             if (c.url.isNotBlank()) Field("globe", c.url, "сайт") { Sys.openUrl(if (c.url.startsWith("http")) c.url else "https://" + c.url) }

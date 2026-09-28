@@ -22,7 +22,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import su.innotec.mail.api.ApiException
 import su.innotec.mail.data.MailCheck
 import su.innotec.mail.data.Session
 import su.innotec.mail.platform.AndroidCtx
@@ -50,13 +49,12 @@ class MailWatchService : Service() {
             while (isActive) {
                 if (online()) {
                     wait = try {
+                        // Отозванный вход одного ящика MailCheck убирает сам; наружу ошибка выходит, только если не ответил ни один.
                         MailCheck.run(); 60_000L
-                    } catch (e: ApiException) {
-                        if (e.isAuth) { Session.signOut("Вход устарел или отозван — войдите заново."); stopSelf(); return@launch }
-                        (wait * 2).coerceAtMost(600_000L)   // сервер недоступен — реже, до 10 минут
                     } catch (_: Throwable) {
-                        (wait * 2).coerceAtMost(600_000L)
+                        (wait * 2).coerceAtMost(600_000L)   // сервер недоступен — реже, до 10 минут
                     }
+                    if (Session.account == null) { stopSelf(); return@launch }   // последний ящик отозван
                 }
                 delay(wait)
             }

@@ -6,6 +6,7 @@ import su.innotec.mail.api.ApiJson
 import su.innotec.mail.api.Folder
 import su.innotec.mail.api.Message
 import su.innotec.mail.api.MessageSummary
+import su.innotec.mail.data.Account
 import su.innotec.mail.data.Session
 import su.innotec.mail.platform.DiskCache
 
@@ -18,17 +19,33 @@ private data class CachedMessage(val folder: String, val uid: Long, val message:
 /**
  * Что показать сразу, пока сервер отвечает, и без сети: папки, первая страница списков, последние открытые письма.
  * Писем — до [SLOTS] (место по хэшу: новое вытесняет старое с тем же номером), при чтении сверяются папка и номер.
- * Имена файлов — хэш от адреса ящика и ключа: у двух ящиков на одном устройстве кэши не смешиваются.
+ * Имена файлов — «хэш ящика-хэш ключа»: у двух ящиков на одном устройстве кэши не смешиваются (в хэше ящика
+ * и сервер, и адрес — один логин на двух серверах тоже разные ящики), а при выходе из одного его файлы
+ * находятся по префиксу.
  */
 object MailCache {
     private const val SLOTS = 100
 
     /** FNV-1a — стабильный между запусками (hashCode() строки для имени файла подходит хуже). */
-    private fun name(key: String): String {
+    private fun fnv(s: String): String {
         var h = -0x340d631b7bdddcdbL
-        for (c in ((Session.account?.user ?: "") + "|" + key)) { h = h xor c.code.toLong(); h *= 0x100000001b3L }
+        for (c in s) { h = h xor c.code.toLong(); h *= 0x100000001b3L }
         return h.toULong().toString(16)
     }
+
+    /** Префикс имён файлов ящика (по нему стирается его кэш). */
+    fun prefix(origin: String, user: String): String = fnv("$origin $user") + "-"
+
+    /** Имя файла для ключа [key] в ящике. */
+    fun fileName(origin: String, user: String, key: String): String = prefix(origin, user) + fnv(key)
+
+    private fun name(key: String): String {
+        val a = Session.account
+        return fileName(a?.origin ?: "", a?.user ?: "", key)
+    }
+
+    /** Выход из ящика: его письма на устройстве больше не нужны, чужие не трогаем. */
+    fun forget(a: Account) = DiskCache.clear(prefix(a.origin, a.user))
 
     private fun listKey(folder: String, filter: String, sort: String) = "list|$folder|$filter|$sort"
 

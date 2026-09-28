@@ -42,6 +42,13 @@ class CoreTest {
     }
 
     @Test
+    fun phoneFormat() {
+        for (raw in listOf("89025485650", "+7 902 548 56 50", "9025485650", "8 (902) 548-56-50")) assertEquals("+7 (902) 548-56-50", su.innotec.mail.ui.Fmt.phone(raw), raw)
+        assertEquals("1234", su.innotec.mail.ui.Fmt.phone("1234"))
+        assertEquals("+380 44 123 45 67", su.innotec.mail.ui.Fmt.phone("+380  44 123 45 67"))
+    }
+
+    @Test
     fun versions() {
         assertTrue(compareVersions("1.0.0", "0.1.0") > 0)
         assertEquals(0, compareVersions("1.0", "1.0.0"))

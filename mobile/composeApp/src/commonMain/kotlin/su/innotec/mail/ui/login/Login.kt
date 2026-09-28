@@ -46,6 +46,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import su.innotec.mail.AppInfo
+import su.innotec.mail.Nav
+import su.innotec.mail.Screen
 import su.innotec.mail.api.ApiException
 import su.innotec.mail.api.DeviceInfo
 import su.innotec.mail.api.Discovery
@@ -57,6 +59,7 @@ import su.innotec.mail.platform.PlatformInfo
 import su.innotec.mail.platform.deviceName
 import su.innotec.mail.ui.Ico
 import su.innotec.mail.ui.P
+import su.innotec.mail.ui.Toasts
 
 /** Сравнение версий «1.2.3»: <0, 0, >0. */
 fun compareVersions(a: String, b: String): Int {
@@ -81,7 +84,8 @@ fun serverCandidates(login: String, server: String): List<String> {
 /** Хост из адреса (для поля «IP сервера»). */
 fun hostOf(origin: String): String = origin.substringAfter("://").substringBefore('/').substringBefore(':')
 
-class LoginModel {
+/** [onDone] — что сделать с полученным входом: первый ящик — Session.signIn, «Добавить ящик» — Session.addAccount и назад. */
+class LoginModel(private val onDone: (Account) -> Unit = { Session.signIn(it) }) {
     var login by mutableStateOf("")
     var password by mutableStateOf("")
     var server by mutableStateOf("")
@@ -159,7 +163,7 @@ class LoginModel {
     private fun finish(token: String, user: String, name: String, deviceId: Long) {
         val d = discovery
         password = ""
-        Session.signIn(
+        onDone(
             Account(
                 origin = origin, token = token, user = user.ifBlank { login.trim() }, name = name,
                 serverName = d?.name ?: "", features = d?.features ?: emptyList(), hosts = hosts(origin), deviceId = deviceId,
@@ -168,9 +172,26 @@ class LoginModel {
     }
 }
 
+/** «Добавить ящик…» из панели папок и «Ещё»: экран входа поверх текущего ящика, из него не выходим. */
+class AddAccountScreen : Screen() {
+    override val fullScreen: Boolean get() = true
+    @Composable override fun Content() = LoginScreen(addMode = true)
+}
+
+/**
+ * Экран входа. [addMode] — вход в ещё один ящик (возможно, на другом сервере): поле сервера показано сразу и
+ * пустое, текущий сервер не подставляется; успех — ящик добавлен и стал активным, экран закрывается.
+ */
 @Composable
-fun LoginScreen() {
-    val m = remember { LoginModel() }
+fun LoginScreen(addMode: Boolean = false) {
+    val m = remember {
+        if (!addMode) LoginModel() else LoginModel { a ->
+            Session.addAccount(a)
+            // Переключение уже очистило стопку экранов (Nav.reset в onSwitch); pop — на случай повторного входа в активный.
+            Nav.pop()
+            Toasts.show("Ящик ${a.user} добавлен")
+        }.also { it.advanced = true }
+    }
     val scope = rememberCoroutineScope()
     Box(Modifier.fillMaxSize().background(P.bg).systemBarsPadding().imePadding(), contentAlignment = Alignment.Center) {
         Column(
@@ -181,15 +202,19 @@ fun LoginScreen() {
                 Ico("mail", size = 34.dp, tint = Color.White)
             }
             Spacer(Modifier.height(16.dp))
-            Text("Почта", style = MaterialTheme.typography.titleLarge)
+            Text(if (addMode) "Добавить ящик" else "Почта", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(4.dp))
             Text(
-                if (m.challenge == null) "Войдите рабочим адресом и паролем" else "Двухфакторная защита",
+                when {
+                    m.challenge != null -> "Двухфакторная защита"
+                    addMode -> "Ещё один ящик — на этом или другом сервере"
+                    else -> "Войдите рабочим адресом и паролем"
+                },
                 style = MaterialTheme.typography.bodyMedium, color = P.muted,
             )
             Spacer(Modifier.height(24.dp))
 
-            Session.signedOutReason?.let {
+            if (!addMode) Session.signedOutReason?.let {
                 Text(it, Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(P.warnSoft).padding(12.dp), color = P.warnInk, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(16.dp))
             }
@@ -215,7 +240,7 @@ fun LoginScreen() {
                 if (m.advanced) {
                     OutlinedTextField(
                         m.server, { m.server = it.trim() }, Modifier.fillMaxWidth(), label = { Text("Адрес сервера") }, singleLine = true,
-                        placeholder = { Text("mail.example.ru — если не находится сам") },
+                        placeholder = { Text(if (addMode) "например, mail.deltaservices.ru" else "mail.example.ru — если не находится сам") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     )
                     Spacer(Modifier.height(12.dp))
@@ -253,10 +278,13 @@ fun LoginScreen() {
             }
             if (m.challenge != null) {
                 TextButton(onClick = { m.challenge = null; m.code = "" }) { Text("Назад") }
+            } else if (addMode) {
+                TextButton(onClick = { Nav.pop() }, modifier = Modifier.testTag("cancel-add")) { Text("Отмена") }
             }
             Spacer(Modifier.height(24.dp))
             Text(
-                "Пароль проверяется один раз и на устройстве не хранится. Выйти на этом устройстве можно в настройках приложения или в веб-почте: «Настройки → Безопасность».",
+                if (addMode) "Пароль проверяется один раз и на устройстве не хранится. Переключаться между ящиками можно в панели папок и в «Ещё»."
+                else "Пароль проверяется один раз и на устройстве не хранится. Выйти на этом устройстве можно в настройках приложения или в веб-почте: «Настройки → Безопасность».",
                 style = MaterialTheme.typography.bodySmall, color = P.faint,
             )
             Spacer(Modifier.height(8.dp))

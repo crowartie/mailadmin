@@ -85,6 +85,15 @@ object Fmt {
         }
     }
 
+    /** Телефон в едином виде: российский — «+7 (902) 548-56-50», прочие — как введены (как format.js phone()). */
+    fun phone(raw: String?): String {
+        val s = raw.orEmpty().trim()
+        var d = s.filter { it.isDigit() }
+        if (d.length == 11 && (d[0] == '7' || d[0] == '8')) d = d.substring(1)
+        if (d.length == 10) return "+7 (${d.substring(0, 3)}) ${d.substring(3, 6)}-${d.substring(6, 8)}-${d.substring(8)}"
+        return s.replace(Regex("\\s+"), " ")
+    }
+
     fun size(bytes: Long?): String {
         val b = bytes ?: return ""
         return when {

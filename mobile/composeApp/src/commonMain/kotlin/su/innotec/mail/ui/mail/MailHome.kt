@@ -103,11 +103,13 @@ import su.innotec.mail.ui.hexColor
 @Composable
 fun MailHome() {
     LaunchedEffect(Unit) { MailStore.start() }
-    // Открыть письмо из уведомления.
+    // Открыть письмо из уведомления. Письмо другого ящика ждёт переключения (App.kt): после него MailHome
+    // строится заново и подхватывает его здесь уже в нужном ящике.
     LaunchedEffect(DeepLink.pending) {
-        DeepLink.pending?.let { (folder, uid) ->
+        DeepLink.pending?.let { d ->
+            if (d.account != null && d.account != Session.account?.key) return@LaunchedEffect
             DeepLink.pending = null
-            Nav.push(MessageScreen(folder, uid))
+            Nav.push(MessageScreen(d.folder, d.uid))
         }
     }
     LaunchedEffect(DeepLink.mailto) {

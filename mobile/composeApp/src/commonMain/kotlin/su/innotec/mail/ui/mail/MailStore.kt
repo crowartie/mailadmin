@@ -14,6 +14,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import su.innotec.mail.api.ActionRequest
 import su.innotec.mail.api.AllSelector
+import su.innotec.mail.api.Api
 import su.innotec.mail.api.ApiException
 import su.innotec.mail.api.Folder
 import su.innotec.mail.api.Label
@@ -82,11 +83,15 @@ object MailStore {
 
     val pageSize = 50
 
-    fun reset() {
+    /**
+     * Сброс раздела. [switching] — переход на другой ящик, а не выход: окна «Отменить» не снимаем молча, а
+     * досрочно завершаем — действие уйдёт на сервер прежнего ящика (его API запомнен в самом действии).
+     */
+    fun reset(switching: Boolean = false) {
         loadJob?.cancel(); pollJob?.cancel()
         started = false
-        // Окна «Отменить» снимаем молча: вход уже отозван, запрос всё равно не пройдёт.
-        pendingToasts.toList().forEach { it.dismiss() }; pendingToasts.clear(); pending.clear()
+        // При выходе окна «Отменить» снимаем молча: вход уже отозван, запрос всё равно не пройдёт.
+        pendingToasts.toList().forEach { if (switching) it.expire() else it.dismiss() }; pendingToasts.clear(); pending.clear()
         folders = emptyList(); labels = emptyList(); settings = Settings(); rules = emptyList()
         messages.clear(); selected.clear(); total = 0; openUid = null; query = ListQuery(); error = null; shownQuery = null; offline = false
         inboxUnread = 0; outboxCount = 0; quarantineCount = 0; loading = false; loadingMore = false
@@ -209,7 +214,8 @@ object MailStore {
                 if (q.q.isEmpty()) MailCache.saveList(q.folder, q.filter, q.sort, r.messages, r.total)
                 r.folders?.let { applyFolders(it) }
                 if (q.folder == folders.firstOrNull { it.role == "inbox" }?.path && q.filter == "all" && q.q.isEmpty()) {
-                    r.messages.firstOrNull()?.let { top -> Session.updatePrefs { p -> if (top.uid > p.lastNotifiedUid) p.copy(lastNotifiedUid = top.uid) else p } }
+                    // Письмо уже увидели в списке — уведомлять о нём фоновой проверке не нужно.
+                    r.messages.firstOrNull()?.let { top -> Session.account?.let { a -> Session.updateAccount(a.key) { p -> if (top.uid > p.lastNotifiedUid) p.copy(lastNotifiedUid = top.uid) else p } } }
                 }
             } catch (e: ApiException) {
                 if (loadJob !== me) return@launch
@@ -278,10 +284,11 @@ object MailStore {
     private fun groupByFolder(uids: List<Long>, folder: String?): Map<String, List<Long>> =
         if (folder != null) mapOf(folder to uids) else uids.groupBy { folderOf(it) }
 
-    private suspend fun actGroups(groups: Map<String, List<Long>>, op: String, target: String?, label: Long?, until: String?) {
+    /** [via] — API ящика, в котором действие начали: отложенное «удалить» после смены ящика должно уйти туда же. */
+    private suspend fun actGroups(groups: Map<String, List<Long>>, op: String, target: String?, label: Long?, until: String?, via: Api = api) {
         for ((f, ids) in groups) {
-            val r = api.action(ActionRequest(folder = f, uids = ids, op = op, target = target, label = label, until = until))
-            r.folders?.let { applyFolders(it) }
+            val r = via.action(ActionRequest(folder = f, uids = ids, op = op, target = target, label = label, until = until))
+            if (via === Session.api) r.folders?.let { applyFolders(it) }
         }
     }
 
@@ -360,16 +367,20 @@ object MailStore {
         uids.forEach { pending[it] = (pending[it] ?: 0) + 1 }
         total = (total - removed.size).coerceAtLeast(0)
         if (openUid in uids) openUid = null
+        // Ящик и его API запоминаем сейчас: окно «Отменить» может пережить переключение на другой ящик.
+        val via = api
+        val owner = Session.account?.key
         /** Отправить на сервер; не вышло — вернуть строки (несколько папок: часть могла уйти — перечитать список). */
         suspend fun perform(after: () -> Unit) {
             try {
-                actGroups(groups, op, target, label, until)
+                actGroups(groups, op, target, label, until, via)
                 version++
                 onDone()
                 after()
             } catch (e: ApiException) {
-                Toasts.error(e); restore(removed)
-                if (groups.size > 1) load()
+                Toasts.error(e)
+                // Ящик уже другой — его списку чужие строки не нужны.
+                if (owner == Session.account?.key) { restore(removed); if (groups.size > 1) load() }
             } finally {
                 uids.forEach { pending.remove(it) }
             }

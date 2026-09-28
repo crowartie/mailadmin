@@ -105,7 +105,8 @@ expect fun BackHandler(enabled: Boolean, onBack: () -> Unit)
 expect object Notifier {
     fun ensurePermission()
     fun schedule(enabled: Boolean)
-    fun show(id: Int, title: String, text: String, folder: String, uid: Long)
+    /** Новое письмо; [account] — Account.key ящика: по нажатию приложение сначала переключится на него. */
+    fun show(id: Int, title: String, text: String, folder: String, uid: Long, account: String)
     /** Напоминание о встрече (без письма за ним): нажатие просто открывает приложение. */
     fun event(title: String, text: String, id: Int)
     /** Мгновенные уведомления (служба раз в минуту) есть только на Android. */
@@ -144,12 +145,15 @@ interface PdfDoc {
 
 /**
  * Кэш писем на устройстве — в закрытой папке приложения (как у почты Gmail и Outlook): список и открытые
- * письма показываются сразу при запуске и без сети. Стирается при выходе из аккаунта.
+ * письма показываются сразу при запуске и без сети. Стирается при выходе из последнего ящика; при выходе
+ * из одного из нескольких — только его файлы (имена начинаются с префикса ящика, см. MailCache).
  */
 expect object DiskCache {
     fun read(name: String): String?
     fun write(name: String, text: String)
     fun clear()
+    /** Стереть файлы, чьё имя начинается с [prefix]. */
+    fun clear(prefix: String)
 }
 
 /** Уменьшить картинку до [maxSide] точек и сжать в JPEG (фото контакта). null — платформа не умеет. */

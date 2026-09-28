@@ -53,6 +53,39 @@ class EditorTest {
         assertEquals(4, sent.size)   // после detach в страницу ничего не уходит
     }
 
+    /** Панель оформления (обращение №53): команды через CSS, таблица, новое состояние из страницы. */
+    @Test
+    fun formattingCommandsAndState() {
+        val s = RichEditorState("")
+        val sent = mutableListOf<String>()
+        s.attach { sent += it }
+        s.cssCmd("foreColor", "#C62828")
+        s.cssCmd("fontName", "Georgia, \"Times New Roman\", serif")
+        s.insertTable(2, 3)
+        assertEquals("ed.css(\"foreColor\",\"#C62828\")", sent[1])
+        assertEquals("ed.css(\"fontName\",\"Georgia, \\\"Times New Roman\\\", serif\")", sent[2])
+        assertTrue(sent[3].startsWith("ed.html(\"<table style="))
+        val table = RichEditorState.tableHtml(2, 3)
+        assertEquals(6, Regex("<td ").findAll(table).count())
+        assertEquals(2, Regex("<tr>").findAll(table).count())
+        assertTrue(table.contains("border: 1px solid"), "рамки в атрибутах стиля — у получателя нет наших стилей")
+        assertEquals(64, Regex("<td ").findAll(RichEditorState.tableHtml(20, 20)).count(), "не больше 8×8")
+
+        s.onMessage("""{"t":"state","b":false,"i":false,"u":false,"ul":false,"ol":false,"q":false,"s":true,"al":"center","bl":"h2"}""")
+        assertTrue(s.strike); assertEquals("center", s.align); assertEquals("h2", s.block)
+        s.onMessage("""{"t":"state","b":true}""")   // старая страница без новых полей
+        assertFalse(s.strike); assertEquals("left", s.align); assertEquals("p", s.block)
+    }
+
+    @Test
+    fun documentHasFormattingBridge() {
+        val doc = editorDocument(dark = false, placeholder = "", bridge = "", nonce = "n1")
+        assertTrue(doc.contains("css:function(n,v)"))
+        assertTrue(doc.contains("html:function(h)"))
+        assertTrue(doc.contains("strikeThrough"))
+        assertTrue(doc.contains("styleWithCSS"))
+    }
+
     @Test
     fun jsStringsAreSafe() {
         val v = RichEditorState.jsStr("строка\n</script> '\"\\")

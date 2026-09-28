@@ -72,7 +72,8 @@ class MainActivity : ComponentActivity() {
             "open-message" -> {
                 val folder = i.getStringExtra("folder") ?: return
                 val uid = i.getLongExtra("uid", 0)
-                if (uid > 0) DeepLink.pending = folder to uid
+                // Ключ ящика — из уведомления: письмо откроется в своём ящике, даже если активен другой.
+                if (uid > 0) DeepLink.pending = DeepLink.Message(i.getStringExtra("account"), folder, uid)
             }
             Intent.ACTION_SENDTO, Intent.ACTION_VIEW -> i.data?.toString()?.takeIf { it.startsWith("mailto:", true) }?.let { DeepLink.mailto = it }
             Intent.ACTION_SEND -> {

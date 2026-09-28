@@ -168,7 +168,8 @@ actual object Notifier {
      */
     actual fun schedule(enabled: Boolean) {}
 
-    actual fun show(id: Int, title: String, text: String, folder: String, uid: Long) {
+    /** Ящик, папка и uid пока не передаются: открытие письма по нажатию появится вместе с обработкой уведомлений в UIKit. */
+    actual fun show(id: Int, title: String, text: String, folder: String, uid: Long, account: String) {
         val c = UNMutableNotificationContent().apply { setTitle(title); setBody(text) }
         UNUserNotificationCenter.currentNotificationCenter().addNotificationRequest(UNNotificationRequest.requestWithIdentifier("mail-$id", c, null), null)
     }
@@ -204,6 +205,7 @@ actual object DiskCache {
     actual fun read(name: String): String? = null
     actual fun write(name: String, text: String) {}
     actual fun clear() {}
+    actual fun clear(prefix: String) {}
 }
 
 /** На iPhone — с первой сборкой на Mac (UIImage); пока фото контакта меняется в веб-почте. */

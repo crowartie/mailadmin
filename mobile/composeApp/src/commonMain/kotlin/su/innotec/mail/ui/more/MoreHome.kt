@@ -42,23 +42,23 @@ import su.innotec.mail.ui.Divider
 import su.innotec.mail.ui.ListRow
 import su.innotec.mail.ui.P
 import su.innotec.mail.ui.SectionTitle
-import su.innotec.mail.ui.calendar.CalStore
-import su.innotec.mail.ui.cloud.CloudStore
-import su.innotec.mail.ui.contacts.ContactsStore
+import su.innotec.mail.ui.login.AddAccountScreen
 import su.innotec.mail.ui.mail.MailStore
 import su.innotec.mail.ui.mail.OutboxScreen
 import su.innotec.mail.ui.mail.QuarantineScreen
 
-/** Выйти на этом устройстве: токен отзывается на сервере, локальное всё стирается. */
+/**
+ * Выйти из активного ящика на этом устройстве: токен отзывается на сервере, его локальное стирается.
+ * Сброс разделов делает Session через хуки App (onSignOut / onSwitch — смотря остались ли другие ящики);
+ * фоновую проверку выключаем, только если ящиков не осталось.
+ */
 fun signOut() {
     val api = Session.api
     CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
         runCatching { api?.logout() }
     }
-    su.innotec.mail.platform.Notifier.schedule(false)
-    MailStore.reset(); ContactsStore.reset(); CalStore.reset(); CloudStore.reset()
-    Nav.reset()
     Session.signOut()
+    if (Session.account == null) su.innotec.mail.platform.Notifier.schedule(false)
 }
 
 @Composable
@@ -81,6 +81,16 @@ fun MoreHome() {
         if (Updates.available != null) {
             ListRow("Доступна версия ${Updates.available!!.version}", "Нажмите, чтобы обновить", icon = "download", iconTint = P.accent) { Nav.push(AboutScreen()) }
             Divider()
+        }
+        // Ящики на устройстве: активный отмечен, касание другого — переключить; «Выйти» ниже — только из активного.
+        SectionTitle("Ящики")
+        Column(Modifier.background(P.surface)) {
+            Session.accounts.forEach { a ->
+                val active = a.key == acc.key
+                ListRow(a.name.ifBlank { a.user }, a.user + " · " + a.serverLabel, icon = if (active) "check" else "user", iconTint = if (active) P.accentInk else null,
+                    onClick = if (active) null else ({ Session.switchTo(a.key) }))
+            }
+            ListRow("Добавить ящик…", "Ещё один ящик — на этом или другом сервере", icon = "plus", iconTint = P.accentInk) { Nav.push(AddAccountScreen()) }
         }
         SectionTitle("Почта")
         Column(Modifier.background(P.surface)) {
@@ -105,5 +115,5 @@ fun MoreHome() {
         }
         Spacer(Modifier.height(40.dp))
     }
-    if (confirm) ConfirmDialog("Выйти?", "Вход на этом устройстве будет отозван. Письма останутся на сервере.", "Выйти", danger = true, onDismiss = { confirm = false }) { signOut() }
+    if (confirm) ConfirmDialog("Выйти из ${acc.user}?", "Вход на этом устройстве будет отозван. Письма останутся на сервере." + if (Session.accounts.size > 1) " Другие ящики останутся." else "", "Выйти", danger = true, onDismiss = { confirm = false }) { signOut() }
 }

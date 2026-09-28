@@ -37,6 +37,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -103,9 +104,11 @@ enum class WindowKind { PHONE, TABLET, WIDE }
 
 val LocalWindow = staticCompositionLocalOf { WindowKind.PHONE }
 
-/** Открыть письмо по уведомлению: MainActivity кладёт сюда папку и uid. */
+/** Открыть письмо по уведомлению: MainActivity кладёт сюда ящик, папку и uid. */
 object DeepLink {
-    var pending by mutableStateOf<Pair<String, Long>?>(null)
+    /** [account] — Account.key ящика, откуда письмо (null — уведомление старой версии без ключа: считаем активным). */
+    data class Message(val account: String?, val folder: String, val uid: Long)
+    var pending by mutableStateOf<Message?>(null)
     /** mailto: из других программ или «Поделиться» → новое письмо. */
     var mailto by mutableStateOf<String?>(null)
 }
@@ -126,12 +129,26 @@ private fun resetOnSignOut() {
     Notifier.fast(false)
 }
 
+/**
+ * Переход на другой ящик: разделы сбрасываются, чтобы загрузиться заново (Main ниже пересоздаётся по ключу ящика).
+ * В отличие от выхода, отложенные действия почты досылаются в прежний ящик, а загрузки облака и слежение
+ * за почтой не трогаем: их API уже привязан к своему ящику, а служба обходит все ящики.
+ */
+private fun resetOnSwitch() {
+    Nav.reset()
+    MailStore.reset(switching = true)
+    ContactsStore.reset()
+    CalStore.reset()
+    CloudStore.reset()
+}
+
 @Composable
 fun App() {
-    // Регистрация один раз: выход из любого места проходит через resetOnSignOut.
+    // Регистрация один раз: выход и смена ящика из любого места проходят через одно место.
     DisposableEffect(Unit) {
         Session.onSignOut = ::resetOnSignOut
-        onDispose { Session.onSignOut = {} }
+        Session.onSwitch = ::resetOnSwitch
+        onDispose { Session.onSignOut = {}; Session.onSwitch = {} }
     }
     // Приложение ушло в фон (Android: экран закрыт или свернули; ПК: окно свернули): окна «Отменить» закрываем,
     // отложенные удаления и отправку шлём на сервер сейчас — процесс могут убить, а действие уже показано сделанным.
@@ -147,15 +164,23 @@ fun App() {
                 LaunchedEffect(Unit) { resetOnSignOut() }
                 LoginScreen()
             } else {
-                LaunchedEffect(acc.origin, acc.user) {
+                // Письмо из уведомления другого ящика: сначала переключиться на него, откроет MailHome уже в нём.
+                LaunchedEffect(DeepLink.pending) {
+                    val d = DeepLink.pending ?: return@LaunchedEffect
+                    if (d.account != null && d.account != acc.key) {
+                        // Ящик уже убран с устройства — открывать нечего.
+                        if (Session.accounts.any { it.key == d.account }) Session.switchTo(d.account) else { DeepLink.pending = null }
+                    }
+                }
+                LaunchedEffect(acc.key) {
                     Notifier.ensurePermission()
                     Notifier.schedule(Session.prefs.notify)
                     Notifier.fast(Session.prefs.fastNotify)
                     su.innotec.mail.ui.more.Updates.checkQuietly(offer = true)
                     // Имя и адрес — с сервера, если вход сохранён без них (и заодно проверка, что токен жив).
-                    runCatching { Session.api!!.me() }.onSuccess { me ->
-                        if (me.user != acc.user || me.name != acc.name) Session.signIn(acc.copy(user = me.user, name = me.name))
-                    }.onFailure { if (it is su.innotec.mail.api.ApiException && it.isAuth) Session.signOut("Вход устарел или отозван — войдите заново.") }
+                    runCatching { Session.apiFor(acc).me() }.onSuccess { me ->
+                        if (me.user != acc.user || me.name != acc.name) Session.updateAccount(acc.key) { it.copy(user = me.user, name = me.name) }
+                    }.onFailure { if (it is su.innotec.mail.api.ApiException && it.isAuth) Session.signOut("Вход устарел или отозван — войдите заново.", acc.key) }
                     // Тема — настройка ящика (как в веб-почте): при входе берём её с сервера, при смене пишем туда (Settings.kt).
                     runCatching { Session.api!!.settings() }.onSuccess { s ->
                         if (s.theme in setOf("light", "dark", "system") && s.theme != Session.prefs.theme) Session.updatePrefs { it.copy(theme = s.theme) }
@@ -164,7 +189,7 @@ fun App() {
                 }
                 // Напоминания о встречах, пока приложение открыто: раз в минуту статус «Входящих» (в нём же reminders),
                 // системное уведомление и подсказка внизу. В фоне то же делает MailCheck (Android) и опрос main.kt (ПК).
-                LaunchedEffect(acc.origin, acc.user) {
+                LaunchedEffect(acc.key) {
                     while (true) {
                         kotlinx.coroutines.delay(60_000)
                         try {
@@ -177,7 +202,9 @@ fun App() {
                         }
                     }
                 }
-                Main()
+                // По ключу ящика: при переключении всё дерево экранов строится заново, и разделы запускают
+                // загрузку сами (LaunchedEffect(Unit) в MailHome и остальных) — отдельного «перезагрузить» не нужно.
+                key(acc.key) { Main() }
                 if (Shortcuts.help) HotkeysHelp { Shortcuts.help = false }
             }
         }

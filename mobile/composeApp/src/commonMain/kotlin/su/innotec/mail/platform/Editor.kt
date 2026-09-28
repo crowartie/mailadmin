@@ -30,6 +30,10 @@ class RichEditorState(initialHtml: String) {
     var bullets by mutableStateOf(false); private set
     var numbers by mutableStateOf(false); private set
     var quote by mutableStateOf(false); private set
+    // Панель оформления (обращение №53): зачёркнутый, выравнивание (left|center|right), блок (p|h1|h2|h3|pre).
+    var strike by mutableStateOf(false); private set
+    var align by mutableStateOf("left"); private set
+    var block by mutableStateOf("p"); private set
     var focused by mutableStateOf(false); private set
     /** Высота содержимого, dp: поле растёт вместе с текстом, прокручивается весь экран письма. */
     var contentHeight by mutableStateOf(0f); private set
@@ -60,6 +64,16 @@ class RichEditorState(initialHtml: String) {
         finishInput?.invoke()
         js("ed.cmd(${jsStr(name)},${value?.let { jsStr(it) } ?: "null"})")
     }
+    /** Цвет, выделение, шрифт, размер — через CSS (span style), а не устаревший <font>: как в веб-почте. */
+    fun cssCmd(name: String, value: String) {
+        finishInput?.invoke()
+        js("ed.css(${jsStr(name)},${jsStr(value)})")
+    }
+    fun insertHtml(h: String) {
+        finishInput?.invoke()
+        js("ed.html(${jsStr(h)})")
+    }
+    fun insertTable(rows: Int, cols: Int) = insertHtml(tableHtml(rows, cols))
     fun link(url: String) = js("ed.link(${jsStr(url)})")
     fun image(dataUrl: String) = js("ed.image(${jsStr(dataUrl)})")
     fun focus() = js("ed.focus()")
@@ -80,7 +94,10 @@ class RichEditorState(initialHtml: String) {
         fun f(k: String) = o[k]?.jsonPrimitive?.float ?: 0f
         when (o["t"]?.jsonPrimitive?.content) {
             "html" -> { val v = o["v"]?.jsonPrimitive?.content ?: return; if (v != html) { html = v; onEdit?.invoke() } }
-            "state" -> { bold = b("b"); italic = b("i"); underline = b("u"); bullets = b("ul"); numbers = b("ol"); quote = b("q") }
+            "state" -> {
+                bold = b("b"); italic = b("i"); underline = b("u"); bullets = b("ul"); numbers = b("ol"); quote = b("q")
+                strike = b("s"); align = o["al"]?.jsonPrimitive?.content ?: "left"; block = o["bl"]?.jsonPrimitive?.content ?: "p"
+            }
             "height" -> contentHeight = f("v")
             "focus" -> focused = b("v")
             "caret" -> onCaret?.invoke(f("top"), f("bottom"))
@@ -91,6 +108,12 @@ class RichEditorState(initialHtml: String) {
     companion object {
         fun jsStr(s: String): String = Json.encodeToString(String.serializer(), s)
             .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+        /** Таблица с рамками в атрибутах стиля — у получателя нет наших таблиц стилей (то же, что Editor.vue). */
+        fun tableHtml(rows: Int, cols: Int): String {
+            val td = "<td style=\"border: 1px solid #cfcbc4; padding: 4px 8px; min-width: 40px\"><br></td>".repeat(cols.coerceIn(1, 8))
+            return "<table style=\"border-collapse: collapse; margin: 6px 0\">" + "<tr>$td</tr>".repeat(rows.coerceIn(1, 8)) + "</table><p><br></p>"
+        }
     }
 }
 
@@ -132,6 +155,9 @@ body{font:16px/1.5 -apple-system,Roboto,"Segoe UI",Arial,sans-serif;-webkit-text
 #ed a{color:$link;}
 #ed table{max-width:100%;border-collapse:collapse;}
 #ed td,#ed th{border:1px solid $line;padding:2px 6px;}
+#ed hr{border:none;border-top:1px solid $line;margin:10px 0;}
+#ed pre{white-space:pre-wrap;font-family:monospace;background:rgba(127,127,127,.12);padding:6px 8px;border-radius:6px;}
+#ed h1{font-size:22px;margin:12px 0 6px;}#ed h2{font-size:18px;margin:10px 0 6px;}#ed h3{font-size:16px;margin:8px 0 4px;}
 </style></head><body><div id="ed" contenteditable="true" spellcheck="true" autocapitalize="sentences"></div>
 <script nonce="$nonce">
 $bridge
@@ -146,7 +172,8 @@ function isBlank(){ if(el.querySelector('img,blockquote,table,ul,ol'))return fal
 function height(){ var h=Math.ceil(el.getBoundingClientRect().height); if(h!==lastH){lastH=h;post({t:'height',v:h});} }
 function q(n){try{return document.queryCommandState(n);}catch(e){return false;}}
 function inQuote(){ var s=getSelection(); if(!s.rangeCount)return false; var n=s.anchorNode; while(n&&n!==el){ if(n.nodeName==='BLOCKQUOTE')return true; n=n.parentNode;} return false; }
-function state(){ post({t:'state',b:q('bold'),i:q('italic'),u:q('underline'),ul:q('insertUnorderedList'),ol:q('insertOrderedList'),q:inQuote()}); }
+function blk(){ try{ var v=String(document.queryCommandValue('formatBlock')||'').toLowerCase(); return /^h[1-3]$|^pre$/.test(v)?v:'p'; }catch(e){ return 'p'; } }
+function state(){ post({t:'state',b:q('bold'),i:q('italic'),u:q('underline'),ul:q('insertUnorderedList'),ol:q('insertOrderedList'),q:inQuote(),s:q('strikeThrough'),al:q('justifyCenter')?'center':q('justifyRight')?'right':'left',bl:blk()}); }
 function caret(){
   var s=getSelection(); if(!s.rangeCount||!el.contains(s.anchorNode))return;
   var r=s.getRangeAt(0).cloneRange(), rect=r.getBoundingClientRect();
@@ -157,7 +184,7 @@ function sync(){ el.classList.toggle('blank',isBlank()); height(); clearTimeout(
 // Жирный, курсив, подчёркнутый без выделения: клавиатура Android сбрасывает «стиль набора» Chrome,
 // поэтому ставим курсор внутрь самого элемента (как почта Gmail), а повторное нажатие выводит из него.
 var ZW=String.fromCharCode(8203);   // невидимый пробел: держит курсор внутри пустого элемента
-var TAGS={bold:['B','STRONG'],italic:['I','EM'],underline:['U']};
+var TAGS={bold:['B','STRONG'],italic:['I','EM'],underline:['U'],strikeThrough:['STRIKE','S']};
 function inlineToggle(n){
   var s=getSelection(); if(!s.rangeCount)return false; var r=s.getRangeAt(0);
   if(!r.collapsed||!TAGS[n])return false;
@@ -217,6 +244,9 @@ if(window.ResizeObserver)new ResizeObserver(height).observe(el);
 window.ed={
   set:function(h){ el.innerHTML=safe(h||''); el.classList.toggle('blank',isBlank()); height(); },
   cmd:function(n,v){ later(function(){ runCmd(n,v); }); },
+  // Цвет, выделение, шрифт, размер — span style=… (styleWithCSS), не <font>; вставка HTML — таблица, линия.
+  css:function(n,v){ later(function(){ restore(); document.execCommand('styleWithCSS',false,true); try{ document.execCommand(n,false,v); } finally { document.execCommand('styleWithCSS',false,false); } sync(); state(); }); },
+  html:function(h){ later(function(){ restore(); document.execCommand('insertHTML',false,h); sync(); state(); }); },
   link:function(url){ later(function(){ runLink(url); }); },
   image:function(src){ later(function(){ restore(); document.execCommand('insertHTML',false,'<img src="'+src+'" alt="" style="max-width:100%;height:auto">'); sync(); }); },
   focus:function(){ restore(); caret(); },
@@ -224,7 +254,7 @@ window.ed={
   caret:caret
 };
 function runCmd(n,v){ restore();
-    if(inlineToggle(n)){ sync(); var o={t:'state',b:q('bold'),i:q('italic'),u:q('underline'),ul:q('insertUnorderedList'),ol:q('insertOrderedList'),q:inQuote()}; post(o); return; }
+    if(inlineToggle(n)){ sync(); state(); return; }
     if(n==='formatBlock'&&v==='blockquote'&&inQuote())document.execCommand('outdent',false,null); else document.execCommand(n,false,v); sync(); state(); }
 function runLink(url){ restore(); var s=getSelection();
     if(!s.rangeCount||s.isCollapsed){ var e=url.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); document.execCommand('insertHTML',false,'<a href="'+e+'">'+e+'</a>&nbsp;'); }

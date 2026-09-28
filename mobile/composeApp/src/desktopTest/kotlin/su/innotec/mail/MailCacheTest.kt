@@ -19,7 +19,12 @@ import kotlin.test.assertNull
 class MailCacheTest {
     private val home = File(System.getProperty("java.io.tmpdir"), "mailadmin-cache-" + System.nanoTime())
 
-    @BeforeTest fun setUp() { home.mkdirs(); System.setProperty("mailadmin.home", home.absolutePath) }
+    @BeforeTest fun setUp() {
+        home.mkdirs(); System.setProperty("mailadmin.home", home.absolutePath)
+        // Другие тесты (снимки экранов) входят в настоящий ящик — от порядка запуска здесь ничего зависеть не должно.
+        var guard = 0
+        while (Session.account != null && guard++ < 10) Session.signOut()
+    }
     @AfterTest fun tearDown() { home.deleteRecursively() }
 
     @Test
@@ -37,17 +42,24 @@ class MailCacheTest {
         assertNull(MailCache.list("INBOX", "unread", "date"), "другой отбор — другой список")
         assertEquals("Входящие", MailCache.folders()?.single()?.name)
 
-        // Другой ящик на том же устройстве не видит писем первого.
+        // Другой ящик на том же устройстве (второй вход, оба остаются) не видит писем первого.
         Session.signIn(Account(origin = "https://example.test", token = "t", user = "b@example.test", name = "B"))
         assertNull(MailCache.list("INBOX", "all", "date"))
         assertNull(MailCache.message("INBOX", 7))
 
-        // Выход стирает кэш.
-        Session.signIn(Account(origin = "https://example.test", token = "t", user = "a@example.test", name = "A"))
+        // Выход из одного ящика стирает только его кэш, второй остаётся с письмами.
+        MailCache.saveList("INBOX", "all", "date", list, 1)
+        Session.switchTo("https://example.test a@example.test")
+        assertEquals(42, MailCache.list("INBOX", "all", "date")?.second)
         Session.signOut()
+        assertEquals("b@example.test", Session.account?.user)
+        assertEquals(1, MailCache.list("INBOX", "all", "date")?.second)
         Session.signIn(Account(origin = "https://example.test", token = "t", user = "a@example.test", name = "A"))
         assertNull(MailCache.list("INBOX", "all", "date"))
-        Session.signOut()
+        // Выход из последнего стирает всё.
+        Session.signOut(); Session.signOut()
+        assertNull(Session.account)
+        assertNull(MailCache.list("INBOX", "all", "date"))
         DiskCache.clear()
     }
 }

@@ -19,10 +19,11 @@ class MailCheckWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(
         if (Session.account == null) Session.load()
         if (Session.account == null || !Session.prefs.notify) return Result.success()
         return try {
+            // Отозванный вход одного ящика MailCheck убирает сам; сюда доходит только «не ответил ни один» — повторить позже.
             MailCheck.run()
             Result.success()
-        } catch (e: ApiException) {
-            if (e.isAuth) { Session.signOut("Вход устарел или отозван — войдите заново."); Result.success() } else Result.retry()
+        } catch (_: ApiException) {
+            Result.retry()
         }
     }
 }

@@ -47,6 +47,7 @@ import su.innotec.mail.ui.P
 import su.innotec.mail.ui.SectionTitle
 import su.innotec.mail.ui.hexColor
 import su.innotec.mail.ui.launchSafe
+import su.innotec.mail.ui.login.AddAccountScreen
 import su.innotec.mail.ui.Toasts
 
 /** Порядок и значки системных папок — как FolderNav.vue. */
@@ -89,12 +90,7 @@ fun FolderList(onPicked: () -> Unit, modifier: Modifier = Modifier) {
     val acc = Session.account
 
     LazyColumn(modifier.fillMaxSize().testTag("folders")) {
-        item {
-            Column(Modifier.statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
-                Text(acc?.name?.ifBlank { null } ?: "Почта", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(acc?.user ?: "", style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
+        item { AccountHeader(acc, onPicked) }
         // «Под рукой» — закреплённые письма (как вкладки внизу веб-почты): касание открывает, долгое — убирает.
         if (Pinned.items.isNotEmpty()) {
             item { SectionTitle("Под рукой") }
@@ -210,6 +206,50 @@ fun FolderList(onPicked: () -> Unit, modifier: Modifier = Modifier) {
                 }
                 "rule" -> if (f != null) FolderRuleDialog(f, onDismiss = { dialog = null })
             }
+        }
+    }
+}
+
+/**
+ * Шапка панели: имя и адрес активного ящика. Касание — список ящиков на устройстве (активный отмечен) и
+ * «Добавить ящик…»; выбор переключает ящик, панель закрывается. Стрелка подсказывает, что шапка — кнопка.
+ */
+@Composable
+private fun AccountHeader(acc: su.innotec.mail.data.Account?, onPicked: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.statusBarsPadding()) {
+        Row(
+            Modifier.fillMaxWidth().clickable { open = true }.testTag("account-header").padding(start = 16.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(acc?.name?.ifBlank { null } ?: "Почта", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(acc?.user ?: "", style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Ico(if (open) "up" else "down", size = 18.dp, tint = P.muted)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.background(P.surface)) {
+            Session.accounts.forEach { a ->
+                val active = a.key == acc?.key
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(a.name.ifBlank { a.user }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(a.user, style = MaterialTheme.typography.bodySmall, color = P.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(a.serverLabel, style = MaterialTheme.typography.bodySmall, color = P.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    },
+                    leadingIcon = { Ico(if (active) "check" else "mail", tint = if (active) P.accentInk else P.muted) },
+                    onClick = { open = false; if (!active) { Session.switchTo(a.key); onPicked() } },
+                    modifier = Modifier.testTag("account:" + a.user),
+                )
+            }
+            DropdownMenuItem(
+                text = { Text("Добавить ящик…", color = P.accentInk, fontWeight = FontWeight.Medium) },
+                leadingIcon = { Ico("plus", tint = P.accentInk) },
+                onClick = { open = false; Nav.push(AddAccountScreen()); onPicked() },
+                modifier = Modifier.testTag("account-add"),
+            )
         }
     }
 }
