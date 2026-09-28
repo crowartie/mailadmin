@@ -52,12 +52,8 @@ class MessageController extends Controller
             $list['folders'] = $store->folders();
         }
         // Общая папка: к каждой строке — кто из коллег уже прочитал (кружки справа в списке).
-        if (! $everywhere && ($owner = SharedReads::ownerOf($folder)) !== null) {
-            $map = SharedReads::forMessages($owner, array_column($list['messages'] ?? [], 'messageId'));
-            foreach ($list['messages'] as &$row) {
-                $row['readers'] = array_map(fn ($r) => ['mail' => $r['mail'], 'name' => $r['name']], $map[SharedReads::key($row['messageId'] ?? null)] ?? []);
-            }
-            unset($row);
+        if (! $everywhere) {
+            $list = SharedReads::attach($list, $folder);
         }
 
         return response()->json($list);

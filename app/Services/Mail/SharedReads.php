@@ -86,6 +86,25 @@ class SharedReads
     }
 
     /**
+     * Приклеить к строкам списка общей папки, кто прочитал (mail, name): кружки справа в списке.
+     * Один запрос на страницу. В своей папке ничего не делает.
+     */
+    public static function attach(array $list, string $folder): array
+    {
+        $owner = self::ownerOf($folder);
+        if ($owner === null || empty($list['messages'])) {
+            return $list;
+        }
+        $map = self::forMessages($owner, array_column($list['messages'], 'messageId'));
+        foreach ($list['messages'] as &$row) {
+            $row['readers'] = array_map(fn ($r) => ['mail' => $r['mail'], 'name' => $r['name']], $map[self::key($row['messageId'] ?? null)] ?? []);
+        }
+        unset($row);
+
+        return $list;
+    }
+
+    /**
      * Кто из имеющих доступ к папке ещё не читал письмо: по ACL папки (владелец не в счёт).
      * @param array<int,array{mail:string}> $readers
      * @return array<int,array{mail:string,name:string}>

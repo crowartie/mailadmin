@@ -345,7 +345,7 @@
 
     // Общая папка: кто прочитал — кружки с инициалами внахлёст (обращение №51).
     &__rd { display: flex; align-items: center; }
-    &__rd i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid v.$c-surface; margin-left: -6px; font-style: normal; font-size: 8.5px; font-weight: 700; color: #fff; background: var(--av, var(--av-1)); display: inline-flex; align-items: center; justify-content: center; }
+    &__rd i { width: 20px; height: 20px; border-radius: 50%; border: 2px solid v.$c-surface; margin-left: -7px; font-style: normal; font-size: 10px; font-weight: 700; color: #fff; background: var(--av, var(--av-1)); display: inline-flex; align-items: center; justify-content: center; }
     &__rd i:first-child { margin-left: 0; }
     &__rd em { font-style: normal; font-size: 11px; color: v.$c-faint; margin-left: 4px; }
     &__rd-none { color: v.$c-warn-ink; }
@@ -1742,7 +1742,7 @@ html[data-ui="simple"] .msg:hover .msg__acts, html[data-ui="simple"] .msg__acts:
 .msg__readers { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 20px 8px 72px; border-bottom: 1px solid v.$c-border; background: v.$c-surface-2; font-size: 12.5px; }
 .msg__readers-cap { color: v.$c-muted; margin-right: 2px; }
 .msg__reader { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: v.$c-surface; border: 1px solid v.$c-border; }
-.msg__reader i { width: 20px; height: 20px; border-radius: 50%; background: var(--av, var(--av-1)); color: #fff; font-style: normal; font-size: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
-.msg__reader small { color: v.$c-muted; }
+.msg__reader i { width: 22px; height: 22px; border-radius: 50%; background: var(--av, var(--av-1)); color: #fff; font-style: normal; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.msg__reader small { color: v.$c-muted; font-size: 11.5px; }
 .msg__readers-not { color: v.$c-muted; }
 @media (max-width: 700px) { .msg__readers { padding-left: 16px; } }
