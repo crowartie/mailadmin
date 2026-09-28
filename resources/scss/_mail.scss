@@ -347,27 +347,27 @@
     // для всех, убрали: закрывала дату и мельтешила, по ней нажимали случайно. Теперь она встаёт на место
     // значков скрепки/флажка (дата остаётся видна), появляется через 250 мс, чтобы не мигать при движении
     // мыши по списку, и не показывается там, где наведения нет (сенсорные экраны).
+    // Как в Gmail: при наведении дата и значки прячутся, на их месте — просто иконки без рамок,
+    // круглая подложка только у той, над которой курсор.
     &__when { position: relative; }
     &__acts {
         display: flex;
         gap: 2px;
         position: absolute;
-        right: -4px;
-        top: -13px;   // целиком выше строки с датой — проверено пробой ux/_rowacts.py
+        right: -6px;
+        top: 50%;
+        transform: translateY(-50%);
         padding: 0;
         visibility: hidden;
         opacity: 0;
         transition: opacity .12s, visibility 0s .12s;
         z-index: 1;
     }
-    // Общей плашки нет — она сливалась с подсветкой строки. Каждая кнопка сама по себе:
-    // белая, с рамкой и тенью, чтобы читалась на фоне наведённой строки.
-    &__acts .ib { background: v.$c-surface; border: 1px solid v.$c-border-2; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
-    &__acts .ib:hover { background: v.$c-accent-soft; color: v.$c-accent-ink; border-color: v.$c-accent; }
-    &__acts .ib--danger:hover { background: v.$c-no-soft; color: v.$c-no; border-color: v.$c-no; }
-    &__acts { gap: 4px; }
+    &__acts .ib { width: 30px; height: 30px; border-radius: 50%; color: v.$c-muted; }
+    &__acts .ib:hover { background: v.$c-chip-off; color: v.$c-text; }
+    &__acts .ib--danger:hover { background: v.$c-no-soft; color: v.$c-no; }
     .mlist--acts &:hover &__acts, .mlist--acts &:focus-within &__acts { visibility: visible; opacity: 1; transition-delay: .25s; }
-    .mlist--acts &:hover &__when-icons, .mlist--acts &:focus-within &__when-icons { visibility: hidden; }
+    .mlist--acts &:hover &__when > span, .mlist--acts &:focus-within &__when > span { visibility: hidden; transition: visibility 0s .25s; }
     @media (hover: none) { &__acts { display: none; } }
 
     &:focus-visible { outline: 2px solid v.$c-accent; outline-offset: -2px; }
