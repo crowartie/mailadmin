@@ -23,10 +23,20 @@ class EmployeeProfile extends Model
         return \Illuminate\Support\Facades\Cache::remember('profiles.service', 60, fn () => self::query()->where('is_service', true)->pluck('username')->all());
     }
 
+    /** Ящики с закрытым входом: в книге «Сотрудники» и подсказках адресов их быть не должно. */
+    public static function blockedUsernames(): array
+    {
+        return \Illuminate\Support\Facades\Cache::remember('profiles.blocked', 60, fn () => self::query()->where('login_blocked', true)->pluck('username')->all());
+    }
+
     protected static function booted(): void
     {
-        static::saved(fn () => \Illuminate\Support\Facades\Cache::forget('profiles.service'));
-        static::deleted(fn () => \Illuminate\Support\Facades\Cache::forget('profiles.service'));
+        $forget = function () {
+            \Illuminate\Support\Facades\Cache::forget('profiles.service');
+            \Illuminate\Support\Facades\Cache::forget('profiles.blocked');
+        };
+        static::saved($forget);
+        static::deleted($forget);
     }
 
     public static function for(string $username): self

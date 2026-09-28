@@ -68,13 +68,17 @@ class Mailbox extends Model
         return $this->quota > 0 ? (int) $this->quota : null;
     }
 
-    /** Только сотрудники: активные ящики без служебных (info@, сканеры, принтеры). */
+    /**
+     * Только действующие сотрудники: активные ящики без служебных (info@, сканеры, принтеры)
+     * и без тех, кому закрыт вход (уволенные): раньше они оставались в книге «Сотрудники» и в подсказках
+     * адресов на телефонах — то же условие, что у отбора «Активные» в админке.
+     */
     public function scopePeople($query)
     {
-        $query->where('active', 1);
-        $service = \App\Models\EmployeeProfile::serviceUsernames();
+        $query->where('active', 1)->where('enableimap', 1);
+        $skip = array_merge(\App\Models\EmployeeProfile::serviceUsernames(), \App\Models\EmployeeProfile::blockedUsernames());
 
-        return $service ? $query->whereNotIn('username', $service) : $query;
+        return $skip ? $query->whereNotIn('username', $skip) : $query;
     }
 
     public function scopeSearch($query, ?string $term)
