@@ -154,7 +154,12 @@ class ManageSieveClient
                 return ['lines' => $lines, 'literal' => $literal, 'ok' => $line];
             }
             if (preg_match('/^(NO|BYE)\b(.*)$/', $line, $m)) {
-                throw new \RuntimeException('ManageSieve: ' . trim($m[2]) ?: $line);
+                $msg = trim($m[2]);
+                // Текст ошибки разбора (CHECKSCRIPT, PUTSCRIPT) сервер отдаёт литералом: «NO {132}», дальше сам текст.
+                if (preg_match('/\{(\d+)\+?\}$/', $msg, $l)) {
+                    $msg = trim(trim(preg_replace('/\{\d+\+?\}$/', '', $msg)) . ' ' . trim($this->readBytes((int) $l[1])));
+                }
+                throw new \RuntimeException('ManageSieve: ' . ($msg !== '' ? $msg : $line));
             }
             // Возможности сервера: "IMPLEMENTATION" "Dovecot", "STARTTLS", "SASL" "PLAIN" …
             if (preg_match('/^"([A-Z0-9-]+)"(?:\s+"(.*)")?$/i', $line, $m)) {
