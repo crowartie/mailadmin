@@ -223,9 +223,17 @@ class Outgoing
         }
 
         if (! empty($form['answeredFolder']) && ! empty($form['answeredUid'])) {
-            $store->flag($form['answeredFolder'], [(int) $form['answeredUid']], '\\Answered', true);
             // Ответ из общей папки: коллегам видно, кто ответил, и открывается сам ответ (обращение №57).
+            // Сначала запись, потом флаг: у «читателя» общей папки права ставить флаги нет, и отказ
+            // сервера не должен отменять запись.
             SharedReplies::record($user, $form, $email, $raw);
+            try {
+                $store->flag($form['answeredFolder'], [(int) $form['answeredUid']], '\\Answered', true);
+            } catch (\Throwable $e) {
+                if (SharedReads::ownerOf($form['answeredFolder']) === null) {
+                    throw $e;
+                }
+            }
         }
         if (! empty($form['draftUid'])) {
             $drafts = $store->rolePath('drafts');
