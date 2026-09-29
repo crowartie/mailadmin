@@ -45,12 +45,15 @@ if ! grep -q 'push_notification_driver' "$CONF"; then
   printf '\n# Push-уведомления веб-почты (deploy/dovecot-push.sh): событие о новом письме во «Входящих»\nplugin {\n  push_notification_driver = lua:file=%s\n}\n' "$LUA" >> "$CONF"
   need_reload=1
 fi
-# Плагины нужны в LMTP (доставка). Строка protocol lmtp { mail_plugins = … } у iRedMail своя — дописываем в неё.
-if ! awk '/^protocol lmtp \{/{f=1} f&&/mail_plugins/{print; exit}' "$CONF" | grep -q push_notification_lua; then
-  [ -f "$CONF.bak-push" ] || cp -a "$CONF" "$CONF.bak-push"
-  awk 'BEGIN{f=0} /^protocol lmtp \{/{f=1} f&&/mail_plugins =/&&!/push_notification/{sub(/$/, " push_notification push_notification_lua"); f=0} {print}' "$CONF" > "$CONF.tmp" && cat "$CONF.tmp" > "$CONF" && rm -f "$CONF.tmp"
-  need_reload=1
-fi
+# Плагины нужны при доставке: iRedMail доставляет через dovecot-lda (protocol lda), LMTP — на всякий случай.
+# Строки protocol … { mail_plugins = … } у iRedMail свои — дописываем в них.
+for proto in lda lmtp; do
+  if ! awk -v p="^protocol $proto \{" '$0 ~ p {f=1} f&&/mail_plugins/{print; exit}' "$CONF" | grep -q push_notification_lua; then
+    [ -f "$CONF.bak-push" ] || cp -a "$CONF" "$CONF.bak-push"
+    awk -v p="^protocol $proto \{" 'BEGIN{f=0} $0 ~ p {f=1} f&&/mail_plugins =/&&!/push_notification/{sub(/$/, " push_notification push_notification_lua"); f=0} {print}' "$CONF" > "$CONF.tmp" && cat "$CONF.tmp" > "$CONF" && rm -f "$CONF.tmp"
+    need_reload=1
+  fi
+done
 if [ "$need_reload" = 1 ]; then
   if doveconf -n >/dev/null 2>&1; then
     systemctl reload dovecot && echo "    push: Dovecot перечитал настройки"
