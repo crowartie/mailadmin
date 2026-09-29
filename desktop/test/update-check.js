@@ -11,20 +11,30 @@ const path = require('node:path');
 const installedVersion = (exe) => JSON.parse(asar.extractFile(path.join(path.dirname(exe), 'resources', 'app.asar'), 'package.json').toString()).version;
 
 (async () => {
-    const [exe, want] = process.argv.slice(2);
+    const [exe, want] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
     const before = installedVersion(exe);
     const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'pochta-upd-'));
-    const env = { ...process.env, POCHTA_TEST: '1', POCHTA_UPDATE_TEST: '1', POCHTA_UPDATE_DELAY_MS: '1500', POCHTA_USER_DATA: userData };
+    // --real: обычный режим (так работает у людей). Нужен для версий до 1.0.1, где в тестовом режиме обновления
+    // выключены; скачанное обновление видно по папке electron-updater (%LOCALAPPDATA%\pochta-desktop-updater\pending).
+    const real = process.argv.includes('--real');
+    const env = real
+        ? { ...process.env, POCHTA_USER_DATA: userData }
+        : { ...process.env, POCHTA_TEST: '1', POCHTA_UPDATE_TEST: '1', POCHTA_UPDATE_DELAY_MS: '1500', POCHTA_USER_DATA: userData };
     delete env.POCHTA_SERVER;
+    delete env.POCHTA_TEST;
+    if (!real) env.POCHTA_TEST = '1';
+    const pending = path.join(process.env.LOCALAPPDATA || '', 'pochta-desktop-updater', 'pending');
     const app = await _electron.launch({ executablePath: exe, env });
     const out = { before };
     const t0 = Date.now();
     try {
         await app.firstWindow();
         for (;;) {
-            const ready = await app.evaluate(() => globalThis.__pochta.updateReady);
+            const ready = real
+                ? (fs.existsSync(path.join(pending, `Pochta-Setup-${want}.exe`)) && fs.existsSync(path.join(pending, 'update-info.json')) ? want : null)
+                : await app.evaluate(() => globalThis.__pochta.updateReady);
             if (ready) { out.downloaded = ready; out.downloadSec = Math.round((Date.now() - t0) / 1000); break; }
-            if (Date.now() - t0 > 5 * 60 * 1000) throw new Error('за 5 минут обновление не скачалось');
+            if (Date.now() - t0 > 6 * 60 * 1000) throw new Error('за 6 минут обновление не скачалось');
             await new Promise((r) => setTimeout(r, 2000));
         }
         await app.evaluate(({ app }) => app.quit());   // autoInstallOnAppQuit: установщик запускается при выходе

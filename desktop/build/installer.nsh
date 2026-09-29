@@ -7,5 +7,7 @@
     DeleteRegKey HKCU "Software\Pochta"
     DeleteRegValue HKCU "Software\RegisteredApplications" "Pochta"
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "ru.mailadmin.pochta"
+    ; Скачанные обновления (electron-updater) — до сотни мегабайт, после удаления не нужны.
+    RMDir /r "$LOCALAPPDATA\pochta-desktop-updater"
   ${endIf}
 !macroend
