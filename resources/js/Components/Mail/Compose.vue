@@ -119,8 +119,8 @@ const customAt = ref(toLocalInput(new Date(Date.now() + 3600000)));
 const dirty = ref(false);
 const status = ref('');
 const waitingStage = ref(false);
-// Окно выбора получателей из книги: из какой строки открыто (to | cc | bcc) или закрыто (null).
-const picker = ref(null);
+// Окно выбора получателей из книги: из какой строки открыто (to | cc | bcc) или закрыто (null). («picker» занят облаком.)
+const rcpt = ref(null);
 function applyPicked(out) {
     const have = new Set([...to.value, ...cc.value, ...bcc.value].map((a) => a.mail.toLowerCase()));
     const fresh = (list) => list.filter((a) => !have.has(a.mail.toLowerCase())).map((a) => { have.add(a.mail.toLowerCase()); return { name: a.name, mail: a.mail }; });
@@ -128,7 +128,7 @@ function applyPicked(out) {
     if (t.length) to.value = [...to.value, ...t];
     if (c.length) { cc.value = [...cc.value, ...c]; showCc.value = true; }
     if (b.length) { bcc.value = [...bcc.value, ...b]; showBcc.value = true; }
-    picker.value = null;
+    rcpt.value = null;
     const n = t.length + c.length + b.length;
     if (n) emit('toast', { text: `Добавлено получателей: ${n}` });
 }
@@ -639,7 +639,7 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         <div class="compose__row">
             <label for="cmp-to">Кому</label>
             <RecipientInput input-id="cmp-to" ref="toInput" v-model="to" :others="[...cc, ...bcc].map((a) => a.mail)" placeholder="Имя или адрес" @note="$emit('toast', { text: $event, error: true })" />
-            <button class="ib ib--sm" type="button" title="Выбрать из адресной книги" aria-label="Выбрать получателей из адресной книги" @click="picker = 'to'"><Icon name="book" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Выбрать из адресной книги" aria-label="Выбрать получателей из адресной книги" @click="rcpt = 'to'"><Icon name="book" :size="16" /></button>
             <span class="links">
                 <button v-if="!showCc" type="button" class="linklike" @click="showCc = true">Копия</button>
                 <button v-if="!showBcc" type="button" class="linklike" @click="showBcc = true">Скрытая</button>
@@ -648,15 +648,15 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
         <div v-if="showCc" class="compose__row">
             <label for="cmp-cc">Копия</label>
             <RecipientInput input-id="cmp-cc" ref="ccInput" v-model="cc" :others="[...to, ...bcc].map((a) => a.mail)" @note="$emit('toast', { text: $event, error: true })" />
-            <button class="ib ib--sm" type="button" title="Выбрать из адресной книги" aria-label="Выбрать получателей копии из адресной книги" @click="picker = 'cc'"><Icon name="book" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Выбрать из адресной книги" aria-label="Выбрать получателей копии из адресной книги" @click="rcpt = 'cc'"><Icon name="book" :size="16" /></button>
         </div>
         <div v-if="showBcc" class="compose__row">
             <label for="cmp-bcc">Скрытая</label>
             <RecipientInput input-id="cmp-bcc" ref="bccInput" v-model="bcc" :others="[...to, ...cc].map((a) => a.mail)" @note="$emit('toast', { text: $event, error: true })" />
-            <button class="ib ib--sm" type="button" title="Выбрать из адресной книги" aria-label="Выбрать получателей скрытой копии из адресной книги" @click="picker = 'bcc'"><Icon name="book" :size="16" /></button>
+            <button class="ib ib--sm" type="button" title="Выбрать из адресной книги" aria-label="Выбрать получателей скрытой копии из адресной книги" @click="rcpt = 'bcc'"><Icon name="book" :size="16" /></button>
         </div>
         <!-- Окно «Получатели» (обращение №56): выбранные раскладываются по строкам, повторы не добавляются. -->
-        <RecipientPicker v-if="picker" :kind="picker" :taken="{ to, cc, bcc }" @close="picker = null" @add="applyPicked" />
+        <RecipientPicker v-if="rcpt" :kind="rcpt" :taken="{ to, cc, bcc }" @close="rcpt = null" @add="applyPicked" />
         <div v-if="identities.length > 1" class="compose__row">
             <label for="cmp-from">От кого</label>
             <select id="cmp-from" v-model="from">
