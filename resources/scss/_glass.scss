@@ -38,7 +38,9 @@
     }
     &[data-glass-split="1"] {
         .rail, .mnav { color: #fff; }
-        .mnav__item, .mnav__group, .mnav__count, .rail__item { color: var(--fg-side-muted); }
+        // На тёмном меню всё «бледное» (группы, общие папки, счётчики, подсказки) — светлым тоном меню, иначе серое на тёмном.
+        .mnav__item, .mnav__group, .mnav__count, .mnav__shared, .mnav__item svg, .mnav .hint, .rail__item { color: var(--fg-side-muted); }
+        .mnav__item { opacity: 1; }
         .mnav__item--on, .mnav__item--on .mnav__count, .rail__item--on { color: #fff; }
         .rail__item--on { background: color-mix(in srgb, var(--fg-side-accent) 25%, transparent); }
         .mnav__item:hover { background: rgb(255 255 255 / .08); }
