@@ -825,12 +825,12 @@ onBeforeUnmount(() => {
                 :quarantine="quarantine"
                 :quota="quota"
                 @go="go"
-                @compose="startCompose('new')"
+                @compose="navOpen = false; startCompose('new')"
                 @context="folderContext"
                 @drop="onDrop"
                 @new-folder="folderDialog('newFolder')"
                 @label="labelMenu"
-                @outbox="showOutbox"
+                @outbox="navOpen = false; showOutbox()"
             />
             <div class="mail__rs" title="Потяните, чтобы изменить ширину; двойной щелчок — как было" @pointerdown="startResize('nav', $event)" @dblclick="resetCol('nav')" />
             <div v-if="navOpen" class="drawer-backdrop" style="z-index: 89" @touchstart.prevent="navOpen = false" @click="navOpen = false" />
