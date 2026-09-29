@@ -77,6 +77,8 @@ export async function sync(enabled) {
 /** Счётчик непрочитанных на иконке приложения (Chrome, Edge, Safari на экране «Домой»). */
 export function setBadge(n) {
     try {
+        // Приложение для Windows: кружок на панели задач и подсказка у значка в трее.
+        window.pochta?.setUnread?.(n);
         if (!('setAppBadge' in navigator)) return;
         (n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
     } catch { /* нет поддержки */ }

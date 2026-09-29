@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Почта — первый запуск</title>
+<style>
+    /* Токены веб-почты (resources/scss/_variables.scss, гамма «А»), продублированы: экран открывается до сервера. */
+    :root { --bg: #F5F3EF; --card: #fff; --text: #2B3036; --muted: #646B76; --accent: #C94E00; --accent-on: #fff; --line: #E6E4E0; --no: #C0392B; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1E2226; --card: #2A2F35; --text: #EDEBE7; --muted: #A3A9B2; --accent: #FF8A3D; --accent-on: #1E2226; --line: #3A4047; --no: #FF7A6B; } }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; display: grid; place-items: center; }
+    .card { width: min(440px, calc(100vw - 32px)); background: var(--card); border-radius: 16px; box-shadow: 0 2px 16px rgba(27, 36, 48, .12); padding: 28px; }
+    .logo { width: 52px; height: 52px; border-radius: 14px; background: var(--accent); display: grid; place-items: center; margin-bottom: 16px; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    p { margin: 0 0 18px; color: var(--muted); }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    input { width: 100%; font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); outline: none; }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+    button { margin-top: 16px; width: 100%; font: inherit; font-weight: 600; font-size: 15px; padding: 11px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-on); cursor: pointer; }
+    button:disabled { opacity: .6; cursor: default; }
+    .err { color: var(--no); font-size: 14px; margin-top: 12px; min-height: 20px; }
+    .hint { font-size: 13px; margin: 14px 0 0; }
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="off">
+    <div class="logo"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3.5 6.5 8.5 6 8.5-6"/></svg></div>
+    <h1>Почта</h1>
+    <p>Укажите свой адрес почты — приложение само найдёт сервер. Пароль спросит уже страница входа.</p>
+    <label for="addr">Адрес почты или сервера</label>
+    <input id="addr" name="addr" type="text" spellcheck="false" autofocus>
+    <div class="err" id="err" role="alert"></div>
+    <button id="go" type="submit">Далее</button>
+    <p class="hint">Например, ivan@example.ru или mail.example.ru. Сервер можно сменить позже в меню значка в трее.</p>
+</form>
+<script>
+    const f = document.getElementById('f');
+    const input = document.getElementById('addr');
+    const err = document.getElementById('err');
+    const go = document.getElementById('go');
+    if (window.pochtaSetup && window.pochtaSetup.hint) input.placeholder = window.pochtaSetup.hint;
+    f.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        go.disabled = true; go.textContent = 'Ищу сервер…';
+        try {
+            const r = await window.pochtaSetup.check(input.value);
+            if (r && r.ok) { go.textContent = 'Открываю ' + new URL(r.server).host + '…'; return; }
+            err.textContent = (r && r.error) || 'Не получилось';
+        } catch (x) {
+            err.textContent = 'Не получилось: ' + (x && x.message || x);
+        }
+        go.disabled = false; go.textContent = 'Далее';
+    });
+</script>
+</body>
+</html>

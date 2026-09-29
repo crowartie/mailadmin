@@ -34,14 +34,17 @@ export function useLiveUpdates(ctx) {
     })());
 
     function canNotify() {
-        return ctx.settings.value.notify_browser && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+        // Приложение для Windows (desktop/): уведомления включаются в меню значка в трее, а не в настройках почты.
+        const on = window.pochta ? window.pochta.notificationsOn() : ctx.settings.value.notify_browser;
+        return on && typeof Notification !== 'undefined' && Notification.permission === 'granted';
     }
 
     function notify(title, body, tag, onclick) {
         if (!canNotify()) return;
         try {
             const n = new Notification(title, { body, tag, icon: '/favicon.ico' });
-            n.onclick = () => { window.focus(); onclick?.(); n.close(); };
+            // В приложении окно может быть спрятано в трей — window.focus() его не покажет, просим приложение.
+            n.onclick = () => { window.pochta?.show?.(); window.focus(); onclick?.(); n.close(); };
             setTimeout(() => n.close(), 15000);
         } catch {
             /* уведомления запрещены на ходу */
@@ -66,7 +69,8 @@ export function useLiveUpdates(ctx) {
     }
 
     async function poll() {
-        if (document.visibilityState !== 'visible' && Date.now() - lastPoll < 60000) return;
+        // Вкладка в фоне — не чаще раза в минуту; окно приложения в трее — раз в 20 с: оно и есть «почта в фоне».
+        if (document.visibilityState !== 'visible' && Date.now() - lastPoll < (window.pochta ? 20000 : 60000)) return;
         // Пока человек пишет письмо или держит меню, не мешаем — но и интервал не растим:
         // он вот-вот вернётся к списку.
         if (ctx.compose.value || ctx.menu.value) { quiet = 0; return; }

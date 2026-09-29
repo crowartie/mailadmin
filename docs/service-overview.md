@@ -691,6 +691,20 @@ Subject и Message-ID. Поиск по любому другому заголо�
 на сайте mu-plugin `innotec-form-guard.php` ставит From/Return-Path `site@`, поле-ловушку и проверку
 времени заполнения для форм CF7. Тест `ExternalSendersSiteTest`.
 
+Приложение «Почта» для Windows (30.09.2026): `desktop/` — Electron-оболочка вокруг веб-почты своего сервера
+(интерфейс не дублируется, всё новое в вебе сразу есть в приложении). Своё у приложения: значок в трее с
+подсказкой «N непрочитанных» и меню, кружок с числом на значке панели задач, уведомления Windows о новых
+письмах и при закрытом окне или на другой странице (раз в 30 с `/mail/api/status`, затем список непрочитанных),
+крестик — в трей, автозапуск с Windows, ссылки mailto:, экран «нет связи» с автоповтором, первый запуск с
+выбором сервера по адресу почты, проверка орфографии и меню правой кнопки, обновление само себя.
+Страница почты видит мост `window.pochta` (`setUnread`, `show`, `notificationsOn`) — им пользуются
+`push.setBadge` и `useLiveUpdates` (уведомления, опрос раз в 20 с при окне в трее). Раздача с сервера:
+`storage/app/private/desktop` → `/app/windows/<файл>` (latest.yml, установщик, .blockmap — самообновление)
+и `/app/pochta-setup.exe`, карточка «Почта для Windows» на `/app` (`DesktopAppController`, `DesktopRelease`).
+Тесты: `desktop/test/unit` (логика оболочки), `desktop/test/e2e` (окно против заглушки сервера, Playwright),
+`desktop/test/smoke-packaged.js` (собранное приложение против настоящего сервера, без входа),
+`tests/Feature/DesktopAppDownloadTest`. Подробности — `desktop/README.md`.
+
 Веб-приложение на телефоне и push-уведомления (30.09.2026): почта ставится на экран «Домой» iPhone
 и Android как приложение (PWA). `public/manifest.webmanifest`, `public/sw.js` (регистрируется из `app.js`,
 страницы не кэширует), теги в `app.blade.php`, иконки `icon-192/512`, `icon-maskable-512`. Подсказка

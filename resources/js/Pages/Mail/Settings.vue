@@ -259,7 +259,7 @@ async function recolor(l, color) {
 }
 
 // ── Уведомления браузера ─────────────────────────────────────
-const notifyState = ref(typeof Notification === 'undefined' ? 'Этот браузер не поддерживает уведомления' : Notification.permission === 'denied' ? 'Уведомления запрещены в настройках браузера для этого сайта' : '');
+const notifyState = ref(window.pochta ? 'В приложении «Почта» для Windows уведомления включаются и выключаются в меню значка в трее — эта настройка для браузера' : typeof Notification === 'undefined' ? 'Этот браузер не поддерживает уведомления' : Notification.permission === 'denied' ? 'Уведомления запрещены в настройках браузера для этого сайта' : '');
 async function askNotify(e) {
     if (typeof Notification === 'undefined') { s.value.notify_browser = false; return; }
     if (!e.target.checked) { notifyState.value = ''; await saveOne({ notify_browser: false }, 'Уведомления выключены'); pushSync(false); return; }

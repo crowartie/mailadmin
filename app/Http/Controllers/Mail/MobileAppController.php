@@ -26,7 +26,10 @@ class MobileAppController extends Controller
         // QR — чтобы с экрана компьютера открыть страницу на телефоне.
         $qr = (new Writer(new ImageRenderer(new RendererStyle(170, 0), new SvgImageBackEnd())))->writeString($url);
 
-        return response()->view('mail.app', ['r' => $r, 'qr' => $qr, 'url' => $url], $r ? 200 : 404);
+        // Приложение для Windows — на той же странице (DesktopRelease); 404, только если не выложено ни одно.
+        $w = \App\Services\Mail\DesktopRelease::latest();
+
+        return response()->view('mail.app', ['r' => $r, 'w' => $w, 'qr' => $qr, 'url' => $url], $r || $w ? 200 : 404);
     }
 
     public function download(): BinaryFileResponse

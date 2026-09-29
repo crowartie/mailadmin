@@ -52,6 +52,9 @@ Route::middleware('area:mail')->group(function () {
     // Приложение для Android со своего сервера: страница, файл (без входа — ставят до того, как войти).
     Route::get('/app', [\App\Http\Controllers\Mail\MobileAppController::class, 'page']);
     Route::get('/app/pochta.apk', [\App\Http\Controllers\Mail\MobileAppController::class, 'download'])->middleware('throttle:30,1');
+    // Приложение для Windows (desktop/): постоянная ссылка на установщик и папка самообновления.
+    Route::get('/app/pochta-setup.exe', [\App\Http\Controllers\Mail\DesktopAppController::class, 'download'])->middleware('throttle:30,1');
+    Route::get('/app/windows/{file}', [\App\Http\Controllers\Mail\DesktopAppController::class, 'feed'])->where('file', '[A-Za-z0-9._-]+')->middleware('throttle:120,1');
     Route::get('/mail/help', [\App\Http\Controllers\Mail\HelpController::class, 'index']);
     Route::get('/mail/setup', [\App\Http\Controllers\Mail\SetupController::class, 'index']);
     Route::get('/mail/server.crt', [\App\Http\Controllers\Mail\SetupController::class, 'certificate']);

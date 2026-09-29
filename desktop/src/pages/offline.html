@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Почта — нет связи</title>
+<style>
+    :root { --bg: #F5F3EF; --card: #fff; --text: #2B3036; --muted: #646B76; --accent: #C94E00; --accent-on: #fff; --line: #E6E4E0; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #1E2226; --card: #2A2F35; --text: #EDEBE7; --muted: #A3A9B2; --accent: #FF8A3D; --accent-on: #1E2226; --line: #3A4047; } }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; display: grid; place-items: center; }
+    .card { width: min(460px, calc(100vw - 32px)); background: var(--card); border-radius: 16px; box-shadow: 0 2px 16px rgba(27, 36, 48, .12); padding: 28px; text-align: center; }
+    h1 { font-size: 21px; margin: 12px 0 6px; }
+    p { margin: 0 0 8px; color: var(--muted); }
+    ul { text-align: left; color: var(--muted); margin: 12px 0 0; padding-left: 20px; }
+    button { margin-top: 18px; font: inherit; font-weight: 600; padding: 10px 22px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-on); cursor: pointer; }
+    .tech { font-size: 12px; color: var(--muted); margin-top: 14px; opacity: .8; word-break: break-all; }
+</style>
+</head>
+<body>
+<div class="card">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent)"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><path d="M12 19h.01"/><path d="m3 3 18 18"/></svg>
+    <h1>Нет связи с сервером почты</h1>
+    <p id="host"></p>
+    <ul>
+        <li>Проверьте интернет.</li>
+        <li>Если почта открывается только через VPN — включите его.</li>
+    </ul>
+    <button id="retry" type="button">Повторить сейчас</button>
+    <p class="tech" id="left"></p>
+    <p class="tech" id="reason"></p>
+</div>
+<script>
+    const q = new URLSearchParams(location.search);
+    const target = q.get('target') || '';
+    let left = Math.round((Number(q.get('retry')) || 15000) / 1000);
+    try { document.getElementById('host').textContent = new URL(target).host; } catch { /* адреса нет */ }
+    if (q.get('reason')) document.getElementById('reason').textContent = 'Причина: ' + q.get('reason');
+    const go = () => { if (/^https?:\/\//.test(target)) location.href = target; };
+    document.getElementById('retry').addEventListener('click', go);
+    const tick = () => {
+        document.getElementById('left').textContent = left > 0 ? 'Повторю сам через ' + left + ' с' : 'Пробую…';
+        left--;
+    };
+    tick(); setInterval(tick, 1000);
+</script>
+</body>
+</html>
