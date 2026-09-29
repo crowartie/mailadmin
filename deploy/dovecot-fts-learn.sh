@@ -3,7 +3,22 @@
 # Идемпотентно: повторный запуск ничего не дублирует. Запускать под sudo.
 set -euo pipefail
 CONF=/etc/dovecot/dovecot.conf
-cp -an "$CONF" "$CONF.bak-fts-$(date +%Y%m%d%H%M%S)"
+# Резервная копия dovecot.conf — только если скрипт его реально правит. Снимок до правок держим во временном
+# файле и при выходе сравниваем с текущим: не изменился — снимок просто удаляем, изменился — снимок становится
+# копией .bak-fts-<дата>. Храним не больше трёх последних копий (раньше копия делалась при каждой выкладке,
+# и на сервере их скопилось больше двухсот).
+SNAP=$(mktemp /tmp/dovecot.conf.snap.XXXXXX)
+cp -p "$CONF" "$SNAP"
+finish_backup() {
+  if cmp -s "$CONF" "$SNAP"; then
+    rm -f "$SNAP"
+  else
+    mv "$SNAP" "$CONF.bak-fts-$(date +%Y%m%d%H%M%S)"
+    # Дата в имени — сортировка по имени даёт хронологию; всё, кроме трёх последних, удаляем
+    ls -1 "$CONF".bak-fts-* 2>/dev/null | sort | head -n -3 | xargs -r rm -f
+  fi
+}
+trap finish_backup EXIT
 # Слепок конфигурации до правок: перечитываем Dovecot только если что-то реально изменилось
 # (полный перезапуск при каждой выкладке рвал IMAP всем и на 1-2 минуты выключал quota-status → Postfix отвечал 451).
 BEFORE=$(doveconf -n 2>/dev/null | md5sum)
