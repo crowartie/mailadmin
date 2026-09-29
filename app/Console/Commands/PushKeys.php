@@ -7,18 +7,18 @@ use Illuminate\Console\Command;
 
 /**
  * Ключи VAPID для push-уведомлений. Печатает строки для .env; deploy/dovecot-push.sh
- * зовёт команду с --env и дописывает их сам, если ключей ещё нет.
+ * зовёт команду с --dotenv и дописывает их сам, если ключей ещё нет.
  */
 class PushKeys extends Command
 {
-    protected $signature = 'push:keys {--env : напечатать строками PUSH_VAPID_PUBLIC=… / PUSH_VAPID_PRIVATE=… для .env}';
+    protected $signature = 'push:keys {--dotenv : напечатать строками PUSH_VAPID_PUBLIC=… / PUSH_VAPID_PRIVATE=… для .env}';
 
     protected $description = 'Создать пару ключей VAPID для push-уведомлений';
 
     public function handle(): int
     {
         $k = PushNotifier::makeKeys();
-        if ($this->option('env')) {
+        if ($this->option('dotenv')) {
             $this->line('PUSH_VAPID_PUBLIC=' . $k['public']);
             $this->line('PUSH_VAPID_PRIVATE=' . $k['private']);
         } else {

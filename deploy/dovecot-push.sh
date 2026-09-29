@@ -20,7 +20,7 @@ if [ -z "$(getenv PUSH_EVENT_TOKEN)" ]; then
   changed=1
 fi
 if [ -z "$(getenv PUSH_VAPID_PUBLIC)" ] || [ -z "$(getenv PUSH_VAPID_PRIVATE)" ]; then
-  keys=$(cd "$APP" && sudo -u www-data php artisan push:keys --env 2>/dev/null || true)
+  keys=$(cd "$APP" && sudo -u www-data php artisan push:keys --dotenv 2>/dev/null || true)
   if echo "$keys" | grep -q '^PUSH_VAPID_PUBLIC='; then
     sed -i '/^PUSH_VAPID_PUBLIC=/d;/^PUSH_VAPID_PRIVATE=/d' "$ENV"
     printf '# Ключи VAPID для push-уведомлений (push:keys); менять нельзя — подписки устройств перестанут работать\n%s\n' "$keys" >> "$ENV"
