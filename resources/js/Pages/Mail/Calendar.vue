@@ -334,7 +334,7 @@ const ALARMS = [['', 'без напоминания'], [0, 'в момент на
                 <div style="flex: 1" />
                 <div class="hint" style="padding: 8px 12px">Телефон: CalDAV/CardDAV по адресу <span class="mono">{{ origin }}/dav/</span>, логин и пароль от почты.</div>
             </nav>
-            <div v-if="navOpen" class="drawer-backdrop" style="z-index: 89" @click="navOpen = false" />
+            <div v-if="navOpen" class="drawer-backdrop" style="z-index: 89" @touchstart.prevent="navOpen = false" @click="navOpen = false" />
 
             <section class="cal__main">
                 <div class="mread__bar cal__bar">

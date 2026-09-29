@@ -246,7 +246,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                     <input ref="fileInput" type="file" accept=".vcf,text/vcard" hidden @change="importFile">
                 </div>
             </nav>
-            <div v-if="navOpen" class="drawer-backdrop" style="z-index: 89" @click="navOpen = false" />
+            <div v-if="navOpen" class="drawer-backdrop" style="z-index: 89" @touchstart.prevent="navOpen = false" @click="navOpen = false" />
 
             <section class="mlist">
                 <div class="mobile-bar">

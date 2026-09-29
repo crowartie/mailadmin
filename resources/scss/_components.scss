@@ -342,6 +342,8 @@ select.input { padding-right: 32px; }
     inset: 0;
     background: rgba(27, 36, 48, .18);
     z-index: 30;
+    cursor: pointer;      // iOS отдаёт click только «кликабельным» элементам
+    touch-action: none;   // тап по фону — закрыть шторку, а не прокрутить список под ней
 }
 
 .drawer {

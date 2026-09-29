@@ -70,6 +70,10 @@ class ThreadBuilder
                 // Письмо из «Корзины» или «Спама» в переписке показывать надо, но так,
                 // чтобы было видно, откуда оно: иначе непонятно, почему его нет в папке.
                 $role = $this->tree->folderRole($p);
+                // Черновик ответа — ещё не письмо: в цепочке ему не место (старые записи индекса тоже отсеиваем).
+                if ($role === 'drafts' && $path !== $p) {
+                    continue;
+                }
                 $title = $this->tree->folderTitle($p);
                 try {
                     // Только заголовки и превью: свёрнутому письму в цепочке больше не нужно, тело подгрузится при раскрытии.
@@ -123,7 +127,7 @@ class ThreadBuilder
         // это запасной путь, обычно работает индекс цепочек.
         $paths = [$path, $this->tree->rolePath('sent'), $this->tree->rolePath('inbox')];
         foreach ($this->tree->folders() as $f) {
-            if (! in_array($f['role'] ?? '', ['spam', 'trash', 'shared'], true)) {
+            if (! in_array($f['role'] ?? '', ['spam', 'trash', 'shared', 'drafts'], true)) {
                 $paths[] = $f['path'];
             }
         }

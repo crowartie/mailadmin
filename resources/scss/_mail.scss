@@ -280,14 +280,19 @@
     position: relative;
     user-select: none;
 
-    &:hover { background: v.$c-surface-2; }
+    // Подсветка под мышью и рамка фокуса — только на устройствах с мышью: на телефоне строка, которую
+    // задели пальцем при прокрутке, оставалась подсвеченной с рамкой, пока не тронешь другую.
+    @media (hover: hover) {
+        &:hover { background: v.$c-surface-2; }
+        &--on:hover { background: v.$c-accent-soft; }
+        &:hover .cb { opacity: 1; }
+    }
     &--on { background: v.$c-accent-soft; }
-    &--on:hover { background: v.$c-accent-soft; }
     &--cursor { box-shadow: inset 0 0 0 2px v.$c-accent; }
     &--drag { opacity: .5; }
 
     .cb { opacity: .55; }
-    &:hover .cb, &--checked .cb { opacity: 1; }
+    &--checked .cb { opacity: 1; }
 
     // Точка непрочитанного — на углу аватара, а не отдельной колонкой.
     &__dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; left: 41px; top: 12px; border: 2px solid v.$c-surface; display: none; z-index: 1; }
@@ -383,7 +388,7 @@
     .mlist--acts &:hover &__when > span:not(.mrow__acts), .mlist--acts &:focus-within &__when > span:not(.mrow__acts) { visibility: hidden; }
     @media (hover: none) { &__acts { display: none !important; } }   // !important: правило наведения ниже сильнее по весу
 
-    &:focus-visible { outline: 2px solid v.$c-accent; outline-offset: -2px; }
+    @media (hover: hover) { &:focus-visible { outline: 2px solid v.$c-accent; outline-offset: -2px; } }
 
     .cb:focus-visible { outline: 2px solid v.$c-accent; outline-offset: 2px; border-radius: 4px; }
 }
