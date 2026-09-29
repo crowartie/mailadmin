@@ -33,9 +33,11 @@
     // делает элемент «якорем» для position: fixed внутри, и меню по инициалам (fixed в .rail) уезжало за экран.
     // Блик под указателем — слой того же фона, его сила через --glass-shine (0 → прозрачно).
     .rail, .mnav, .mlist, .mread, .card, .mset__section {
-        position: relative; isolation: isolate; background: transparent;
+        isolation: isolate; background: transparent;
         &::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; }
     }
+    // Псевдослою нужен позиционированный родитель; .rail остаётся sticky (иначе полоса уезжала при прокрутке настроек), .mread уже relative.
+    .mnav, .mlist, .card, .mset__section { position: relative; }
     // Меню (левая полоса и папки): в split-палитрах — плотный тёмный RGB меню, иначе светлое стекло.
     .rail, .mnav {
         border-color: transparent;
