@@ -916,7 +916,7 @@ onBeforeUnmount(() => {
                     @reply="startCompose"
                     @quick="quickReply"
                     @context="openMenu"
-                    @back="mobileRead = false"
+                    @back="closeMessage(); cursor = null"
                     @close="closeMessage"
                     @unsubscribe="unsubscribe"
                     @search="search"

@@ -701,7 +701,8 @@
     @container mread (max-width: 560px) {
         .mread__bar { padding: 8px; }
         .mread__bar .sep { display: none; }
-        .mread__bar .ib.ib--keep { font-size: 0; gap: 0; }
+        // Без подписи заливка «главной кнопки» читалась как «нажато» (телефон): оставляем ей обычный вид.
+        .mread__bar .ib.ib--keep { font-size: 0; gap: 0; background: none; color: inherit; font-weight: 400; }
     }
 }
 
