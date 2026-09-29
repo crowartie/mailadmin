@@ -100,3 +100,17 @@
   («invalid directory name»). В `mailadmin-ctl` операции с очередью идут циклом.
 - Ничего, что требует root, приложение не делает напрямую — только через белый список
   `sudo mailadmin-ctl <подкоманда>`. Новую привилегированную операцию добавлять туда.
+
+## Dovecot: плагины доставки и push (29.09.2026)
+
+- Доставка в iRedMail идёт через `dovecot-lda` (Postfix transport `dovecot`, от пользователя vmail), а не LMTP.
+  Плагины для доставки дописываются в `protocol lda { mail_plugins = … }`; LMTP настроен «на всякий случай».
+- `push_notification_lua` требует `mail_lua` **перед** собой в `mail_plugins`. Без него lda падает с
+  «Couldn't load required plugin … undefined symbol: dlua_dovecot_register», Postfix откладывает всю почту
+  (так стояла доставка 4 минуты). `deploy/dovecot-push.sh` перед правкой конфигурации пробует плагины
+  через `doveadm -o mail_plugins=… mailbox status`, и только потом трогает dovecot.conf и делает reload.
+- Файлы, которые читает доставка (lua-скрипт с токеном), должны быть доступны группе vmail, не dovecot.
+- Проверка после reload: `sudo -u vmail /usr/lib/dovecot/dovecot-lda -d <ящик> -f x@y < письмо.eml; echo $?`
+  (75 — временная ошибка, письма копятся в очереди) и `postqueue -p`. Журнал доставки: `/var/log/dovecot/lda.log`.
+- `minishlink/web-push` 9 и 10 требуют Guzzle 7, у нас Guzzle 8 — подходит только 11; конструктор `WebPush`
+  третьим аргументом берёт PSR-клиент, а не таймаут.
