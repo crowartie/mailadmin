@@ -762,3 +762,12 @@ select.input { padding-right: 32px; }
     &__danger:hover { filter: brightness(1.07); }
 }
 @keyframes cfm-in { from { opacity: 0; } to { opacity: 1; } }
+
+// Телефон и планшет: iOS приближает страницу при касании поля со шрифтом мельче 16 px и не возвращает
+// масштаб обратно — окно письма «прыгало» при каждом нажатии в текст. 16 px на всех полях ввода
+// только у сенсорных экранов; на компьютере размеры прежние.
+@media (hover: none) and (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select, [contenteditable="true"] {
+        font-size: 16px !important;
+    }
+}

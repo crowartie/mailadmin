@@ -137,7 +137,8 @@ const fmtOpen = ref((() => { try { return localStorage.getItem('mail.fmt') === '
 function toggleFmt() {
     fmtOpen.value = !fmtOpen.value;
     try { localStorage.setItem('mail.fmt', fmtOpen.value ? '1' : '0'); } catch { /* приватный режим */ }
-    editor.value?.focus();
+    // На телефоне фокус в текст открывал клавиатуру, и она закрывала только что показанную панель оформления.
+    if (!window.matchMedia?.('(hover: none)').matches) editor.value?.focus();
 }   // «Отправить» нажато, ждём загрузки больших файлов
 const drop = ref(false);
 const editor = ref(null);
@@ -640,7 +641,9 @@ const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ вс�
             <label for="cmp-to">Кому</label>
             <RecipientInput input-id="cmp-to" ref="toInput" v-model="to" :others="[...cc, ...bcc].map((a) => a.mail)" placeholder="Имя или адрес" @note="$emit('toast', { text: $event, error: true })" />
             <button class="ib ib--sm" type="button" title="Выбрать из адресной книги" aria-label="Выбрать получателей из адресной книги" @click="rcpt = 'to'"><Icon name="book" :size="16" /></button>
-            <span class="links">
+            <!-- Когда обе строки уже открыты, блок убираем целиком: пустой, он через отступ сдвигал значок книги
+                 в строке «Кому» левее, чем в «Копии» и «Скрытой». -->
+            <span v-if="!showCc || !showBcc" class="links">
                 <button v-if="!showCc" type="button" class="linklike" @click="showCc = true">Копия</button>
                 <button v-if="!showBcc" type="button" class="linklike" @click="showBcc = true">Скрытая</button>
             </span>
