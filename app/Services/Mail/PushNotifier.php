@@ -123,7 +123,7 @@ class PushNotifier
                     'publicKey' => (string) config('areas.push.public'),
                     'privateKey' => (string) config('areas.push.private'),
                 ],
-            ], ['TTL' => 3600, 'urgency' => 'high'], 10);
+            ], ['TTL' => 3600, 'urgency' => 'high']);
         } catch (\Throwable $e) {
             Log::warning('push: ключи VAPID не годятся: ' . $e->getMessage());
 
