@@ -36,7 +36,9 @@ const inMail = computed(() => {
 function personOf(c) {
     const mail = (c.emails || []).find((e) => e.value)?.value || '';
     if (!mail) return null;
-    return { mail: mail.toLowerCase(), name: c.fn || mail, sub: [c.title, c.org].filter(Boolean).join(' · ') || mail, groups: c.groups || [], book: c.book, employee: !!c.employee };
+    // У сотрудников в ORG стоит домен компании — он и так виден в адресе, не повторяем.
+    const org = c.org && !mail.toLowerCase().endsWith('@' + String(c.org).toLowerCase()) ? c.org : '';
+    return { mail: mail.toLowerCase(), name: c.fn || mail, sub: [c.title, org].filter(Boolean).join(' · ') || mail, groups: c.groups || [], book: c.book, employee: !!c.employee };
 }
 const people = computed(() => {
     const out = new Map();
