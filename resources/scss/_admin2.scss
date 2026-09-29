@@ -37,8 +37,9 @@
 .flash--error { background: v.$c-no-soft; color: v.$c-no; }
 .btn--danger { color: v.$c-no; border-color: color-mix(in srgb, var(--no) 35%, var(--border)); }
 .field__row { display: flex; gap: 8px; align-items: center; }
-// Числовое поле в строке не сжимается: «365» обрезалось до «36».
-.field__row > .input { flex-shrink: 0; }
+// Числовое поле в строке не сжимается: «365» обрезалось до «36». Только числа и время: правило для всех полей
+// не давало сжаться полю пароля на странице входа, и кнопка «Показать» вылезала за край карточки.
+.field__row > .input[type="number"], .field__row > .input[type="time"] { flex-shrink: 0; }
 
 .timeline { display: flex; flex-direction: column; }
 .timeline__step { display: grid; grid-template-columns: 64px 20px minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; position: relative; }
