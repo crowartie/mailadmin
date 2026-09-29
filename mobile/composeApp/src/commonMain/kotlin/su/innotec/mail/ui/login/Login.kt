@@ -82,7 +82,8 @@ fun outdatedFor(minApp: String, own: String = AppInfo.VERSION): String? =
 /** Откуда брать сервер: введён явно — он; иначе mail.<домен адреса>, затем сам домен. */
 fun serverCandidates(login: String, server: String): List<String> {
     val s = server.trim().trimEnd('/')
-    if (s.isNotEmpty()) return listOf(if (s.startsWith("http://") || s.startsWith("https://")) s else "https://$s")
+    // Только https: адрес с http:// молча переводим на https — пароль и ключ входа в открытом виде не уходят никогда.
+    if (s.isNotEmpty()) return listOf(if (s.startsWith("https://")) s else "https://" + s.removePrefix("http://"))
     val domain = login.substringAfter('@', "").trim().lowercase()
     if (domain.isEmpty()) return emptyList()
     return listOf("https://mail.$domain", "https://$domain")
