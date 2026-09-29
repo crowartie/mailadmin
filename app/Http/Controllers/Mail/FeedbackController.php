@@ -46,9 +46,9 @@ class FeedbackController extends Controller
 
         return Inertia::render('Mail/Feedback', [
             'user' => $user,
-            // Тема — выбранная человеком: с 'system' страница у светлой почты на тёмной Windows
-            // открывалась тёмной и перекрашивала следующие страницы.
-            'settings' => ['theme' => \App\Models\Webmail\Setting::for($user)['theme'] ?? 'system'],
+            // Настройки целиком, как у остальных страниц: без цветовой схемы и glass_* «Стекло»
+            // на «Моих обращениях» сбрасывалось на прежнюю оранжевую (обращение №55).
+            'settings' => \App\Models\Webmail\Setting::for($user),
             'tickets' => $tickets,
             'open' => $open,
             'kinds' => FeedbackTicket::KINDS,

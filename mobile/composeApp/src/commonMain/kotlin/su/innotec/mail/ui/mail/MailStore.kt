@@ -388,6 +388,9 @@ object MailStore {
                 version++
                 onDone()
                 after()
+                // «Выделить все на экране → Удалить» опустошало список, а следующие письма подтягиваются
+                // только прокруткой к концу — прокручивать было нечего (обращение №61). Дочитываем сами.
+                if (owner == Session.account?.key && messages.size < pageSize && messages.size < total) loadMore()
             } catch (e: ApiException) {
                 Toasts.error(e)
                 // Ящик уже другой — его списку чужие строки не нужны.

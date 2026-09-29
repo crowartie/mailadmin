@@ -50,7 +50,7 @@ class SetupController extends Controller
         return Inertia::render('Mail/Setup', [
             'user' => $user,
             // Страница открывается и без входа (по QR с телефона) — тогда тема как в системе.
-            'settings' => ['theme' => $user !== '' ? (\App\Models\Webmail\Setting::for($user)['theme'] ?? 'system') : 'system'],
+            'settings' => $user !== '' ? \App\Models\Webmail\Setting::for($user) : ['theme' => 'system'],
             'domain' => $domain,
             'base' => $base,
             'email' => $email,
