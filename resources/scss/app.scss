@@ -6,6 +6,7 @@
 @use 'groupware';
 @use 'cloud';
 @use 'admin2';
+@use 'glass';   // схема «Стекло» — последней: её правила намеренно усиливают остальные
 
 *, *::before, *::after { box-sizing: border-box; }
 

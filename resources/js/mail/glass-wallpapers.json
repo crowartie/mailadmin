@@ -1,0 +1,26 @@
+{
+ "architecture": {
+  "name": "Архитектурный скетч",
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"320\" viewBox=\"0 0 320 320\"><g fill=\"none\" stroke=\"#41639A\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M24 98V46l30-20 30 20v52H24m13 0V72h17v26m8-48h10v12H62M124 26h54v73h-54zm12 12h9v12h-9zm21 0h9v12h-9zm-21 26h9v12h-9zm21 0h9v12h-9zM220 48l20-14 22 14v38h-42zm11 38V66h18v20M46 162h56v40H46zm9 0v-14h38v14m-26 40v-24h16v24M161 156a15 15 0 1 0 0 30 15 15 0 0 0 0-30zm12 25 26 23m-9-9-6 7m-5-13-6 7M235 147v62m-15-47h30m-30 19h30M267 252h-63m16-16v31m26-31v31M30 266l37-24 36 24M45 258v34h42v-34\"/></g></svg>"
+ },
+ "arches": {
+  "name": "Средиземноморские арки",
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"320\" viewBox=\"0 0 320 320\"><g fill=\"none\" stroke=\"#41639A\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M28 160V79a47 47 0 0 1 94 0v81zm17 0V80a30 30 0 0 1 60 0v80M186 53v64a43 43 0 0 0 86 0V53m-69 0v64a26 26 0 0 0 52 0V53M43 267v-27a39 39 0 0 1 78 0v27m-61 0v-27a22 22 0 0 1 44 0v27M188 218h90m-78 19h66m-53 19h40\"/></g></svg>"
+ },
+ "petals": {
+  "name": "Ботанические линии",
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"320\" viewBox=\"0 0 320 320\"><g fill=\"none\" stroke=\"#41639A\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M26 137q74-26 88-105M57 116Q13 86 35 64q44 1 37 39M84 80q42 4 55-29-38-15-49 19M178 283q17-72 80-103M195 235q-35-36-5-55 37 18 17 48M225 206q2 44 40 38 9-38-30-44M211 45c-26-28-46 9-17 24-11 28 31 35 33 4 34 7 39-36 9-32 0-27-35-30-25 4M48 230c-13-18-32 2-15 17-7 20 20 25 24 5 24 5 25-24 5-23-3-19-26-18-14 1\"/></g></svg>"
+ },
+ "linen": {
+  "name": "Льняная фактура",
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"320\" viewBox=\"0 0 320 320\"><g fill=\"none\" stroke=\"#41639A\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M0 15h320M0 47h320M0 79h320M0 111h320M0 143h320M0 175h320M0 207h320M0 239h320M0 271h320M0 303h320M15 0v320M47 0v320M79 0v320M111 0v320M143 0v320M175 0v320M207 0v320M239 0v320M271 0v320M303 0v320\" stroke-dasharray=\"2 7\"/></g></svg>"
+ },
+ "contours": {
+  "name": "Линии рельефа",
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"320\" viewBox=\"0 0 320 320\"><g fill=\"none\" stroke=\"#41639A\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M-20 42C72-18 95 135 182 68S270 33 345 96M-20 59C72-1 95 152 182 85S270 50 345 113M-20 76C72 16 95 169 182 102S270 67 345 130M-20 180c86-68 125 69 209 18s107 8 152 62M-20 197c86-68 125 69 209 18s107 8 152 62M-20 214c86-68 125 69 209 18s107 8 152 62\"/></g></svg>"
+ },
+ "orbit": {
+  "name": "Орбиты и точки",
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"320\" viewBox=\"0 0 320 320\"><g fill=\"none\" stroke=\"#41639A\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"74\" cy=\"75\" r=\"35\"/><ellipse cx=\"74\" cy=\"75\" rx=\"60\" ry=\"17\" transform=\"rotate(-30 74 75)\"/><circle cx=\"231\" cy=\"223\" r=\"40\"/><ellipse cx=\"231\" cy=\"223\" rx=\"65\" ry=\"18\" transform=\"rotate(32 231 223)\"/><path d=\"M218 36v14m-7-7h14M48 233v12m-6-6h12M145 154v10m-5-5h10\"/><circle cx=\"266\" cy=\"100\" r=\"2\"/><circle cx=\"96\" cy=\"285\" r=\"2\"/></g></svg>"
+ }
+}

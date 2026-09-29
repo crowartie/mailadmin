@@ -12,6 +12,9 @@ use Illuminate\Http\Request;
 
 class SettingsController extends Controller
 {
+    /** Палитры схемы «Стекло» — те же 20, что в resources/js/mail/glass-palettes.json. */
+    public const GLASS_PALETTES = ['sky', 'iris', 'graphite', 'copper', 'plum', 'petrol', 'carbon', 'midnight', 'obsidian', 'espresso', 'sage', 'eucalyptus', 'olive', 'pine', 'porcelain', 'terracotta', 'mulberry', 'cocoa', 'atlantic', 'slate'];
+
     public function show(ImapSession $imap): JsonResponse
     {
         return response()->json(Setting::for($imap->user()));
@@ -24,7 +27,12 @@ class SettingsController extends Controller
             'signature' => ['nullable', 'string', 'max:1200000'],   // с картинками (data:, до 400 КБ каждая)
             'signature_reply' => ['nullable', 'boolean'],
             'theme' => ['nullable', 'in:light,dark,system'],
-            'scheme' => ['nullable', 'in:brand,classic'],
+            'scheme' => ['nullable', 'in:brand,classic,glass'],
+            'glass_palette' => ['nullable', 'in:' . implode(',', self::GLASS_PALETTES)],
+            'glass_motion' => ['nullable', 'in:expressive,calm,off'],
+            'glass_wallpaper' => ['nullable', 'in:auto,none,architecture,arches,petals,linen,contours,orbit'],
+            'glass_wallpaper_strength' => ['nullable', 'integer', 'min:0', 'max:30'],
+            'glass_density' => ['nullable', 'integer', 'min:68', 'max:95'],
             'density' => ['nullable', 'in:roomy,normal,compact'],
             'reply_all' => ['nullable', 'boolean'],
             'notify_browser' => ['nullable', 'boolean'],

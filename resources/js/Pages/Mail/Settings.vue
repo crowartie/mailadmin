@@ -13,6 +13,7 @@ import Dialog from '../../Components/Mail/Dialog.vue';
 import { api } from '../../mail/api';
 import { useSecuritySettings } from '../../mail/useSecuritySettings';
 import { useMailRules } from '../../mail/useMailRules';
+import { GLASS_PALETTES, GLASS_WALLPAPERS, GLASS_MOTIONS } from '../../mail/glass';
 
 const props = defineProps({
     user: String,
@@ -288,7 +289,7 @@ const shortcuts = [
 
 <template>
     <Head title="Настройки" />
-    <MailLayout :user="user" :theme="s.theme" :scheme="s.scheme">
+    <MailLayout :user="user" :theme="s.theme" :scheme="s.scheme" :glass="s">
         <div class="mset">
             <div class="page-head" style="margin-bottom: 16px">
                 <Link href="/mail" class="ib" title="К письмам"><Icon name="back" :size="18" /></Link>
@@ -328,7 +329,19 @@ const shortcuts = [
                                 </div>
                                 <div class="field">
                                     <label for="set-scheme">Цветовая схема</label>
-                                    <select id="set-scheme" v-model="s.scheme" class="input" @change="saveOne({ scheme: s.scheme })"><option value="brand">Фирменная — оранжевая</option><option value="classic">Классическая — синяя</option></select>
+                                    <select id="set-scheme" v-model="s.scheme" class="input" @change="saveOne({ scheme: s.scheme })"><option value="brand">Фирменная — оранжевая</option><option value="classic">Классическая — синяя</option><option value="glass">Стекло — палитры и эффекты (обращение №55)</option></select>
+                                    <!-- Схема «Стекло»: настройки по паспорту RECS. Меняются сразу (MailLayout следит) и сохраняются по одной. -->
+                                    <div v-if="s.scheme === 'glass'" class="glass-opts">
+                                        <p class="hint" style="margin: 0">Стекло, блик и анимации считает ваш браузер. На слабом компьютере выберите «Спокойное» или «Без анимации» движение; системные настройки «меньше движения» и «меньше прозрачности» действуют сами.</p>
+                                        <div class="glass-pal" role="radiogroup" aria-label="Палитра">
+                                            <button v-for="p in GLASS_PALETTES" :key="p.id" type="button" class="glass-pal__item" :class="{ 'glass-pal__item--on': s.glass_palette === p.id }" role="radio" :aria-checked="s.glass_palette === p.id" :style="{ '--a': p.tokens.base, '--b': p.tokens.surface, '--c': p.tokens.blue }" @click="s.glass_palette = p.id; saveOne({ glass_palette: p.id })"><i /><span>{{ p.name }}<small>{{ p.kind }}{{ p.dark ? ' · тёмная' : '' }}</small></span></button>
+                                        </div>
+                                        <div class="glass-opts__row"><label for="set-glass-motion">Движение</label><select id="set-glass-motion" v-model="s.glass_motion" class="input" style="max-width: 240px" @change="saveOne({ glass_motion: s.glass_motion })"><option v-for="(t, k) in GLASS_MOTIONS" :key="k" :value="k">{{ t }}</option></select></div>
+                                        <div class="glass-opts__row"><label for="set-glass-wp">Фоновый рисунок</label><select id="set-glass-wp" v-model="s.glass_wallpaper" class="input" style="max-width: 240px" @change="saveOne({ glass_wallpaper: s.glass_wallpaper })"><option value="auto">Как у палитры</option><option value="none">Без рисунка</option><option v-for="(w, k) in GLASS_WALLPAPERS" :key="k" :value="k">{{ w.name }}</option></select></div>
+                                        <div class="glass-opts__row"><label for="set-glass-wps">Сила рисунка: {{ s.glass_wallpaper_strength }}%</label><input id="set-glass-wps" v-model.number="s.glass_wallpaper_strength" type="range" min="0" max="30" @change="saveOne({ glass_wallpaper_strength: Number(s.glass_wallpaper_strength) })"></div>
+                                        <div class="glass-opts__row"><label for="set-glass-den">Плотность стекла: {{ s.glass_density }}%</label><input id="set-glass-den" v-model.number="s.glass_density" type="range" min="68" max="95" @change="saveOne({ glass_density: Number(s.glass_density) })"></div>
+                                        <p class="hint" style="margin: 0">Список писем и текст письма остаются непрозрачными, стекло только в обрамлении. Выпадающие списки пока системные.</p>
+                                    </div>
                                     <span class="hint" style="margin: 0">У каждой схемы свои светлая и тёмная темы; настройка общая для веб-почты и приложения</span>
                                 </div>
                                 <div class="field">

@@ -335,7 +335,7 @@ onMounted(async () => {
 </script>
 
 <template>
-    <MailLayout :user="user" :theme="settings.theme" :scheme="settings.scheme">
+    <MailLayout :user="user" :theme="settings.theme" :scheme="settings.scheme" :glass="settings">
         <Head title="Облако" />
         <h1 class="sr-only">Облако</h1>
 

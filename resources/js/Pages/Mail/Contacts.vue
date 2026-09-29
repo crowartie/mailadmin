@@ -217,7 +217,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 
 <template>
     <Head :title="title" />
-    <MailLayout :user="user" :theme="settings.theme" :scheme="settings.scheme">
+    <MailLayout :user="user" :theme="settings.theme" :scheme="settings.scheme" :glass="settings">
         <!-- 361: заголовок страницы для экранного диктора; на экране его не видно. -->
         <h1 class="sr-only">Контакты</h1>
         <div class="mail" :class="{ 'mail--read': mobileRead }">

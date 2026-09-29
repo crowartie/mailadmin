@@ -24,6 +24,12 @@ class Setting extends Model
         'signature_reply' => true,
         'theme' => 'light',
         'scheme' => 'brand',          // цветовая схема: brand — фирменная оранжевая, classic — синяя (до 27.09.2026)
+        // Схема «Стекло» (обращение №55): палитра из 20, движение, фоновый рисунок, его сила и плотность стекла.
+        'glass_palette' => 'porcelain',
+        'glass_motion' => 'expressive',
+        'glass_wallpaper' => 'auto',
+        'glass_wallpaper_strength' => 16,
+        'glass_density' => 78,
         'density' => 'normal',
         'reply_all' => false,
         'notify_browser' => false,

@@ -6,7 +6,9 @@
     <title inertia>Почта</title>
     <script>
         // Тема до загрузки приложения, чтобы страница не мигала светлым.
-        try { var t = localStorage.getItem('mail.theme'); if (t === 'dark') document.documentElement.dataset.theme = 'dark'; var s = localStorage.getItem('mail.scheme'); if (s === 'classic') document.documentElement.dataset.scheme = 'classic'; } catch (e) {}
+        try { var t = localStorage.getItem('mail.theme'); if (t === 'dark') document.documentElement.dataset.theme = 'dark'; var s = localStorage.getItem('mail.scheme'); if (s === 'classic') document.documentElement.dataset.scheme = 'classic';
+            // Схема «Стекло»: переменные палитры сохранены при прошлом включении — ставим до загрузки, чтобы не мигало.
+            if (s === 'glass') { var g = localStorage.getItem('mail.glassStyle'); if (g) { document.documentElement.dataset.scheme = 'glass'; document.documentElement.setAttribute('style', g); document.documentElement.dataset.theme = localStorage.getItem('mail.glassDark') === '1' ? 'dark' : 'light'; document.documentElement.dataset.motion = localStorage.getItem('mail.glassMotion') || 'expressive'; if (localStorage.getItem('mail.glassSplit') === '1') document.documentElement.dataset.glassSplit = '1'; } } } catch (e) {}
     </script>
     <!-- Иконка вкладки: конверт с логотипом; ?v= — чтобы браузеры не держали старую -->
     <link rel="icon" href="/favicon.ico?v=2" sizes="any">

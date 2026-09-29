@@ -8,6 +8,8 @@ import Popover from '../Components/Mail/Popover.vue';
 import { initUi, setUiSimple, uiSimple } from '../mail/uiMode';
 
 const props = defineProps({
+    // Настройки схемы «Стекло» (glass_*) — страницы передают settings целиком; без них берётся прошлое включение.
+    glass: { type: Object, default: null },
     user: String,
     theme: { type: String, default: 'light' },
     // Цветовая схема: brand — фирменная (оранжевая), classic — синяя; работает вместе с темой.
@@ -64,7 +66,11 @@ const initials = computed(() => {
 
 // Тема: из настроек пользователя; локальная копия — чтобы не мигало до загрузки.
 const isDark = ref(false);
+import { applyGlass, removeGlass, cachedGlass } from '../mail/glass';
+
 function applyTheme(t) {
+    // В схеме «Стекло» тему задаёт палитра (светлая или тёмная), а не настройка темы.
+    if (props.scheme === 'glass' && document.documentElement.dataset.scheme === 'glass') { isDark.value = document.documentElement.dataset.theme === 'dark'; return; }
     let real = t;
     if (t === 'system') real = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     document.documentElement.dataset.theme = real;
@@ -75,15 +81,33 @@ onMounted(() => applyTheme(props.theme));
 watch(() => props.theme, applyTheme);
 
 function applyScheme(sch) {
-    const real = sch === 'classic' ? 'classic' : 'brand';
+    const real = ['classic', 'glass'].includes(sch) ? sch : 'brand';
+    if (real === 'glass') {
+        // Схема «Стекло» (обращение №55): палитра, движение, рисунок — из настроек ящика или из прошлого включения.
+        applyGlass(props.glass || cachedGlass());
+        isDark.value = document.documentElement.dataset.theme === 'dark';
+        return;
+    }
+    if (document.documentElement.dataset.scheme === 'glass') { removeGlass(); }
     if (real === 'brand') delete document.documentElement.dataset.scheme; else document.documentElement.dataset.scheme = real;
     try { localStorage.setItem('mail.scheme', real); } catch {}
+    applyTheme(props.theme);
 }
 onMounted(() => applyScheme(props.scheme));
 watch(() => props.scheme, applyScheme);
+// Настройки стекла меняются в «Оформлении» — применяем сразу, без сохранения страницы.
+watch(() => props.glass && [props.glass.glass_palette, props.glass.glass_motion, props.glass.glass_wallpaper, props.glass.glass_wallpaper_strength, props.glass.glass_density], () => { if (props.scheme === 'glass') applyScheme('glass'); });
 
 function toggleTheme() {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    if (props.scheme === 'glass') {
+        // В «Стекле» тёмная/светлая — это палитра: переключаем между фарфором и полночью и запоминаем в настройках.
+        const cfg = { ...(cachedGlass() || {}), glass_palette: next === 'dark' ? 'midnight' : 'porcelain' };
+        applyGlass(cfg);
+        isDark.value = next === 'dark';
+        fetch('/mail/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-XSRF-TOKEN': decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/) || [])[1] || '') }, credentials: 'same-origin', body: JSON.stringify({ glass_palette: cfg.glass_palette }) }).catch(() => {});
+        return;
+    }
     applyTheme(next);
     fetch('/mail/api/settings', {
         method: 'PUT',

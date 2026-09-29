@@ -196,7 +196,7 @@ function backToList() {
 
 <template>
     <Head title="Мои обращения" />
-    <MailLayout :user="user" :theme="settings?.theme" :scheme="settings?.scheme">
+    <MailLayout :user="user" :theme="settings?.theme" :scheme="settings?.scheme" :glass="settings || null">
         <div class="fbpage">
           <div class="fbpage__inner">
             <div style="display: flex; align-items: center; gap: 12px; flex: 0 0 auto">
