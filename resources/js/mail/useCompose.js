@@ -136,6 +136,20 @@ export function useCompose(ctx) {
             c.sourceFolder = m.folder;
             c.sourceUid = m.uid;
             c.keepAttachments = false;
+        } else if (mode === 'replyAttach') {
+            // Ответ вложением: письмо отправителю, исходное уходит файлом .eml, а не цитатой —
+            // получатель видит своё письмо целиком, с заголовками и вложениями. Просьба сотрудника
+            // вслед за «Переслать вложением» (обращение №39). Отметка «отвечено» ставится, как у ответа.
+            c.to = replyTargets(m).filter((a) => !me(a) || replyTargets(m).length === 1);
+            c.subject = answerSubject('Re', m.subject);
+            c.html = `<p><br></p>${signature(true, c.from)}`;
+            c.inReplyTo = m.messageId;
+            c.references = [m.references, m.messageId].filter(Boolean).join(' ');
+            c.answeredFolder = m.folder;
+            c.answeredUid = m.uid;
+            c.attachMessages = [{ folder: m.folder, uid: m.uid, name: m.subject || 'письмо' }];
+            c.attachments = [];
+            c.keepAttachments = false;
         } else if (mode === 'forwardAttach') {
             // Пересылка вложением, как в Kerio (обращение №39): исходные письма уходят
             // файлами .eml, тело нового письма остаётся пустым — цитаты и шапки не нужно.

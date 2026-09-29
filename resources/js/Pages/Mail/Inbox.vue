@@ -970,6 +970,7 @@ onBeforeUnmount(() => {
                 <button class="pop__item" type="button" @click="openThen('forward')"><Icon name="fwd" :size="16" />Переслать<span class="k">f</span></button>
                 <!-- Как в Kerio (обращение №39): письма уходят файлами .eml, получатель открывает исходное письмо целиком -->
                 <button class="pop__item" type="button" title="Письма уйдут файлами, получатель откроет их как письма" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
+                <button class="pop__item" type="button" title="Ответ отправителю, его письмо уйдёт файлом, а не цитатой" @click="openThen('replyAttach')"><Icon name="reply" :size="16" />Ответить вложением</button>
                 <button class="pop__item" type="button" title="Открыть как новое письмо: те же получатели, тема, текст и вложения" @click="openThen('again')"><Icon name="edit" :size="16" />Изменить как новое</button>
                 <button v-if="menuPerson && menuPerson.mail" class="pop__item" type="button" :title="'Письма от ' + menuPerson.mail + ' и ему во всех папках'" @click="correspondence(menuPerson.mail)"><Icon name="users" :size="16" />Вся переписка с {{ menuPerson.name }}</button>
                 <button v-if="menu.uids.length === 1" class="pop__item" type="button" title="Вкладка внизу: письмо перед глазами, пока пишете другое" @click="holdMessage(menuRow)"><Icon name="pin" :size="16" />{{ heldOf(menuRow) ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
@@ -1002,6 +1003,7 @@ onBeforeUnmount(() => {
         <Popover v-if="menu && menu.kind === 'ctxmore'" :x="menu.x" :y="menu.y" @close="menu = null">
             <template v-if="menuRow && folderInfo.role !== 'drafts'">
                 <button class="pop__item" type="button" title="Письма уйдут файлами, получатель откроет их как письма" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
+                <button class="pop__item" type="button" title="Ответ отправителю, его письмо уйдёт файлом, а не цитатой" @click="openThen('replyAttach')"><Icon name="reply" :size="16" />Ответить вложением</button>
                 <button class="pop__item" type="button" title="Открыть как новое письмо: те же получатели, тема, текст и вложения" @click="openThen('again')"><Icon name="edit" :size="16" />Изменить как новое</button>
                 <button v-if="menuPerson && menuPerson.mail" class="pop__item" type="button" :title="'Письма от ' + menuPerson.mail + ' и ему во всех папках'" @click="correspondence(menuPerson.mail)"><Icon name="users" :size="16" />Вся переписка с {{ menuPerson.name }}</button>
                 <button v-if="menu.uids.length === 1" class="pop__item" type="button" title="Вкладка внизу: письмо перед глазами, пока пишете другое" @click="holdMessage(menuRow)"><Icon name="pin" :size="16" />{{ heldOf(menuRow) ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
@@ -1080,6 +1082,7 @@ onBeforeUnmount(() => {
                 <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Вкладка внизу: письмо перед глазами, пока пишете другое" @click="holdMessage(open)"><Icon name="pin" :size="16" />{{ isHeld ? 'Убрать из вкладок' : 'Держать под рукой' }}</button>
             </template>
             <button v-if="folderInfo.role !== 'drafts'" class="pop__item" type="button" title="Письмо уйдёт файлом, получатель откроет его как письмо" @click="forwardAsAttachment(menu.uids)"><Icon name="mail" :size="16" />Переслать вложением</button>
+            <button v-if="folderInfo.role !== 'drafts' && menu.uids.length === 1" class="pop__item" type="button" title="Ответ отправителю, его письмо уйдёт файлом, а не цитатой" @click="openThen('replyAttach')"><Icon name="reply" :size="16" />Ответить вложением</button>
             <button class="pop__item" type="button" @click="act('unseen', menu.uids)"><Icon name="unread" :size="16" />Пометить непрочитанным</button>
             <button class="pop__item" type="button" @click="menu = { ...menu, kind: 'remind' }"><Icon name="bell" :size="16" />Напомнить, если не ответят…</button>
             <!-- Оба пункта работают с одним письмом: при выделенной пачке честно говорим, с каким именно. -->
