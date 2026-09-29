@@ -36,7 +36,7 @@ PORT=$(getenv OCTANE_PORT); PORT=${PORT:-8000}
 URL="http://127.0.0.1:$PORT/mail/api/push/event"
 tmp=$(mktemp)
 sed -e "s#__URL__#$URL#" -e "s#__TOKEN__#$TOKEN#" "$HERE/dovecot-push.lua" > "$tmp"
-if ! cmp -s "$tmp" "$LUA"; then install -m 0640 -o root -g dovecot "$tmp" "$LUA"; echo "    push: скрипт Dovecot обновлён"; fi
+if ! cmp -s "$tmp" "$LUA" || [ "$(stat -c %G "$LUA" 2>/dev/null)" != vmail ]; then install -m 0640 -o root -g vmail "$tmp" "$LUA"   # доставку (lda/lmtp) Dovecot ведёт от vmail — ему и читать; echo "    push: скрипт Dovecot обновлён"; fi
 rm -f "$tmp"
 
 need_reload=0
