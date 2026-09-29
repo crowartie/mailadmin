@@ -617,7 +617,7 @@ onBeforeUnmount(() => {
     if (!closed && dirty.value && worthSaving()) saveDraft(true);
 });
 
-const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ всем', forward: 'Пересылка', draft: 'Черновик' }[c.mode] || 'Новое письмо'));
+const title = computed(() => ({ reply: 'Ответ', replyAll: 'Ответ всем', replyAttach: 'Ответ вложением', forward: 'Пересылка', forwardAttach: 'Пересылка вложением', draft: 'Черновик' }[c.mode] || 'Новое письмо'));
 </script>
 
 <template>
