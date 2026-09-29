@@ -89,6 +89,9 @@ import su.innotec.mail.Section
 import su.innotec.mail.WindowKind
 import su.innotec.mail.api.MessageSummary
 import su.innotec.mail.data.Session
+import su.innotec.mail.ui.ConfirmDialog
+import su.innotec.mail.ui.Toasts
+import su.innotec.mail.ui.launchSafe
 import su.innotec.mail.ui.Avatar
 import su.innotec.mail.ui.Chip
 import su.innotec.mail.ui.Divider
@@ -199,6 +202,8 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
     val selecting = s.selected.isNotEmpty()
     LaunchedEffect(selecting) { if (!selecting) s.allFolder = false }
     var confirmAll by remember { mutableStateOf<String?>(null) }
+    var emptyAsk by remember { mutableStateOf(false) }
+    val curFolder = s.folders.firstOrNull { it.path == s.query.folder }
 
     LaunchedEffect(s.scrollTopSignal) { if (s.scrollTopSignal > 0) list.animateScrollToItem(0) }
     LaunchedEffect(s.query) { list.scrollToItem(0) }
@@ -211,6 +216,10 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
             .collect { last -> if (last >= s.messages.size - 10) s.loadMore() }
     }
 
+    if (emptyAsk && curFolder != null) ConfirmDialog("Очистить «${curFolder.name}»?", "Все письма в папке будут удалены навсегда.", "Очистить", danger = true, onDismiss = { emptyAsk = false }) {
+        emptyAsk = false
+        scope.launchSafe { Session.api!!.emptyFolder(curFolder.path); s.load(); s.refreshFolders(); Toasts.show("Папка очищена") }
+    }
     su.innotec.mail.platform.BackHandler(selecting) { s.selected.clear() }
     su.innotec.mail.platform.BackHandler(!selecting && searching) { searching = false; s.clearSearch() }
 
@@ -242,6 +251,12 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
                     }
                 }
                 if (!selecting) FilterChips(onPickDate = { pickDate = true })
+                // Спам и Корзина (обращение №60): «Очистить папку» на виду, а не только по долгому нажатию на папку.
+                if (!selecting && !searching && curFolder?.role in setOf("spam", "trash") && s.total > 0) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Ico("trash", size = 16.dp, tint = P.muted); Spacer(Modifier.width(8.dp))
+                    Text("${curFolder!!.name} · ${s.total} ${Fmt.plural(s.total, "письмо", "письма", "писем")}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = P.muted)
+                    TextButton(onClick = { emptyAsk = true }) { Text("Очистить папку") }
+                }
                 if (s.offline) Row(Modifier.fillMaxWidth().background(P.warnSoft).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Ico("warn", size = 16.dp, tint = P.warnInk); Spacer(Modifier.width(8.dp))
                     Text("Нет связи — показаны сохранённые письма", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = P.warnInk)

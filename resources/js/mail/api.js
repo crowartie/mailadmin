@@ -142,6 +142,9 @@ export const api = {
     attachmentPreviewUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/preview.pdf`,
     // Письмо, приложенное к письму (.eml): разобранное письмо и его собственные вложения.
     attachedMessage: (folder, uid, index) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message`),
+    // Ответ коллеги на письмо из общей папки (обращение №57): открывается тем же окном, что и .eml.
+    sharedReply: (id) => request('GET', `/mail/api/shared-reply/${id}`),
+    sharedReplyPartUrl: (id, sub, inline = false) => `/mail/api/shared-reply/${id}/part/${sub}${inline ? '?inline=1' : ''}`,
     attachedPartUrl: (folder, uid, index, sub, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message/${sub}${inline ? '?inline=1' : ''}`,
     attachmentsZipUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/attachments.zip`,
     cloudZipUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/cloud.zip`,

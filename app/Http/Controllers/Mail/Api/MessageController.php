@@ -7,6 +7,7 @@ use App\Services\Cloud\LocalFiles;
 use App\Services\Mail\ImapSession;
 use App\Services\Mail\MailStore;
 use App\Services\Mail\SharedReads;
+use App\Services\Mail\SharedReplies;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -53,7 +54,7 @@ class MessageController extends Controller
         }
         // Общая папка: к каждой строке — кто из коллег уже прочитал (кружки справа в списке).
         if (! $everywhere) {
-            $list = SharedReads::attach($list, $folder);
+            $list = SharedReplies::attach(SharedReads::attach($list, $folder), $folder);
         }
 
         return response()->json($list);
@@ -87,6 +88,8 @@ class MessageController extends Controller
             }
             $m['readers'] = SharedReads::forMessages($owner, [$m['messageId'] ?? null])[SharedReads::key($m['messageId'] ?? null)] ?? [];
             $m['notRead'] = SharedReads::notRead($owner, SharedReads::ownerPath($folder), $m['readers']);
+            // Кто ответил и каким письмом — щелчок открывает ответ (обращение №57).
+            $m['replies'] = SharedReplies::forMessages($owner, [$m['messageId'] ?? null])[SharedReads::key($m['messageId'] ?? null)] ?? [];
         }
         // Ссылки на своё хранилище в теле письма — карточками: посмотреть, скачать, продлить.
         $m['cloudFiles'] = LocalFiles::cardsIn($m['html'] ?? null, $imap->user());
@@ -137,10 +140,29 @@ class MessageController extends Controller
         return response()->json((new MailStore($imap->client()))->attachedMessage($folder, $uid, $index));
     }
 
+    /** Ответ коллеги на письмо из общей папки — показываем как письмо-вложение (обращение №57). */
+    public function sharedReply(ImapSession $imap, int $id): JsonResponse
+    {
+        return response()->json(SharedReplies::show(SharedReplies::find($id, $imap->user())));
+    }
+
+    /** Вложение изнутри такого ответа. */
+    public function sharedReplyPart(Request $request, ImapSession $imap, int $id, int $sub): Response
+    {
+        $a = \App\Services\Mail\AttachedMessage::part(SharedReplies::raw(SharedReplies::find($id, $imap->user())), $sub);
+
+        return $this->partResponse($request, $a);
+    }
+
     /** Вложение изнутри приложенного письма. */
     public function attachedPart(Request $request, ImapSession $imap, string $folder, int $uid, int $index, int $sub): Response
     {
-        $a = (new MailStore($imap->client()))->attachedPart($folder, $uid, $index, $sub);
+        return $this->partResponse($request, (new MailStore($imap->client()))->attachedPart($folder, $uid, $index, $sub));
+    }
+
+    /** Файл изнутри письма-вложения: картинки и PDF можно показать в окне, остальное — скачать; SVG — только текстом. */
+    private function partResponse(Request $request, \App\Services\Mail\MailPart $a): Response
+    {
         $type = $a->getMimeType() ?: 'application/octet-stream';
         $name = $a->getName();
         $svg = in_array(strtolower($type), ['image/svg+xml', 'image/svg'], true) || preg_match('/\.svgz?$/i', $name);

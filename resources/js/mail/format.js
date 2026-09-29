@@ -71,6 +71,13 @@ export function size(bytes) {
     return `${(mb / 1024).toFixed(1).replace('.0', '')} ГБ`;
 }
 
+/** «Аносов Михаил Леонидович» → «Аносов М.» — для строк «Прочитали» и «Ответил» (то же, что SharedReads::shortName). */
+export function shortName(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length < 2 || String(name).includes('@')) return String(name || '').trim();
+    return parts[0] + ' ' + parts[1][0] + '.';
+}
+
 export function initials(name, mail) {
     const named = !!(name && name !== mail);
     const src = (named ? name : (mail || '')).replace(/["<>]/g, '').trim();

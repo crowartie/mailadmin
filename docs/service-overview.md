@@ -691,6 +691,24 @@ Subject и Message-ID. Поиск по любому другому заголо�
 на сайте mu-plugin `innotec-form-guard.php` ставит From/Return-Path `site@`, поле-ловушку и проверку
 времени заполнения для форм CF7. Тест `ExternalSendersSiteTest`.
 
+Кто ответил в общих папках (обращение №57, 29.09.2026): ответ на письмо из папки `Shared/…` уходит в
+«Отправленные» ответившего и коллегам не виден. Теперь `Outgoing::afterSend` → `SharedReplies::record`
+пишет в `webmail_shared_replies` (чей ящик, папка владельца, Message-ID исходного из `inReplyTo`, кто,
+когда, тема) и кладёт копию ответа файлом в `storage/app/private/shared-replies/<owner>/<Y-m>/…eml`
+(`config('mailadmin.shared_replies_dir')`). В списке общей папки к строкам приклеивается `replies`
+(`SharedReplies::attach` рядом с `SharedReads::attach`), в письме — `replies` с темой. Веб показывает
+«Ответил: Иванов И.» в строке (кнопка вместо значка «Вы ответили») и строку «Ответили:» под «Прочитали»;
+щелчок открывает ответ окном письма-вложения (`AttachedMail` с `source.replyId`) через
+`GET /mail/api/shared-reply/{id}` и `/part/{sub}`. Доступ: владелец ящика, сам ответивший и те, кому
+открыта папка (`SharedReads::people`); остальным — «не найден». Хранится год, уборка в `shared-reads:purge`.
+Тест `SharedRepliesTest`. Проба `ux/_fb57.py`.
+
+Спам и Корзина (обращение №60, 29.09.2026): в списке папок у них только общее число серым, без
+счётчика непрочитанных (`FolderNav.unreadOf`, в приложении `Folders.kt`); над списком писем плашка
+«Спам · N писем — Очистить папку» (`.mlist__purge`, событие `empty-folder` → диалог `emptyFolder`;
+в приложении строка над списком в `MailHome.kt` с `ConfirmDialog` и `emptyFolder`). Пункт в меню «···»
+папки остался.
+
 Схема «Стекло» (обращение №55, 29.09.2026): третья цветовая схема по паспорту RECS — 20 палитр
 (`resources/js/mail/glass-palettes.json`), 6 фоновых SVG (`glass-wallpapers.json`), настройки
 `glass_palette / glass_motion / glass_wallpaper / glass_wallpaper_strength / glass_density` (Setting::DEFAULTS,

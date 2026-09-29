@@ -113,7 +113,8 @@ fun FolderList(onPicked: () -> Unit, modifier: Modifier = Modifier) {
         }
         items(g.system.size) { i ->
             val f = g.system[i]
-            FolderRow(f.name, roleIcon(f.role), f.unread, f.total, selected = q.folder == f.path && q.filter == "all" && q.q.isEmpty(),
+            // Спам и Корзина (обращение №60): непрочитанное там никого не ждёт — только общее число.
+            FolderRow(f.name, roleIcon(f.role), if (f.role in setOf("trash", "spam")) 0 else f.unread, f.total, selected = q.folder == f.path && q.filter == "all" && q.q.isEmpty(),
                 showTotal = f.role in setOf("drafts", "trash", "spam"), onLong = { menuFor = f }) { store.go(f.path); onPicked() }
             if (f.role == "inbox") {
                 FolderRow("Важное", "flag", 0, 0, selected = q.folder == f.path && q.filter == "flagged") { store.go(f.path, "flagged"); onPicked() }

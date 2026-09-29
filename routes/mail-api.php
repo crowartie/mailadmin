@@ -47,6 +47,9 @@ Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 
 Route::get('message/{folder}/{uid}/cloud.zip', [MessageController::class, 'cloudZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
 Route::get('message/{folder}/{uid}/attachment/{index}/preview.pdf', [MessageController::class, 'attachmentPreview'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
 // Письмо, приложенное к письму (.eml): разобранное письмо и его собственные вложения.
+// Ответ коллеги на письмо из общей папки (обращение №57): открывается тем же окном, что и письмо-вложение.
+Route::get('shared-reply/{id}', [MessageController::class, 'sharedReply'])->whereNumber('id');
+Route::get('shared-reply/{id}/part/{sub}', [MessageController::class, 'sharedReplyPart'])->whereNumber('id')->whereNumber('sub');
 Route::get('message/{folder}/{uid}/attachment/{index}/message', [MessageController::class, 'attachedMessage'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
 Route::get('message/{folder}/{uid}/attachment/{index}/message/{sub}', [MessageController::class, 'attachedPart'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index')->whereNumber('sub');
 // Своё хранилище больших вложений: мои файлы, продление, удаление, предпросмотр в почте.

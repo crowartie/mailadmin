@@ -349,6 +349,10 @@
     &__rd i:first-child { margin-left: 0; }
     &__rd em { font-style: normal; font-size: 11px; color: v.$c-faint; margin-left: 4px; }
     &__rd-none { color: v.$c-warn-ink; }
+    // «Ответил: Иванов И.» в общей папке (обращение №57) — кнопка, открывает ответ.
+    &__ans { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 7px 0 5px; border-radius: 999px; border: 1px solid v.$c-border; background: v.$c-surface; color: v.$c-muted; font: inherit; font-size: 11px; line-height: 1; cursor: pointer; flex: none; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    &__ans:hover { color: v.$c-accent; border-color: v.$c-accent; }
+    &__ans em { font-style: normal; color: v.$c-faint; }
 
     // Панель действий при наведении — только по настройке (mlist--acts, обращение №54). Прошлую, общую
     // для всех, убрали: закрывала дату и мельтешила, по ней нажимали случайно. Теперь она встаёт на место
@@ -1743,12 +1747,19 @@ html[data-ui="simple"] .msg:hover .msg__acts, html[data-ui="simple"] .msg__acts:
     &__go { flex: none; height: 32px; padding: 0 12px; }
 }
 
+// Спам и Корзина (обращение №60): плашка с числом писем и кнопкой «Очистить папку».
+.mlist__purge { display: flex; align-items: center; gap: 8px; margin: 0 12px 6px; padding: 6px 10px 6px 12px; border: 1px solid v.$c-border; border-radius: 10px; background: v.$c-surface-2; color: v.$c-muted; font-size: 12.5px; }
+.mlist__purge > svg { flex: none; }
+
 // Строка «Прочитали» в письме из общей папки (обращение №51).
 .msg__readers { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 20px 8px 72px; border-bottom: 1px solid v.$c-border; background: v.$c-surface-2; font-size: 12.5px; }
 .msg__readers-cap { color: v.$c-muted; margin-right: 2px; }
 .msg__reader { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: v.$c-surface; border: 1px solid v.$c-border; }
 .msg__reader i { width: 22px; height: 22px; border-radius: 50%; background: var(--av, var(--av-1)); color: #fff; font-style: normal; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .msg__reader small { color: v.$c-muted; font-size: 11.5px; }
+.msg__reader--btn { cursor: pointer; font: inherit; color: inherit; }
+.msg__reader--btn:hover { border-color: v.$c-accent; color: v.$c-accent; }
+.msg__reader--btn > svg { color: v.$c-muted; margin-left: 2px; }
 .msg__readers-not { color: v.$c-muted; }
 @media (max-width: 700px) { .msg__readers { padding-left: 16px; } }
 

@@ -16,6 +16,7 @@ import Toast from '../../Components/Mail/Toast.vue';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import ShortcutsHelp from '../../Components/Mail/ShortcutsHelp.vue';
 import PrintPreview from '../../Components/Mail/PrintPreview.vue';
+import AttachedMail from '../../Components/Mail/AttachedMail.vue';
 import { api, composeForm } from '../../mail/api';
 import { addrString, escapeHtml, hotkey, plural, presets, when } from '../../mail/format';
 import { useColumns } from '../../mail/useColumns';
@@ -128,6 +129,8 @@ const outboxCount = ref(props.outbox);
 const listRef = ref(null);
 let toastTimer = null;
 
+// Ответ коллеги из общей папки, открытый прямо из списка (обращение №57).
+const replyOpen = ref(null);
 const folderInfo = computed(() => folders.value.find((f) => f.path === folder.value) || { name: folder.value, role: 'custom' });
 const folderName = computed(() => (filter.value === 'flagged' ? 'Важное' : filter.value.startsWith('label:') ? (labels.value.find((l) => 'label:' + l.id === filter.value)?.name || 'Метка') : folderInfo.value.name));
 const rolePath = (role) => folders.value.find((f) => f.role === role)?.path;
@@ -859,6 +862,8 @@ onBeforeUnmount(() => {
                 @clear="selected = []; selectedAll = null"
                 @act="act"
                 @context="openMenu"
+                @open-reply="(r) => replyOpen = { replyId: r.id, name: (r.subject || 'ответ') + '.eml' }"
+                @empty-folder="folderDialog('emptyFolder', folderInfo)"
                 :edge="edge"
                 :selected-all="!!selectedAll"
                 @more="loadMore"
@@ -1191,6 +1196,7 @@ onBeforeUnmount(() => {
 
         <ShortcutsHelp v-if="help" @close="help = false" />
         <PrintPreview v-if="printing" :message="printing" @close="printing = null" />
+        <AttachedMail v-if="replyOpen" :source="replyOpen" @close="replyOpen = null" />
         <Toast :toast="toast" @action="onToastAction" @close="toast = null" />
     </MailLayout>
 </template>

@@ -224,6 +224,8 @@ class Outgoing
 
         if (! empty($form['answeredFolder']) && ! empty($form['answeredUid'])) {
             $store->flag($form['answeredFolder'], [(int) $form['answeredUid']], '\\Answered', true);
+            // Ответ из общей папки: коллегам видно, кто ответил, и открывается сам ответ (обращение №57).
+            SharedReplies::record($user, $form, $email, $raw);
         }
         if (! empty($form['draftUid'])) {
             $drafts = $store->rolePath('drafts');

@@ -10,7 +10,8 @@ import { addrList, size, when } from '../../mail/format';
 import { isEmpty, isImg, isOffice, isPdf } from '../../mail/attachments';
 
 const props = defineProps({
-    // { folder, uid, index, name } — где лежит вложение-письмо
+    // { folder, uid, index, name } — где лежит вложение-письмо; { replyId, name } — ответ коллеги
+    // на письмо из общей папки (обращение №57), лежит у сервера, а не во вложении.
     source: { type: Object, required: true },
 });
 const emit = defineEmits(['close']);
@@ -23,7 +24,9 @@ async function load() {
     error.value = '';
     mail.value = null;
     try {
-        mail.value = await api.attachedMessage(props.source.folder, props.source.uid, props.source.index);
+        mail.value = props.source.replyId
+            ? await api.sharedReply(props.source.replyId)
+            : await api.attachedMessage(props.source.folder, props.source.uid, props.source.index);
     } catch (e) {
         error.value = e.message || 'Не удалось прочитать вложенное письмо';
     }
@@ -31,7 +34,9 @@ async function load() {
 
 const shown = () => (mail.value?.attachments || []).filter((a) => !a.inline);
 const canView = (a) => !isEmpty(a) && (isImg(a) || isPdf(a));
-const partUrl = (a, inline = false) => api.attachedPartUrl(props.source.folder, props.source.uid, props.source.index, a.index, inline);
+const partUrl = (a, inline = false) => (props.source.replyId
+    ? api.sharedReplyPartUrl(props.source.replyId, a.index, inline)
+    : api.attachedPartUrl(props.source.folder, props.source.uid, props.source.index, a.index, inline));
 
 function openPart(a) {
     const list = shown().filter(canView);
@@ -50,7 +55,7 @@ function onKey(e) {
 }
 onMounted(() => { document.addEventListener('keydown', onKey, true); load(); });
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true));
-watch(() => [props.source.folder, props.source.uid, props.source.index].join('#'), load);
+watch(() => [props.source.replyId, props.source.folder, props.source.uid, props.source.index].join('#'), load);
 </script>
 
 <template>
@@ -58,9 +63,9 @@ watch(() => [props.source.folder, props.source.uid, props.source.index].join('#'
         <div class="dialog dialog--eml" role="dialog" aria-modal="true" aria-labelledby="eml-title">
             <div class="eml__bar">
                 <Icon name="mail" :size="16" />
-                <h2 id="eml-title">Письмо во вложении</h2>
+                <h2 id="eml-title">{{ source.replyId ? 'Ответ коллеги' : 'Письмо во вложении' }}</h2>
                 <span style="flex: 1" />
-                <a class="btn" :href="api.attachmentUrl(source.folder, source.uid, source.index)" :download="source.name || 'письмо.eml'"><Icon name="download" :size="15" />Скачать</a>
+                <a v-if="!source.replyId" class="btn" :href="api.attachmentUrl(source.folder, source.uid, source.index)" :download="source.name || 'письмо.eml'"><Icon name="download" :size="15" />Скачать</a>
                 <button class="ib" type="button" title="Закрыть" aria-label="Закрыть" @click="$emit('close')">✕</button>
             </div>
 

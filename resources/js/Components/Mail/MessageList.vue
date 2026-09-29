@@ -4,7 +4,7 @@
 import AppPromo from './AppPromo.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
-import { avatarColor, dayGroup, initials, plural, when } from '../../mail/format';
+import { avatarColor, dayGroup, initials, plural, shortName, when } from '../../mail/format';
 
 const props = defineProps({
     list: { type: Object, required: true },
@@ -32,7 +32,7 @@ const props = defineProps({
     edge: { type: String, default: '' },   // что дочитывается: 'more' — ниже, 'newer' — выше
     selectedAll: Boolean,                  // выбраны все письма выборки, а не только загруженные
 });
-const emit = defineEmits(['open', 'toggle', 'select-all', 'select-folder', 'clear', 'person', 'act', 'context', 'more', 'newer', 'jump', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere']);
+const emit = defineEmits(['open', 'toggle', 'select-all', 'select-folder', 'clear', 'person', 'act', 'context', 'more', 'newer', 'jump', 'filter', 'sort', 'search', 'refresh', 'menu', 'everywhere', 'open-reply', 'empty-folder']);
 
 // При поиске по всем папкам у двух писем может совпасть UID — ключ строки с папкой.
 const rowKey = (m) => (m.folder || '') + ':' + m.uid;
@@ -281,6 +281,13 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
             <br v-if="showOps"><span v-if="showOps" class="mono">от:иванов кому:sales тема:счёт текст:договор файл:счёт.pdf есть:вложение после:01.09.2026 до:30.09.2026</span>
         </div>
 
+        <!-- Спам и Корзина (обращение №60): «Очистить папку» на виду, а не только в меню «···» папки. -->
+        <div v-if="(folderRole === 'spam' || folderRole === 'trash') && !query && !selected.length && list.total" class="mlist__purge">
+            <Icon name="trash" :size="15" />
+            <span>{{ folderRole === 'spam' ? 'Спам' : 'Корзина' }} · {{ list.total }} {{ plural(list.total, 'письмо', 'письма', 'писем') }}</span>
+            <span class="grow" />
+            <button class="btn btn--sm" type="button" title="Удалить все письма из папки навсегда" @click="$emit('empty-folder')">Очистить папку</button>
+        </div>
         <div v-if="selected.length" class="mlist__bulk">
             <span class="cb cb--on" role="checkbox" aria-checked="true" @click="$emit('clear')"><Icon name="check" :size="12" /></span>
             <b>Выбрано {{ selectedAll ? list.total : selected.length }}</b>
@@ -387,7 +394,9 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
                 <span class="mrow__body">
                     <span class="mrow__from">
                         <b :title="m.from.mail">{{ folderRole === 'sent' || folderRole === 'drafts' ? (m.toName || m.from.name) : m.from.name }}</b>
-                        <span v-if="m.answered" title="Вы ответили" style="color: var(--faint); display: inline-flex"><Icon name="reply" :size="13" /></span>
+                        <!-- Общая папка (обращение №57): кто из коллег ответил; щелчок открывает сам ответ. -->
+                        <button v-if="m.replies && m.replies.length" type="button" class="mrow__ans" :title="'Ответил' + (m.replies.length > 1 ? 'и: ' : ': ') + m.replies.map((r) => r.name).join(', ') + ' — открыть ответ'" @click.stop="$emit('open-reply', m.replies[m.replies.length - 1])"><Icon name="reply" :size="12" />{{ shortName(m.replies[m.replies.length - 1].name) }}<em v-if="m.replies.length > 1">+{{ m.replies.length - 1 }}</em></button>
+                        <span v-else-if="m.answered" title="Вы ответили" style="color: var(--faint); display: inline-flex"><Icon name="reply" :size="13" /></span>
                         <span v-for="id in m.labels" :key="id">
                             <span v-if="labelMap[id]" class="lbl" :style="{ background: labelMap[id].color + '22', color: labelMap[id].color }">{{ labelMap[id].name }}</span>
                         </span>

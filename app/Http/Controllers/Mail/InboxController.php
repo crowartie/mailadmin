@@ -39,7 +39,7 @@ class InboxController extends Controller
             // Порядок берём из адреса: страница, открытая по ссылке или после обновления,
             // должна показывать список в том же порядке.
             // Первая страница общей папки тоже с «кто прочитал» — иначе кружки появлялись бы только после перезагрузки списка.
-            'list' => \App\Services\Mail\SharedReads::attach($store->list($folder, (int) $request->query('page', 1), $filter, $q, (string) $request->query('sort', 'date')), $folder),
+            'list' => \App\Services\Mail\SharedReplies::attach(\App\Services\Mail\SharedReads::attach($store->list($folder, (int) $request->query('page', 1), $filter, $q, (string) $request->query('sort', 'date')), $folder), $folder),
             // Считаем и «не отправилось»: про неудачу человек должен узнать сам,
             // а не обнаружить через неделю, что письмо не ушло.
             'outbox' => Outbox::where('user', $imap->user())->whereIn('status', ['scheduled', 'failed'])->count(),

@@ -98,7 +98,9 @@ function onDrop(e, f) {
 
 // Счётчик у папки: «непрочитанных / всего» (как в Яндексе, обращение №8); без непрочитанных — просто «всего».
 function counter(f) { return !f.virtual && ((f.unread || 0) > 0 || (f.total || 0) > 0); }
-function counterTitle(f) { return f.unread ? `непрочитанных ${f.unread} из ${f.total}` : `всего ${f.total}`; }
+// Спам и Корзина (обращение №60): непрочитанное там никого не ждёт, поэтому только общее число.
+function unreadOf(f) { return f.role === 'spam' || f.role === 'trash' ? 0 : (f.unread || 0); }
+function counterTitle(f) { return unreadOf(f) ? `непрочитанных ${unreadOf(f)} из ${f.total}` : `всего ${f.total}`; }
 // Папка открыта коллегам (общий доступ): значок рядом с именем, в подсказке — кому и с какими правами.
 /**
  * Открыть папку. Щелчок по числу непрочитанных открывает её же, но с отбором «Непрочитанные»:
@@ -146,7 +148,7 @@ function sharedTitle(f) {
             <span>{{ f.name }}</span>
             <span class="mnav__more" role="presentation" :title="'Что можно сделать с папкой «' + f.name + '»'">···</span>
             <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
-            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
+            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !unreadOf(f) }" :title="counterTitle(f)"><template v-if="unreadOf(f)"><b class="mnav__unread" title="Показать только непрочитанные">{{ unreadOf(f) }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
         <button
             v-if="inbox"
@@ -184,7 +186,7 @@ function sharedTitle(f) {
             <span>{{ f.name }}</span>
             <span v-if="!f.virtual" class="mnav__more" role="presentation" :title="'Что можно сделать с папкой «' + f.name + '»'">···</span>
             <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
-            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
+            <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !unreadOf(f) }" :title="counterTitle(f)"><template v-if="unreadOf(f)"><b class="mnav__unread" title="Показать только непрочитанные">{{ unreadOf(f) }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
         </button>
         <div v-if="!custom.length" class="hint" style="padding: 4px 12px">Папки создаются здесь или из меню письма «В папку».</div>
 
@@ -212,7 +214,7 @@ function sharedTitle(f) {
                     <Icon name="folder" :size="16" style="color: var(--faint); flex: 0 0 16px" />
                     <span>{{ f.name }}</span>
                     <span class="mnav__more" role="presentation" :title="'Что можно сделать с папкой «' + f.name + '»'">···</span>
-                    <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !f.unread }" :title="counterTitle(f)"><template v-if="f.unread"><b class="mnav__unread" title="Показать только непрочитанные">{{ f.unread }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
+                    <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !unreadOf(f) }" :title="counterTitle(f)"><template v-if="unreadOf(f)"><b class="mnav__unread" title="Показать только непрочитанные">{{ unreadOf(f) }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
                 </button>
             </template>
         </template>
