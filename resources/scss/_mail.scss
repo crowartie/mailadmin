@@ -1367,6 +1367,8 @@ select.input { padding-right: 28px; }
     .rule > div:nth-child(3) { grid-column: 2 / -1; }
     // Панель действий письма: на телефоне только значки, в одну-две строки
     .mread__bar .ib { font-size: 0; gap: 0; padding: 8px; }
+    // Без подписи заливка «главной кнопки» читалась как «нажато»: на телефоне «Ответить» выглядит как остальные.
+    .mread__bar .ib.ib--keep { background: none; color: inherit; font-weight: 400; }
     // На 390 px корзина уезжала на вторую строку.
     .mread__bar { padding: 8px; gap: 2px; }
     .mread__bar .sep { margin: 0 2px; }
