@@ -6,11 +6,14 @@
 // поэтому всё новое в веб-почте появляется в приложении сразу, без выпуска новой версии.
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, session, Notification, dialog, screen, clipboard } = require('electron');
 const path = require('node:path');
+const { execFile } = require('node:child_process');
 const lib = require('./lib');
 const store = require('./settings');
 const pkg = require('../package.json');
 
 const TEST = process.env.POCHTA_TEST === '1';
+// Проверка самообновления установленной версии (test/update-check.js): обновления разрешены и в тестовом режиме.
+const UPDATE_TEST = TEST && process.env.POCHTA_UPDATE_TEST === '1';
 if (process.env.POCHTA_USER_DATA) app.setPath('userData', process.env.POCHTA_USER_DATA);
 const APP_ID = 'ru.mailadmin.pochta';
 const PARTITION = 'persist:pochta';
@@ -57,6 +60,7 @@ function start() {
     createTray();
     createWindow();
     applyAutostart();
+    registerMailto();
     const m = lib.findMailtoArg(process.argv);
     if (m) openMailto(m);
     startWatch();
@@ -73,6 +77,7 @@ function start() {
             show: () => showWindow(),
             setNotifications: (on) => { settings.notifications = !!on; saveSettings(); },
             watchOnce: () => watchInbox(),
+            get updateReady() { return updateReady; },
         };
     }
 }
@@ -278,6 +283,7 @@ function rebuildTrayMenu() {
         { type: 'separator' },
         { label: 'Уведомления о новых письмах', type: 'checkbox', checked: settings.notifications, click: (mi) => { settings.notifications = mi.checked; saveSettings(); } },
         { label: 'Запускать вместе с Windows', type: 'checkbox', checked: settings.autostart, click: (mi) => { settings.autostart = mi.checked; saveSettings(); applyAutostart(); } },
+        { label: 'Открывать ссылки «mailto:» в Почте…', enabled: app.isPackaged, click: () => chooseMailto() },
         { type: 'separator' },
     ];
     if (updateReady) items.push({ label: `Перезапустить и обновить до ${updateReady}`, click: () => installUpdate() });
@@ -417,10 +423,47 @@ function applyAutostart() {
     app.setLoginItemSettings({ openAtLogin: settings.autostart, args: ['--hidden'] });
 }
 
+// ── Ссылки mailto: ─────────────────────────────────────────────────────────────────────────────────
+// Windows 10/11 не даёт программе самой стать почтой по умолчанию — выбирает человек в «Приложениях по
+// умолчанию». Чтобы «Почта» там была, регистрируем её как приложение с возможностью mailto
+// (RegisteredApplications → Capabilities → ProgId Pochta.mailto). Всё в HKCU, без прав администратора;
+// при удалении ключи убирает build/installer.nsh.
+const REG_APP = 'Pochta';
+function registerMailto() {
+    if (!app.isPackaged || TEST || process.platform !== 'win32') return;
+    const exe = process.execPath;
+    const add = (key, ...rest) => new Promise((r) => execFile('reg.exe', ['add', key, ...rest, '/f'], { windowsHide: true }, () => r()));
+    const cls = 'HKCU\\Software\\Classes\\Pochta.mailto';
+    const cap = 'HKCU\\Software\\' + REG_APP + '\\Capabilities';
+    Promise.all([
+        add(cls, '/ve', '/d', 'Ссылка «Написать письмо»'),
+        add(cls, '/v', 'URL Protocol', '/d', ''),
+        add(cls + '\\DefaultIcon', '/ve', '/d', `"${exe}",0`),
+        add(cls + '\\shell\\open\\command', '/ve', '/d', `"${exe}" "%1"`),
+        add(cap, '/v', 'ApplicationName', '/d', 'Почта'),
+        add(cap, '/v', 'ApplicationDescription', '/d', 'Почта для Windows: письма, календарь, контакты'),
+        add(cap + '\\URLAssociations', '/v', 'mailto', '/d', 'Pochta.mailto'),
+        add('HKCU\\Software\\RegisteredApplications', '/v', REG_APP, '/d', 'Software\\' + REG_APP + '\\Capabilities'),
+    ]).catch(() => {});
+}
+
+/** Открыть в параметрах Windows страницу «Почты» среди приложений по умолчанию — там выбирают mailto. */
+async function chooseMailto() {
+    registerMailto();
+    showWindow();
+    const r = await dialog.showMessageBox(win, {
+        type: 'info', title: 'Ссылки mailto:', buttons: ['Открыть параметры', 'Отмена'], defaultId: 0, cancelId: 1,
+        message: 'Чтобы ссылки «написать письмо» на сайтах и в документах открывались в Почте',
+        detail: 'В открывшихся параметрах Windows нажмите на строку MAILTO и выберите «Почта».',
+    });
+    if (r.response !== 0) return;
+    shell.openExternal('ms-settings:defaultapps?registeredAppUser=' + REG_APP).catch(() => shell.openExternal('ms-settings:defaultapps'));
+}
+
 // ── Обновления: latest.yml и установщик лежат на том же сервере (/app/windows) ───────────────────
 let updater = null;
 function setupUpdates() {
-    if (!app.isPackaged || TEST || !server()) return;
+    if (!app.isPackaged || (TEST && !UPDATE_TEST) || !server()) return;
     try {
         updater = require('electron-updater').autoUpdater;
     } catch { return; }
@@ -433,7 +476,7 @@ function setupUpdates() {
         notify(`Обновление Почты ${info.version} готово`, 'Установится при следующем запуске. Сразу — «Перезапустить и обновить» в меню значка в трее.');
     });
     updater.on('error', () => {});   // нет связи, файла ещё нет — тихо, проверим позже
-    setTimeout(() => checkUpdates(false), 60 * 1000);
+    setTimeout(() => checkUpdates(false), Number(process.env.POCHTA_UPDATE_DELAY_MS) || 60 * 1000);
     setInterval(() => checkUpdates(false), 6 * 3600 * 1000);
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "pochta-desktop",
   "productName": "Почта",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Почта для Windows: веб-почта в отдельном окне, значок в трее, уведомления, mailto:, автообновление",
   "main": "src/main.js",
   "private": true,
@@ -42,6 +42,7 @@
       "uninstallDisplayName": "Почта",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
     },

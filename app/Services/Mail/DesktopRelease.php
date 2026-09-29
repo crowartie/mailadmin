@@ -47,7 +47,12 @@ class DesktopRelease
             return null;   // описание есть, а установщика нет — выпуск не готов, показывать нечего
         }
         $notes = is_file(self::dir() . '/notes.txt') ? trim((string) file_get_contents(self::dir() . '/notes.txt')) : '';
-        $date = substr($get('releaseDate'), 0, 10) ?: date('Y-m-d', (int) filemtime($exe));
+        // releaseDate — в UTC: выпуск ночью по Иркутску показывался вчерашним числом.
+        try {
+            $date = \Illuminate\Support\Carbon::parse($get('releaseDate'))->timezone((string) config('app.timezone'))->toDateString();
+        } catch (\Throwable) {
+            $date = date('Y-m-d', (int) filemtime($exe));
+        }
 
         return ['version' => $version, 'file' => $file, 'size' => (int) filesize($exe), 'date' => $date, 'notes' => $notes];
     }

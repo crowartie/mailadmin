@@ -56,7 +56,10 @@ class DesktopAppDownloadTest extends TestCase
         $this->assertSame('1.2.3', $r['version']);
         $this->assertSame('Pochta-Setup-1.2.3.exe', $r['file']);
         $this->assertSame(3002, $r['size']);
-        $this->assertSame('2026-09-30', $r['date']);
+        config(['app.timezone' => 'Asia/Irkutsk']);
+        $this->assertSame('2026-09-30', DesktopRelease::latest()['date']);
+        file_put_contents("$this->dir/latest.yml", str_replace("'2026-09-30T02:10:00.000Z'", "'2026-09-29T18:10:00.000Z'", (string) file_get_contents("$this->dir/latest.yml")));
+        $this->assertSame('2026-09-30', DesktopRelease::latest()['date'], 'поздний вечер по UTC — уже следующий день по Иркутску');
         $this->assertStringContainsString('Значок в трее', $r['notes']);
 
         unlink("$this->dir/Pochta-Setup-1.2.3.exe");
