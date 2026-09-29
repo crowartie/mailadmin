@@ -30,6 +30,12 @@ class PushNotifierTest extends TestCase
         $one = PushNotifier::payload([['uid' => 42, 'from' => 'Иванов Иван <ivan@example.test>', 'subject' => 'Счёт 12']], 3);
         $this->assertSame(['title' => 'Иванов Иван', 'body' => 'Счёт 12', 'tag' => 'mail-42', 'url' => '/mail?uid=42', 'unseen' => 3], $one);
 
+        // Заголовки в MIME-кодировке, как их отдаёт Dovecot: на телефоне показывалось «=?UTF-8?B?…».
+        $enc = PushNotifier::payload([['uid' => 8, 'from' => '=?UTF-8?B?0JrQvtCy0Y/Qt9C40L0g0KHRgtC10L/QsNC9?= <k@example.test>', 'subject' => '=?utf-8?Q?=D0=A1=D1=87=D1=91=D1=82_=E2=84=96_5?=']]);
+        $this->assertSame('Ковязин Степан', $enc['title']);
+        $this->assertSame('Счёт № 5', $enc['body']);
+        $this->assertSame('Ковязин Степан, a@x', PushNotifier::payload([['uid' => 1, 'from' => '=?UTF-8?B?0JrQvtCy0Y/Qt9C40L0g0KHRgtC10L/QsNC9?= <k@x>'], ['uid' => 2, 'from' => 'a@x']])['body']);
+
         $bare = PushNotifier::payload([['uid' => 7, 'from' => 'ivan@example.test', 'subject' => '']]);
         $this->assertSame('ivan@example.test', $bare['title']);
         $this->assertSame('(без темы)', $bare['body']);

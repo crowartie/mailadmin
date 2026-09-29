@@ -6,6 +6,14 @@
     min-height: 100vh;
 }
 
+// Почта с экрана «Домой» (PWA): у iOS вся страница «резиновая» — тянется вверх и вниз, из-под шапки
+// видно фон. Документ делаем неподвижным, прокручивается только каркас приложения; сами панели
+// (список писем, письмо) прокручиваются внутри себя, как и раньше.
+@media (display-mode: standalone) {
+    html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+    .app { height: 100dvh; min-height: 0; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+}
+
 .rail {
     width: 56px;
     flex: 0 0 56px;

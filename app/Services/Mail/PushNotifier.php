@@ -74,8 +74,9 @@ class PushNotifier
         $n = count($messages);
         if ($n === 1) {
             $m = $messages[0];
-            $from = trim((string) ($m['from'] ?? ''));
-            $subject = trim((string) ($m['subject'] ?? ''));
+            // Dovecot отдаёт заголовки как в письме — в MIME-кодировке; на экране телефона было «=?UTF-8?B?…».
+            $from = trim((string) Charset::header((string) ($m['from'] ?? '')));
+            $subject = trim((string) Charset::header((string) ($m['subject'] ?? '')));
             $out = [
                 'title' => $from !== '' ? mb_substr(self::fromName($from), 0, 80) : 'Новое письмо',
                 'body' => mb_substr($subject !== '' ? $subject : '(без темы)', 0, 160),
@@ -83,7 +84,7 @@ class PushNotifier
                 'url' => '/mail' . (! empty($m['uid']) ? '?uid=' . (int) $m['uid'] : ''),
             ];
         } else {
-            $names = array_values(array_unique(array_filter(array_map(fn ($m) => self::fromName((string) ($m['from'] ?? '')), $messages))));
+            $names = array_values(array_unique(array_filter(array_map(fn ($m) => self::fromName((string) Charset::header((string) ($m['from'] ?? ''))), $messages))));
             $out = [
                 'title' => $n . ' ' . self::plural($n, 'новое письмо', 'новых письма', 'новых писем'),
                 'body' => mb_substr(implode(', ', array_slice($names, 0, 3)) . (count($names) > 3 ? ' и ещё ' . (count($names) - 3) : ''), 0, 160),
