@@ -678,6 +678,14 @@ Subject и Message-ID. Поиск по любому другому заголо�
 отмечает всегда, кроме `peek`. Перед включением личные флаги были засеяны текущим состоянием
 (`deploy/shared-pvt-seed.sh`), иначе все старые письма стали бы непрочитанными у всех.
 
+Форма сайта компании (обращение №41, 29.09.2026): сайт на хостинге reg.ru (WordPress + Contact Form 7) слал
+заявки от `@innotec.su` без входа, iRedAPD отвечал «SMTP AUTH is required», хостинг возвращал отчёты о
+недоставке на info@. Решение без пароля ящика на сайте (сайт заражён веб-шеллами, чистить его заказчик
+не разрешил): провайдер «Сайт компании» во «Внешних отправителях» — диапазон из `MAIL_SITE_HOSTING_IPS`
+(`areas.site_hosting_ips`), карта `ext_site.cidr`, класс `mailadmin_ext_site`; псевдоним `site@` → `info@`;
+на сайте mu-plugin `innotec-form-guard.php` ставит From/Return-Path `site@`, поле-ловушку и проверку
+времени заполнения для форм CF7. Тест `ExternalSendersSiteTest`.
+
 Схема «Стекло» (обращение №55, 29.09.2026): третья цветовая схема по паспорту RECS — 20 палитр
 (`resources/js/mail/glass-palettes.json`), 6 фоновых SVG (`glass-wallpapers.json`), настройки
 `glass_palette / glass_motion / glass_wallpaper / glass_wallpaper_strength / glass_density` (Setting::DEFAULTS,

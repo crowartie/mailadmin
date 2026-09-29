@@ -20,7 +20,30 @@ class ExternalSenders
         'yandex' => ['label' => 'Яндекс', 'spf' => ['yandex.ru']],
         'gmail' => ['label' => 'Google (Gmail)', 'spf' => ['gmail.com']],
         'any' => ['label' => 'Любой сервер (небезопасно)', 'spf' => []],
+        // Форма на сайте компании (хостинг): диапазон не из SPF, а из настроек сервера (MAIL_SITE_HOSTING_IPS).
+        // Так письма с сайта проходят без пароля почтового ящика в его коде — сайт может быть взломан.
+        'site' => ['label' => 'Сайт компании (сервер хостинга)', 'spf' => [], 'ips' => true],
     ];
+
+    /** Диапазоны хостинга сайта из настроек: «31.31.196.3» → «31.31.196.3/32». */
+    public static function siteRanges(): array
+    {
+        $out = [];
+        foreach ((array) config('areas.site_hosting_ips', []) as $ip) {
+            $ip = trim((string) $ip);
+            if ($ip === '') {
+                continue;
+            }
+            if (! str_contains($ip, '/')) {
+                $ip .= str_contains($ip, ':') ? '/128' : '/32';
+            }
+            if (preg_match('#^[0-9a-f.:]+/\d{1,3}$#i', $ip)) {
+                $out[] = $ip;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
 
     public static function labels(): array
     {
@@ -30,6 +53,9 @@ class ExternalSenders
     /** Диапазоны серверов сервиса из его SPF (include/redirect раскрываются), кэш на сутки. */
     public function ranges(string $provider, bool $fresh = false): array
     {
+        if ($provider === 'site') {
+            return self::siteRanges();
+        }
         $domains = self::PROVIDERS[$provider]['spf'] ?? [];
         if (! $domains) {
             return [];
@@ -55,7 +81,7 @@ class ExternalSenders
     {
         $out = [];
         foreach (self::PROVIDERS as $k => $p) {
-            $out[$k] = $p['spf'] ? count((array) Cache::get('external-senders.ranges.' . $k, [])) : null;
+            $out[$k] = $k === 'site' ? count(self::siteRanges()) : ($p['spf'] ? count((array) Cache::get('external-senders.ranges.' . $k, [])) : null);
         }
 
         return $out;
@@ -97,14 +123,14 @@ class ExternalSenders
         file_put_contents($dir . '/external_senders', $map);
         $problems = [];
         foreach (self::PROVIDERS as $key => $p) {
-            if (! $p['spf']) {
+            if (! $p['spf'] && empty($p['ips'])) {
                 continue;
             }
             $ranges = $this->ranges($key, $fresh);
             if (! $ranges && $rows->where('provider', $key)->isNotEmpty()) {
                 $problems[] = $p['label'];
             }
-            $cidr = '# Серверы «' . $p['label'] . "» по SPF. Файл создаёт веб-приложение.\n";
+            $cidr = '# Серверы «' . $p['label'] . '» ' . ($p['spf'] ? 'по SPF' : 'из настроек сервера') . ". Файл создаёт веб-приложение.\n";
             foreach ($ranges as $c) {
                 $cidr .= $c . "\tpermit_auth_destination\n";
             }
@@ -112,7 +138,7 @@ class ExternalSenders
         }
         Ctl::out('external-senders', [$dir]);
         if ($problems) {
-            throw new \RuntimeException('Не удалось получить SPF-диапазоны: ' . implode(', ', $problems) . ' — письма с этих серверов пока не пройдут');
+            throw new \RuntimeException('Не удалось получить диапазоны: ' . implode(', ', $problems) . ' — письма с этих серверов пока не пройдут (для сайта задайте MAIL_SITE_HOSTING_IPS)');
         }
     }
 }

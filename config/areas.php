@@ -11,6 +11,10 @@ return [
     // Домен, который подставляется к короткому логину в веб-почте («ivanov» → ivanov@домен).
     'default_domain' => env('MAIL_DEFAULT_DOMAIN', 'example.ru'),
 
+    // Серверы хостинга сайта компании (IP или сети через запятую): с них форма сайта шлёт письма без входа,
+    // от адреса, разрешённого в «Настройки → Внешние отправители» как «Сайт компании». См. ExternalSenders.
+    'site_hosting_ips' => array_values(array_filter(array_map('trim', explode(',', (string) env('MAIL_SITE_HOSTING_IPS', ''))))),
+
     // Почтовый сервер, к которому ходит веб-почта.
     'imap' => [
         'host' => env('MAIL_IMAP_HOST', '127.0.0.1'),
