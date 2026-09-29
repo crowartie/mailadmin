@@ -11,6 +11,7 @@ const props = defineProps({
     folder: String,
     folderName: String,
     folderRole: String,
+    folderSrole: { type: String, default: '' },   // у общей папки — какая она у владельца (spam, trash, …)
     // Чужая папка, открытая только для просмотра: действий, меняющих письма, в ней нет.
     // Признак приходит с сервера (права IMAP), а не угадывается по роли папки.
     readonly: { type: Boolean, default: false },
@@ -282,9 +283,9 @@ defineExpose({ focusSearch: () => searchInput.value?.focus(), keepAnchor });
         </div>
 
         <!-- Спам и Корзина (обращение №60): «Очистить папку» на виду, а не только в меню «···» папки. -->
-        <div v-if="(folderRole === 'spam' || folderRole === 'trash') && !query && !selected.length && list.total" class="mlist__purge">
+        <div v-if="['spam', 'trash'].includes(folderRole === 'shared' ? folderSrole : folderRole) && !readonly && !query && !selected.length && list.total" class="mlist__purge">
             <Icon name="trash" :size="15" />
-            <span>{{ folderRole === 'spam' ? 'Спам' : 'Корзина' }} · {{ list.total }} {{ plural(list.total, 'письмо', 'письма', 'писем') }}</span>
+            <span>{{ (folderRole === 'shared' ? folderSrole : folderRole) === 'spam' ? 'Спам' : 'Корзина' }} · {{ list.total }} {{ plural(list.total, 'письмо', 'письма', 'писем') }}</span>
             <span class="grow" />
             <button class="btn btn--sm" type="button" title="Удалить все письма из папки навсегда" @click="$emit('empty-folder')">Очистить папку</button>
         </div>

@@ -252,7 +252,7 @@ private fun MessageListPane(showMenu: Boolean, onMenu: () -> Unit) {
                 }
                 if (!selecting) FilterChips(onPickDate = { pickDate = true })
                 // Спам и Корзина (обращение №60): «Очистить папку» на виду, а не только по долгому нажатию на папку.
-                if (!selecting && !searching && curFolder?.role in setOf("spam", "trash") && s.total > 0) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!selecting && !searching && (curFolder?.role in setOf("spam", "trash") || curFolder?.srole in setOf("spam", "trash")) && s.total > 0) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Ico("trash", size = 16.dp, tint = P.muted); Spacer(Modifier.width(8.dp))
                     Text("${curFolder!!.name} · ${s.total} ${Fmt.plural(s.total, "письмо", "письма", "писем")}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = P.muted)
                     TextButton(onClick = { emptyAsk = true }) { Text("Очистить папку") }

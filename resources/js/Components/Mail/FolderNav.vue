@@ -99,7 +99,7 @@ function onDrop(e, f) {
 // Счётчик у папки: «непрочитанных / всего» (как в Яндексе, обращение №8); без непрочитанных — просто «всего».
 function counter(f) { return !f.virtual && ((f.unread || 0) > 0 || (f.total || 0) > 0); }
 // Спам и Корзина (обращение №60): непрочитанное там никого не ждёт, поэтому только общее число.
-function unreadOf(f) { return f.role === 'spam' || f.role === 'trash' ? 0 : (f.unread || 0); }
+function unreadOf(f) { return ['spam', 'trash'].includes(f.role) || ['spam', 'trash'].includes(f.srole) ? 0 : (f.unread || 0); }
 function counterTitle(f) { return unreadOf(f) ? `непрочитанных ${unreadOf(f)} из ${f.total}` : `всего ${f.total}`; }
 // Папка открыта коллегам (общий доступ): значок рядом с именем, в подсказке — кому и с какими правами.
 /**

@@ -144,7 +144,7 @@ fun FolderList(onPicked: () -> Unit, modifier: Modifier = Modifier) {
                 item { Text(owner, Modifier.padding(start = 20.dp, top = 6.dp, bottom = 2.dp), style = MaterialTheme.typography.labelLarge, color = P.muted) }
                 items(list.size) { i ->
                     val f = list[i]
-                    FolderRow(f.name, roleIcon(f.srole.ifBlank { "folder" }), f.unread, f.total, selected = q.folder == f.path, depth = f.depth + 1) { store.go(f.path); onPicked() }
+                    FolderRow(f.name, roleIcon(f.srole.ifBlank { "folder" }), if (f.srole in setOf("trash", "spam")) 0 else f.unread, f.total, selected = q.folder == f.path, depth = f.depth + 1) { store.go(f.path); onPicked() }
                 }
             }
         }

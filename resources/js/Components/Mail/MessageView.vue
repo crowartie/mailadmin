@@ -458,12 +458,13 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                     </template>
                     <span v-else class="chip chip--warn">ещё никто{{ m.markedSeen ? ' — вы первый' : '' }}</span>
                     <span class="grow" />
-                    <template v-if="m.replies && m.replies.length">
-                        <!-- Кто ответил и когда; щелчок открывает сам ответ — руководителю видно, кто и что ответил (обращение №57). -->
-                        <span class="msg__readers-cap" style="margin-left: 6px">Ответили:</span>
-                        <button v-for="r in m.replies" :key="'a' + r.id" type="button" class="msg__reader msg__reader--btn" :title="'Открыть ответ · ' + r.mail + (r.at ? ' · ' + when(r.at) : '')" @click="openReply(r)"><i :style="{ '--av': avatarColor(r.mail) }">{{ initials(r.name, r.mail) }}</i>{{ shortName(r.name) }} <small v-if="r.at">{{ when(r.at) }}</small><Icon name="reply" :size="12" /></button>
-                    </template>
                     <span v-if="m.notRead && m.notRead.length" class="msg__readers-not" :title="m.notRead.map((p) => p.name).join(', ')">ещё не читали: {{ m.notRead.slice(0, 4).map((p) => shortName(p.name)).join(', ') }}{{ m.notRead.length > 4 ? ' и ещё ' + (m.notRead.length - 4) : '' }}</span>
+                </div>
+                <!-- Кто ответил и когда; щелчок открывает сам ответ — руководителю видно, кто и что ответил (обращение №57). -->
+                <div v-if="isOpen(m) && m.replies && m.replies.length" class="msg__readers msg__readers--replies">
+                    <span class="msg__readers-cap">Ответили:</span>
+                    <button v-for="r in m.replies" :key="'a' + r.id" type="button" class="msg__reader msg__reader--btn" :title="'Открыть ответ · ' + r.mail + (r.at ? ' · ' + when(r.at) : '')" @click="openReply(r)"><i :style="{ '--av': avatarColor(r.mail) }">{{ initials(r.name, r.mail) }}</i>{{ shortName(r.name) }} <small v-if="r.at">{{ when(r.at) }}</small><Icon name="reply" :size="12" /></button>
+                    <span class="hint" style="margin: 0">— щёлкните, чтобы открыть ответ</span>
                 </div>
                 <!-- Внутренняя обёртка ограничивает ширину: письма верстают под 600–640 px,
                      и во всю ширину панели они разъезжаются. -->
