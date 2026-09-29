@@ -17,3 +17,8 @@ createInertiaApp({
             .mount(el);
     },
 });
+
+// Сервис-воркер — для установки почты на экран «Домой» и push-уведомлений (см. mail/push.js).
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {}); });
+}

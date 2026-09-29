@@ -79,6 +79,7 @@ final class ActivityMap
             $is('message/.+/attachment/\d+/preview\.pdf') => ['attachment.preview', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/attachment/\d+/message(/\d+)?') => ['attachment.mail', self::role(self::folderOf($p, 'message')), null],
             $is('shared-reply/\d+(/part/\d+)?') => ['attachment.mail', 'shared', null],
+            $is('push/(key|subscribe|event)') => null,
             $is('message/.+/attachments\.zip') => ['attachment.zip', self::role(self::folderOf($p, 'message')), null],
             $is('message/.+/cloud\.zip') => ['file.zip', self::role(self::folderOf($p, 'message')), null],
             // Картинки, встроенные в текст письма (cid), браузер тянет сам при открытии — это не «скачал вложение».

@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Components/Icon.vue';
 import FeedbackDialog from '../Components/Mail/FeedbackDialog.vue';
 import ConfirmHost from '../Components/ConfirmHost.vue';
+import InstallHint from '../Components/Mail/InstallHint.vue';
 import Popover from '../Components/Mail/Popover.vue';
 import { initUi, setUiSimple, uiSimple } from '../mail/uiMode';
 
@@ -143,6 +144,7 @@ onBeforeUnmount(() => { document.removeEventListener('click', exitOutside, true)
 
 <template>
     <div class="app">
+        <InstallHint />
         <aside class="rail" aria-label="Сервисы">
             <div class="rail__logo">П</div>
             <Link

@@ -26,6 +26,8 @@ Route::middleware('area:mail')->group(function () {
     Route::post('/mail/login/code', [LoginController::class, 'verifyCode']);
     Route::post('/mail/logout', [LoginController::class, 'destroy']);
     // Выпуск письма из карантина по подписанной ссылке из сводки (вход не нужен).
+    // Событие от Dovecot о новом письме (deploy/dovecot-push.lua): без сеанса, по токену из .env, только с этого сервера.
+    Route::post('/mail/api/push/event', [\App\Http\Controllers\Mail\Api\PushController::class, 'event'])->middleware('throttle:1200,1');
     Route::get('/mail/quarantine/release/{id}/{secret}', [\App\Http\Controllers\Mail\QuarantineController::class, 'releaseSigned'])->name('mail.quarantine.release')->middleware('signed:relative');
     // Файл по ссылке из письма (https://files.<домен>/<токен>/<имя> → nginx переписывает в /f/…). Входа нет.
     // POST — ввод пароля ссылки на файл из облака.

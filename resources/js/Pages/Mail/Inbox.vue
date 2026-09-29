@@ -18,6 +18,7 @@ import ShortcutsHelp from '../../Components/Mail/ShortcutsHelp.vue';
 import PrintPreview from '../../Components/Mail/PrintPreview.vue';
 import AttachedMail from '../../Components/Mail/AttachedMail.vue';
 import { api, composeForm } from '../../mail/api';
+import { sync as pushSync } from '../../mail/push';
 import { addrString, escapeHtml, hotkey, plural, presets, when } from '../../mail/format';
 import { useColumns } from '../../mail/useColumns';
 import { useCompose } from '../../mail/useCompose';
@@ -778,6 +779,8 @@ onMounted(() => {
         if (document.visibilityState === 'visible') { wakeUp(); poll(); }
     });
     if (props.openUid) openMessage(props.openUid);
+    // Push-подписка живёт у браузера и может смениться — при каждом открытии сверяем с сервером.
+    if (settings.value.notify_browser) setTimeout(() => pushSync(true), 4000);
     // «Приложить к письму» из облака: файлы выбраны там, здесь — новое письмо с ними во вложениях.
     let cloudPaths = null;
     try { cloudPaths = JSON.parse(sessionStorage.getItem('cloud-attach') || 'null'); sessionStorage.removeItem('cloud-attach'); } catch { cloudPaths = null; }

@@ -34,7 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // DAV-клиенты (телефон, Outlook) токенов CSRF не знают — авторизация там своя, Basic.
         // mail/api/activity — маячок действий: уходит sendBeacon без заголовков, пишет только строку
         // журнала для уже вошедшего человека и ограничен по частоте.
-        $middleware->validateCsrfTokens(except: ['dav', 'dav/*', 'autodiscover/*', 'Autodiscover/*', '.well-known/*', 'mail/api/activity', 'f/*']);
+        $middleware->validateCsrfTokens(except: ['dav', 'dav/*', 'autodiscover/*', 'Autodiscover/*', '.well-known/*', 'mail/api/activity', 'mail/api/push/event', 'f/*']);
         // Зону проверяем раньше всего: Laravel сам двигает «auth» в начало цепочки,
         // и без этого запрос админского адреса через порт веб-почты заводил сессию и уводил
         // на страницу входа вместо честного «такого адреса здесь нет».

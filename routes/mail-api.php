@@ -47,6 +47,10 @@ Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 
 Route::get('message/{folder}/{uid}/cloud.zip', [MessageController::class, 'cloudZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
 Route::get('message/{folder}/{uid}/attachment/{index}/preview.pdf', [MessageController::class, 'attachmentPreview'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
 // Письмо, приложенное к письму (.eml): разобранное письмо и его собственные вложения.
+// Push-уведомления: ключ и подписки устройств (PushController); событие от Dovecot — в routes/mail.php, без сеанса.
+Route::get('push/key', [\App\Http\Controllers\Mail\Api\PushController::class, 'key']);
+Route::post('push/subscribe', [\App\Http\Controllers\Mail\Api\PushController::class, 'subscribe']);
+Route::delete('push/subscribe', [\App\Http\Controllers\Mail\Api\PushController::class, 'unsubscribe']);
 // Ответ коллеги на письмо из общей папки (обращение №57): открывается тем же окном, что и письмо-вложение.
 Route::get('shared-reply/{id}', [MessageController::class, 'sharedReply'])->whereNumber('id');
 Route::get('shared-reply/{id}/part/{sub}', [MessageController::class, 'sharedReplyPart'])->whereNumber('id')->whereNumber('sub');

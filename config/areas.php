@@ -15,6 +15,15 @@ return [
     // от адреса, разрешённого в «Настройки → Внешние отправители» как «Сайт компании». См. ExternalSenders.
     'site_hosting_ips' => array_values(array_filter(array_map('trim', explode(',', (string) env('MAIL_SITE_HOSTING_IPS', ''))))),
 
+    // Push-уведомления о новых письмах (Web Push, см. PushNotifier). Ключи VAPID делает push:keys,
+    // токен события — deploy/dovecot-push.sh; без ключей служба выключена.
+    'push' => [
+        'public' => (string) env('PUSH_VAPID_PUBLIC', ''),
+        'private' => (string) env('PUSH_VAPID_PRIVATE', ''),
+        'subject' => (string) env('PUSH_VAPID_SUBJECT', 'mailto:postmaster@' . env('MAIL_DEFAULT_DOMAIN', 'example.ru')),
+        'event_token' => (string) env('PUSH_EVENT_TOKEN', ''),
+    ],
+
     // Почтовый сервер, к которому ходит веб-почта.
     'imap' => [
         'host' => env('MAIL_IMAP_HOST', '127.0.0.1'),

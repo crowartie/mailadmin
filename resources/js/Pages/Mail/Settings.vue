@@ -11,6 +11,7 @@ import { plural, size, when as whenCommon } from '../../mail/format';
 import { uiSimple, setUiSimple } from '../../mail/uiMode';
 import Dialog from '../../Components/Mail/Dialog.vue';
 import { api } from '../../mail/api';
+import { isIos, standalone, supported as pushSupported, sync as pushSync } from '../../mail/push';
 import { useSecuritySettings } from '../../mail/useSecuritySettings';
 import { useMailRules } from '../../mail/useMailRules';
 import { GLASS_PALETTES, GLASS_WALLPAPERS, GLASS_MOTIONS } from '../../mail/glass';
@@ -261,7 +262,7 @@ async function recolor(l, color) {
 const notifyState = ref(typeof Notification === 'undefined' ? 'Этот браузер не поддерживает уведомления' : Notification.permission === 'denied' ? 'Уведомления запрещены в настройках браузера для этого сайта' : '');
 async function askNotify(e) {
     if (typeof Notification === 'undefined') { s.value.notify_browser = false; return; }
-    if (!e.target.checked) { notifyState.value = ''; await saveOne({ notify_browser: false }, 'Уведомления выключены'); return; }
+    if (!e.target.checked) { notifyState.value = ''; await saveOne({ notify_browser: false }, 'Уведомления выключены'); pushSync(false); return; }
     // Разрешение спрашиваем сразу — значит и настройку сохраняем сразу: раньше подпись
     // уверяла «Разрешено, придёт при новом письме», а на сервере флаг оставался выключенным,
     // пока человек не нажмёт «Сохранить».
@@ -269,6 +270,12 @@ async function askNotify(e) {
     if (p === 'granted') {
         notifyState.value = 'Разрешено — придёт при новом письме, даже если вкладка не активна';
         await saveOne({ notify_browser: true }, 'Уведомления включены');
+        // Push: уведомление приходит и когда почта закрыта — в браузере на компьютере и в приложении на телефоне.
+        const r = await pushSync(true);
+        notifyState.value = r === 'ok' ? 'Разрешено — уведомления придут и при закрытой почте, на этом устройстве'
+            : r === 'ios-not-installed' ? 'Разрешено для вкладки. На iPhone уведомления при закрытой почте работают, если добавить её на экран «Домой» (Поделиться → На экран «Домой») и включить уведомления там'
+            : r === 'unsupported' ? 'Разрешено для вкладки; уведомления при закрытой почте этот браузер или сервер не поддерживает'
+            : notifyState.value;
     } else {
         notifyState.value = p === 'denied' ? 'Уведомления запрещены в настройках браузера для этого сайта' : 'Браузер не дал разрешение';
         s.value.notify_browser = false;

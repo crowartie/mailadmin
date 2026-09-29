@@ -1,4 +1,5 @@
 import { api } from './api';
+import { setBadge } from './push';
 
 /**
  * Живое обновление списка: опрос сервера, счётчик в заголовке вкладки,
@@ -75,6 +76,7 @@ export function useLiveUpdates(ctx) {
             const inbox = ctx.folders.value.find((f) => f.role === 'inbox');
             // Счётчик во вкладке пересчитывается сам: он вычисляется из этого же числа.
             if (inbox && inbox.unread !== st.inboxUnseen) inbox.unread = st.inboxUnseen;
+            setBadge(st.inboxUnseen);   // счётчик на иконке приложения (экран «Домой», панель задач)
             const cur = ctx.folders.value.find((f) => f.path === ctx.folder.value);
             if (cur) { cur.unread = st.folder.unseen; cur.total = st.folder.messages; }
             if (lastUidnext !== null && st.folder.uidnext > lastUidnext) {

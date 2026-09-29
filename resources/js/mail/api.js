@@ -144,6 +144,10 @@ export const api = {
     attachedMessage: (folder, uid, index) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message`),
     // Ответ коллеги на письмо из общей папки (обращение №57): открывается тем же окном, что и .eml.
     sharedReply: (id) => request('GET', `/mail/api/shared-reply/${id}`),
+    // Push-уведомления (PushController): ключ сервера и подписка этого устройства.
+    pushKey: () => request('GET', '/mail/api/push/key'),
+    pushSubscribe: (sub) => request('POST', '/mail/api/push/subscribe', sub),
+    pushUnsubscribe: (endpoint) => request('DELETE', '/mail/api/push/subscribe', { endpoint }),
     sharedReplyPartUrl: (id, sub, inline = false) => `/mail/api/shared-reply/${id}/part/${sub}${inline ? '?inline=1' : ''}`,
     attachedPartUrl: (folder, uid, index, sub, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message/${sub}${inline ? '?inline=1' : ''}`,
     attachmentsZipUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/attachments.zip`,

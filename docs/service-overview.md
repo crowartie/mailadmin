@@ -691,6 +691,20 @@ Subject и Message-ID. Поиск по любому другому заголо�
 на сайте mu-plugin `innotec-form-guard.php` ставит From/Return-Path `site@`, поле-ловушку и проверку
 времени заполнения для форм CF7. Тест `ExternalSendersSiteTest`.
 
+Веб-приложение на телефоне и push-уведомления (30.09.2026): почта ставится на экран «Домой» iPhone
+и Android как приложение (PWA). `public/manifest.webmanifest`, `public/sw.js` (регистрируется из `app.js`,
+страницы не кэширует), теги в `app.blade.php`, иконки `icon-192/512`, `icon-maskable-512`. Подсказка
+«Поставьте почту на экран Домой» — `InstallHint.vue` (iOS, не установлено, 30 дней «позже»). Счётчик
+непрочитанных на иконке — `push.setBadge` из опроса состояния и из сервис-воркера по push.
+Push: сотрудник включает «Уведомления браузера» в настройках → `push.sync(true)` подписывает браузер
+(ключ VAPID `GET /mail/api/push/key`) и шлёт подписку в `POST /mail/api/push/subscribe`
+(`webmail_push_subscriptions`, по одной на устройство). Dovecot при доставке во «Входящие» зовёт
+`deploy/dovecot-push.lua` (драйвер `push_notification_lua`, ставит `deploy/dovecot-push.sh` из update.sh:
+токен `PUSH_EVENT_TOKEN` и ключи `PUSH_VAPID_*` в .env создаются сами) → `POST /mail/api/push/event`
+без сеанса, по токену → `PushNotifier::notifyNewMail` шлёт через `minishlink/web-push` на все устройства;
+подписки, которые отказали (410/404) или падают 8 раз подряд, удаляются. На iPhone push приходит только
+приложению с экрана «Домой» (iOS 16.4+). Тест `PushNotifierTest`; проба `ux/_pwa.py`.
+
 Кто ответил в общих папках (обращение №57, 29.09.2026): ответ на письмо из папки `Shared/…` уходит в
 «Отправленные» ответившего и коллегам не виден. Теперь `Outgoing::afterSend` → `SharedReplies::record`
 пишет в `webmail_shared_replies` (чей ящик, папка владельца, Message-ID исходного из `inReplyTo`, кто,

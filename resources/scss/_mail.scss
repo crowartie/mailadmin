@@ -1747,6 +1747,14 @@ html[data-ui="simple"] .msg:hover .msg__acts, html[data-ui="simple"] .msg__acts:
     &__go { flex: none; height: 32px; padding: 0 12px; }
 }
 
+// Подсказка на iPhone: поставить почту на экран «Домой» (PWA). Снизу, поверх списка, только на узком экране.
+.ihint { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 60; padding: 12px 14px; border-radius: 14px; background: v.$c-surface; border: 1px solid v.$c-border; box-shadow: 0 10px 30px rgb(0 0 0 / .18); font-size: 13.5px; }
+.ihint__row { display: flex; gap: 12px; align-items: flex-start; > svg { flex: none; color: v.$c-accent; margin-top: 2px; } }
+.ihint__text { display: flex; flex-direction: column; gap: 4px; b { font-size: 14px; } span { color: v.$c-muted; line-height: 1.35; } }
+.ihint__how { color: v.$c-text !important; svg { vertical-align: -2px; color: v.$c-accent; } }
+.ihint__acts { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+@media (min-width: 901px) { .ihint { display: none; } }
+
 // Спам и Корзина (обращение №60): плашка с числом писем и кнопкой «Очистить папку».
 .mlist__purge { display: flex; align-items: center; gap: 8px; margin: 0 12px 6px; padding: 6px 10px 6px 12px; border: 1px solid v.$c-border; border-radius: 10px; background: v.$c-surface-2; color: v.$c-muted; font-size: 12.5px; }
 .mlist__purge > svg { flex: none; }
