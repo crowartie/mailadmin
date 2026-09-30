@@ -37,12 +37,7 @@ class EditorFormattingTest extends TestCase
     {
         $m = new \ReflectionMethod(\App\Services\Mail\MailBuilder::class, 'htmlToText');
         $text = $m->invoke(null, '<div>line1</div><div>line2</div><div><br></div><div>line4</div><div><br></div><div class="sig">С уважением</div>');
-        $this->assertSame("line1
-line2
-
-line4
-
-С уважением", $text);
+        $this->assertSame("line1\nline2\n\nline4\n\nС уважением", $text);
     }
 
     /** Межстрочный интервал (обращение №65) ставится на абзацы и списки — получатель должен его увидеть. */
