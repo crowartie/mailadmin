@@ -15,7 +15,10 @@ const TEST = process.env.POCHTA_TEST === '1';
 // Проверка самообновления установленной версии (test/update-check.js): обновления разрешены и в тестовом режиме.
 const UPDATE_TEST = TEST && process.env.POCHTA_UPDATE_TEST === '1';
 if (process.env.POCHTA_USER_DATA) app.setPath('userData', process.env.POCHTA_USER_DATA);
-const APP_ID = 'ru.mailadmin.pochta';
+// Тесты (POCHTA_TEST) — под своим идентификатором и без настоящих уведомлений: иначе Electron из node_modules
+// создаёт в «Пуске» ярлык Electron.lnk с идентификатором установленной «Почты», и Windows рисует ей значок
+// Electron (атом) на панели задач и в уведомлениях (так было 30.09.2026).
+const APP_ID = TEST ? 'ru.mailadmin.pochta.test' : 'ru.mailadmin.pochta';
 const PARTITION = 'persist:pochta';
 const ASSETS = path.join(__dirname, '..', 'assets');
 const RETRY_MS = Number(process.env.POCHTA_RETRY_MS) || 15000;      // «нет связи»: повтор через 15 с
@@ -316,7 +319,7 @@ function setUnread(n) {
 
 // ── Уведомления о новых письмах ──────────────────────────────────────────────────────────────────
 function notify(title, body, onClick) {
-    if (TEST) { testLog.notices.push({ title, body }); }
+    if (TEST) { testLog.notices.push({ title, body }); return; }
     if (!Notification.isSupported()) return;
     const n = new Notification({ title, body, icon: path.join(ASSETS, 'icon.png'), silent: false });
     n.on('click', () => { showWindow(); if (onClick) onClick(); });
