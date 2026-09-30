@@ -146,6 +146,9 @@ class SheetPreview
             // Описание не прочиталось — обрезку определим по загруженному.
         }
         $book = $reader->load($path);
+        // Запоминаем сразу: чтение оформления ячейки (getStyle) делает её лист активным, и после разбора
+        // «активным» оказывался последний лист книги, а не тот, что был открыт у автора.
+        $active = $book->getActiveSheetIndex();
 
         $styles = [];
         $styleIds = [];
@@ -170,7 +173,7 @@ class SheetPreview
             'sheets' => $sheets,
             'styles' => $styles,
             'font' => ['name' => (string) ($df->getName() ?: 'Calibri'), 'size' => (float) ($df->getSize() ?: 11)],
-            'active' => $book->getActiveSheetIndex(),
+            'active' => $active,
             'truncated' => $truncated,
         ];
     }

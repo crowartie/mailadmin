@@ -69,11 +69,13 @@ class SheetPreviewTest extends TestCase
     public function test_xlsx_значения_и_оформление(): void
     {
         $b = $this->book();
+        $b->setActiveSheetIndex(0);
         $b->getActiveSheet()->getCell('D4')->setCalculatedValue(3703.5);
         (new Xlsx($b))->setPreCalculateFormulas(true)->save($this->dir . '/a.xlsx');
         $d = SheetPreview::build($this->dir . '/a.xlsx');
 
         $this->assertSame(['Счёт', 'Пустой'], array_column($d['sheets'], 'name'));
+        $this->assertSame(0, $d['active'], 'открывается лист, который был открыт у автора, а не последний разобранный');
         $s = $d['sheets'][0];
         $cells = [];
         foreach ($s['cells'] as [$r, $c, $text, $st, $t]) {

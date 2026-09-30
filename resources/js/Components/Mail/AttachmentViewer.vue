@@ -80,7 +80,7 @@ onBeforeUnmount(() => {
     <div ref="box" class="aview" role="dialog" aria-modal="true" :aria-label="'Просмотр вложения: ' + item.name" @click.self="$emit('close')">
         <div class="aview__bar">
             <span class="aview__name" :title="item.name">{{ item.name }}</span>
-            <span class="aview__meta"><template v-if="item.size">{{ size(item.size) }} · </template>{{ cur + 1 }} / {{ items.length }}<template v-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>
+            <span class="aview__meta"><template v-if="item.size">{{ size(item.size) }} · </template>{{ cur + 1 }} / {{ items.length }}<template v-if="asSheet"> · таблица (картинки и диаграммы — «Как при печати», оригинал — «Скачать»)</template><template v-else-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>
             <span class="grow" />
             <button v-if="item.sheetUrl" class="btn btn--sm aview__mode" type="button" :title="printView ? 'Показать таблицей: листы, ячейки, прокрутка' : 'Как при печати: страницы А4, видны рисунки и диаграммы'" @click="printView = !printView">
                 <Icon :name="printView ? 'table' : 'print'" :size="15" />{{ printView ? 'Таблицей' : 'Как при печати' }}
