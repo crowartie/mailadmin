@@ -37,6 +37,8 @@ class SheetPreview
     public const MAX_COLS = 200;
     public const MAX_CELLS = 250000;
     public const MAX_SHEETS = 30;
+    /** Версия разбора: меняется — старые кэши не используются (и у браузера, и на сервере). */
+    public const VERSION = 2;
     private const TIMEOUT = 90;
 
     public static function supports(string $name): bool
@@ -77,7 +79,7 @@ class SheetPreview
         if (! is_dir($dir)) {
             mkdir($dir, 0750, true);
         }
-        $out = $dir . '/' . $hash . '.sheet.json';
+        $out = $dir . '/' . $hash . '.v' . self::VERSION . '.sheet.json';
         if (is_file($out) && filesize($out) > 0) {
             touch($out);
 

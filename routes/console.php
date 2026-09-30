@@ -34,10 +34,10 @@ Schedule::command('files:purge')->dailyAt('04:30')->withoutOverlapping();
 // Целостность хранилища: размеры — каждую ночь, контрольные суммы — по воскресеньям.
 Schedule::command('files:check')->dailyAt('04:35')->withoutOverlapping()->runInBackground();
 Schedule::command('files:check --hash')->weeklyOn(0, '04:50')->withoutOverlapping()->runInBackground();
-// Кэш предпросмотра офисных вложений (PDF из LibreOffice): старше недели — удалить.
+// Кэш предпросмотра вложений (PDF из LibreOffice, таблицы, картинки): старше недели — удалить.
 Schedule::call(function () {
     $dir = storage_path('app/private/preview');
-    foreach (glob($dir . '/*.pdf') ?: [] as $f) {
+    foreach (array_merge(glob($dir . '/*.pdf') ?: [], glob($dir . '/*.json') ?: [], glob($dir . '/*.jpg') ?: []) as $f) {
         if (filemtime($f) < time() - 7 * 86400) {
             @unlink($f);
         }

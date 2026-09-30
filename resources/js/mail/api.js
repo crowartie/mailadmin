@@ -140,7 +140,8 @@ export const api = {
     feedbackPoll: (id, after) => request('GET', `/mail/api/feedback/${id}?after=${after || 0}`),
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
     attachmentPreviewUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/preview.pdf`,
-    attachmentSheetUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/sheet.json`,
+    // ?v= — версия разбора таблиц (SheetPreview::VERSION): после исправлений браузер не покажет старый вид из кэша.
+    attachmentSheetUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/sheet.json?v=2`,
     // Письмо, приложенное к письму (.eml): разобранное письмо и его собственные вложения.
     attachedMessage: (folder, uid, index) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message`),
     // Ответ коллеги на письмо из общей папки (обращение №57): открывается тем же окном, что и .eml.
@@ -159,7 +160,7 @@ export const api = {
     fileDelete: (token) => request('DELETE', `/mail/api/files/${token}`),
     fileContentUrl: (token) => `/mail/api/files/${token}/content`,
     filePreviewUrl: (token) => `/mail/api/files/${token}/preview.pdf`,
-    fileSheetUrl: (token) => `/mail/api/files/${token}/sheet.json`,
+    fileSheetUrl: (token) => `/mail/api/files/${token}/sheet.json?v=2`,
     rawUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/raw`,
 
     action: (folder, uids, op, extra = {}, opts = {}) => request('POST', '/mail/api/action', { folder, uids, op, ...extra }, opts),
