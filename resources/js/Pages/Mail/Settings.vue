@@ -166,7 +166,7 @@ if (props.section === 'files') loadFiles();
 function snap() {
     return JSON.stringify([s.value.display_name, s.value.signature, quickText.value, s.value.undo_seconds,
         s.value.preview, s.value.show_images, s.value.unread_highlight, s.value.unread_color,
-        s.value.reply_all, s.value.ask_rule_on_move, s.value.row_actions, autoreply.value]);
+        s.value.reply_all, s.value.ask_rule_on_move, s.value.row_actions, s.value.after_remove, s.value.open_first, autoreply.value]);
 }
 const clean = ref(snap());
 const dirty = computed(() => snap() !== clean.value || !!editing.value);
@@ -209,7 +209,7 @@ async function saveOne(patch, text = 'Сохранено') {
 function saveGeneral() {
     if (quickOver.value) { say(`Быстрых ответов не больше ${MAX_QUICK} — уберите лишние ${quickOver.value}`, true); return; }
     saveSettings({
-        display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, ask_rule_on_move: !!s.value.ask_rule_on_move, row_actions: !!s.value.row_actions, undo_seconds: Number(s.value.undo_seconds),
+        display_name: s.value.display_name, reply_all: s.value.reply_all, notify_browser: !!s.value.notify_browser, ask_rule_on_move: !!s.value.ask_rule_on_move, row_actions: !!s.value.row_actions, after_remove: s.value.after_remove || 'list', open_first: !!s.value.open_first, undo_seconds: Number(s.value.undo_seconds),
         preview: s.value.preview, shortcuts: s.value.shortcuts, theme: s.value.theme, scheme: s.value.scheme, show_images: s.value.show_images, unread_highlight: !!s.value.unread_highlight, unread_color: s.value.unread_color || '',
         quick_replies: quickReplies.value,
     });
@@ -383,6 +383,16 @@ const shortcuts = [
                             <label class="toggle"><input v-model="s.reply_all" type="checkbox"><span class="toggle__track" />По умолчанию отвечать всем</label>
                             <!-- Настройки «отмечать ли прочитанным в общих папках» больше нет: с 29.09.2026 флаг там у каждого свой (Dovecot INDEXPVT). -->
                             <label class="toggle"><input v-model="s.ask_rule_on_move" type="checkbox"><span class="toggle__track" />При переносе письма из «Входящих» в папку предлагать правило для отправителя</label>
+                            <!-- Обращение №62: разбирать почту подряд, как в Яндексе. По умолчанию — как было. -->
+                            <div class="field" style="max-width: 460px">
+                                <label for="set-after-remove">После удаления, переноса или «Спама» открытого письма</label>
+                                <select id="set-after-remove" v-model="s.after_remove" class="input">
+                                    <option value="list">Показывать список</option>
+                                    <option value="next">Открывать следующее письмо (ниже в списке)</option>
+                                    <option value="prev">Открывать предыдущее письмо (выше в списке)</option>
+                                </select>
+                            </div>
+                            <label class="toggle" title="При входе в почту и при переходе в папку справа сразу открывается первое письмо. Только на компьютере; письмо не помечается прочитанным, пока его не откроют щелчком."><input v-model="s.open_first" type="checkbox"><span class="toggle__track" />Сразу открывать первое письмо папки <span class="hint" style="margin: 0">— на компьютере; прочитанным не помечается</span></label>
                             <!-- Обращение №54: панель при наведении, как в Outlook. Только по желанию: у всех она была и мешала. -->
                             <label class="toggle" title="При наведении мышью на письмо справа появляются кнопки: архив, удалить, флажок, прочитано. Появляются с задержкой, дату не закрывают; удаление — с «Отменить» или с подтверждением, как обычно. На телефоне не показываются."><input v-model="s.row_actions" type="checkbox"><span class="toggle__track" />Кнопки действий при наведении на письмо в списке <span class="hint" style="margin: 0">— архив, удалить, флажок, прочитано</span></label>
                             <label class="toggle"><input v-model="s.notify_browser" type="checkbox" @change="askNotify"><span class="toggle__track" />Уведомления браузера о новых письмах и напоминаниях <span class="hint" style="margin: 0">— сохраняется сразу</span></label>

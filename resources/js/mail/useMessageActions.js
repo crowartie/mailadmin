@@ -55,6 +55,8 @@ export function useMessageActions(ctx) {
     function removeRows(uids, groups = null) {
         const set = new Set(uids);
         const hit = groups ? hits(groups) : (m) => set.has(m.uid);
+        // Открытое письмо уходит из списка — какое открыть вместо него (настройка after_remove, обращение №62).
+        const after = ctx.open.value && set.has(ctx.open.value.uid) ? neighbourAfterRemove(ctx.open.value, hit) : null;
         let unreadGone = 0;
         ctx.list.value.messages = ctx.list.value.messages.filter((m) => {
             if (hit(m)) {
@@ -71,7 +73,23 @@ export function useMessageActions(ctx) {
         if (ctx.open.value && set.has(ctx.open.value.uid)) {
             ctx.open.value = null;
             ctx.mobileRead.value = false;
+            if (after && ctx.openMessage) ctx.openMessage(after.uid, null, after.folder || null);
         }
+    }
+
+    /**
+     * Соседнее письмо, которое остаётся в списке: «следующее» — ниже открытого, «предыдущее» — выше.
+     * В нужную сторону писем нет (удалили последнее) — берём с другой стороны, чтобы не остаться с пустым экраном.
+     */
+    function neighbourAfterRemove(opened, hit) {
+        const mode = ctx.settings.value.after_remove;
+        if (mode !== 'next' && mode !== 'prev') return null;
+        const rows = ctx.list.value.messages;
+        const at = rows.findIndex((m) => m.uid === opened.uid && (!m.folder || !opened.folder || m.folder === opened.folder));
+        if (at < 0) return null;
+        const down = () => rows.slice(at + 1).find((m) => !hit(m));
+        const up = () => rows.slice(0, at).reverse().find((m) => !hit(m));
+        return (mode === 'next' ? down() || up() : up() || down()) || null;
     }
 
     async function runAct(p, opts = {}) {

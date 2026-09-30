@@ -213,6 +213,7 @@ async function load(page = 1, keepOpen = false, silent = false, offset = null) {
         if (!silent) { selected.value = []; selectedAll.value = null; }
         if (!keepOpen) { open.value = null; cursor.value = null; }
         syncUrl();
+        if (!keepOpen && !silent) openFirstIfWanted();
     } catch (e) {
         // Отбор по удалённой метке, старая ссылка с отбором — показываем все письма папки:
         // раньше оставались ошибка и список, не совпадающий с тем, что написано в шапке.
@@ -341,7 +342,7 @@ function closeMessage() {
 }
 
 // ── Чтение ────────────────────────────────────────────────────
-async function openMessage(uid, e, rowFolder = null, held = false) {
+async function openMessage(uid, e, rowFolder = null, held = false, peek = false) {
     if (e && (e.ctrlKey || e.metaKey)) { toggle(uid); return; }
     if (e && e.shiftKey && cursor.value) { rangeSelect(uid); return; }
     compose.value = null;
@@ -356,7 +357,7 @@ async function openMessage(uid, e, rowFolder = null, held = false) {
     try {
         // При поиске по всем папкам строка знает свою папку — иначе письмо открывалось бы
         // из текущей и не находилось.
-        const m = await api.message(row?.folder || rowFolder || folder.value, uid);
+        const m = await api.message(row?.folder || rowFolder || folder.value, uid, peek);
         // Пока ответ шёл, человек мог кликнуть другое письмо — устаревший ответ не показываем.
         if (want !== openSeq) return;
         open.value = m;
@@ -377,6 +378,18 @@ async function openMessage(uid, e, rowFolder = null, held = false) {
         if (want === openSeq) fail(e);
         return false;
     } finally { if (want === openSeq) opening.value = null; }
+}
+
+/**
+ * «Сразу открывать первое письмо папки» (обращение №62): при входе и при переходе в папку. Только на компьютере —
+ * на телефоне письмо закрыло бы список. Открывается без отметки «прочитано»: иначе непрочитанные гасли бы
+ * сами от одного захода в папку; прочитанным письмо станет, когда его откроют щелчком или стрелками.
+ */
+function openFirstIfWanted() {
+    if (!settings.value.open_first || open.value || compose.value || opening.value) return;
+    if (window.matchMedia('(max-width: 860px)').matches || folderInfo.value.role === 'drafts') return;
+    const first = list.value.messages[0];
+    if (first) openMessage(first.uid, null, first.folder || null, false, true);
 }
 
 function bump(path, delta, totalDelta = 0) {
@@ -413,6 +426,8 @@ function selectAll() {
 const { act, flushPendingAct, undoAct, undoToast, isPendingGone } = useMessageActions({
     list, folder, folders, selected, open, mobileRead, menu, toast, settings, folderInfo,
     showToast, fail, load, reload, refillAfter, bump, selectedAll,
+    // Открыть соседнее письмо после удаления открытого (настройка after_remove); функция объявлена ниже.
+    openMessage: (...a) => openMessage(...a),
     // Отмена отправки живёт в useCompose, а он создаётся ниже — иначе ему неоткуда взять
     // flushPendingAct. Поэтому здесь не сама функция, а обращение к ней в момент вызова.
     undoSend: () => undoSend(),
@@ -778,7 +793,7 @@ onMounted(() => {
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') { wakeUp(); poll(); }
     });
-    if (props.openUid) openMessage(props.openUid);
+    if (props.openUid) openMessage(props.openUid); else openFirstIfWanted();
     // Push-подписка живёт у браузера и может смениться — при каждом открытии сверяем с сервером.
     if (settings.value.notify_browser) setTimeout(() => pushSync(true), 4000);
     // «Приложить к письму» из облака: файлы выбраны там, здесь — новое письмо с ними во вложениях.
