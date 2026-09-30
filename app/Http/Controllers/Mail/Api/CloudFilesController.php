@@ -99,6 +99,16 @@ class CloudFilesController extends Controller
         return response()->file($pdf, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="preview.pdf"', 'X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'private, max-age=3600']);
     }
 
+    /** Фото HEIC из своего хранилища — в JPEG (ImagePreview). */
+    public function image(ImapSession $imap, string $token): Response
+    {
+        $f = $this->any($token);
+        abort_unless(! $f->isCloud() && \App\Services\Mail\ImagePreview::supports($f->name, $f->mime) && LocalFiles::previewable($f), 422, 'Этот файл не показываем — скачайте его');
+        $jpg = \App\Services\Mail\ImagePreview::fromFile($f->fullPath(), $f->name, $f->mime);
+
+        return response()->file($jpg, ['Content-Type' => 'image/jpeg', 'X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'private, max-age=86400']);
+    }
+
     /** Таблица из своего хранилища — таблицей (SheetPreview). Файлы из Nextcloud таблицей не показываем: копии на диске нет. */
     public function sheet(ImapSession $imap, string $token): Response
     {

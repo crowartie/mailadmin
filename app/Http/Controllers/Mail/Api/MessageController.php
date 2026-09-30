@@ -120,12 +120,24 @@ class MessageController extends Controller
         $name = $a->getName();
         $type = $a->getMimeType() ?: 'application/octet-stream';
         // SVG — это не картинка, а документ со скриптами: показанный в домене почты, он получает
-        // доступ к сеансу сотрудника. Отдаём его только файлом и обычным текстом.
+        // доступ к сеансу сотрудника. Скачивается — обычным текстом; для просмотра — только картинкой (ниже).
         $svg = in_array(strtolower($type), ['image/svg+xml', 'image/svg'], true) || preg_match('/\.svgz?$/i', $name);
-        $inline = $request->boolean('inline') && ! $svg && (str_starts_with($type, 'image/') || $type === 'application/pdf');
+        // Видео и звук — для встроенного плеера просмотрщика (обращение №64): почтовые программы часто
+        // присылают их как application/octet-stream, тип берём по расширению.
+        $media = self::mediaType($name);
+        if ($media && ! str_starts_with($type, 'video/') && ! str_starts_with($type, 'audio/')) {
+            $type = $media;
+        }
+        $inline = $request->boolean('inline') && (str_starts_with($type, 'image/') || $type === 'application/pdf' || $media !== null);
+        $headers = [];
+        if ($svg && $inline) {
+            // В <img> скрипты SVG не выполняются, а открытый отдельной вкладкой файл заперт политикой sandbox:
+            // без скриптов и без доступа к сеансу почты.
+            $headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
+        }
 
-        return response($a->getContent(), 200, [
-            'Content-Type' => $svg ? 'text/plain; charset=utf-8' : $type,
+        return response($a->getContent(), 200, $headers + [
+            'Content-Type' => $svg ? ($inline ? 'image/svg+xml' : 'text/plain; charset=utf-8') : $type,
             'Content-Disposition' => ($inline ? 'inline' : 'attachment') . "; filename*=UTF-8''" . rawurlencode($name),
             'X-Content-Type-Options' => 'nosniff',
             // Встроенные картинки (логотипы в подписях, снимки в теле) одинаковы при каждом открытии:
@@ -185,6 +197,30 @@ class MessageController extends Controller
             'Content-Disposition' => 'inline; filename="preview.pdf"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
+    /** Тип видео или звука по расширению — для встроенного плеера. */
+    public static function mediaType(string $name): ?string
+    {
+        return [
+            'mp4' => 'video/mp4', 'm4v' => 'video/mp4', 'mov' => 'video/quicktime', 'webm' => 'video/webm', 'ogv' => 'video/ogg',
+            'mp3' => 'audio/mpeg', 'm4a' => 'audio/mp4', 'aac' => 'audio/aac', 'wav' => 'audio/wav', 'ogg' => 'audio/ogg',
+            'oga' => 'audio/ogg', 'opus' => 'audio/ogg', 'flac' => 'audio/flac',
+        ][strtolower(pathinfo($name, PATHINFO_EXTENSION))] ?? null;
+    }
+
+    /** Фото HEIC (iPhone) из вложения — в JPEG (ImagePreview). */
+    public function attachmentImage(ImapSession $imap, string $folder, int $uid, int $index): Response
+    {
+        $a = (new MailStore($imap->client()))->attachment($folder, $uid, $index);
+        $jpg = \App\Services\Mail\ImagePreview::fromContent((string) $a->getContent(), (string) $a->getName(), (string) $a->getMimeType());
+
+        return response(file_get_contents($jpg), 200, [
+            'Content-Type' => 'image/jpeg',
+            'Content-Disposition' => 'inline; filename="preview.jpg"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, max-age=86400',
         ]);
     }
 

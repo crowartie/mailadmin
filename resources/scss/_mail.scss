@@ -1578,6 +1578,9 @@ select.input { padding-right: 28px; }
 .aview__mode { display: inline-flex; align-items: center; gap: 6px; background: rgb(255 255 255 / .12); color: #fff; border-color: rgb(255 255 255 / .25); }
 .aview__mode:hover { background: rgb(255 255 255 / .22); }
 .aview__frame--sheet { width: min(1400px, 96vw); overflow: hidden; }
+.aview__media { max-width: 92vw; max-height: calc(100vh - 96px); margin-top: 48px; border-radius: 8px; background: #000; }
+.aview__audio { margin-top: 48px; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 28px 32px; border-radius: 12px; background: rgb(0 0 0 / .55); color: #fff; font-size: 14px; audio { width: min(520px, 80vw); } }
+.aview__text { overflow: auto; pre { margin: 0; padding: 16px 20px; font: 13px/1.5 "JetBrains Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-word; color: #1f1f1f; } }
 
 // Таблица Excel в просмотрщике (SheetViewer): белая «бумага» и в тёмной теме — как в самом Excel.
 .sheet {

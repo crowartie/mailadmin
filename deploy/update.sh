@@ -67,6 +67,9 @@ bash "$HERE/postfix-delivery.sh" >/dev/null 2>&1 || true
 bash "$HERE/antispam-extras.sh" >/dev/null 2>&1 || true
 bash "$HERE/nccloud-accel.sh" || true
 bash "$HERE/dovecot-push.sh" || true
+# Инструменты просмотра вложений (HEIC, TIFF, DXF/DWG). Первая сборка LibreDWG идёт минут десять — в фоне,
+# чтобы не держать выкладку; flock — чтобы две выкладки подряд не собирали её дважды.
+(flock -n /run/mailadmin-preview-tools.lock bash "$HERE/preview-tools.sh" >> /var/log/mailadmin-preview-tools.log 2>&1 &) || true
 systemctl reload php8.3-fpm
 # Octane держит код в памяти — после выкладки воркеры надо перезапустить (мягко, без обрыва запросов)
 if systemctl is-active -q mailadmin-octane; then systemctl reload mailadmin-octane || systemctl restart mailadmin-octane; fi

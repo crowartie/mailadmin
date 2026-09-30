@@ -26,6 +26,24 @@ const isImage = computed(() => (item.value?.type || '').startsWith('image/'));
 const printView = ref(false);
 watch(cur, () => { printView.value = false; });
 const asSheet = computed(() => !!item.value?.sheetUrl && !printView.value);
+
+// Текстовые файлы (txt, log, xml, json…): читаем сами и определяем кодировку — выгрузки из 1С и старых
+// программ приходят в windows-1251, а браузер показал бы их «кракозябрами».
+const text = ref({ for: '', body: '', error: '' });
+async function loadText(it) {
+    text.value = { for: it.downloadUrl, body: '', error: '' };
+    try {
+        const r = await fetch(it.downloadUrl, { credentials: 'same-origin' });
+        if (!r.ok) throw new Error('Файл не открылся');
+        const buf = await r.arrayBuffer();
+        let body;
+        try { body = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { body = new TextDecoder('windows-1251').decode(buf); }
+        if (text.value.for === it.downloadUrl) text.value.body = body.replace(/^\uFEFF/, '');
+    } catch (e) {
+        if (text.value.for === it.downloadUrl) text.value.error = e.message || 'Файл не открылся';
+    }
+}
+watch(() => (item.value?.kind === 'text' ? item.value.downloadUrl : ''), (u) => { if (u) loadText(item.value); }, { immediate: true });
 const hasPrev = computed(() => cur.value > 0);
 const hasNext = computed(() => cur.value < props.items.length - 1);
 
@@ -80,7 +98,7 @@ onBeforeUnmount(() => {
     <div ref="box" class="aview" role="dialog" aria-modal="true" :aria-label="'Просмотр вложения: ' + item.name" @click.self="$emit('close')">
         <div class="aview__bar">
             <span class="aview__name" :title="item.name">{{ item.name }}</span>
-            <span class="aview__meta"><template v-if="item.size">{{ size(item.size) }} · </template>{{ cur + 1 }} / {{ items.length }}<template v-if="asSheet"> · таблица (картинки и диаграммы — «Как при печати», оригинал — «Скачать»)</template><template v-else-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>
+            <span class="aview__meta"><template v-if="item.size">{{ size(item.size) }} · </template>{{ cur + 1 }} / {{ items.length }}<template v-if="asSheet"> · таблица (картинки и диаграммы — «Как при печати», оригинал — «Скачать»)</template><template v-else-if="item.cad"> · чертёж в PDF: шрифты AutoCAD заменены похожими, внешних ссылок (xref) нет — оригинал «Скачать»</template><template v-else-if="item.kind === 'heic'"> · фото HEIC, показано в JPEG — оригинал «Скачать»</template><template v-else-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>
             <span class="grow" />
             <button v-if="item.sheetUrl" class="btn btn--sm aview__mode" type="button" :title="printView ? 'Показать таблицей: листы, ячейки, прокрутка' : 'Как при печати: страницы А4, видны рисунки и диаграммы'" @click="printView = !printView">
                 <Icon :name="printView ? 'table' : 'print'" :size="15" />{{ printView ? 'Таблицей' : 'Как при печати' }}
@@ -115,6 +133,17 @@ onBeforeUnmount(() => {
             <template #prev-btn><span /></template>
             <template #next-btn><span /></template>
         </VueEasyLightbox>
+
+        <!-- Видео и звук — встроенный плеер браузера -->
+        <video v-else-if="item.kind === 'video'" :key="'v' + item.url" class="aview__media" :src="item.url" controls autoplay playsinline />
+        <div v-else-if="item.kind === 'audio'" class="aview__audio"><Icon name="music" :size="40" /><span>{{ item.name }}</span><audio :key="'a' + item.url" :src="item.url" controls autoplay /></div>
+
+        <!-- Текст — как есть, моноширинным шрифтом -->
+        <div v-else-if="item.kind === 'text'" class="aview__frame aview__text">
+            <p v-if="text.error" class="aview__msg">{{ text.error }}</p>
+            <p v-else-if="!text.body && text.for === item.downloadUrl" class="hint" style="padding: 16px">Читаю файл…</p>
+            <pre v-else>{{ text.body }}</pre>
+        </div>
 
         <!-- Таблица: сетка с листами (SheetViewer); «Как при печати» — тот же файл PDF'ом ниже -->
         <div v-else-if="asSheet" class="aview__frame aview__frame--sheet"><SheetViewer :key="item.sheetUrl" :src="item.sheetUrl" @pdf="printView = true" /></div>

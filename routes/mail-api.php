@@ -45,6 +45,7 @@ Route::get('list/{folder}', [MessageController::class, 'list'])->where('folder',
 Route::get('message/{folder}/{uid}/attachment/{index}', [MessageController::class, 'attachment'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
 Route::get('message/{folder}/{uid}/attachments.zip', [MessageController::class, 'attachmentsZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
 Route::get('message/{folder}/{uid}/cloud.zip', [MessageController::class, 'cloudZip'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');
+Route::get('message/{folder}/{uid}/attachment/{index}/preview.jpg', [MessageController::class, 'attachmentImage'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
 // Таблица (xls, xlsx, ods, csv) для просмотра таблицей, а не PDF'ом (SheetPreview).
 Route::get('message/{folder}/{uid}/attachment/{index}/sheet.json', [MessageController::class, 'attachmentSheet'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
 Route::get('message/{folder}/{uid}/attachment/{index}/preview.pdf', [MessageController::class, 'attachmentPreview'])->where('folder', '.*')->where('uid', '[1-9][0-9]*')->whereNumber('index');
@@ -91,6 +92,7 @@ Route::get('files/{token}', [\App\Http\Controllers\Mail\Api\CloudFilesController
 Route::post('files/{token}/renew', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'renew'])->where('token', '[A-Za-z0-9_-]{20,64}');
 Route::delete('files/{token}', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'destroy'])->where('token', '[A-Za-z0-9_-]{20,64}');
 Route::get('files/{token}/content', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'content'])->where('token', '[A-Za-z0-9_-]{20,64}');
+Route::get('files/{token}/preview.jpg', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'image'])->where('token', '[A-Za-z0-9_-]{20,64}');
 Route::get('files/{token}/sheet.json', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'sheet'])->where('token', '[A-Za-z0-9_-]{20,64}');
 Route::get('files/{token}/preview.pdf', [\App\Http\Controllers\Mail\Api\CloudFilesController::class, 'preview'])->where('token', '[A-Za-z0-9_-]{20,64}');
 Route::get('message/{folder}/{uid}/raw', [MessageController::class, 'raw'])->where('folder', '.*')->where('uid', '[1-9][0-9]*');

@@ -5,7 +5,7 @@ import Icon from '../Icon.vue';
 import Popover from './Popover.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
 import AttachedMail from './AttachedMail.vue';
-import { isEmpty, isEml, isImg, isOffice, isSheet, viewable, viewerItems } from '../../mail/attachments';
+import { fileViewable, fileViewerItems, isEmpty, isEml, viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
 import { uiSimple } from '../../mail/uiMode';
 import { addrList, avatarColor, initials, size, when } from '../../mail/format';
@@ -135,15 +135,8 @@ function cloudNote(m) {
     return 'Файлы лежат на сервере почты' + (until ? ', ссылки действуют до ' + fmtDay(until) : '') + (live.some(renewable) ? ' — можно продлить' : '');
 }
 function openCloudFile(m, f) {
-    const list = cloudLive(m).filter((x) => x.preview);
-    viewer.value = {
-        start: Math.max(0, list.findIndex((x) => x.token === f.token)),
-        items: list.map((x) => ({
-            url: isOffice(x) || isSheet(x) ? api.filePreviewUrl(x.token) : api.fileContentUrl(x.token), downloadUrl: x.url,
-            name: x.name, type: isImg(x) ? x.type : 'application/pdf', size: x.size, converted: isOffice(x) || isSheet(x),
-            sheetUrl: isSheet(x) && !x.cloud ? api.fileSheetUrl(x.token) : null,
-        })),
-    };
+    const list = cloudLive(m).filter(fileViewable);
+    viewer.value = { start: Math.max(0, list.findIndex((x) => x.token === f.token)), items: fileViewerItems(list) };
 }
 async function renewFile(f) {
     try {
@@ -418,12 +411,12 @@ const isDraft = computed(() => props.folderRole === 'drafts');
                 </div>
                 <!-- Файлы, ушедшие ссылкой через своё хранилище: смотреть, скачать, продлить (свои) -->
                 <div v-if="cloudFiles(m).length" class="msg__atts msg__cloud">
-                    <span v-for="f in cloudFiles(m)" :key="f.token" class="att att--cloud" :class="{ 'att--view': f.preview && !f.expired, 'att--gone': f.expired }" :title="f.expired ? f.name + ' · срок ссылки истёк' : f.name + ' · ссылка до ' + fmtDay(f.expires)">
-                        <a v-if="!f.expired" class="att__main" :href="f.url" @click="f.preview && (openCloudFile(m, f), $event.preventDefault())">
+                    <span v-for="f in cloudFiles(m)" :key="f.token" class="att att--cloud" :class="{ 'att--view': fileViewable(f), 'att--gone': f.expired }" :title="f.expired ? f.name + ' · срок ссылки истёк' : f.name + ' · ссылка до ' + fmtDay(f.expires)">
+                        <a v-if="!f.expired" class="att__main" :href="f.url" @click="fileViewable(f) && (openCloudFile(m, f), $event.preventDefault())">
                             <Icon name="cloud" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">{{ size(f.size) }}</span>
                         </a>
                         <span v-else class="att__main"><Icon name="cloud" :size="13" /><span class="name">{{ f.name }}</span><span class="sz">срок истёк</span></span>
-                        <button v-if="f.preview && !f.expired" class="att__btn" type="button" title="Посмотреть" aria-label="Посмотреть" @click="openCloudFile(m, f)"><Icon name="eye" :size="14" /></button>
+                        <button v-if="fileViewable(f)" class="att__btn" type="button" title="Посмотреть" aria-label="Посмотреть" @click="openCloudFile(m, f)"><Icon name="eye" :size="14" /></button>
                         <a v-if="!f.expired" class="att__btn" :href="f.url" title="Скачать" aria-label="Скачать"><Icon name="download" :size="14" /></a>
                         <button v-if="renewable(f)" class="att__btn" type="button" title="Продлить ссылку" aria-label="Продлить ссылку" @click="renewFile(f)"><Icon name="refresh" :size="14" /></button>
                     </span>

@@ -141,6 +141,8 @@ export const api = {
     attachmentUrl: (folder, uid, index, inline = false) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}${inline ? '?inline=1' : ''}`,
     attachmentPreviewUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/preview.pdf`,
     // ?v= — версия разбора таблиц (SheetPreview::VERSION): после исправлений браузер не покажет старый вид из кэша.
+    // Фото HEIC (iPhone) → JPEG на сервере: браузеры на Windows HEIC не показывают.
+    attachmentImagePreviewUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/preview.jpg`,
     attachmentSheetUrl: (folder, uid, index) => `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/sheet.json?v=2`,
     // Письмо, приложенное к письму (.eml): разобранное письмо и его собственные вложения.
     attachedMessage: (folder, uid, index) => request('GET', `/mail/api/message/${enc(folder)}/${uid}/attachment/${index}/message`),
@@ -160,6 +162,7 @@ export const api = {
     fileDelete: (token) => request('DELETE', `/mail/api/files/${token}`),
     fileContentUrl: (token) => `/mail/api/files/${token}/content`,
     filePreviewUrl: (token) => `/mail/api/files/${token}/preview.pdf`,
+    fileImagePreviewUrl: (token) => `/mail/api/files/${token}/preview.jpg`,
     fileSheetUrl: (token) => `/mail/api/files/${token}/sheet.json?v=2`,
     rawUrl: (folder, uid) => `/mail/api/message/${enc(folder)}/${uid}/raw`,
 

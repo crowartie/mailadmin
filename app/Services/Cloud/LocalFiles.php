@@ -25,7 +25,7 @@ final class LocalFiles
     public const GROUP = 'files';
 
     /** Виды файлов, которые почта умеет показать без скачивания. */
-    private const OFFICE = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'xlsm', 'xltx', 'xltm', 'csv'];
+    private const OFFICE = \App\Services\Mail\OfficePdf::TYPES;
 
     /** @return array<string,mixed> */
     public static function settings(): array
@@ -82,7 +82,8 @@ final class LocalFiles
         }
         $ext = strtolower(pathinfo($f->name, PATHINFO_EXTENSION));
 
-        return str_starts_with($f->mime, 'image/') || $f->mime === 'application/pdf' || $ext === 'pdf' || in_array($ext, self::OFFICE, true);
+        return str_starts_with($f->mime, 'image/') || $f->mime === 'application/pdf' || $ext === 'pdf' || in_array($ext, self::OFFICE, true)
+            || \App\Services\Mail\SheetPreview::supports($f->name) || \App\Services\Mail\ImagePreview::supports($f->name, $f->mime);
     }
 
     public static function isOffice(CloudFile $f): bool
