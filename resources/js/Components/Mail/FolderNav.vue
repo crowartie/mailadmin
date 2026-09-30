@@ -231,7 +231,7 @@ function sharedTitle(f) {
             @dragleave="dropTarget = null"
             @drop="onDrop($event, f)"
         >
-            <span class="mnav__tog" :class="{ 'mnav__tog--open': !folded[f.path] }" role="presentation" :title="hasKids(f) ? (folded[f.path] ? 'Развернуть' : 'Свернуть') : null"><Icon v-if="hasKids(f)" name="chevron" :size="12" /></span>
+            <span class="mnav__tog" :class="{ 'mnav__tog--open': !folded[f.path] }" role="presentation" :title="hasKids(f) ? (folded[f.path] ? 'Развернуть' : 'Свернуть') : null"><Icon v-if="hasKids(f)" name="chevron" :size="14" /></span>
             <Icon :name="f.virtual ? 'inbox' : 'folder'" :size="16" style="color: var(--faint); flex: 0 0 16px" />
             <span class="mnav__name">{{ f.name }}</span>
             <span v-if="hiddenUnread(f)" class="mnav__sub" :title="'Непрочитанных во вложенных папках: ' + hiddenUnread(f)">+{{ hiddenUnread(f) }}</span>
@@ -264,7 +264,7 @@ function sharedTitle(f) {
                     @dragleave="dropTarget = null"
                     @drop="onDrop($event, f)"
                 >
-                    <span class="mnav__tog" :class="{ 'mnav__tog--open': !folded[f.path] }" role="presentation" :title="hasKids(f) ? (folded[f.path] ? 'Развернуть' : 'Свернуть') : null"><Icon v-if="hasKids(f)" name="chevron" :size="12" /></span>
+                    <span class="mnav__tog" :class="{ 'mnav__tog--open': !folded[f.path] }" role="presentation" :title="hasKids(f) ? (folded[f.path] ? 'Развернуть' : 'Свернуть') : null"><Icon v-if="hasKids(f)" name="chevron" :size="14" /></span>
                     <Icon name="folder" :size="16" style="color: var(--faint); flex: 0 0 16px" />
                     <span class="mnav__name">{{ f.name }}</span>
                     <span v-if="hiddenUnread(f)" class="mnav__sub" :title="'Непрочитанных во вложенных папках: ' + hiddenUnread(f)">+{{ hiddenUnread(f) }}</span>
