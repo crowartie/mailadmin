@@ -5,7 +5,7 @@ import Icon from '../Icon.vue';
 import Popover from './Popover.vue';
 import AttachmentViewer from './AttachmentViewer.vue';
 import AttachedMail from './AttachedMail.vue';
-import { isEmpty, isEml, isImg, isOffice, viewable, viewerItems } from '../../mail/attachments';
+import { isEmpty, isEml, isImg, isOffice, isSheet, viewable, viewerItems } from '../../mail/attachments';
 import { api } from '../../mail/api';
 import { uiSimple } from '../../mail/uiMode';
 import { addrList, avatarColor, initials, size, when } from '../../mail/format';
@@ -139,8 +139,9 @@ function openCloudFile(m, f) {
     viewer.value = {
         start: Math.max(0, list.findIndex((x) => x.token === f.token)),
         items: list.map((x) => ({
-            url: isOffice(x) ? api.filePreviewUrl(x.token) : api.fileContentUrl(x.token), downloadUrl: x.url,
-            name: x.name, type: isImg(x) ? x.type : 'application/pdf', size: x.size, converted: isOffice(x),
+            url: isOffice(x) || isSheet(x) ? api.filePreviewUrl(x.token) : api.fileContentUrl(x.token), downloadUrl: x.url,
+            name: x.name, type: isImg(x) ? x.type : 'application/pdf', size: x.size, converted: isOffice(x) || isSheet(x),
+            sheetUrl: isSheet(x) && !x.cloud ? api.fileSheetUrl(x.token) : null,
         })),
     };
 }

@@ -99,6 +99,16 @@ class CloudFilesController extends Controller
         return response()->file($pdf, ['Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline; filename="preview.pdf"', 'X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'private, max-age=3600']);
     }
 
+    /** Таблица из своего хранилища — таблицей (SheetPreview). Файлы из Nextcloud таблицей не показываем: копии на диске нет. */
+    public function sheet(ImapSession $imap, string $token): Response
+    {
+        $f = $this->any($token);
+        abort_unless(! $f->isCloud() && \App\Services\Mail\SheetPreview::supports($f->name) && LocalFiles::previewable($f), 422, 'Этот файл не показываем — скачайте его');
+        $json = \App\Services\Mail\SheetPreview::fromFile($f->fullPath(), $f->name);
+
+        return response(file_get_contents($json), 200, ['Content-Type' => 'application/json; charset=utf-8', 'X-Content-Type-Options' => 'nosniff', 'Cache-Control' => 'private, max-age=3600']);
+    }
+
     /** Картинка или PDF из облака сотрудника — nginx берёт из Nextcloud. */
     private function cloudContent(CloudFile $f): Response
     {

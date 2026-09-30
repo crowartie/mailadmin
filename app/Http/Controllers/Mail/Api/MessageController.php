@@ -188,6 +188,19 @@ class MessageController extends Controller
         ]);
     }
 
+    /** Таблица из вложения — таблицей: листы, ячейки, оформление (SheetPreview). */
+    public function attachmentSheet(ImapSession $imap, string $folder, int $uid, int $index): Response
+    {
+        $a = (new MailStore($imap->client()))->attachment($folder, $uid, $index);
+        $json = \App\Services\Mail\SheetPreview::fromContent((string) $a->getContent(), (string) $a->getName());
+
+        return response(file_get_contents($json), 200, [
+            'Content-Type' => 'application/json; charset=utf-8',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
+    }
+
     /** Все вложения письма одним архивом (обращение №11). */
     public function attachmentsZip(ImapSession $imap, string $folder, int $uid)
     {

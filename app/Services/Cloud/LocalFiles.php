@@ -25,7 +25,7 @@ final class LocalFiles
     public const GROUP = 'files';
 
     /** Виды файлов, которые почта умеет показать без скачивания. */
-    private const OFFICE = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
+    private const OFFICE = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'xlsm', 'xltx', 'xltm', 'csv'];
 
     /** @return array<string,mixed> */
     public static function settings(): array

@@ -1575,6 +1575,37 @@ select.input { padding-right: 28px; }
     &:hover { background: v.$c-surface; color: v.$c-text; }
 }
 @media (max-width: 860px) { .aview__frame { width: 100vw; height: calc(100vh - 48px); border-radius: 0; } .aview__arrow { width: 36px; height: 36px; } }
+.aview__mode { display: inline-flex; align-items: center; gap: 6px; background: rgb(255 255 255 / .12); color: #fff; border-color: rgb(255 255 255 / .25); }
+.aview__mode:hover { background: rgb(255 255 255 / .22); }
+.aview__frame--sheet { width: min(1400px, 96vw); overflow: hidden; }
+
+// Таблица Excel в просмотрщике (SheetViewer): белая «бумага» и в тёмной теме — как в самом Excel.
+.sheet {
+    display: flex; flex-direction: column; height: 100%; background: #fff; color: #1f1f1f; border-radius: 8px; overflow: hidden;
+    &__msg { margin: auto; padding: 24px; color: #555; font-size: 14px; text-align: center; }
+    &__note { padding: 6px 12px; font-size: 12.5px; background: #fff8e1; color: #6d4c00; border-bottom: 1px solid #f0e2b6; }
+    &__scroll { flex: 1; overflow: auto; position: relative; }
+    &__grid {
+        border-collapse: separate; border-spacing: 0; table-layout: fixed; line-height: 1.25;
+        td { border-right: 1px solid #e1e1e1; border-bottom: 1px solid #e1e1e1; padding: 1px 3px; vertical-align: bottom; overflow: hidden; background-clip: padding-box; }
+        &.sheet__grid--nogrid td { border-color: transparent; }
+    }
+    &__c { overflow: hidden; white-space: nowrap; text-overflow: clip; }
+    td[style*="pre-wrap"] &__c { white-space: pre-wrap; word-break: break-word; }
+    &__c--spill { overflow: visible; }
+    td:has(> .sheet__c--spill) { overflow: visible; }
+    &__ch, &__rh, &__corner { background: #f3f3f3; color: #555; font-weight: 400; font-size: 11px; font-family: "Segoe UI", system-ui, sans-serif; border-right: 1px solid #d4d4d4; border-bottom: 1px solid #d4d4d4; user-select: none; }
+    &__ch { position: sticky; top: 0; z-index: 3; height: 22px; text-align: center; }
+    &__rh { position: sticky; left: 0; z-index: 2; text-align: center; padding: 0 4px; }
+    &__corner { position: sticky; top: 0; left: 0; z-index: 6; }
+    &__more { margin: 0; padding: 10px 14px; color: #777; font-size: 12.5px; }
+    &__bar { display: flex; align-items: center; gap: 4px; border-top: 1px solid #d4d4d4; background: #f3f3f3; padding: 0 6px; min-height: 34px; color: #333; .ib { color: #333; } }
+    &__tabs { display: flex; overflow-x: auto; gap: 2px; align-self: stretch; }
+    &__tab { border: 0; background: transparent; padding: 0 14px; font: 13px "Segoe UI", system-ui, sans-serif; color: #444; cursor: pointer; white-space: nowrap; border-bottom: 3px solid transparent; }
+    &__tab:hover { background: #e7e7e7; }
+    &__tab.on { background: #fff; color: #107c41; font-weight: 600; border-bottom-color: #107c41; }
+    &__zoom { border: 0; background: transparent; font: 12.5px "Segoe UI", system-ui, sans-serif; color: #333; min-width: 46px; cursor: pointer; }
+}
 
 
 // 392: откуда письмо в переписке, если оно лежит не в обычной папке.

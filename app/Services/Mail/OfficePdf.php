@@ -17,7 +17,7 @@ use Symfony\Component\Process\Process;
  */
 final class OfficePdf
 {
-    public const TYPES = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
+    public const TYPES = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf', 'xlsm', 'xltx', 'xltm', 'csv'];
 
     /** Больше этого в предпросмотр не берём: конвертер будет молотить минуты. */
     public const MAX_BYTES = 25 * 1024 * 1024;

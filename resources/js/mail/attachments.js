@@ -13,6 +13,9 @@ export const ext = (a) => {
 export const isImg = (a) => String(a.type || '').startsWith('image/');
 export const isPdf = (a) => a.type === 'application/pdf' || ext(a) === 'pdf';
 export const isOffice = (a) => OFFICE.includes(ext(a));
+// Таблицы показываем таблицей (SheetPreview на сервере), «как при печати» — тем же PDF, что у документов.
+export const SHEET = ['xls', 'xlsx', 'xlsm', 'xltx', 'xltm', 'ods', 'csv'];
+export const isSheet = (a) => SHEET.includes(ext(a));
 // Письмо, приложенное к письму: показываем его отдельным окном, а не просмотрщиком картинок.
 export const isEml = (a) => String(a.type || '').toLowerCase() === 'message/rfc822' || ext(a) === 'eml';
 
@@ -24,17 +27,18 @@ export const EMPTY_MAX = 2;
 export const isEmpty = (a) => Number(a.size ?? 0) <= EMPTY_MAX;
 
 // Показывать нечего — ни картинку, ни PDF: смотреть пустоту предлагать не надо.
-export const viewable = (a) => !a.inline && !isEmpty(a) && !isEml(a) && (isImg(a) || isPdf(a) || isOffice(a));
+export const viewable = (a) => !a.inline && !isEmpty(a) && !isEml(a) && (isImg(a) || isPdf(a) || isOffice(a) || isSheet(a));
 
 export function viewUrl(folder, uid, a) {
-    return isOffice(a) ? api.attachmentPreviewUrl(folder, uid, a.index) : api.attachmentUrl(folder, uid, a.index, true);
+    return isOffice(a) || isSheet(a) ? api.attachmentPreviewUrl(folder, uid, a.index) : api.attachmentUrl(folder, uid, a.index, true);
 }
 
 /** Элементы просмотрщика для вложений письма (только те, что можно показать). */
 export function viewerItems(folder, uid, list) {
     return list.filter(viewable).map((x) => ({
         url: viewUrl(folder, uid, x), downloadUrl: api.attachmentUrl(folder, uid, x.index),
-        name: x.name, type: isImg(x) ? x.type : 'application/pdf', size: x.size, converted: isOffice(x),
+        name: x.name, type: isImg(x) ? x.type : 'application/pdf', size: x.size, converted: isOffice(x) || isSheet(x),
+        sheetUrl: isSheet(x) ? api.attachmentSheetUrl(folder, uid, x.index) : null,
     }));
 }
 

@@ -6,6 +6,8 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 // Библиотека грузится отдельным файлом только при первом открытии картинки — в основную сборку почты не входит.
 const VueEasyLightbox = defineAsyncComponent(() => import('vue-easy-lightbox').then((m) => m.default || m));
 import Icon from '../Icon.vue';
+// Таблица Excel/ODS/CSV — своим видом (листы, сетка); отдельный файл сборки, грузится при первом открытии таблицы.
+const SheetViewer = defineAsyncComponent(() => import('./SheetViewer.vue'));
 import { size } from '../../mail/format';
 import { readAsDataUrl } from '../../mail/attachments';
 
@@ -20,6 +22,10 @@ let returnTo = null;   // куда вернуть фокус после закр
 const cur = ref(Math.min(Math.max(0, props.start), props.items.length - 1));
 const item = computed(() => props.items[cur.value]);
 const isImage = computed(() => (item.value?.type || '').startsWith('image/'));
+// У таблицы два вида: таблица (по умолчанию) и «как при печати» — PDF от LibreOffice, где видны рисунки и диаграммы.
+const printView = ref(false);
+watch(cur, () => { printView.value = false; });
+const asSheet = computed(() => !!item.value?.sheetUrl && !printView.value);
 const hasPrev = computed(() => cur.value > 0);
 const hasNext = computed(() => cur.value < props.items.length - 1);
 
@@ -76,6 +82,9 @@ onBeforeUnmount(() => {
             <span class="aview__name" :title="item.name">{{ item.name }}</span>
             <span class="aview__meta"><template v-if="item.size">{{ size(item.size) }} · </template>{{ cur + 1 }} / {{ items.length }}<template v-if="item.converted"> · предпросмотр (документ переведён в PDF, оригинал — «Скачать»)</template></span>
             <span class="grow" />
+            <button v-if="item.sheetUrl" class="btn btn--sm aview__mode" type="button" :title="printView ? 'Показать таблицей: листы, ячейки, прокрутка' : 'Как при печати: страницы А4, видны рисунки и диаграммы'" @click="printView = !printView">
+                <Icon :name="printView ? 'table' : 'print'" :size="15" />{{ printView ? 'Таблицей' : 'Как при печати' }}
+            </button>
             <!-- 154: у только что приложенного файла адрес — строка data:, и браузеры
                  блокируют переход по ней в новой вкладке, а без атрибута download
                  «Скачать» тоже не работало. -->
@@ -106,6 +115,9 @@ onBeforeUnmount(() => {
             <template #prev-btn><span /></template>
             <template #next-btn><span /></template>
         </VueEasyLightbox>
+
+        <!-- Таблица: сетка с листами (SheetViewer); «Как при печати» — тот же файл PDF'ом ниже -->
+        <div v-else-if="asSheet" class="aview__frame aview__frame--sheet"><SheetViewer :key="item.sheetUrl" :src="item.sheetUrl" @pdf="printView = true" /></div>
 
         <!-- PDF: встроенный просмотрщик браузера (у него свои зум, поиск и печать) -->
         <iframe v-else :key="item.url" class="aview__frame" :src="item.url" :title="item.name" />
