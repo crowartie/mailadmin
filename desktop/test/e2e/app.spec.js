@@ -64,8 +64,11 @@ test('открывает почту своего сервера; мост на �
     await expect.poll(async () => (await state(app)).tooltip).toBe('Почта — 21 непрочитанное');
     expect(await win.evaluate(() => Notification.permission)).toBe('granted');
     expect(await win.evaluate(() => window.pochta.notificationsOn())).toBe(true);
-    // Один ящик — полосы слева нет, почта во всю ширину окна.
-    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.find((v) => v.getVisible()).getBounds().x)).toBe(0);
+    // Один ящик — полоса слева уже видна (значок ящика и «+»), почта справа от неё.
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.find((v) => v.getVisible()).getBounds().x)).toBe(60);
+    const sh = await shellPage(app);
+    await expect(sh.locator('button.acc')).toHaveCount(1);
+    await expect(sh.locator('button.add')).toBeVisible();
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle())).toBe('(3) Входящие — Почта');
     await s.close();
 });
@@ -267,12 +270,13 @@ test('два ящика на разных серверах: добавление
     expect((await state(again.app)).settings.accounts).toHaveLength(2);
     expect((await state(again.app)).active).toBe('main');
 
-    // Удаление второго ящика: страница закрыта, полоса исчезла, счётчик только первого.
+    // Удаление второго ящика: страница закрыта, полоса осталась с одним значком, счётчик только первого.
     await again.app.evaluate(() => globalThis.__pochta.removeAccount('a2'));
     await expect.poll(async () => (await state(again.app)).settings.accounts.map((x) => x.id)).toEqual(['main']);
     await expect.poll(() => again.app.windows().some((w) => w.url().startsWith(b.origin))).toBe(false);
     await expect.poll(async () => (await state(again.app)).tooltip).toBe('Почта — 3 непрочитанных');
-    expect(await again.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.find((v) => v.getVisible()).getBounds().x)).toBe(0);
+    expect(await again.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.find((v) => v.getVisible()).getBounds().x)).toBe(60);
+    await expect((await shellPage(again.app)).locator('button.acc')).toHaveCount(1);
     await a.close(); await b.close();
 });
 

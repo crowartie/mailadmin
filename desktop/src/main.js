@@ -256,7 +256,7 @@ function wireView(rec) {
 function layout() {
     if (!win || win.isDestroyed()) return;
     const [w, h] = win.getContentSize();
-    const rail = lib.railWidth(accounts().length, adding);
+    const rail = lib.railWidth(accounts().length);
     const act = activeAcc();
     for (const [id, rec] of views) {
         const on = !adding && act && id === act.id;

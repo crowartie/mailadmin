@@ -148,10 +148,9 @@ test('почтовые ящики: подписи, разделы хранени
     assert.equal(lib.newAccountId([{ id: 'main' }]), 'a2');
     assert.equal(lib.newAccountId([{ id: 'main' }, { id: 'a2' }]), 'a3');
     assert.equal(lib.newAccountId([{ id: 'a2' }]), 'main', 'первый ящик удалили — место main свободно');
-    assert.equal(lib.railWidth(0, false), 0);
-    assert.equal(lib.railWidth(1, false), 0, 'один ящик — полосы нет, почта во всю ширину');
-    assert.equal(lib.railWidth(1, true), 60, 'добавляем второй — полоса видна, есть куда вернуться');
-    assert.equal(lib.railWidth(2, false), 60);
+    assert.equal(lib.railWidth(0), 0, 'первый запуск — полосы нет');
+    assert.equal(lib.railWidth(1), 60, 'один ящик — полоса видна, «+» для второго на виду');
+    assert.equal(lib.railWidth(2), 60);
 });
 
 test('настройки: ящики — проверка, миграция из 1.0.x, выбранный ящик', () => {
