@@ -14,6 +14,8 @@ const installedVersion = (exe) => JSON.parse(asar.extractFile(path.join(path.dir
     const [exe, want] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
     const before = installedVersion(exe);
     const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'pochta-upd-'));
+    // С 1.1.0 сервер не зашит: обновления берутся с сервера первого ящика.
+    fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ accounts: [{ id: 'main', server: process.env.POCHTA_UPDATE_SERVER || 'https://mail.innotec.su' }] }));
     // --real: обычный режим (так работает у людей). Нужен для версий до 1.0.1, где в тестовом режиме обновления
     // выключены; скачанное обновление видно по папке electron-updater (%LOCALAPPDATA%\pochta-desktop-updater\pending).
     const real = process.argv.includes('--real');

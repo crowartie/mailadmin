@@ -1,10 +1,14 @@
 'use strict';
-// «Почта» для Windows: веб-почта своего сервера в отдельном окне + то, чего нет у вкладки браузера:
+// «Почта» для Windows: веб-почта своих серверов в отдельном окне + то, чего нет у вкладки браузера:
 // значок в трее со счётчиком, кружок с числом на панели задач, уведомления Windows о новых письмах
 // (даже когда окно закрыто или открыт календарь), запуск вместе с Windows, ссылки mailto:, понятный экран
-// «нет связи» и обновление само себя с того же сервера. Интерфейс почты — тот же, что в браузере,
-// поэтому всё новое в веб-почте появляется в приложении сразу, без выпуска новой версии.
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, session, Notification, dialog, screen, clipboard } = require('electron');
+// «нет связи» и обновление само себя с сервера. Интерфейс почты — тот же, что в браузере, поэтому всё новое
+// в веб-почте появляется в приложении сразу, без выпуска новой версии.
+//
+// Почтовых ящиков может быть несколько, в том числе на разных серверах (innotec.su, deltaservices.ru):
+// у каждого своя встроенная страница (WebContentsView) и свой раздел хранения — свой вход, все остаются
+// открытыми. Окно само — полоса ящиков слева (pages/shell.html), видна, когда ящиков больше одного.
+const { app, BrowserWindow, WebContentsView, Tray, Menu, nativeImage, shell, ipcMain, session, Notification, dialog, screen, clipboard } = require('electron');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const lib = require('./lib');
@@ -19,29 +23,36 @@ if (process.env.POCHTA_USER_DATA) app.setPath('userData', process.env.POCHTA_USE
 // создаёт в «Пуске» ярлык Electron.lnk с идентификатором установленной «Почты», и Windows рисует ей значок
 // Electron (атом) на панели задач и в уведомлениях (так было 30.09.2026).
 const APP_ID = TEST ? 'ru.mailadmin.pochta.test' : 'ru.mailadmin.pochta';
-const PARTITION = 'persist:pochta';
 const ASSETS = path.join(__dirname, '..', 'assets');
 const RETRY_MS = Number(process.env.POCHTA_RETRY_MS) || 15000;      // «нет связи»: повтор через 15 с
 const WATCH_MS = Number(process.env.POCHTA_WATCH_MS) || 30000;      // фоновая проверка «Входящих»
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
+const BG = '#F5F3EF';
+// Тесты не должны мешать человеку за компьютером: окна — за пределами экрана, без значка на панели задач
+// и без перехвата фокуса (30.09.2026 окна тестов мелькали на экране и забирали ввод).
+const OFFSCREEN = TEST ? { x: -20000, y: -20000, skipTaskbar: true } : {};
 
 app.setAppUserModelId(APP_ID);   // без него Windows не показывает уведомления от имени «Почты»
 
 let settings = lib.mergeSettings(null);
 let win = null;
 let tray = null;
-let unread = 0;
+let setupView = null;            // экран «адрес почты»: первый запуск или добавление ящика
+let adding = false;
+let totalUnread = 0;
 let tooltip = lib.trayTooltip(0);   // у Tray нет чтения подсказки — держим сами
 let quitting = false;
 let updateReady = null;          // версия, скачанная и ждущая перезапуска
-let retryTimer = null;
 let watchTimer = null;
-let lastUidnext = null;
+const views = new Map();         // id ящика → { acc, view, unread, lastUidnext, retryTimer }
+const sessionsReady = new Set();
 const testLog = { external: [], notices: [], loads: [] };
 
-function server() {
-    return lib.originOf(process.env.POCHTA_SERVER || '') || settings.server || lib.originOf(pkg.defaultServer || '') || '';
-}
+const accounts = () => settings.accounts;
+const multi = () => accounts().length > 1;
+const activeAcc = () => accounts().find((a) => a.id === settings.active) || accounts()[0] || null;
+const activeRec = () => { const a = activeAcc(); return a ? views.get(a.id) : null; };
+const label = (acc) => lib.accountLabel(acc.server);
 function saveSettings() { store.save(SETTINGS_FILE(), settings); }
 function icon(name) { return nativeImage.createFromPath(path.join(ASSETS, name)); }
 
@@ -56,10 +67,13 @@ if (!app.requestSingleInstanceLock()) {
     app.whenReady().then(start);
 }
 
-function start() {
+async function start() {
     settings = store.load(SETTINGS_FILE());
+    if (!accounts().length) {
+        const seeded = lib.originOf(process.env.POCHTA_SERVER || '') || await legacyServer();
+        if (seeded) { settings.accounts = [{ id: 'main', server: seeded }]; settings.active = 'main'; saveSettings(); }
+    }
     Menu.setApplicationMenu(null);
-    setupSession();
     createTray();
     createWindow();
     applyAutostart();
@@ -72,24 +86,52 @@ function start() {
         // Для сквозных тестов (test/e2e): состояние оболочки и перехват «открыть в браузере».
         shell.openExternal = async (url) => { testLog.external.push(url); };
         globalThis.__pochta = {
-            get unread() { return unread; },
+            get unread() { return totalUnread; },
             get tooltip() { return tooltip; },
-            get settings() { return { ...settings }; },
+            get settings() { return JSON.parse(JSON.stringify(settings)); },
             get log() { return testLog; },
             get visible() { return !!win && win.isVisible(); },
+            get adding() { return adding; },
+            get active() { return settings.active; },
             show: () => showWindow(),
             setNotifications: (on) => { settings.notifications = !!on; saveSettings(); },
-            watchOnce: () => watchInbox(),
+            watchOnce: () => watchAll(),
+            addAccount: () => startAdding(),
+            switchTo: (id) => switchTo(id),
+            removeAccount: (id) => removeAccount(id, false),
             get updateReady() { return updateReady; },
         };
     }
 }
 
-// ── Сессия: разрешения, загрузки, проверка орфографии ──────────────────────────────────────────────
-function setupSession() {
-    const ses = session.fromPartition(PARTITION);
-    ses.setPermissionRequestHandler((_wc, permission, cb, details) => cb(lib.allowPermission(permission, details.requestingUrl || '', server())));
-    ses.setPermissionCheckHandler((_wc, permission, origin) => lib.allowPermission(permission, origin || '', server()));
+/**
+ * Версии 1.0.x открывали сервер, зашитый при сборке (mail.innotec.su), и не записывали его в настройки.
+ * Первым ящиком он становится, только если в нём действительно выполнен вход: сотрудники второй компании,
+ * поставившие 1.0.x, видели лишь страницу входа innotec — им чужой сервер не нужен, покажем выбор адреса.
+ * Нет связи при запуске — решаем по наличию кук сервера (иначе человек потерял бы свой ящик).
+ */
+async function legacyServer() {
+    const s = lib.originOf(process.env.POCHTA_LEGACY_SERVER || pkg.legacyServer || '');
+    if (!s) return '';
+    const ses = session.fromPartition(lib.partitionFor('main'));
+    try {
+        if (!(await ses.cookies.get({ url: s })).length) return '';
+    } catch { return ''; }
+    try {
+        const r = await ses.fetch(s + '/mail/api/status?folder=INBOX', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, redirect: 'manual' });
+        return r.ok ? s : '';
+    } catch { return s; }
+}
+
+// ── Разделы хранения: разрешения, загрузки, проверка орфографии — у каждого ящика свои ────────────────
+function setupSession(acc) {
+    const part = lib.partitionFor(acc.id);
+    if (sessionsReady.has(part)) return;
+    sessionsReady.add(part);
+    const ses = session.fromPartition(part);
+    const srv = () => (accounts().find((a) => lib.partitionFor(a.id) === part) || {}).server || '';
+    ses.setPermissionRequestHandler((_wc, permission, cb, details) => cb(lib.allowPermission(permission, details.requestingUrl || '', srv())));
+    ses.setPermissionCheckHandler((_wc, permission, origin) => lib.allowPermission(permission, origin || '', srv()));
     ses.setSpellCheckerLanguages(['ru', 'en-US']);
     ses.on('will-download', (_e, item) => {
         item.once('done', (_ev, state) => {
@@ -100,73 +142,34 @@ function setupSession() {
     });
 }
 
-// ── Окно ──────────────────────────────────────────────────────────────────────────────────────────
+// ── Окно: полоса ящиков + страницы ящиков поверх неё ─────────────────────────────────────────────────
 function createWindow() {
     const saved = lib.visibleBounds(settings.bounds, screen.getAllDisplays());
     win = new BrowserWindow({
-        width: 1280, height: 860, ...(saved || {}),
+        width: 1280, height: 860, ...(saved || {}), ...OFFSCREEN,
         minWidth: 820, minHeight: 560,
         show: false,
         title: 'Почта',
         icon: path.join(ASSETS, 'icon.png'),
-        backgroundColor: '#F5F3EF',
+        backgroundColor: BG,
         autoHideMenuBar: true,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
-            partition: PARTITION,
+            preload: path.join(__dirname, 'shell-preload.js'),
             contextIsolation: true,
             sandbox: true,
             nodeIntegration: false,
-            spellcheck: true,
-            backgroundThrottling: false,   // окно в трее продолжает проверять почту
         },
     });
     if (settings.maximized) win.maximize();
     const hidden = process.argv.includes('--hidden');   // автозапуск с Windows — сразу в трей
-    win.once('ready-to-show', () => { if (!hidden) win.show(); });
+    win.once('ready-to-show', () => { if (hidden) return; if (TEST) win.showInactive(); else win.show(); });
+    win.on('page-title-updated', (e) => e.preventDefault());   // заголовок окна — от страницы ящика
+    win.webContents.on('before-input-event', (e, input) => onKey(e, input, null));
+    win.webContents.on('will-navigate', (e) => e.preventDefault());
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.loadFile(path.join(__dirname, 'pages', 'shell.html'));
 
-    const wc = win.webContents;
-    wc.setWindowOpenHandler(({ url }) => {
-        const kind = lib.classifyUrl(url, server());
-        if (kind === 'internal') {
-            // Печать письма, вложение во вкладке — отдельное окно той же почты (та же сессия, без моста).
-            return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: path.join(ASSETS, 'icon.png'), webPreferences: { partition: PARTITION, contextIsolation: true, sandbox: true, nodeIntegration: false } } };
-        }
-        if (kind === 'external') shell.openExternal(url);
-        if (kind === 'mailto') openMailto(url);
-        return { action: 'deny' };
-    });
-    wc.on('will-navigate', (e, url) => {
-        const kind = lib.classifyUrl(url, server());
-        if (kind === 'internal') return;
-        if (url.startsWith('file:') && wc.getURL().startsWith('file:')) return;   // экраны самого приложения
-        e.preventDefault();
-        if (kind === 'external') shell.openExternal(url);
-        if (kind === 'mailto') openMailto(url);
-    });
-    wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
-        if (TEST) testLog.loads.push(['fail', code, url, isMainFrame]);
-        if (!isMainFrame || code === -3) return;   // -3: переход отменён — это не ошибка связи
-        showOffline(url, desc);
-    });
-    // Таймер повтора здесь не гасим: после did-fail-load Chromium «дозагружает» свою страницу ошибки
-    // с адресом сервера, и отмена по этому событию оставляла экран «нет связи» навсегда. Таймер и так
-    // ничего не делает, если открыт уже не экран «нет связи» (проверка в showOffline).
-    wc.on('did-finish-load', () => { wc.setZoomLevel(settings.zoom || 0); });
-    wc.on('page-title-updated', (_e, title) => {
-        // На странице «Входящих» число непрочитанных есть в заголовке — запасной путь, если мост молчит.
-        const n = lib.unreadFromTitle(title);
-        if (n !== null) setUnread(n);
-    });
-    wc.on('before-input-event', (e, input) => onKey(e, input));
-    // Ctrl + колесо: тот же шаг, что у Ctrl + / −, и масштаб запоминается между запусками.
-    wc.on('zoom-changed', (_e, dir) => {
-        settings.zoom = Math.max(-3, Math.min(4, (settings.zoom || 0) + (dir === 'in' ? 0.5 : -0.5)));
-        wc.setZoomLevel(settings.zoom); saveSettings();
-    });
-    wc.on('context-menu', (_e, p) => contextMenu(p));
-
-    win.on('focus', () => win.flashFrame(false));
+    win.on('focus', () => { win.flashFrame(false); const r = activeRec(); if (r && !adding) r.view.webContents.focus(); });
     win.on('close', (e) => {
         rememberBounds();
         if (quitting) return;
@@ -178,41 +181,242 @@ function createWindow() {
             notify('Почта работает в фоне', 'Уведомления о письмах продолжат приходить. Открыть — значок в трее, выйти — «Выход» в его меню.');
         }
     });
-    win.on('resize', debounce(rememberBounds, 800));
-    win.on('move', debounce(rememberBounds, 800));
+    win.on('resize', () => { layout(); debounced(); });
+    win.on('move', debounced);
 
-    loadHome();
+    for (const acc of accounts()) createAccountView(acc);
+    if (!accounts().length) startAdding();
+    layout();
+}
+const debounced = debounce(rememberBounds, 800);
+
+function createAccountView(acc) {
+    setupSession(acc);
+    const view = new WebContentsView({
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            partition: lib.partitionFor(acc.id),
+            contextIsolation: true,
+            sandbox: true,
+            nodeIntegration: false,
+            spellcheck: true,
+            backgroundThrottling: false,   // окно в трее продолжает проверять почту
+        },
+    });
+    view.setBackgroundColor(BG);
+    const rec = { acc, view, unread: 0, lastUidnext: null, retryTimer: null };
+    views.set(acc.id, rec);
+    wireView(rec);
+    win.contentView.addChildView(view);
+    view.webContents.loadURL(acc.server + '/mail');
+    return rec;
 }
 
-function loadHome(pathname = '/mail') {
-    clearTimeout(retryTimer);
-    const s = server();
-    if (!s) { win.loadFile(path.join(__dirname, 'pages', 'setup.html')); return; }
-    win.loadURL(s + pathname);
+function wireView(rec) {
+    const wc = rec.view.webContents;
+    const srv = () => rec.acc.server;
+    wc.setWindowOpenHandler(({ url }) => {
+        const kind = lib.classifyUrl(url, srv());
+        if (kind === 'internal') {
+            // Печать письма, вложение во вкладке — отдельное окно той же почты (тот же вход, без моста).
+            return { action: 'allow', overrideBrowserWindowOptions: { ...OFFSCREEN, autoHideMenuBar: true, icon: path.join(ASSETS, 'icon.png'), webPreferences: { partition: lib.partitionFor(rec.acc.id), contextIsolation: true, sandbox: true, nodeIntegration: false } } };
+        }
+        if (kind === 'external') shell.openExternal(url);
+        if (kind === 'mailto') openMailto(url);
+        return { action: 'deny' };
+    });
+    wc.on('will-navigate', (e, url) => {
+        const kind = lib.classifyUrl(url, srv());
+        if (kind === 'internal') return;
+        if (url.startsWith('file:') && wc.getURL().startsWith('file:')) return;   // экраны самого приложения
+        e.preventDefault();
+        if (kind === 'external') shell.openExternal(url);
+        if (kind === 'mailto') openMailto(url);
+    });
+    wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+        if (TEST) testLog.loads.push(['fail', rec.acc.id, code, url, isMainFrame]);
+        if (!isMainFrame || code === -3) return;   // -3: переход отменён — это не ошибка связи
+        showOffline(rec, url, desc);
+    });
+    // Таймер повтора здесь не гасим: после did-fail-load Chromium «дозагружает» свою страницу ошибки
+    // с адресом сервера, и отмена по этому событию оставляла экран «нет связи» навсегда.
+    wc.on('did-finish-load', () => { wc.setZoomLevel(settings.zoom || 0); });
+    wc.on('page-title-updated', (_e, title) => {
+        // На странице «Входящих» число непрочитанных есть в заголовке — запасной путь, если мост молчит.
+        const n = lib.unreadFromTitle(title);
+        if (n !== null) setUnread(rec, n);
+        if (rec === activeRec()) updateTitle();
+    });
+    wc.on('before-input-event', (e, input) => onKey(e, input, wc));
+    // Ctrl + колесо: тот же шаг, что у Ctrl + / −, и масштаб запоминается между запусками.
+    wc.on('zoom-changed', (_e, dir) => setZoom((settings.zoom || 0) + (dir === 'in' ? 0.5 : -0.5)));
+    wc.on('context-menu', (_e, p) => contextMenu(p, wc, srv()));
 }
 
-function showOffline(url, reason) {
-    const target = url && lib.classifyUrl(url, server()) === 'internal' ? url : server() + '/mail';
-    win.loadFile(path.join(__dirname, 'pages', 'offline.html'), { query: { target, reason: String(reason || ''), retry: String(RETRY_MS) } });
-    clearTimeout(retryTimer);
-    retryTimer = setTimeout(() => {
-        if (TEST) testLog.loads.push(['retry', win.webContents.getURL().slice(0, 40), target]);
-        if (win && /\/offline\.html(\?|$)/.test(win.webContents.getURL())) win.loadURL(target).catch(() => {});
+function layout() {
+    if (!win || win.isDestroyed()) return;
+    const [w, h] = win.getContentSize();
+    const rail = lib.railWidth(accounts().length, adding);
+    const act = activeAcc();
+    for (const [id, rec] of views) {
+        const on = !adding && act && id === act.id;
+        rec.view.setVisible(on);
+        if (on) rec.view.setBounds({ x: rail, y: 0, width: Math.max(0, w - rail), height: h });
+    }
+    if (setupView) {
+        setupView.setVisible(adding);
+        if (adding) setupView.setBounds({ x: rail, y: 0, width: Math.max(0, w - rail), height: h });
+    }
+    pushShell();
+    updateTitle();
+}
+
+function pushShell() {
+    if (!win || win.isDestroyed()) return;
+    const act = activeAcc();
+    win.webContents.send('shell:state', {
+        adding,
+        accounts: accounts().map((a) => ({ id: a.id, label: label(a), unread: (views.get(a.id) || {}).unread || 0, active: !!act && a.id === act.id })),
+    });
+}
+
+function updateTitle() {
+    if (!win || win.isDestroyed()) return;
+    const r = activeRec();
+    if (adding || !r) { win.setTitle(accounts().length ? 'Почта — новый ящик' : 'Почта'); return; }
+    const t = r.view.webContents.getTitle() || 'Почта';
+    win.setTitle(multi() ? `${t} · ${label(r.acc)}` : t);
+}
+
+function switchTo(id) {
+    if (!accounts().some((a) => a.id === id)) return;
+    closeSetup();
+    settings.active = id; saveSettings();
+    layout();
+    rebuildTrayMenu();
+    const r = activeRec();
+    if (r && !TEST) r.view.webContents.focus();
+}
+
+// ── Добавление ящика ───────────────────────────────────────────────────────────────────────────────
+function startAdding() {
+    closeSetup();
+    adding = true;
+    setupView = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
+    setupView.setBackgroundColor(BG);
+    setupView.webContents.on('will-navigate', (e) => e.preventDefault());
+    setupView.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    setupView.webContents.on('before-input-event', (e, input) => onKey(e, input, null));
+    win.contentView.addChildView(setupView);
+    setupView.webContents.loadFile(path.join(__dirname, 'pages', 'setup.html'));
+    layout();
+    setupView.webContents.once('did-finish-load', () => { if (setupView && !TEST) setupView.webContents.focus(); });
+}
+
+function closeSetup() {
+    adding = false;
+    if (!setupView) return;
+    const v = setupView;
+    setupView = null;
+    try { win.contentView.removeChildView(v); } catch { /* уже убран */ }
+    v.webContents.close();
+}
+
+function addAccount(server) {
+    const id = lib.newAccountId(accounts());
+    const acc = { id, server };
+    settings.accounts = [...accounts(), acc];
+    settings.active = id;
+    saveSettings();
+    closeSetup();
+    createAccountView(acc);
+    layout();
+    rebuildTrayMenu();
+    if (accounts().length === 1) setupUpdates();
+    return acc;
+}
+
+async function removeAccount(id, ask = true) {
+    const acc = accounts().find((a) => a.id === id);
+    if (!acc) return;
+    if (ask) {
+        showWindow();
+        const r = await dialog.showMessageBox(win, {
+            type: 'question', buttons: ['Убрать', 'Отмена'], defaultId: 1, cancelId: 1, title: 'Почта',
+            message: `Убрать ящик ${label(acc)} из приложения?`,
+            detail: 'Письма на сервере останутся. Вход в этот ящик в приложении забудется — чтобы вернуть, добавьте его снова.',
+        });
+        if (r.response !== 0) return;
+    }
+    const rec = views.get(id);
+    views.delete(id);
+    if (rec) {
+        clearTimeout(rec.retryTimer);
+        try { win.contentView.removeChildView(rec.view); } catch { /* уже убран */ }
+        rec.view.webContents.close();
+    }
+    // Выйти из ящика: без этого повторное добавление открыло бы его уже вошедшим.
+    session.fromPartition(lib.partitionFor(id)).clearStorageData().catch(() => {});
+    settings.accounts = accounts().filter((a) => a.id !== id);
+    if (settings.active === id) settings.active = accounts().length ? accounts()[0].id : '';
+    saveSettings();
+    recountUnread();
+    if (!accounts().length) startAdding(); else layout();
+    rebuildTrayMenu();
+}
+
+function accountMenu(id) {
+    const acc = accounts().find((a) => a.id === id);
+    if (!acc) return;
+    Menu.buildFromTemplate([
+        { label: label(acc), enabled: false },
+        { type: 'separator' },
+        { label: 'Открыть', click: () => switchTo(id) },
+        { label: 'Обновить страницу', click: () => { const r = views.get(id); if (r) r.view.webContents.reload(); } },
+        { type: 'separator' },
+        { label: 'Убрать ящик из приложения…', click: () => removeAccount(id) },
+    ]).popup({ window: win });
+}
+
+// ── Экран «нет связи», окно, mailto: ──────────────────────────────────────────────────────────────────
+function showOffline(rec, url, reason) {
+    const wc = rec.view.webContents;
+    const target = url && lib.classifyUrl(url, rec.acc.server) === 'internal' ? url : rec.acc.server + '/mail';
+    wc.loadFile(path.join(__dirname, 'pages', 'offline.html'), { query: { target, reason: String(reason || ''), retry: String(RETRY_MS) } });
+    clearTimeout(rec.retryTimer);
+    rec.retryTimer = setTimeout(() => {
+        if (TEST) testLog.loads.push(['retry', rec.acc.id, wc.getURL().slice(0, 40), target]);
+        if (views.get(rec.acc.id) === rec && /\/offline\.html(\?|$)/.test(wc.getURL())) wc.loadURL(target).catch(() => {});
     }, RETRY_MS);
+}
+
+function openPath(pathname, id) {
+    const rec = id ? views.get(id) : activeRec();
+    if (!rec) { showWindow(); return; }
+    clearTimeout(rec.retryTimer);
+    if (id && id !== settings.active) {
+        switchTo(id);
+    } else {
+        closeSetup();
+        layout();
+    }
+    rec.view.webContents.loadURL(rec.acc.server + pathname);
+    showWindow();
 }
 
 function showWindow() {
     if (!win) return;
+    if (TEST) { win.showInactive(); return; }
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
 }
 
+/** mailto: — новое письмо в выбранном сейчас ящике (от чьего имени писать, человек поменяет в окне письма). */
 function openMailto(mailto) {
     const p = lib.mailtoPath(mailto);
-    if (!p || !server()) { showWindow(); return; }
-    win.loadURL(server() + p);
-    showWindow();
+    if (!p || !activeRec()) { showWindow(); return; }
+    openPath(p);
 }
 
 function rememberBounds() {
@@ -222,23 +426,33 @@ function rememberBounds() {
     saveSettings();
 }
 
-// ── Клавиши: меню у окна нет, поэтому обновить, масштаб и отладку ловим сами ──────────────────────
-function onKey(e, input) {
+function setZoom(z) {
+    settings.zoom = Math.max(-3, Math.min(4, z));
+    for (const rec of views.values()) rec.view.webContents.setZoomLevel(settings.zoom);
+    saveSettings();
+}
+
+// ── Клавиши: меню у окна нет, поэтому обновить, масштаб, ящики и отладку ловим сами ─────────────────
+function onKey(e, input, wc) {
     if (input.type !== 'keyDown') return;
-    const wc = win.webContents;
     const ctrl = input.control || input.meta;
-    const zoom = (z) => { settings.zoom = Math.max(-3, Math.min(4, z)); wc.setZoomLevel(settings.zoom); saveSettings(); e.preventDefault(); };
-    if (input.key === 'F5' || (ctrl && input.key.toLowerCase() === 'r')) { wc.reload(); e.preventDefault(); }
-    else if (ctrl && (input.key === '=' || input.key === '+')) zoom(settings.zoom + 0.5);
-    else if (ctrl && input.key === '-') zoom(settings.zoom - 0.5);
-    else if (ctrl && input.key === '0') zoom(0);
-    else if (input.key === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); }
-    else if (ctrl && input.shift && input.key.toLowerCase() === 'i') { wc.toggleDevTools(); e.preventDefault(); }
+    const k = input.key;
+    if (ctrl && !input.shift && !input.alt && /^[1-9]$/.test(k)) {
+        const acc = accounts()[Number(k) - 1];
+        if (acc) { switchTo(acc.id); e.preventDefault(); }
+        return;
+    }
+    if (!wc) return;
+    if (k === 'F5' || (ctrl && k.toLowerCase() === 'r')) { wc.reload(); e.preventDefault(); }
+    else if (ctrl && (k === '=' || k === '+')) { setZoom(settings.zoom + 0.5); e.preventDefault(); }
+    else if (ctrl && k === '-') { setZoom(settings.zoom - 0.5); e.preventDefault(); }
+    else if (ctrl && k === '0') { setZoom(0); e.preventDefault(); }
+    else if (k === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); }
+    else if (ctrl && input.shift && k.toLowerCase() === 'i') { wc.toggleDevTools(); e.preventDefault(); }
 }
 
 // ── Меню правой кнопки: у Electron его нет совсем — без него не вставить текст и не исправить опечатку ─
-function contextMenu(p) {
-    const wc = win.webContents;
+function contextMenu(p, wc, server) {
     const items = [];
     if (p.misspelledWord) {
         for (const s of p.dictionarySuggestions.slice(0, 5)) items.push({ label: s, click: () => wc.replaceMisspelling(s) });
@@ -246,7 +460,7 @@ function contextMenu(p) {
         items.push({ label: 'Добавить в словарь', click: () => wc.session.addWordToSpellCheckerDictionary(p.misspelledWord) }, { type: 'separator' });
     }
     if (p.linkURL && !p.linkURL.startsWith('javascript:')) {
-        const kind = lib.classifyUrl(p.linkURL, server());
+        const kind = lib.classifyUrl(p.linkURL, server);
         if (kind === 'external') items.push({ label: 'Открыть ссылку в браузере', click: () => shell.openExternal(p.linkURL) });
         items.push({ label: 'Копировать адрес ссылки', click: () => clipboard.writeText(p.linkURL) }, { type: 'separator' });
     }
@@ -280,19 +494,30 @@ function createTray() {
 
 function rebuildTrayMenu() {
     if (!tray) return;
+    const act = activeAcc();
     const items = [
-        { label: 'Открыть почту', click: () => { showWindow(); } },
-        { label: 'Написать письмо', enabled: !!server(), click: () => { loadHome('/mail?compose=1'); showWindow(); } },
+        { label: 'Открыть почту', click: () => showWindow() },
+        { label: 'Написать письмо', enabled: !!act, click: () => openPath('/mail?compose=1') },
+        { type: 'separator' },
+    ];
+    for (const [i, a] of accounts().entries()) {
+        const n = (views.get(a.id) || {}).unread || 0;
+        items.push({ label: `${label(a)}${n ? ` — ${n}` : ''}`, type: 'radio', checked: !!act && a.id === act.id, accelerator: i < 9 ? `Ctrl+${i + 1}` : undefined, registerAccelerator: false, click: () => { switchTo(a.id); showWindow(); } });
+    }
+    items.push({ label: 'Добавить почтовый ящик…', click: () => { startAdding(); showWindow(); } });
+    if (accounts().length) {
+        items.push({ label: 'Убрать почтовый ящик', submenu: accounts().map((a) => ({ label: label(a) + '…', click: () => removeAccount(a.id) })) });
+    }
+    items.push(
         { type: 'separator' },
         { label: 'Уведомления о новых письмах', type: 'checkbox', checked: settings.notifications, click: (mi) => { settings.notifications = mi.checked; saveSettings(); } },
         { label: 'Запускать вместе с Windows', type: 'checkbox', checked: settings.autostart, click: (mi) => { settings.autostart = mi.checked; saveSettings(); applyAutostart(); } },
         { label: 'Открывать ссылки «mailto:» в Почте…', enabled: app.isPackaged, click: () => chooseMailto() },
         { type: 'separator' },
-    ];
+    );
     if (updateReady) items.push({ label: `Перезапустить и обновить до ${updateReady}`, click: () => installUpdate() });
     else items.push({ label: 'Проверить обновления', enabled: app.isPackaged, click: () => checkUpdates(true) });
     items.push(
-        { label: 'Сменить сервер почты…', click: () => changeServer() },
         { label: `О программе (версия ${app.getVersion()})`, click: () => about() },
         { type: 'separator' },
         { label: 'Выход', click: () => { quitting = true; app.quit(); } },
@@ -300,21 +525,30 @@ function rebuildTrayMenu() {
     tray.setContextMenu(Menu.buildFromTemplate(items));
 }
 
-function setUnread(n) {
+function setUnread(rec, n) {
     n = Math.max(0, Math.floor(Number(n) || 0));
-    if (n === unread) return;
-    const grew = n > unread;
-    unread = n;
+    if (!rec || rec.unread === n) return;
+    rec.unread = n;
+    recountUnread();
+    rebuildTrayMenu();
+}
+
+function recountUnread() {
+    const list = accounts().map((a) => ({ label: label(a), unread: (views.get(a.id) || {}).unread || 0 }));
+    const n = list.reduce((s, a) => s + a.unread, 0);
+    const grew = n > totalUnread;
+    totalUnread = n;
+    tooltip = lib.trayTooltip(n, list);
     if (tray) {
-        tooltip = lib.trayTooltip(n);
         tray.setToolTip(tooltip);
         tray.setImage(icon(n > 0 ? 'tray-unread.png' : 'tray.png'));
     }
     if (win && !win.isDestroyed()) {
         const f = lib.badgeFile(n);
-        win.setOverlayIcon(f ? icon(path.join('badges', f)) : null, f ? lib.trayTooltip(n) : '');
+        win.setOverlayIcon(f ? icon(path.join('badges', f)) : null, f ? tooltip : '');
         if (grew && !win.isFocused()) win.flashFrame(true);
     }
+    pushShell();
 }
 
 // ── Уведомления о новых письмах ──────────────────────────────────────────────────────────────────
@@ -327,62 +561,83 @@ function notify(title, body, onClick) {
 }
 
 /**
- * Фоновая проверка «Входящих» раз в 30 с. Страница «Входящих» сама показывает уведомления (Inbox.vue),
- * поэтому здесь — только когда открыта другая страница (календарь, контакты, облако) или экран «нет связи».
- * Счётчик на панели задач обновляется всегда.
+ * Страница уведомляет сама, только если это «Входящие» выбранного ящика и окно на экране — тогда нажатие
+ * открывает письмо без перезагрузки. Во всех остальных случаях (окно в трее, другой ящик, календарь) —
+ * фоновая проверка ниже. Одно письмо — одно уведомление.
  */
-function startWatch() {
-    clearInterval(watchTimer);
-    watchTimer = setInterval(() => { watchInbox().catch(() => {}); }, WATCH_MS);
-    setTimeout(() => { watchInbox().catch(() => {}); }, 5000);
+function pageNotifies(rec) {
+    return !!rec && !adding && rec === activeRec() && !!win && win.isVisible() && !win.isMinimized()
+        && lib.isInboxPage(rec.view.webContents.getURL(), rec.acc.server);
 }
 
-async function watchInbox() {
-    const s = server();
-    if (!s) return;
-    const ses = session.fromPartition(PARTITION);
+function startWatch() {
+    clearInterval(watchTimer);
+    watchTimer = setInterval(() => { watchAll().catch(() => {}); }, WATCH_MS);
+    setTimeout(() => { watchAll().catch(() => {}); }, 5000);
+}
+
+async function watchAll() {
+    await Promise.all([...views.values()].map((rec) => watchInbox(rec).catch(() => {})));
+}
+
+async function watchInbox(rec) {
+    const s = rec.acc.server;
+    const ses = session.fromPartition(lib.partitionFor(rec.acc.id));
     const get = async (p) => {
         const r = await ses.fetch(s + p, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, redirect: 'manual' });
         if (!r.ok) throw new Error('HTTP ' + r.status);   // не вошли (401/419), сервер недоступен — ждём
         return r.json();
     };
     const st = await get('/mail/api/status?folder=INBOX');
-    if (typeof st.inboxUnseen === 'number') setUnread(st.inboxUnseen);
+    if (views.get(rec.acc.id) !== rec) return;   // ящик убрали, пока ждали ответа
+    if (typeof st.inboxUnseen === 'number') setUnread(rec, st.inboxUnseen);
     const next = Number(st.folder && st.folder.uidnext) || 0;
-    const prev = lastUidnext;
-    lastUidnext = next;
-    if (prev === null || next <= prev || !settings.notifications) return;
-    const url = win && !win.isDestroyed() ? win.webContents.getURL() : '';
-    if (lib.isInboxPage(url, s) && win.isVisible()) return;   // эта страница уведомит сама
+    const prev = rec.lastUidnext;
+    rec.lastUidnext = next;
+    if (prev === null || next <= prev || !settings.notifications || pageNotifies(rec)) return;
     const list = await get('/mail/api/list/INBOX?offset=0&limit=10&filter=unread&folders=0');
     const fresh = (list.messages || []).filter((m) => Number(m.uid) >= prev);
-    const n = lib.newMailNotice(fresh);
-    if (n) notify(n.title, n.body, () => loadHome(n.uid ? '/mail?uid=' + n.uid : '/mail'));
+    const n = lib.labelNotice(lib.newMailNotice(fresh), label(rec.acc), multi());
+    if (n) notify(n.title, n.body, () => openPath(n.uid ? '/mail?uid=' + n.uid : '/mail', rec.acc.id));
 }
 
-// ── Мост со страницей почты ──────────────────────────────────────────────────────────────────────
-function fromServer(e) {
-    try { return new URL(e.senderFrame ? e.senderFrame.url : e.sender.getURL()).origin === server(); } catch { return false; }
+// ── Мосты со страницами ─────────────────────────────────────────────────────────────────────────────
+/** Ящик, с чьей страницы пришло сообщение; только если страница с его сервера. */
+function senderAccount(e) {
+    for (const rec of views.values()) {
+        if (rec.view.webContents !== e.sender) continue;
+        try { return new URL(e.senderFrame ? e.senderFrame.url : e.sender.getURL()).origin === rec.acc.server ? rec : null; } catch { return null; }
+    }
+    return null;
 }
 function fromLocal(e) {
     try { return (e.senderFrame ? e.senderFrame.url : e.sender.getURL()).startsWith('file:'); } catch { return false; }
 }
 ipcMain.on('pochta:config', (e) => {
-    e.returnValue = { version: app.getVersion(), hint: pkg.defaultServer ? '' : 'ivan@example.ru' };
+    e.returnValue = { version: app.getVersion(), hint: 'ivan@example.ru', accounts: accounts().length };
 });
-ipcMain.on('pochta:notifications', (e) => { e.returnValue = fromServer(e) ? settings.notifications : false; });
-ipcMain.on('pochta:unread', (e, n) => { if (fromServer(e)) setUnread(n); });
-ipcMain.on('pochta:show', (e) => { if (fromServer(e)) showWindow(); });
+ipcMain.on('pochta:notifications', (e) => {
+    const rec = senderAccount(e);
+    e.returnValue = !!rec && settings.notifications && pageNotifies(rec);
+});
+ipcMain.on('pochta:unread', (e, n) => { const rec = senderAccount(e); if (rec) setUnread(rec, n); });
+ipcMain.on('pochta:show', (e) => { const rec = senderAccount(e); if (rec) { switchTo(rec.acc.id); showWindow(); } });
+ipcMain.on('shell:ready', (e) => { if (win && e.sender === win.webContents) pushShell(); });
+ipcMain.on('shell:switch', (e, id) => { if (win && e.sender === win.webContents) switchTo(String(id)); });
+ipcMain.on('shell:add', (e) => { if (win && e.sender === win.webContents) startAdding(); });
+ipcMain.on('shell:menu', (e, id) => { if (win && e.sender === win.webContents) accountMenu(String(id)); });
+ipcMain.on('setup:cancel', (e) => {
+    if (!setupView || e.sender !== setupView.webContents || !accounts().length) return;
+    closeSetup(); layout();
+});
 ipcMain.handle('setup:check', async (e, input) => {
-    if (!fromLocal(e)) return { ok: false, error: 'Недоступно' };
+    if (!setupView || e.sender !== setupView.webContents || !fromLocal(e)) return { ok: false, error: 'Недоступно' };
     const candidates = lib.serverCandidates(input);
     if (!candidates.length) return { ok: false, error: 'Введите адрес почты (ivan@example.ru) или адрес сервера (mail.example.ru)' };
+    if (accounts().length >= lib.MAX_ACCOUNTS) return { ok: false, error: `Больше ${lib.MAX_ACCOUNTS} ящиков добавить нельзя` };
     for (const c of candidates) {
         if (await looksLikeMailServer(c)) {
-            settings.server = c; saveSettings();
-            lastUidnext = null;
-            rebuildTrayMenu();
-            setTimeout(() => loadHome(), 50);
+            setTimeout(() => addAccount(c), 50);
             return { ok: true, server: c };
         }
     }
@@ -392,23 +647,11 @@ ipcMain.handle('setup:check', async (e, input) => {
 /** Сервер наш, если по /mail/login отвечает страница входа веб-почты (Inertia, data-page). */
 async function looksLikeMailServer(origin) {
     try {
-        const r = await session.fromPartition(PARTITION).fetch(origin + '/mail/login', { redirect: 'follow' });
+        const r = await session.defaultSession.fetch(origin + '/mail/login', { redirect: 'follow' });
         if (!r.ok) return false;
         const t = await r.text();
         return /data-page=|id="app"/.test(t);
     } catch { return false; }
-}
-
-async function changeServer() {
-    showWindow();
-    const r = await dialog.showMessageBox(win, {
-        type: 'question', buttons: ['Сменить', 'Отмена'], defaultId: 1, cancelId: 1, title: 'Почта',
-        message: 'Сменить сервер почты?', detail: `Сейчас: ${server() || 'не задан'}. Откроется экран ввода адреса; вход на новом сервере — заново.`,
-    });
-    if (r.response !== 0) return;
-    clearTimeout(retryTimer);
-    settings.server = ''; saveSettings(); lastUidnext = null; setUnread(0);
-    win.loadFile(path.join(__dirname, 'pages', 'setup.html'));
 }
 
 function about() {
@@ -416,7 +659,8 @@ function about() {
     dialog.showMessageBox(win, {
         type: 'info', title: 'О программе', buttons: ['Закрыть'],
         message: `Почта ${app.getVersion()}`,
-        detail: `Сервер: ${server() || 'не задан'}\nElectron ${process.versions.electron}, Chromium ${process.versions.chrome}\n\nКлавиши: F5 — обновить, Ctrl+колесо или Ctrl + / − — масштаб, Ctrl+0 — как было, F11 — во весь экран.`,
+        detail: `Ящики: ${accounts().map((a) => label(a)).join(', ') || 'не добавлены'}\nElectron ${process.versions.electron}, Chromium ${process.versions.chrome}\n\n`
+            + 'Клавиши: Ctrl+1…9 — ящики, F5 — обновить, Ctrl+колесо или Ctrl + / − — масштаб, Ctrl+0 — как было, F11 — во весь экран.',
     });
 }
 
@@ -463,14 +707,15 @@ async function chooseMailto() {
     shell.openExternal('ms-settings:defaultapps?registeredAppUser=' + REG_APP).catch(() => shell.openExternal('ms-settings:defaultapps'));
 }
 
-// ── Обновления: latest.yml и установщик лежат на том же сервере (/app/windows) ───────────────────
+// ── Обновления: latest.yml и установщик лежат на сервере почты (/app/windows) ──────────────────────
+// Версии на всех серверах одинаковые (publish-desktop.sh выкладывает на все), берём сервер первого ящика.
 let updater = null;
 function setupUpdates() {
-    if (!app.isPackaged || (TEST && !UPDATE_TEST) || !server()) return;
+    if (updater || !app.isPackaged || (TEST && !UPDATE_TEST) || !accounts().length) return;
     try {
         updater = require('electron-updater').autoUpdater;
     } catch { return; }
-    updater.setFeedURL({ provider: 'generic', url: lib.feedUrl(server()) });
+    updater.setFeedURL({ provider: 'generic', url: lib.feedUrl(accounts()[0].server) });
     updater.autoDownload = true;
     updater.autoInstallOnAppQuit = true;
     updater.on('update-downloaded', (info) => {

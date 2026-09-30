@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Почта</title>
+<style>
+    /* Полоса с почтовыми ящиками слева (видна, когда ящиков больше одного). Почта каждого ящика — справа,
+       в своём разделе хранения. Токены — как у веб-почты (resources/scss/_variables.scss). */
+    :root { --bg: #EDEAE4; --card: #fff; --text: #2B3036; --muted: #646B76; --accent: #C94E00; --line: #DDD9D2; --badge: #D63027; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #171A1D; --card: #2A2F35; --text: #EDEBE7; --muted: #A3A9B2; --accent: #FF8A3D; --line: #2E3339; --badge: #E5483F; } }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); font: 13px/1.3 "Segoe UI", system-ui, sans-serif; color: var(--text); user-select: none; overflow: hidden; }
+    nav { width: 60px; height: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0; border-right: 1px solid var(--line); }
+    button { position: relative; width: 42px; height: 42px; border-radius: 12px; border: 0; cursor: pointer; font: 600 15px/1 "Segoe UI", system-ui, sans-serif; color: #fff; display: grid; place-items: center; transition: border-radius .12s; }
+    button.acc::before { content: ""; position: absolute; left: -9px; top: 50%; width: 4px; height: 0; border-radius: 0 3px 3px 0; background: var(--text); transform: translateY(-50%); transition: height .12s; }
+    button.acc:hover { border-radius: 14px; }
+    button.acc:hover::before { height: 14px; }
+    button.acc.on { border-radius: 14px; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+    button.acc.on::before { height: 28px; }
+    .badge { position: absolute; top: -5px; right: -7px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--badge); color: #fff; font: 700 11px/18px "Segoe UI", system-ui, sans-serif; border: 2px solid var(--bg); }
+    button.add { background: transparent; color: var(--muted); border: 1px dashed var(--muted); font-size: 22px; font-weight: 400; }
+    button.add:hover, button.add.on { color: var(--accent); border-color: var(--accent); }
+    .grow { flex: 1; }
+</style>
+</head>
+<body>
+<nav id="rail" aria-label="Почтовые ящики"></nav>
+<script>
+    const rail = document.getElementById('rail');
+    // Цвет ящика — по его подписи, всегда один и тот же: быстро узнаётся глазом.
+    const COLORS = ['#C94E00', '#1D5FD1', '#2E7D32', '#7B3FB8', '#B8860B', '#00838F', '#AD1457', '#5D4037', '#455A64'];
+    const color = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.codePointAt(0)) >>> 0; return COLORS[h % COLORS.length]; };
+    function render(st) {
+        rail.textContent = '';
+        st.accounts.forEach((a, i) => {
+            const b = document.createElement('button');
+            b.className = 'acc' + (a.active && !st.adding ? ' on' : '');
+            b.dataset.id = a.id;
+            b.style.background = color(a.label);
+            b.textContent = a.label.replace(/^[^a-zа-яё0-9]+/i, '').slice(0, 1).toUpperCase() || '?';
+            b.title = a.label + (a.unread ? ` — ${a.unread} непрочитанных` : '') + (i < 9 ? `  (Ctrl+${i + 1})` : '') + '\nПравая кнопка — убрать ящик';
+            b.setAttribute('aria-label', a.label + (a.unread ? `, ${a.unread} непрочитанных` : ''));
+            if (a.unread) { const s = document.createElement('span'); s.className = 'badge'; s.textContent = a.unread > 99 ? '99+' : String(a.unread); b.append(s); }
+            b.addEventListener('click', () => window.pochtaShell.switchTo(a.id));
+            b.addEventListener('contextmenu', (e) => { e.preventDefault(); window.pochtaShell.menu(a.id); });
+            rail.append(b);
+        });
+        const add = document.createElement('button');
+        add.className = 'add' + (st.adding ? ' on' : '');
+        add.textContent = '+';
+        add.title = 'Добавить почтовый ящик';
+        add.setAttribute('aria-label', 'Добавить почтовый ящик');
+        add.addEventListener('click', () => window.pochtaShell.add());
+        rail.append(add);
+    }
+    window.pochtaShell.onState(render);
+</script>
+</body>
+</html>

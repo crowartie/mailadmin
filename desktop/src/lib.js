@@ -89,8 +89,15 @@ function plural(n, one, few, many) {
     return many;
 }
 
-/** Подсказка у значка в трее. */
-function trayTooltip(unread) {
+/**
+ * Подсказка у значка в трее. Один ящик — «Почта — 3 непрочитанных»; несколько — по каждому с непрочитанными:
+ * «Почта — innotec.su: 3, deltaservices.ru: 1».
+ */
+function trayTooltip(unread, perAccount) {
+    const many = (perAccount || []).filter((a) => a.unread > 0);
+    if (perAccount && perAccount.length > 1) {
+        return many.length ? 'Почта — ' + many.map((a) => `${a.label}: ${a.unread}`).join(', ') : 'Почта';
+    }
     return unread > 0 ? `Почта — ${unread} ${plural(unread, 'непрочитанное', 'непрочитанных', 'непрочитанных')}` : 'Почта';
 }
 
@@ -120,9 +127,62 @@ function isInboxPage(url, server) {
     } catch { return false; }
 }
 
+// ── Почтовые ящики ──────────────────────────────────────────────────────────────────────────────────
+// У компании может быть несколько почтовых серверов (innotec.su, deltaservices.ru): у каждого ящика свой
+// сервер и свой раздел хранения (partition) — свой вход, оба остаются залогиненными одновременно.
+const MAX_ACCOUNTS = 9;
+
+/** «https://mail.deltaservices.ru» → «deltaservices.ru»; локальный адрес — как есть, с портом. */
+function accountLabel(server) {
+    try {
+        const u = new URL(server);
+        return LOCAL_HOSTS.has(u.hostname) ? u.host : u.hostname.replace(/^(mail|webmail|pochta)\./i, '');
+    } catch { return String(server || ''); }
+}
+
+/** Раздел хранения ящика: у первого — прежний «persist:pochta», чтобы после обновления не входить заново. */
+function partitionFor(id) {
+    return id === 'main' ? 'persist:pochta' : 'persist:pochta-' + id;
+}
+
+/** Следующий свободный идентификатор ящика: main, затем a2, a3… */
+function newAccountId(accounts) {
+    const ids = new Set((accounts || []).map((a) => a.id));
+    if (!ids.has('main')) return 'main';
+    for (let i = 2; ; i++) if (!ids.has('a' + i)) return 'a' + i;
+}
+
+/** Список ящиков из настроек: только https-серверы, без повторов идентификаторов, не больше девяти. */
+function normalizeAccounts(list) {
+    const out = [];
+    const ids = new Set();
+    for (const a of Array.isArray(list) ? list : []) {
+        if (!a || typeof a !== 'object') continue;
+        const server = originOf(a.server);
+        const id = typeof a.id === 'string' && /^[a-z0-9]{1,12}$/.test(a.id) ? a.id : '';
+        if (!server || !id || ids.has(id)) continue;
+        ids.add(id);
+        out.push({ id, server });
+        if (out.length >= MAX_ACCOUNTS) break;
+    }
+    return out;
+}
+
+/** Ширина полосы с ящиками слева: видна, когда ящиков больше одного или идёт добавление к уже имеющимся. */
+function railWidth(count, adding) {
+    return count > 1 || (adding && count > 0) ? 60 : 0;
+}
+
+/** Уведомление с подписью ящика, когда их несколько: «Счёт · deltaservices.ru». */
+function labelNotice(n, label, multi) {
+    if (!n || !multi) return n;
+    return { ...n, body: n.body + ' · ' + label };
+}
+
 /** Настройки по умолчанию; в файле хранятся только отличия. */
 const DEFAULTS = Object.freeze({
-    server: '',
+    accounts: [],
+    active: '',
     bounds: null,
     maximized: false,
     autostart: true,
@@ -136,11 +196,17 @@ function mergeSettings(saved) {
     if (saved && typeof saved === 'object') {
         for (const k of Object.keys(DEFAULTS)) {
             if (!(k in saved)) continue;
-            const ok = k === 'bounds' ? saved[k] === null || typeof saved[k] === 'object' : typeof saved[k] === typeof DEFAULTS[k];
+            const ok = k === 'bounds' ? saved[k] === null || typeof saved[k] === 'object'
+                : k === 'accounts' ? Array.isArray(saved[k]) : typeof saved[k] === typeof DEFAULTS[k];
             if (ok) s[k] = saved[k];
         }
+        // Версии 1.0.x хранили один сервер в «server» — становится первым ящиком со старым разделом хранения.
+        if (!Array.isArray(saved.accounts) && typeof saved.server === 'string' && originOf(saved.server)) {
+            s.accounts = [{ id: 'main', server: saved.server }];
+        }
     }
-    if (s.server && !originOf(s.server)) s.server = '';
+    s.accounts = normalizeAccounts(s.accounts);
+    if (!s.accounts.some((a) => a.id === s.active)) s.active = s.accounts.length ? s.accounts[0].id : '';
     if (!Number.isFinite(s.zoom) || s.zoom < -3 || s.zoom > 4) s.zoom = 0;
     return s;
 }
@@ -175,4 +241,5 @@ function newMailNotice(messages) {
 module.exports = {
     originOf, serverCandidates, classifyUrl, mailtoPath, findMailtoArg, unreadFromTitle, plural, trayTooltip,
     badgeFile, allowPermission, feedUrl, isInboxPage, DEFAULTS, mergeSettings, visibleBounds, newMailNotice,
+    MAX_ACCOUNTS, accountLabel, partitionFor, newAccountId, normalizeAccounts, railWidth, labelNotice,
 };

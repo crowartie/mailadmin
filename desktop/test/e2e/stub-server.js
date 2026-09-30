@@ -5,7 +5,8 @@
 const http = require('node:http');
 
 function start(port = 0) {
-    const state = { unseen: 3, uidnext: 100, messages: [], requests: [] };
+    // requireLogin: /mail/api/status отвечает 401 без куки входа, а куку ставит открытие /mail — как вход в почту.
+    const state = { unseen: 3, uidnext: 100, messages: [], requests: [], requireLogin: false };
     const page = (title, body) => `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
     const server = http.createServer((req, res) => {
         const u = new URL(req.url, 'http://x');
@@ -14,6 +15,7 @@ function start(port = 0) {
         const json = (o) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
         if (u.pathname === '/mail/login') return html(200, page('Вход — Почта', '<div id="app" data-page="{}">Вход</div>'));
         if (u.pathname === '/mail' || u.pathname.startsWith('/mail/folder/')) {
+            res.setHeader('Set-Cookie', 'sess=1; Path=/; Max-Age=86400; HttpOnly');
             const compose = u.searchParams.get('compose') ? `<p id="compose">Новое письмо кому: ${u.searchParams.get('to') || ''}</p>` : '';
             return html(200, page(`(${state.unseen}) Входящие — Почта`, `
                 <h1 id="inbox">Входящие</h1>${compose}
@@ -26,6 +28,9 @@ function start(port = 0) {
         }
         if (u.pathname.startsWith('/mail/print/')) return html(200, page('Печать — Почта', '<p id="print-page">Печать письма</p>'));
         if (u.pathname === '/calendar') return html(200, page('Календарь — Почта', '<h1 id="cal">Календарь</h1>'));
+        if (u.pathname === '/mail/api/status' && state.requireLogin && !/(^|;\s*)sess=1/.test(req.headers.cookie || '')) {
+            res.writeHead(401, { 'Content-Type': 'application/json' }); return res.end('{"message":"Unauthenticated."}');
+        }
         if (u.pathname === '/mail/api/status') return json({ folder: { unseen: state.unseen, messages: 50, uidnext: state.uidnext }, inboxUnseen: state.unseen, reminders: [] });
         if (u.pathname === '/mail/api/list/INBOX') return json({ messages: state.messages, total: state.messages.length });
         html(404, page('Нет', 'нет такой страницы'));

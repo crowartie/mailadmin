@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('pochta', {
 if (location.protocol === 'file:') {
     contextBridge.exposeInMainWorld('pochtaSetup', {
         hint: String(cfg.hint || ''),
+        adding: cfg.accounts > 0,   // ящики уже есть — это добавление ещё одного, можно отменить
         check: (input) => ipcRenderer.invoke('setup:check', String(input || '')),
+        cancel: () => ipcRenderer.send('setup:cancel'),
     });
 }

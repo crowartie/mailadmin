@@ -21,19 +21,21 @@
     button { margin-top: 16px; width: 100%; font: inherit; font-weight: 600; font-size: 15px; padding: 11px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-on); cursor: pointer; }
     button:disabled { opacity: .6; cursor: default; }
     .err { color: var(--no); font-size: 14px; margin-top: 12px; min-height: 20px; }
+    button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); margin-top: 8px; }
     .hint { font-size: 13px; margin: 14px 0 0; }
 </style>
 </head>
 <body>
 <form class="card" id="f" autocomplete="off">
     <div class="logo"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3.5 6.5 8.5 6 8.5-6"/></svg></div>
-    <h1>Почта</h1>
-    <p>Укажите свой адрес почты — приложение само найдёт сервер. Пароль спросит уже страница входа.</p>
+    <h1 id="title">Почта</h1>
+    <p id="lead">Укажите свой адрес почты — приложение само найдёт сервер. Пароль спросит уже страница входа.</p>
     <label for="addr">Адрес почты или сервера</label>
     <input id="addr" name="addr" type="text" spellcheck="false" autofocus>
     <div class="err" id="err" role="alert"></div>
     <button id="go" type="submit">Далее</button>
-    <p class="hint">Например, ivan@example.ru или mail.example.ru. Сервер можно сменить позже в меню значка в трее.</p>
+    <button id="cancel" type="button" class="ghost" hidden>Отмена</button>
+    <p class="hint" id="hint">Например, ivan@example.ru или mail.example.ru. Ещё один ящик, в том числе на другом сервере, можно добавить позже — «+» слева или меню значка в трее.</p>
 </form>
 <script>
     const f = document.getElementById('f');
@@ -41,6 +43,15 @@
     const err = document.getElementById('err');
     const go = document.getElementById('go');
     if (window.pochtaSetup && window.pochtaSetup.hint) input.placeholder = window.pochtaSetup.hint;
+    if (window.pochtaSetup && window.pochtaSetup.adding) {
+        document.getElementById('title').textContent = 'Ещё один почтовый ящик';
+        document.getElementById('lead').textContent = 'Адрес почты — например, на сервере другой компании. У каждого ящика свой вход, оба останутся открытыми; переключение — значками слева или Ctrl+1, Ctrl+2.';
+        document.getElementById('hint').textContent = 'Например, ivan@example.ru или mail.example.ru.';
+        const c = document.getElementById('cancel');
+        c.hidden = false;
+        c.addEventListener('click', () => window.pochtaSetup.cancel());
+    }
+    input.focus();
     f.addEventListener('submit', async (e) => {
         e.preventDefault();
         err.textContent = '';

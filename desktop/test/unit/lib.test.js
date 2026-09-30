@@ -108,7 +108,8 @@ test('настройки: значения по умолчанию, мусор �
     assert.equal(d.notifications, true);
     assert.equal(d.autostart, true);
     const m = lib.mergeSettings({ server: 'http://evil.ru', zoom: 99, notifications: 'да', autostart: false, bounds: { x: 1, y: 2, width: 900, height: 700 }, лишнее: 1 });
-    assert.equal(m.server, '', 'http-сервер не принимается');
+    assert.deepEqual(m.accounts, [], 'http-сервер не принимается');
+    assert.equal('server' in m, false);
     assert.equal(m.zoom, 0);
     assert.equal(m.notifications, true, 'строка вместо флага — берём по умолчанию');
     assert.equal(m.autostart, false);
@@ -117,13 +118,14 @@ test('настройки: значения по умолчанию, мусор �
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pochta-'));
     const file = path.join(dir, 'sub', 'settings.json');
-    assert.equal(store.load(file).server, '', 'нет файла — по умолчанию');
-    assert.equal(store.save(file, { ...d, server: S, zoom: 1 }), true);
-    assert.equal(store.load(file).server, S);
+    assert.deepEqual(store.load(file).accounts, [], 'нет файла — по умолчанию');
+    assert.equal(store.save(file, { ...d, accounts: [{ id: 'main', server: S }], zoom: 1 }), true);
+    assert.deepEqual(store.load(file).accounts, [{ id: 'main', server: S }]);
+    assert.equal(store.load(file).active, 'main');
     assert.equal(store.load(file).zoom, 1);
     assert.equal(fs.existsSync(file + '.tmp'), false);
     fs.writeFileSync(file, '{ обрывок');
-    assert.equal(store.load(file).server, '', 'битый файл — по умолчанию, без падения');
+    assert.deepEqual(store.load(file).accounts, [], 'битый файл — по умолчанию, без падения');
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -133,4 +135,49 @@ test('положение окна: за пределами экранов — т
     assert.deepEqual(lib.visibleBounds({ x: 3000, y: 100, width: 1200, height: 800 }, displays), { width: 1200, height: 800 }, 'второй монитор отключили');
     assert.equal(lib.visibleBounds({ x: 0, y: 0, width: 100, height: 100 }, displays), null);
     assert.equal(lib.visibleBounds(null, displays), null);
+});
+
+test('почтовые ящики: подписи, разделы хранения, идентификаторы', () => {
+    assert.equal(lib.accountLabel('https://mail.deltaservices.ru'), 'deltaservices.ru');
+    assert.equal(lib.accountLabel('https://webmail.example.org'), 'example.org');
+    assert.equal(lib.accountLabel('https://post.example.org'), 'post.example.org');
+    assert.equal(lib.accountLabel('http://127.0.0.1:8123'), '127.0.0.1:8123');
+    assert.equal(lib.partitionFor('main'), 'persist:pochta', 'первый ящик — прежний раздел, вход после обновления сохраняется');
+    assert.equal(lib.partitionFor('a2'), 'persist:pochta-a2');
+    assert.equal(lib.newAccountId([]), 'main');
+    assert.equal(lib.newAccountId([{ id: 'main' }]), 'a2');
+    assert.equal(lib.newAccountId([{ id: 'main' }, { id: 'a2' }]), 'a3');
+    assert.equal(lib.newAccountId([{ id: 'a2' }]), 'main', 'первый ящик удалили — место main свободно');
+    assert.equal(lib.railWidth(0, false), 0);
+    assert.equal(lib.railWidth(1, false), 0, 'один ящик — полосы нет, почта во всю ширину');
+    assert.equal(lib.railWidth(1, true), 60, 'добавляем второй — полоса видна, есть куда вернуться');
+    assert.equal(lib.railWidth(2, false), 60);
+});
+
+test('настройки: ящики — проверка, миграция из 1.0.x, выбранный ящик', () => {
+    const old = lib.mergeSettings({ server: S, zoom: 1 });
+    assert.deepEqual(old.accounts, [{ id: 'main', server: S }], 'server из 1.0.x → первый ящик');
+    assert.equal(old.active, 'main');
+    const both = lib.mergeSettings({ accounts: [{ id: 'main', server: S }, { id: 'a2', server: 'https://mail.deltaservices.ru/mail' }], active: 'a2' });
+    assert.deepEqual(both.accounts.map((a) => a.server), [S, 'https://mail.deltaservices.ru']);
+    assert.equal(both.active, 'a2');
+    const bad = lib.mergeSettings({ accounts: [{ id: 'main', server: 'http://evil.ru' }, { id: 'main', server: S }, { id: 'a2', server: S }, { id: 'A B', server: S }, null, 'x'], active: 'нет' });
+    assert.deepEqual(bad.accounts, [{ id: 'main', server: S }, { id: 'a2', server: S }], 'мусор отброшен, повтор id — тоже');
+    assert.equal(bad.active, 'main', 'неизвестный выбранный — первый');
+    const many = lib.mergeSettings({ accounts: Array.from({ length: 12 }, (_, i) => ({ id: 'a' + (i + 2), server: S })) });
+    assert.equal(many.accounts.length, lib.MAX_ACCOUNTS);
+    assert.equal(lib.mergeSettings({ accounts: 'не список' }).accounts.length, 0);
+    assert.equal(lib.mergeSettings({ accounts: [], server: S }).accounts.length, 0, 'новый формат важнее старого поля');
+});
+
+test('подсказка в трее и уведомления при нескольких ящиках', () => {
+    const per = [{ label: 'innotec.su', unread: 3 }, { label: 'deltaservices.ru', unread: 1 }];
+    assert.equal(lib.trayTooltip(4, per), 'Почта — innotec.su: 3, deltaservices.ru: 1');
+    assert.equal(lib.trayTooltip(3, [{ label: 'innotec.su', unread: 3 }, { label: 'deltaservices.ru', unread: 0 }]), 'Почта — innotec.su: 3');
+    assert.equal(lib.trayTooltip(0, per.map((a) => ({ ...a, unread: 0 }))), 'Почта');
+    assert.equal(lib.trayTooltip(3, [{ label: 'innotec.su', unread: 3 }]), 'Почта — 3 непрочитанных', 'один ящик — как раньше');
+    const n = { title: 'Иванов', body: 'Счёт', uid: 5 };
+    assert.deepEqual(lib.labelNotice(n, 'deltaservices.ru', true), { title: 'Иванов', body: 'Счёт · deltaservices.ru', uid: 5 });
+    assert.equal(lib.labelNotice(n, 'deltaservices.ru', false), n);
+    assert.equal(lib.labelNotice(null, 'x', true), null);
 });

@@ -12,7 +12,8 @@
 | Крестик — в трей, выход — из меню | `win.on('close')` |
 | mailto: из других программ, второй запуск передаёт ссылку первому | `openMailto`, `second-instance`, `protocols` в `package.json` |
 | «Нет связи» с автоповтором | `src/pages/offline.html`, `showOffline` |
-| Первый запуск: адрес почты → сервер (`mail.<домен>`) | `src/pages/setup.html`, `setup:check` |
+| Первый запуск и добавление ящика: адрес почты → сервер (`mail.<домен>`) | `src/pages/setup.html`, `setup:check`, `startAdding` |
+| Несколько ящиков: полоса слева, Ctrl+1…9, трей, общий счётчик, уведомления с подписью ящика | `pages/shell.html`, `switchTo`, `recountUnread`, `watchAll` |
 | Куда можно ходить: страницы сервера — в окне, чужие сайты — в браузере, `file:` и прочее — никуда | `lib.classifyUrl`, `will-navigate`, `setWindowOpenHandler` |
 | Разрешения только странице своего сервера: уведомления, буфер обмена | `lib.allowPermission` |
 | Обновление само себя с того же сервера: `/app/windows/latest.yml` | `setupUpdates` (electron-updater, provider generic) |
@@ -33,8 +34,12 @@ npm run e2e       # сквозные: настоящее окно против �
 npm run dist      # установщик dist/Pochta-Setup-<версия>.exe + latest.yml + .blockmap
 ```
 
-Сервер по умолчанию в исходниках не зашит (`defaultServer` пустой — на первом запуске спрашивается адрес
-почты). Для своей компании его подставляет сборка: `electron-builder … -c.extraMetadata.defaultServer=https://mail.example.ru`.
+Сервер в приложение не зашит: первый запуск спрашивает адрес почты и находит сервер (`mail.<домен>`).
+Ящиков может быть несколько, на разных серверах: у каждого своя встроенная страница (WebContentsView) и свой
+раздел хранения `persist:pochta[-id]` — свой вход; слева полоса со значками (`src/pages/shell.html`,
+`src/shell-preload.js`), видна при двух и более ящиках. `legacyServer` (подставляет сборка) нужен только
+для перехода с 1.0.x, где был зашит mail.innotec.su: если в прежнем разделе хранения выполнен вход туда,
+этот сервер становится первым ящиком.
 
 Иконки делает `python tools/make-icons.py` из `public/icon-512.png`; результат лежит в репозитории.
 
