@@ -49,11 +49,18 @@ export function useCompose(ctx) {
         return id ? (id.signature || '') : (ctx.settings.value.signature || '');
     }
 
+    /**
+     * Строки письма — <div> без полей, как в Gmail и Почте Mail.ru (замечание 30.09.2026 после №65).
+     * С <p> каждый Enter давал абзац с отступом в строку сверху и снизу, и у получателя тоже; а пустой
+     * <p></p> в начале был нулевой высоты, и курсор попадал в строку перед подписью.
+     */
+    const line = (text) => `<div>${text ? escapeHtml(text) : '<br>'}</div>`;
+
     function signature(forReply, fromMail) {
         const s = signatureText(fromMail);
         if (!s || (forReply && !ctx.settings.value.signature_reply)) return '';
 
-        return `<p><br></p><div class="sig">${s}</div>`;
+        return `<div><br></div><div class="sig">${s}</div>`;
     }
 
     /** Письмо из общей папки — от имени её владельца, если нам разрешено писать за него. */
@@ -67,7 +74,7 @@ export function useCompose(ctx) {
     function quote(m) {
         const inner = m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`;
 
-        return `<p><br></p><div class="quote"><div style="color:#6B7787">${escapeHtml(when(m.date, true))}, ${escapeHtml(m.from.name)} &lt;${escapeHtml(m.from.mail)}&gt; писал(а):</div><blockquote>${inner}</blockquote></div>`;
+        return `<div><br></div><div class="quote"><div style="color:#6B7787">${escapeHtml(when(m.date, true))}, ${escapeHtml(m.from.name)} &lt;${escapeHtml(m.from.mail)}&gt; писал(а):</div><blockquote>${inner}</blockquote></div>`;
     }
 
     /** Это мы сами — свой адрес или один из общих ящиков, за которые можем писать. */
@@ -117,7 +124,7 @@ export function useCompose(ctx) {
         if (mode === 'new') {
             // «Написать письмо» из карточки адресата: адресат уже подставлен.
             if (Array.isArray(m?.to)) c.to = [...m.to];
-            c.html = `<p>${escapeHtml(text)}</p>${signature(false, c.from)}`;
+            c.html = `${line(text)}${signature(false, c.from)}`;
         } else if (mode === 'reply' || mode === 'replyAll') {
             c.to = replyTargets(m).filter((a) => !me(a) || replyTargets(m).length === 1);
             if (mode === 'replyAll') {
@@ -127,7 +134,7 @@ export function useCompose(ctx) {
                 });
             }
             c.subject = answerSubject('Re', m.subject);
-            c.html = `<p>${escapeHtml(text)}</p>${signature(true, c.from)}${quote(m)}`;
+            c.html = `${line(text)}${signature(true, c.from)}${quote(m)}`;
             c.inReplyTo = m.messageId;
             c.references = [m.references, m.messageId].filter(Boolean).join(' ');
             c.answeredFolder = m.folder;
@@ -142,7 +149,7 @@ export function useCompose(ctx) {
             // вслед за «Переслать вложением» (обращение №39). Отметка «отвечено» ставится, как у ответа.
             c.to = replyTargets(m).filter((a) => !me(a) || replyTargets(m).length === 1);
             c.subject = answerSubject('Re', m.subject);
-            c.html = `<p><br></p>${signature(true, c.from)}`;
+            c.html = `<div><br></div>${signature(true, c.from)}`;
             c.inReplyTo = m.messageId;
             c.references = [m.references, m.messageId].filter(Boolean).join(' ');
             c.answeredFolder = m.folder;
@@ -155,14 +162,14 @@ export function useCompose(ctx) {
             // файлами .eml, тело нового письма остаётся пустым — цитаты и шапки не нужно.
             const all = Array.isArray(extra?.messages) && extra.messages.length ? extra.messages : [m];
             c.subject = all.length === 1 ? answerSubject('Fwd', all[0].subject) : `Fwd: ${all.length} ${plural(all.length, 'письмо', 'письма', 'писем')}`;
-            c.html = `<p><br></p>${signature(true, c.from)}`;
+            c.html = `<div><br></div>${signature(true, c.from)}`;
             c.attachMessages = all.map((x) => ({ folder: x.folder, uid: x.uid, name: x.subject || 'письмо' }));
             c.attachments = [];
             c.keepAttachments = false;
         } else if (mode === 'forward') {
             c.subject = answerSubject('Fwd', m.subject);
             const hdr = `<div class="fwd" style="color:#6B7787">---------- Пересланное письмо ----------<br>От: ${escapeHtml(m.from.name)} &lt;${escapeHtml(m.from.mail)}&gt;<br>Дата: ${escapeHtml(when(m.date, true))}<br>Тема: ${escapeHtml(m.subject)}<br>Кому: ${escapeHtml(addrString(m.to))}</div><br>`;
-            c.html = `<p><br></p>${signature(true, c.from)}<p><br></p>${hdr}${m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`}`;
+            c.html = `<div><br></div>${signature(true, c.from)}<div><br></div>${hdr}${m.html || `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(m.text || '')}</pre>`}`;
             c.references = [m.references, m.messageId].filter(Boolean).join(' ');
             c.attachments = m.attachments || [];
             c.sourceFolder = m.folder;
@@ -366,7 +373,7 @@ export function useCompose(ctx) {
             // Та же тема, что и у полного ответа: раньше быстрый ответ уходил с «Re: (без темы)».
             subject: answerSubject('Re', m.subject),
             ...(sharedFrom(m) ? { from: sharedFrom(m) } : {}),
-            html: `<p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>${signature(true, sharedFrom(m))}${quote(m)}`,
+            html: `<div>${escapeHtml(text).replace(/\n/g, '<br>')}</div>${signature(true, sharedFrom(m))}${quote(m)}`,
             inReplyTo: m.messageId,
             references: [m.references, m.messageId].filter(Boolean).join(' '),
             answeredFolder: m.folder,
@@ -420,7 +427,7 @@ export function useCompose(ctx) {
             const [addr, qs] = mailto[1].split('?');
             const subj = new URLSearchParams(qs || '').get('subject') || 'Unsubscribe';
             if (!roomForTab()) return;
-            ctx.compose.value = { token: ++seq, mode: 'new', to: [{ name: '', mail: addr }], cc: [], bcc: [], subject: subj, html: '<p>Unsubscribe</p>' };
+            ctx.compose.value = { token: ++seq, mode: 'new', to: [{ name: '', mail: addr }], cc: [], bcc: [], subject: subj, html: '<div>Unsubscribe</div>' };
             ctx.mobileRead.value = true;   // на телефоне окно письма иначе остаётся за кадром
         }
     }

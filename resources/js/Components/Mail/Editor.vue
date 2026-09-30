@@ -16,7 +16,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:modelValue', 'submit', 'save', 'toast']);
 const el = ref(null);
-const state = ref({ bold: false, italic: false, underline: false, strike: false, align: 'left', block: 'p', font: '', size: '', lh: '' });
+const state = ref({ bold: false, italic: false, underline: false, strike: false, align: 'left', block: 'div', font: '', size: '', lh: '' });
 
 // ── Наборы панели. Значения — то, что понимают почтовые программы получателей: три семейства шрифтов
 // с запасными, размеры именами CSS (получатель увидит те же ступени), десять цветов.
@@ -24,7 +24,8 @@ const FONTS = [['', 'Обычный'], ['Georgia, "Times New Roman", serif', 'С
 const SIZES = [['small', 'Мелкий'], ['', 'Средний'], ['large', 'Крупный'], ['xx-large', 'Очень крупный']];
 // Межстрочный интервал — ступени Word и Outlook; «Обычный» — без своего значения (как у получателя по умолчанию).
 const LINE_HEIGHTS = [['1', '1,0'], ['1.15', '1,15'], ['1.5', '1,5'], ['2', '2,0'], ['2.5', '2,5'], ['3', '3,0'], ['', 'Обычный']];
-const BLOCKS = [['p', 'Обычный текст'], ['h1', 'Заголовок 1'], ['h2', 'Заголовок 2'], ['h3', 'Заголовок 3']];
+// «Обычный текст» — <div>, а не <p>: у <p> поля сверху и снизу, и строки письма расходились.
+const BLOCKS = [['div', 'Обычный текст'], ['h1', 'Заголовок 1'], ['h2', 'Заголовок 2'], ['h3', 'Заголовок 3']];
 const COLORS = ['#2B3036', '#C62828', '#C94E00', '#9A6700', '#1F7A4D', '#1D5FD1', '#6B3FA0', '#0F766E', '#646B76', '#FFFFFF'];
 const MARKS = ['#FFF3B0', '#FFD9C2', '#D7F5E1', '#DCE8FF', '#EAD9FF', '#E6E4E0'];
 const EMOJI = ['🙂', '😊', '😀', '😉', '👍', '👌', '🙏', '👏', '🤝', '✅', '❗', '❓', '⭐', '🔥', '💡', '📌', '📎', '📅', '📞', '✉️', '🎉', '☕', '🚀', '⚠️'];
@@ -105,7 +106,7 @@ function setLineHeight(v) {
         if (n === root) {
             // Курсор в пустом поле: заводим абзац, чтобы интервал достался тому, что будет набрано.
             if (!root.childNodes.length) { const d = document.createElement('div'); d.innerHTML = '<br>'; root.appendChild(d); blocks.add(d); saved.sc = d; saved.so = 0; saved.ec = d; saved.eo = 0; continue; }
-            // Курсор между абзацами (например, перед пустым <p></p> шаблона ответа, у которого нет высоты):
+            // Курсор между абзацами (например, перед пустой строкой нулевой высоты, у которого нет высоты):
             // берём ближайший абзац, куда реально пойдёт набор, и ставим курсор в него.
             let child = root.childNodes[Math.min(range.startOffset, root.childNodes.length - 1)];
             while (child?.nodeType === 1 && !child.childNodes.length && child.nextSibling) child = child.nextSibling;
@@ -131,7 +132,7 @@ function insertTable(rows, cols) {
     const td = 'border: 1px solid #cfcbc4; padding: 4px 8px; min-width: 40px';
     // Скобки обязательны: без них repeat относился бы только к последней строке-литералу.
     const row = '<tr>' + ('<td style="' + td + '"><br></td>').repeat(cols) + '</tr>';
-    insertHtml('<table style="border-collapse: collapse; margin: 6px 0">' + row.repeat(rows) + '</table><p><br></p>');
+    insertHtml('<table style="border-collapse: collapse; margin: 6px 0">' + row.repeat(rows) + '</table><div><br></div>');
 }
 function insertEmoji(e) { insertHtml(e + ' '); }
 
@@ -196,7 +197,7 @@ function refresh() {
     state.value = {
         bold: q('bold'), italic: q('italic'), underline: q('underline'), strike: q('strikeThrough'),
         align: q('justifyCenter') ? 'center' : q('justifyRight') ? 'right' : 'left',
-        block: /^h[1-3]$/.test(block) ? block : 'p',
+        block: /^h[1-3]$/.test(block) ? block : 'div',
         font: font.includes('georgia') ? FONTS[1][0] : font.includes('courier') ? FONTS[2][0] : '',
         size: ['small', 'large', 'xx-large'].includes(size) ? size : '',
         // Чужое значение (из пересланного письма) не подгоняем к ступеням — в списке остаётся «обычный».
@@ -289,6 +290,8 @@ function insertImage(file) {
 }
 
 onMounted(() => {
+    // Enter в тексте без абзаца — новая строка <div>, как в Gmail и Почте Mail.ru (у Firefox по умолчанию <br>).
+    try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch { /* старый браузер */ }
     el.value.innerHTML = props.modelValue || '';
     checkBlank();
 });
@@ -342,7 +345,7 @@ defineExpose({
                 sig = document.createElement('div');
                 sig.className = 'sig';
                 sig.innerHTML = sigHtml;
-                const gap = document.createElement('p');
+                const gap = document.createElement('div');
                 gap.innerHTML = '<br>';
                 const anchor = root.querySelector('div.quote, div.fwd');
                 if (anchor) { root.insertBefore(gap, anchor); root.insertBefore(sig, anchor); } else { root.appendChild(gap); root.appendChild(sig); }

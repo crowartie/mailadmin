@@ -585,7 +585,7 @@ watch(from, (nv, ov) => {
     if (s) {
         if (sig) { sig.innerHTML = s; } else {
             sig = document.createElement('div'); sig.className = 'sig'; sig.innerHTML = s;
-            const gap = document.createElement('p'); gap.innerHTML = '<br>';
+            const gap = document.createElement('div'); gap.innerHTML = '<br>';
             const anchor = box.querySelector('div.quote, div.fwd');
             if (anchor) { box.insertBefore(gap, anchor); box.insertBefore(sig, anchor); } else { box.appendChild(gap); box.appendChild(sig); }
         }

@@ -32,6 +32,19 @@ class EditorFormattingTest extends TestCase
         }
     }
 
+    /** Строки письма теперь <div> без полей (как в Gmail): текстовая версия держит каждую на своей строке. */
+    public function test_строки_div_в_текстовой_версии(): void
+    {
+        $m = new \ReflectionMethod(\App\Services\Mail\MailBuilder::class, 'htmlToText');
+        $text = $m->invoke(null, '<div>line1</div><div>line2</div><div><br></div><div>line4</div><div><br></div><div class="sig">С уважением</div>');
+        $this->assertSame("line1
+line2
+
+line4
+
+С уважением", $text);
+    }
+
     /** Межстрочный интервал (обращение №65) ставится на абзацы и списки — получатель должен его увидеть. */
     public function test_межстрочный_интервал_переживает_очистку(): void
     {
