@@ -71,6 +71,51 @@ watch(() => props.folder, (path) => {
     }
 }, { immediate: true });
 
+// Складные папки (обращение №66): у папки с подпапками — стрелка, как в Outlook. Стрелка сворачивает ветку,
+// щелчок по имени по-прежнему открывает папку. Состояние помнит браузер (по пути папки); по умолчанию всё
+// раскрыто — как было. Работает и для «Входящих» со вложенными, и для папок внутри общих ящиков.
+const FOLD_KEY = 'mail.folderCollapsed';
+const folded = ref((() => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}'); } catch { return {}; } })());
+const byPath = computed(() => new Map(props.folders.map((f) => [f.path, f])));
+const parents = computed(() => new Set(props.folders.map((f) => f.parent).filter(Boolean)));
+const hasKids = (f) => parents.value.has(f.path);
+function saveFolded(v) {
+    folded.value = v;
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(v)); } catch { /* приватный режим */ }
+}
+/** Предки папки снизу вверх (защита от петли в данных — на всякий случай). */
+function ancestors(f) {
+    const out = []; const seen = new Set();
+    for (let p = f.parent; p && !seen.has(p); p = byPath.value.get(p)?.parent) { seen.add(p); out.push(p); }
+    return out;
+}
+const hidden = (f) => ancestors(f).some((p) => folded.value[p]);
+function toggleFold(f, open = !!folded.value[f.path]) {
+    if (!hasKids(f)) return;
+    const v = { ...folded.value };
+    if (open) delete v[f.path]; else v[f.path] = true;
+    saveFolded(v);
+}
+// Непрочитанные, спрятанные в свёрнутой ветке, — «+N» у родителя: иначе новое письмо в подпапке не заметить.
+function hiddenUnread(f) {
+    if (!folded.value[f.path]) return 0;
+    return props.folders.reduce((n, g) => n + (ancestors(g).includes(f.path) ? unreadOf(g) : 0), 0);
+}
+// Стрелки влево/вправо на строке папки — свернуть/развернуть, как в дереве Проводника.
+function onFoldKey(e, f) {
+    if (!hasKids(f)) return;
+    if (e.key === 'ArrowLeft' && !folded.value[f.path]) { e.preventDefault(); toggleFold(f, false); }
+    if (e.key === 'ArrowRight' && folded.value[f.path]) { e.preventDefault(); toggleFold(f, true); }
+}
+// Открыли папку внутри свёрнутой ветки (поиск, ссылка, правило) — раскрываем путь к ней.
+watch(() => [props.folder, props.folders.length], () => {
+    const f = byPath.value.get(props.folder);
+    if (!f) return;
+    const closed = ancestors(f).filter((p) => folded.value[p]);
+    if (closed.length) { const v = { ...folded.value }; closed.forEach((p) => delete v[p]); saveFolded(v); }
+}, { immediate: true });
+const customShown = computed(() => custom.value.filter((f) => !hidden(f)));
+
 const inbox = computed(() => props.folders.find((f) => f.role === 'inbox'));
 const quarantineOpen = computed(() => typeof window !== 'undefined' && window.location.pathname === '/mail/quarantine');
 const dropTarget = ref(null);
@@ -109,6 +154,7 @@ function counterTitle(f) { return unreadOf(f) ? `непрочитанных ${un
  * к тому же было не добраться с клавиатуры. Теперь это одна кнопка, а место щелчка решает отбор.
  */
 function goFolder(e, path, folder = null) {
+    if (folder && e.target?.closest?.('.mnav__tog')) { toggleFold(folder); return; }
     // «…» открывает то же меню, что и правый клик: на планшете и телефоне правого клика нет,
     // и «Очистить папку», «Общий доступ», «Прочитать все» были недостижимы вовсе.
     if (e.target?.closest?.('.mnav__more')) {
@@ -172,19 +218,23 @@ function sharedTitle(f) {
             <button class="ib ib--sm" type="button" title="Новая папка" @click="$emit('new-folder', null)" aria-label="Новая папка"><Icon name="plus" :size="14" /></button>
         </div>
         <button
-            v-for="f in custom"
+            v-for="f in customShown"
             :key="f.path"
             type="button"
-            class="mnav__item"
+            class="mnav__item mnav__item--tree"
             :class="['mnav__item--depth-' + Math.min(f.depth, 3), { 'mnav__item--on': isOn(f), 'mnav__item--drop': dropTarget === f.path }]"
+            :aria-expanded="hasKids(f) ? !folded[f.path] : undefined"
             @click="goFolder($event, f.path, f)"
+            @keydown="onFoldKey($event, f)"
             @contextmenu.prevent="f.virtual ? null : $emit('context', $event, f)"
             @dragover="onDragOver($event, f)"
             @dragleave="dropTarget = null"
             @drop="onDrop($event, f)"
         >
+            <span class="mnav__tog" :class="{ 'mnav__tog--open': !folded[f.path] }" role="presentation" :title="hasKids(f) ? (folded[f.path] ? 'Развернуть' : 'Свернуть') : null"><Icon v-if="hasKids(f)" name="chevron" :size="12" /></span>
             <Icon :name="f.virtual ? 'inbox' : 'folder'" :size="16" style="color: var(--faint); flex: 0 0 16px" />
-            <span>{{ f.name }}</span>
+            <span class="mnav__name">{{ f.name }}</span>
+            <span v-if="hiddenUnread(f)" class="mnav__sub" :title="'Непрочитанных во вложенных папках: ' + hiddenUnread(f)">+{{ hiddenUnread(f) }}</span>
             <span v-if="!f.virtual" class="mnav__more" role="presentation" :title="'Что можно сделать с папкой «' + f.name + '»'">···</span>
             <span v-if="f.shared_with?.length" class="mnav__shared" :title="sharedTitle(f)"><Icon name="share" :size="13" /></span>
             <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !unreadOf(f) }" :title="counterTitle(f)"><template v-if="unreadOf(f)"><b class="mnav__unread" title="Показать только непрочитанные">{{ unreadOf(f) }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
@@ -201,19 +251,23 @@ function sharedTitle(f) {
                     <span v-if="g.unread" class="mnav__count"><b>{{ g.unread }}</b></span>
                 </button>
                 <button
-                    v-for="f in (isCollapsed(g) ? [] : g.items)"
+                    v-for="f in (isCollapsed(g) ? [] : g.items.filter((x) => !hidden(x)))"
                     :key="f.path"
                     type="button"
-                    class="mnav__item"
+                    class="mnav__item mnav__item--tree"
                     :class="['mnav__item--depth-' + Math.min(f.depth + 1, 3), { 'mnav__item--on': isOn(f), 'mnav__item--drop': dropTarget === f.path }]"
+                    :aria-expanded="hasKids(f) ? !folded[f.path] : undefined"
                     @click="goFolder($event, f.path, f)"
+                    @keydown="onFoldKey($event, f)"
                     @contextmenu.prevent="$emit('context', $event, f)"
                     @dragover="onDragOver($event, f)"
                     @dragleave="dropTarget = null"
                     @drop="onDrop($event, f)"
                 >
+                    <span class="mnav__tog" :class="{ 'mnav__tog--open': !folded[f.path] }" role="presentation" :title="hasKids(f) ? (folded[f.path] ? 'Развернуть' : 'Свернуть') : null"><Icon v-if="hasKids(f)" name="chevron" :size="12" /></span>
                     <Icon name="folder" :size="16" style="color: var(--faint); flex: 0 0 16px" />
-                    <span>{{ f.name }}</span>
+                    <span class="mnav__name">{{ f.name }}</span>
+                    <span v-if="hiddenUnread(f)" class="mnav__sub" :title="'Непрочитанных во вложенных папках: ' + hiddenUnread(f)">+{{ hiddenUnread(f) }}</span>
                     <span class="mnav__more" role="presentation" :title="'Что можно сделать с папкой «' + f.name + '»'">···</span>
                     <span v-if="counter(f)" class="mnav__count" :class="{ 'mnav__count--all': !unreadOf(f) }" :title="counterTitle(f)"><template v-if="unreadOf(f)"><b class="mnav__unread" title="Показать только непрочитанные">{{ unreadOf(f) }}</b><i>/ {{ f.total }}</i></template><template v-else>{{ f.total }}</template></span>
                 </button>
