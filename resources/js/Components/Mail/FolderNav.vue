@@ -39,7 +39,8 @@ const shared = computed(() => {
         let g = groups.find((x) => x.owner === f.owner);
         if (!g) { g = { owner: f.owner, name: f.ownerName || f.owner, items: [], unread: 0 }; groups.push(g); }
         g.items.push(f);
-        g.unread += f.unread || 0;
+        // Итог группы — без Спама и Корзины, как и счётчики самих этих папок (обращение №60).
+        g.unread += unreadOf(f);
     }
     for (const g of groups) {
         g.items.sort((a, b) => {
