@@ -23,12 +23,12 @@ const state = ref({ bold: false, italic: false, underline: false, strike: false,
 const FONTS = [['', 'Обычный'], ['Georgia, "Times New Roman", serif', 'С засечками'], ['"Courier New", Consolas, monospace', 'Моноширинный']];
 const SIZES = [['small', 'Мелкий'], ['', 'Средний'], ['large', 'Крупный'], ['xx-large', 'Очень крупный']];
 // Межстрочный интервал — ступени Word и Outlook; «Обычный» — без своего значения (как у получателя по умолчанию).
-const LINE_HEIGHTS = [['', 'Интервал обычный'], ['1', 'Интервал 1,0'], ['1.15', 'Интервал 1,15'], ['1.5', 'Интервал 1,5'], ['2', 'Интервал 2,0'], ['2.5', 'Интервал 2,5'], ['3', 'Интервал 3,0']];
+const LINE_HEIGHTS = [['1', '1,0'], ['1.15', '1,15'], ['1.5', '1,5'], ['2', '2,0'], ['2.5', '2,5'], ['3', '3,0'], ['', 'Обычный']];
 const BLOCKS = [['p', 'Обычный текст'], ['h1', 'Заголовок 1'], ['h2', 'Заголовок 2'], ['h3', 'Заголовок 3']];
 const COLORS = ['#2B3036', '#C62828', '#C94E00', '#9A6700', '#1F7A4D', '#1D5FD1', '#6B3FA0', '#0F766E', '#646B76', '#FFFFFF'];
 const MARKS = ['#FFF3B0', '#FFD9C2', '#D7F5E1', '#DCE8FF', '#EAD9FF', '#E6E4E0'];
 const EMOJI = ['🙂', '😊', '😀', '😉', '👍', '👌', '🙏', '👏', '🤝', '✅', '❗', '❓', '⭐', '🔥', '💡', '📌', '📎', '📅', '📞', '✉️', '🎉', '☕', '🚀', '⚠️'];
-const pop = ref(null);   // открытая всплывашка: color | mark | table | emoji | null
+const pop = ref(null);   // открытая всплывашка: color | mark | table | emoji | lh | null
 const tableHover = ref([0, 0]);
 function togglePop(name) { pop.value = pop.value === name ? null : name; }
 function closePop(e) { if (pop.value && !e.target.closest?.('.fmt__pop, .fmt__popbtn')) pop.value = null; }
@@ -83,6 +83,7 @@ function blockOf(node) {
 }
 function setLineHeight(v) {
     const root = el.value;
+    pop.value = null;
     root.focus();
     const sel = window.getSelection();
     if (!sel?.rangeCount || !root.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
@@ -444,7 +445,13 @@ defineExpose({
             <button type="button" title="Горизонтальная линия" aria-label="Горизонтальная линия" @click="cmd('insertHorizontalRule')"><Icon name="hr" :size="15" /></button>
             <button type="button" :class="{ on: state.block === 'pre' }" title="Моноширинный блок (код, номера)" aria-label="Моноширинный блок" @click="cmd('formatBlock', 'pre')"><Icon name="code" :size="15" /></button>
             <span class="v" />
-            <select class="fmt__sel" :value="state.lh" aria-label="Межстрочный интервал" title="Межстрочный интервал" data-testid="line-height" @change="setLineHeight($event.target.value)"><option v-for="[v, n] in LINE_HEIGHTS" :key="n" :value="v">{{ n }}</option></select>
+            <!-- Как в Word: кнопка со списком, а не ещё один выпадающий список — второй ряд панели и так полон. -->
+            <span class="fmt__wrap">
+                <button type="button" class="fmt__popbtn" :class="{ on: pop === 'lh' || state.lh }" title="Межстрочный интервал" aria-label="Межстрочный интервал" aria-haspopup="true" data-testid="line-height" @click="togglePop('lh')"><Icon name="lineheight" :size="15" /></button>
+                <div v-if="pop === 'lh'" class="fmt__pop fmt__pop--list" role="menu" aria-label="Межстрочный интервал">
+                    <button v-for="[v, n] in LINE_HEIGHTS" :key="n" type="button" role="menuitemradio" :aria-checked="state.lh === v" class="fmt__item" :class="{ on: state.lh === v }" :data-lh="v" @click="setLineHeight(v)">{{ n }}</button>
+                </div>
+            </span>
             <span class="v" />
             <select class="fmt__sel" :value="state.block" aria-label="Заголовок" title="Заголовок" @change="setBlock($event.target.value)"><option v-for="[v, n] in BLOCKS" :key="v" :value="v">{{ n }}</option></select>
         </div>

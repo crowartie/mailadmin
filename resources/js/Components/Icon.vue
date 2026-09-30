@@ -38,6 +38,7 @@ const paths = {
     alignc: 'M4 6h16M7 10h10M4 14h16M7 18h10',
     alignr: 'M4 6h16M10 10h10M4 14h16M10 18h10',
     indent: 'M4 6h16M10 10h10M10 14h10M4 18h16M4 10l3 2-3 2',
+    lineheight: 'M11 6h9M11 12h9M11 18h9M6 4v16M3 7l3-3 3 3M3 17l3 3 3-3',
     outdent: 'M4 6h16M10 10h10M10 14h10M4 18h16M7 10l-3 2 3 2',
     table: 'M3 5h18v14H3zM3 10h18M3 15h18M9 5v14M15 5v14',
     hr: 'M4 12h16M4 5h4M16 5h4M4 19h4M16 19h4',
