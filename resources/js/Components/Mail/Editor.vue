@@ -104,9 +104,12 @@ function setLineHeight(v) {
         if (n === root) {
             // Курсор в пустом поле: заводим абзац, чтобы интервал достался тому, что будет набрано.
             if (!root.childNodes.length) { const d = document.createElement('div'); d.innerHTML = '<br>'; root.appendChild(d); blocks.add(d); saved.sc = d; saved.so = 0; saved.ec = d; saved.eo = 0; continue; }
-            const child = root.childNodes[Math.min(range.startOffset, root.childNodes.length - 1)];
+            // Курсор между абзацами (например, перед пустым <p></p> шаблона ответа, у которого нет высоты):
+            // берём ближайший абзац, куда реально пойдёт набор, и ставим курсор в него.
+            let child = root.childNodes[Math.min(range.startOffset, root.childNodes.length - 1)];
+            while (child?.nodeType === 1 && !child.childNodes.length && child.nextSibling) child = child.nextSibling;
             const b = blockOf(child);
-            if (b) blocks.add(b);
+            if (b) { blocks.add(b); if (range.collapsed) { saved.sc = b; saved.so = 0; saved.ec = b; saved.eo = 0; } }
             continue;
         }
         const b = blockOf(n);
