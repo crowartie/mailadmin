@@ -766,6 +766,35 @@ Push: сотрудник включает «Уведомления браузе�
 общего пространства): у каждого читателя своя отметка, владельца никто не трогает, но и
 общего «кто-то уже прочитал» тогда не будет ни у кого.
 
+### Обращение №64: просмотр форматов и таблица вместо листа A4 (30.09.2026)
+
+Кнопка «Посмотреть» у вложения и у файла из хранилища выбирает способ по расширению (`kindOf()` в
+`resources/js/mail/attachments.js`):
+
+| Что | Как показываем | Где на сервере |
+|---|---|---|
+| xls, xlsx, xlsm, xltx, xltm, ods, csv | таблицей: листы, ширины, объединения, закрепление, шрифты и заливки; переключатель «Как при печати» — прежний PDF | `SheetPreview` (PhpSpreadsheet в отдельном процессе `preview:sheet`), `…/sheet.json` |
+| HEIC/HEIF (iPhone) | картинкой | `ImagePreview` (heif-convert → JPEG), `…/preview.jpg` |
+| TIFF (сканы, многостраничные) | PDF | `OfficePdf::tiff()` — tiff2pdf |
+| DXF, DWG | PDF, лист по размеру чертежа | `OfficePdf::cad()` — LibreDWG `dwg2dxf`, затем `resources/tools/cad2pdf.py` (ezdxf, SVG → rsvg-convert) |
+| doc…pptx, odt/odp/odg, rtf, xlsb, vsd/vsdx, pub, cdr, pages/numbers/key | PDF | `OfficePdf::office()` — LibreOffice |
+| txt, log, json, xml, md, ini, yml, sql… до 2 МБ | текстом, cp1251 распознаётся | сам файл |
+| mp4, mov, webm, mp3, m4a, wav, ogg, flac | плеер браузера | сам файл, тип по расширению (`MessageController::mediaType`) |
+| SVG | картинкой | сам файл с CSP `sandbox` — скрипты внутри не выполняются |
+
+Результаты кэшируются по содержимому в `storage/app/private/preview` (таблицы — `*.v2.sheet.json`, номер
+версии поднимать при смене формата), чистка — ночью, старше недели. Преобразования идут по одному на вид
+(`preview-office|tiff|cad`, `preview-image`, `sheet-preview`) и под `prlimit` (3 ГБ памяти, 150 с процессора).
+Инструменты ставит `deploy/preview-tools.sh` — из `update.sh` в фоне, журнал `/var/log/mailadmin-preview-tools.log`;
+LibreDWG 0.14 собирается из исходников (в Ubuntu 24.04 пакета нет) около 10 минут. Пределы таблицы:
+5000 строк, 200 столбцов, 250 тыс. ячеек, 30 листов — дальше подпись «показана часть». Тесты
+`SheetPreviewTest`, `PreviewFormatsTest`. Архивы (zip, rar, 7z) не показываем — по решению, их проще скачать.
+
+Временные файлы под Octane (30.09.2026): `deleteFileAfterSend()` у скачиваемых архивов не срабатывал, мост
+PSR-7 оставлял копию каждой загрузки (`/tmp/symfony*`) — за две недели на .111 набралось 1290 файлов (~2 ГБ).
+Теперь `App\Support\TempFiles`: удаление после ответа через `terminating`, ночная уборка `tmp-prune` (04:25,
+только имена tempnam приложения и старше суток). Тест `TempFilesTest`.
+
 ## 4. Что можно улучшить
 
 
