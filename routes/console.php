@@ -48,6 +48,8 @@ Schedule::call(function () {
         }
     }
 })->dailyAt('04:20');
+// Брошенные временные файлы в /tmp (архивы для скачивания, копии загрузок моста PSR-7) — см. TempFiles.
+Schedule::call(fn () => \App\Support\TempFiles::prune())->dailyAt('04:25')->name('tmp-prune')->withoutOverlapping();
 // Напоминания о событиях по почте (VALARM) — каждую минуту.
 Schedule::command('calendar:reminders')->everyMinute()->withoutOverlapping();
 // Сводка карантина сотрудникам — раз в сутки в час из настроек.

@@ -241,6 +241,7 @@ class MessageController extends Controller
     public function attachmentsZip(ImapSession $imap, string $folder, int $uid)
     {
         $zip = (new MailStore($imap->client()))->attachmentsZip($folder, $uid);
+        \App\Support\TempFiles::deleteAfterResponse($zip['path']);   // и при отказе ниже
         abort_if($zip['count'] === 0, 404, 'У письма нет вложений');
 
         return response()->download($zip['path'], $zip['name'], [
@@ -272,6 +273,7 @@ class MessageController extends Controller
         set_time_limit(600);
 
         $tmp = tempnam(sys_get_temp_dir(), 'cloud');
+        \App\Support\TempFiles::deleteAfterResponse($tmp);   // deleteFileAfterSend под Octane не срабатывает
         $parts = [];   // временные копии файлов из облака — убрать после сборки
         $zip = new \ZipArchive();
         abort_if($zip->open($tmp, \ZipArchive::OVERWRITE) !== true, 500, 'Не удалось создать архив');

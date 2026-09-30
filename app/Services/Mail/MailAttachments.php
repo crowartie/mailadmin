@@ -19,7 +19,7 @@ class MailAttachments
 
     /**
      * Все вложения письма одним ZIP (встроенные картинки из тела не берём). Возвращает путь к временному файлу,
-     * имя для скачивания и число файлов; временный файл удаляет вызывающий (deleteFileAfterSend).
+     * имя для скачивания и число файлов; временный файл удаляет вызывающий (TempFiles::deleteAfterResponse).
      *
      * @return array{path:string,name:string,count:int}
      */
