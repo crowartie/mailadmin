@@ -1,7 +1,8 @@
 <script setup>
 // HTML-редактор на contenteditable. Панель оформления (обращение №53) — два ряда под текстом, как в Gmail:
 // символы (шрифт, размер, B I U S, цвет, выделение, ссылка, картинка, смайлик) и абзац (выравнивание, списки,
-// отступы, цитата, таблица, линия, код, заголовок). Показывается по prop expanded — кнопка «A» у «Отправить».
+// отступы, цитата, таблица, линия, код, заголовок, межстрочный интервал — обращение №65). Показывается по
+// prop expanded — кнопка «A» у «Отправить».
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
 
@@ -15,12 +16,14 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:modelValue', 'submit', 'save', 'toast']);
 const el = ref(null);
-const state = ref({ bold: false, italic: false, underline: false, strike: false, align: 'left', block: 'p', font: '', size: '' });
+const state = ref({ bold: false, italic: false, underline: false, strike: false, align: 'left', block: 'p', font: '', size: '', lh: '' });
 
 // ── Наборы панели. Значения — то, что понимают почтовые программы получателей: три семейства шрифтов
 // с запасными, размеры именами CSS (получатель увидит те же ступени), десять цветов.
 const FONTS = [['', 'Обычный'], ['Georgia, "Times New Roman", serif', 'С засечками'], ['"Courier New", Consolas, monospace', 'Моноширинный']];
 const SIZES = [['small', 'Мелкий'], ['', 'Средний'], ['large', 'Крупный'], ['xx-large', 'Очень крупный']];
+// Межстрочный интервал — ступени Word и Outlook; «Обычный» — без своего значения (как у получателя по умолчанию).
+const LINE_HEIGHTS = [['', 'Интервал обычный'], ['1', 'Интервал 1,0'], ['1.15', 'Интервал 1,15'], ['1.5', 'Интервал 1,5'], ['2', 'Интервал 2,0'], ['2.5', 'Интервал 2,5'], ['3', 'Интервал 3,0']];
 const BLOCKS = [['p', 'Обычный текст'], ['h1', 'Заголовок 1'], ['h2', 'Заголовок 2'], ['h3', 'Заголовок 3']];
 const COLORS = ['#2B3036', '#C62828', '#C94E00', '#9A6700', '#1F7A4D', '#1D5FD1', '#6B3FA0', '#0F766E', '#646B76', '#FFFFFF'];
 const MARKS = ['#FFF3B0', '#FFD9C2', '#D7F5E1', '#DCE8FF', '#EAD9FF', '#E6E4E0'];
@@ -52,6 +55,72 @@ function setSize(v) {
 function setColor(c) { cssCmd('foreColor', c === '#2B3036' ? 'inherit' : c); }
 function setMark(c) { cssCmd('hiliteColor', c === '' ? 'transparent' : c); }
 function setBlock(v) { cmd('formatBlock', v); }
+
+// Интервал — свойство абзаца, а не символов, и execCommand его не умеет: ставим line-height прямо на
+// абзацы (p, div, li, ячейки, заголовки), которых касается выделение. Текст, набранный прямо в поле без
+// абзаца, сначала заворачиваем в <div> — иначе интервал пришлось бы ставить всему письму с подписью и цитатой.
+const BLOCK_TAGS = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'TD', 'TH']);
+const isBlock = (n) => n?.nodeType === 1 && (BLOCK_TAGS.has(n.tagName) || ['UL', 'OL', 'TABLE', 'TBODY', 'THEAD', 'TR', 'HR'].includes(n.tagName));
+function blockOf(node) {
+    const root = el.value;
+    let e = node?.nodeType === 1 ? node : node?.parentElement;
+    while (e && e !== root) {
+        if (BLOCK_TAGS.has(e.tagName)) return e;
+        e = e.parentElement;
+    }
+    if (!node || e !== root) return null;
+    // Строчный текст прямо в поле: соседние строчные узлы (до ближайшего абзаца) — в один <div>.
+    let top = node;
+    while (top.parentNode !== root) top = top.parentNode;
+    if (isBlock(top)) return null;
+    let first = top, last = top;
+    while (first.previousSibling && !isBlock(first.previousSibling)) first = first.previousSibling;
+    while (last.nextSibling && !isBlock(last.nextSibling)) last = last.nextSibling;
+    const div = document.createElement('div');
+    root.insertBefore(div, first);
+    for (let n = first, stop = last.nextSibling; n && n !== stop;) { const next = n.nextSibling; div.appendChild(n); n = next; }
+    return div;
+}
+function setLineHeight(v) {
+    const root = el.value;
+    root.focus();
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || !root.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
+    const range = sel.getRangeAt(0);
+    // Сначала собираем узлы, потом заворачиваем: обёртка меняет дерево, и обход сбился бы.
+    const nodes = [];
+    if (range.collapsed) {
+        nodes.push(range.startContainer);
+    } else {
+        const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+        for (let n = walker.currentNode; n; n = walker.nextNode()) {
+            if ((n.nodeType === 3 || n.tagName === 'BR' || n.tagName === 'IMG') && range.intersectsNode(n)) nodes.push(n);
+        }
+        if (!nodes.length) nodes.push(range.startContainer);
+    }
+    const saved = { sc: range.startContainer, so: range.startOffset, ec: range.endContainer, eo: range.endOffset };
+    const blocks = new Set();
+    for (const n of nodes) {
+        if (n === root) {
+            // Курсор в пустом поле: заводим абзац, чтобы интервал достался тому, что будет набрано.
+            if (!root.childNodes.length) { const d = document.createElement('div'); d.innerHTML = '<br>'; root.appendChild(d); blocks.add(d); saved.sc = d; saved.so = 0; saved.ec = d; saved.eo = 0; continue; }
+            const child = root.childNodes[Math.min(range.startOffset, root.childNodes.length - 1)];
+            const b = blockOf(child);
+            if (b) blocks.add(b);
+            continue;
+        }
+        const b = blockOf(n);
+        if (b) blocks.add(b);
+    }
+    for (const b of blocks) {
+        b.style.lineHeight = v;
+        if (!v && !b.getAttribute('style')) b.removeAttribute('style');
+    }
+    // Обёртка переносит узлы, но не пересоздаёт их — выделение возвращаем на те же места.
+    try { const r = document.createRange(); r.setStart(saved.sc, saved.so); r.setEnd(saved.ec, saved.eo); sel.removeAllRanges(); sel.addRange(r); } catch { /* узел исчез — выделение браузера */ }
+    sync();
+    refresh();
+}
 function insertHtml(html) { el.value.focus(); document.execCommand('insertHTML', false, html); sync(); pop.value = null; }
 function insertTable(rows, cols) {
     // Рамки — прямо в атрибутах стиля: у получателя нет наших таблиц стилей, а без рамок таблица «рассыпается».
@@ -109,6 +178,7 @@ function refresh() {
     const font = v('fontName').replace(/["']/g, '').toLowerCase();
     // Размер: у выделенного текста смотрим вычисленный font-size — queryCommandValue('fontSize') отдаёт 1–7 и только для <font>.
     let size = '';
+    let lh = '';
     const node = window.getSelection()?.anchorNode;
     const elem = node ? (node.nodeType === 1 ? node : node.parentElement) : null;
     if (elem && el.value?.contains(elem)) {
@@ -116,6 +186,8 @@ function refresh() {
         const m = fs && el.value.contains(fs) ? /font-size:\s*([a-z-]+)/i.exec(fs.getAttribute('style') || '') : null;
         size = m ? m[1].toLowerCase() : '';
         if (size === 'medium') size = '';
+        const lhEl = elem.closest('[style*="line-height"]');
+        lh = lhEl && el.value.contains(lhEl) ? String(lhEl.style.lineHeight || '') : '';
     }
     state.value = {
         bold: q('bold'), italic: q('italic'), underline: q('underline'), strike: q('strikeThrough'),
@@ -123,6 +195,8 @@ function refresh() {
         block: /^h[1-3]$/.test(block) ? block : 'p',
         font: font.includes('georgia') ? FONTS[1][0] : font.includes('courier') ? FONTS[2][0] : '',
         size: ['small', 'large', 'xx-large'].includes(size) ? size : '',
+        // Чужое значение (из пересланного письма) не подгоняем к ступеням — в списке остаётся «обычный».
+        lh: LINE_HEIGHTS.some(([v]) => v === lh) ? lh : '',
     };
 }
 
@@ -366,6 +440,8 @@ defineExpose({
             </span>
             <button type="button" title="Горизонтальная линия" aria-label="Горизонтальная линия" @click="cmd('insertHorizontalRule')"><Icon name="hr" :size="15" /></button>
             <button type="button" :class="{ on: state.block === 'pre' }" title="Моноширинный блок (код, номера)" aria-label="Моноширинный блок" @click="cmd('formatBlock', 'pre')"><Icon name="code" :size="15" /></button>
+            <span class="v" />
+            <select class="fmt__sel" :value="state.lh" aria-label="Межстрочный интервал" title="Межстрочный интервал" data-testid="line-height" @change="setLineHeight($event.target.value)"><option v-for="[v, n] in LINE_HEIGHTS" :key="n" :value="v">{{ n }}</option></select>
             <span class="v" />
             <select class="fmt__sel" :value="state.block" aria-label="Заголовок" title="Заголовок" @change="setBlock($event.target.value)"><option v-for="[v, n] in BLOCKS" :key="v" :value="v">{{ n }}</option></select>
         </div>

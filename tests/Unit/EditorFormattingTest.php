@@ -32,6 +32,16 @@ class EditorFormattingTest extends TestCase
         }
     }
 
+    /** Межстрочный интервал (обращение №65) ставится на абзацы и списки — получатель должен его увидеть. */
+    public function test_межстрочный_интервал_переживает_очистку(): void
+    {
+        $out = MailHtml::sanitize('<div style="line-height: 1.5">первая строка<br>вторая</div><ul><li style="line-height: 2">пункт</li></ul>'
+            . '<table><tbody><tr><td style="line-height: 1.15">ячейка</td></tr></tbody></table>');
+        foreach (['line-height:1.5', 'line-height:2', 'line-height:1.15'] as $keep) {
+            $this->assertStringContainsString($keep, str_replace(' ', '', $out), "пропал $keep");
+        }
+    }
+
     public function test_текстовая_версия_держит_таблицу_и_заголовок_на_своих_строках(): void
     {
         $m = new \ReflectionMethod(\App\Services\Mail\MailBuilder::class, 'htmlToText');
